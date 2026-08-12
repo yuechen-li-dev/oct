@@ -46,13 +46,12 @@ func PrepareTest(path string) (*TestSession, error) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	command := exec.Command("go", "build", "-o", binary, "./octgo_bridge")
 	directory, dirErr := contractDirectory(path)
 	if dirErr != nil {
 		cleanup()
 		return nil, dirErr
 	}
-	command.Dir = directory
+	command := bridgeBuildCommand(directory, binary)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
@@ -60,6 +59,19 @@ func PrepareTest(path string) (*TestSession, error) {
 		return nil, fmt.Errorf("build OCTGO static adapter: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return &TestSession{WrapperPath: tmp, Wrappers: append([]project.WrapperMetadata(nil), report.wrappers...), cleanup: cleanup}, nil
+}
+
+func bridgeBuildCommand(directory, binary string) *exec.Cmd {
+	target := "./octgo_bridge"
+	commandDirectory := directory
+	bridgeDirectory := filepath.Join(directory, "octgo_bridge")
+	if _, err := os.Stat(filepath.Join(bridgeDirectory, "go.mod")); err == nil {
+		target = "."
+		commandDirectory = bridgeDirectory
+	}
+	command := exec.Command("go", "build", "-o", binary, target)
+	command.Dir = commandDirectory
+	return command
 }
 
 func renderBridge(model PackageModel, functions []bridgeFunction) ([]byte, error) {

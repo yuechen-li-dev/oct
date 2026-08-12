@@ -225,14 +225,14 @@ func projectType(typ types.Type) (TypeRef, bool, string) {
 		obj := named.Obj()
 		underlying, supported, reason := projectType(named.Underlying())
 		if !supported || underlying.Kind == "record" {
-			return TypeRef{Name: obj.Name(), Package: obj.Pkg().Path(), Kind: underlying.Kind}, false, reason
+			return TypeRef{Name: obj.Name(), Package: objectPackagePath(obj), Kind: underlying.Kind}, false, reason
 		}
-		return TypeRef{Name: obj.Name(), Package: obj.Pkg().Path(), Kind: underlying.Kind}, true, ""
+		return TypeRef{Name: obj.Name(), Package: objectPackagePath(obj), Kind: underlying.Kind}, true, ""
 	}
 	if alias, ok := typ.(*types.Alias); ok {
 		obj := alias.Obj()
 		underlying, supported, reason := projectType(types.Unalias(alias))
-		return TypeRef{Name: obj.Name(), Package: obj.Pkg().Path(), Kind: underlying.Kind}, supported, reason
+		return TypeRef{Name: obj.Name(), Package: objectPackagePath(obj), Kind: underlying.Kind}, supported, reason
 	}
 	basic, ok := typ.(*types.Basic)
 	if !ok {
@@ -250,6 +250,13 @@ func projectType(typ types.Type) (TypeRef, bool, string) {
 	default:
 		return TypeRef{Kind: "unsupported"}, false, fmt.Sprintf("Go primitive %s has no honest bounded OctGo mapping", basic.Name())
 	}
+}
+
+func objectPackagePath(obj types.Object) string {
+	if obj.Pkg() == nil {
+		return ""
+	}
+	return obj.Pkg().Path()
 }
 
 func octConstantLiteral(value constant.Value, ref TypeRef) (string, bool, string) {

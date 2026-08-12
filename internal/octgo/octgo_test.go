@@ -2,6 +2,7 @@ package octgo
 
 import (
 	"bytes"
+	"go/types"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,28 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/interpret"
 	"github.com/yuechen-li-dev/oct/internal/project"
 )
+
+func TestProjectTypeHandlesPredeclaredNamedType(t *testing.T) {
+	ref, supported, reason := projectType(types.Universe.Lookup("error").Type())
+	if supported || ref.Name != "error" || ref.Package != "" || reason == "" {
+		t.Fatalf("unexpected predeclared error projection: ref=%+v supported=%t reason=%q", ref, supported, reason)
+	}
+}
+
+func TestBridgeBuildCommandUsesIsolatedBridgeModule(t *testing.T) {
+	directory := t.TempDir()
+	bridgeDirectory := filepath.Join(directory, "octgo_bridge")
+	if err := os.MkdirAll(bridgeDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bridgeDirectory, "go.mod"), []byte("module example.test/bridge\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	command := bridgeBuildCommand(directory, filepath.Join(directory, "bridge"))
+	if command.Dir != bridgeDirectory || command.Args[len(command.Args)-1] != "." {
+		t.Fatalf("isolated bridge command = dir %q args %v", command.Dir, command.Args)
+	}
+}
 
 func TestLoadPackageProducesDeterministicBoundedModel(t *testing.T) {
 	directory := specimenDirectory(t)
