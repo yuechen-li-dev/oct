@@ -1,0 +1,34 @@
+package Controller
+
+flow AdmissionController(requested: Int, capacity: Int) -> Int {
+    board {
+        Decision: Int
+    }
+
+    state Idle {
+        goto Evaluate
+    }
+
+    state Evaluate {
+        when {
+            case requested <= capacity -> goto Accept
+            else -> goto Reject
+        }
+    }
+
+    state Accept {
+        board.Decision = 1
+        return board.Decision
+    }
+
+    state Reject {
+        board.Decision = 0
+        return board.Decision
+    }
+}
+
+fn Main() -> Int {
+    let controller = AdmissionController(1, 1)
+    Step(controller)
+    return 0
+}
