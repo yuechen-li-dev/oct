@@ -6096,6 +6096,116 @@ type goEmitOptions struct {
 	includeMain bool
 }
 
+type goSupportFeatures struct {
+	NeedsClone         bool
+	NeedsRowAssign     bool
+	NeedsRange         bool
+	NeedsArrayCoercion bool
+}
+
+func analyzeGoSupportFeatures(module MIRModule, usedBuiltins map[string]bool) goSupportFeatures {
+	features := goSupportFeatures{
+		NeedsClone: usedBuiltins["ArrayWhere"] || usedBuiltins["Array.Where"],
+		NeedsRange: usedBuiltins["ArrayCrossSection"] || usedBuiltins["Array.CrossSection"],
+	}
+	for _, record := range module.Records {
+		for _, field := range record.Fields {
+			features.NeedsRange = features.NeedsRange || compiledTypeNeedsRange(field.Type)
+		}
+	}
+	for _, flow := range module.Flows {
+		features.NeedsRange = features.NeedsRange || compiledTypeNeedsRange(flow.Return)
+		for _, field := range append(append([]MIRField{}, flow.Parameters...), flow.Board...) {
+			features.NeedsRange = features.NeedsRange || compiledTypeNeedsRange(field.Type)
+		}
+	}
+	for _, function := range module.Functions {
+		features.NeedsRange = features.NeedsRange || compiledTypeNeedsRange(function.Return)
+		for _, field := range append(append([]MIRField{}, function.Params...), function.Locals...) {
+			features.NeedsRange = features.NeedsRange || compiledTypeNeedsRange(field.Type)
+		}
+		for _, block := range function.Blocks {
+			for _, statement := range block.Statements {
+				if mirStatementContains(statement, "__octClone(") {
+					features.NeedsClone = true
+				}
+				if mirStatementContains(statement, "__octRange{") {
+					features.NeedsRange = true
+				}
+				if mirStatementContains(statement, "__octIntArrayToFloat(") {
+					features.NeedsArrayCoercion = true
+				}
+				switch statement := statement.(type) {
+				case MIRRowAssign:
+					features.NeedsRowAssign = true
+					features.NeedsClone = true
+				case MIRCall:
+					if statement.Builtin && canonicalCompiledBuiltinName(statement.Callee) == "Append" && len(statement.ArgTypes) > 1 && compiledValueNeedsClone(statement.ArgTypes[1]) {
+						features.NeedsClone = true
+					}
+				}
+			}
+			if mirTerminatorContains(block.Terminator, "__octRange{") {
+				features.NeedsRange = true
+			}
+			if mirTerminatorContains(block.Terminator, "__octIntArrayToFloat(") {
+				features.NeedsArrayCoercion = true
+			}
+		}
+	}
+	return features
+}
+
+func compiledTypeNeedsRange(typeName string) bool {
+	for strings.HasSuffix(typeName, "[]") {
+		typeName = strings.TrimSuffix(typeName, "[]")
+	}
+	return typeName == "Range"
+}
+
+func mirStatementContains(statement MIRStmt, needle string) bool {
+	values := []string{}
+	switch statement := statement.(type) {
+	case MIRAssign:
+		values = append(values, statement.Value)
+	case MIRRowAssign:
+		values = append(values, statement.Target, statement.Index, statement.Value)
+	case MIRCall:
+		values = append(values, statement.Args...)
+	case MIRGenericOctxiliaryCall:
+		values = append(values, statement.Args...)
+	case MIRDestructureCall:
+		values = append(values, statement.Args...)
+	case MIRConstructRecord:
+		values = append(values, statement.FieldVals...)
+	case MIRConstructArray:
+		values = append(values, statement.Values...)
+	}
+	for _, value := range values {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func mirTerminatorContains(terminator MIRTerminator, needle string) bool {
+	switch terminator := terminator.(type) {
+	case MIRReturn:
+		return strings.Contains(terminator.Value, needle)
+	case MIRBranch:
+		return strings.Contains(terminator.Cond, needle)
+	case MIRFail:
+		return strings.Contains(terminator.Value, needle)
+	default:
+		return false
+	}
+}
+
+func compiledValueNeedsClone(typeName string) bool {
+	return typeName == "Bytes" || strings.HasSuffix(typeName, "[]") || parseMatrixElemTypeOK(typeName) || parseVectorElemTypeOK(typeName)
+}
+
 func emitGo(m MIRModule) (string, error) {
 	return emitGoWithOptions(m, goEmitOptions{packageName: "main", includeMain: true})
 }
@@ -6107,18 +6217,16 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	loadTypes := map[string]struct{}{}
 	resultTypes := map[string]struct{}{}
 	flowResultTypes := map[string]struct{}{}
-	needsUtilityHelpers := false
+	needsGenericUtilityHelpers := false
+	needsScalarUtilityHelpers := false
 	usesGenericOctxiliary := false
 	for _, flow := range m.Flows {
 		flowResultTypes[flow.Return] = struct{}{}
-		if flowHasUtilityWhen(flow) {
-			needsUtilityHelpers = true
-		}
 		collectFlowBuiltins(flow, usedBuiltins)
 	}
 	for _, fn := range m.Functions {
 		if fn.UsesUtilityWhen {
-			needsUtilityHelpers = true
+			needsGenericUtilityHelpers = true
 		}
 		if fn.IsFallible {
 			resultTypes[fn.Return] = struct{}{}
@@ -6161,8 +6269,14 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 			}
 		}
 	}
+	for _, flow := range m.Flows {
+		features := analyzeFlowFeatures(flow, usedBuiltins)
+		needsGenericUtilityHelpers = needsGenericUtilityHelpers || features.NeedsGenericUtility
+		needsScalarUtilityHelpers = needsScalarUtilityHelpers || features.NeedsScalarUtility
+	}
+	supportFeatures := analyzeGoSupportFeatures(m, usedBuiltins)
 	importSet := map[string]struct{}{"fmt": {}, "os": {}, "reflect": {}}
-	if needsUtilityHelpers {
+	if needsGenericUtilityHelpers {
 		importSet["reflect"] = struct{}{}
 	}
 	if usedBuiltins["BatchMap"] {
@@ -6287,9 +6401,15 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if len(m.Refinements) > 0 {
 		b.WriteString("\n")
 	}
-	b.WriteString("type __octRange struct {\n\tStart int\n\tHasStart bool\n\tEnd int\n\tHasEnd bool\n\tStep int\n\tHasStep bool\n}\n\n")
-	b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")
-	b.WriteString("func __octAssignRow[T any](matrix [][]T, row int, rhs []T) {\n\tif row < 0 || row >= len(matrix) { panic(fmt.Sprintf(\"runtime error: row index %d out of bounds for array with %d rows\", row, len(matrix))) }\n\tif len(rhs) != len(matrix[row]) { panic(fmt.Sprintf(\"runtime error: row length mismatch: expected %d, got %d\", len(matrix[row]), len(rhs))) }\n\tmatrix[row] = __octClone(rhs)\n}\n\n")
+	if supportFeatures.NeedsRange {
+		b.WriteString("type __octRange struct {\n\tStart int\n\tHasStart bool\n\tEnd int\n\tHasEnd bool\n\tStep int\n\tHasStep bool\n}\n\n")
+	}
+	if supportFeatures.NeedsClone {
+		b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")
+	}
+	if supportFeatures.NeedsRowAssign {
+		b.WriteString("func __octAssignRow[T any](matrix [][]T, row int, rhs []T) {\n\tif row < 0 || row >= len(matrix) { panic(fmt.Sprintf(\"runtime error: row index %d out of bounds for array with %d rows\", row, len(matrix))) }\n\tif len(rhs) != len(matrix[row]) { panic(fmt.Sprintf(\"runtime error: row length mismatch: expected %d, got %d\", len(matrix[row]), len(rhs))) }\n\tmatrix[row] = __octClone(rhs)\n}\n\n")
+	}
 	if usedBuiltins["ArrayCrossSection"] || usedBuiltins["Array.CrossSection"] {
 		b.WriteString("func __octArrayCrossSection[T any](values []T, r __octRange) []T {\n\tstart := 0\n\tif r.HasStart { start = r.Start }\n\tend := len(values)\n\tif r.HasEnd { end = r.End }\n\tstep := 1\n\tif r.HasStep { step = r.Step }\n\tif step <= 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range step must be positive, got %d\", step)) }\n\tif start < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start must be >= 0, got %d\", start)) }\n\tif end < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end must be >= 0, got %d\", end)) }\n\tif start > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d exceeds array length %d\", start, len(values))) }\n\tif end > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end %d exceeds array length %d\", end, len(values))) }\n\tif start > end { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d must be <= end %d\", start, end)) }\n\tcount := 0\n\tif start < end { count = ((end - start - 1) / step) + 1 }\n\tout := make([]T, 0, count)\n\tfor i := start; i < end; i += step { out = append(out, values[i]) }\n\treturn out\n}\n\n")
 	}
@@ -6357,16 +6477,24 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		fmt.Fprintf(&b, "type __octResultFlow_%s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goSafeName(t), goFlowResultType(t))
 	}
 	for _, flow := range m.Flows {
-		if err := emitGoFlow(&b, flow); err != nil {
+		if err := emitGoFlow(&b, flow, analyzeFlowFeatures(flow, usedBuiltins)); err != nil {
 			return "", err
 		}
 	}
-	b.WriteString(__octArrayCoercionHelpers)
+	if supportFeatures.NeedsArrayCoercion {
+		b.WriteString(__octArrayCoercionHelpers)
+	}
 	if usedBuiltins["Idx"] {
 		b.WriteString(__octIndexHelpers)
 	}
-	if needsUtilityHelpers {
-		b.WriteString(__octUtilityHelpers)
+	if needsGenericUtilityHelpers || needsScalarUtilityHelpers {
+		b.WriteString(__octUtilityCandidate)
+	}
+	if needsGenericUtilityHelpers {
+		b.WriteString(__octGenericUtilityHelpers)
+	}
+	if needsScalarUtilityHelpers {
+		b.WriteString(__octScalarUtilityHelpers)
 	}
 	if usesLinearAlgebraHelpers(usedBuiltins) {
 		b.WriteString(__octLinearAlgebraHelpers)
@@ -8251,18 +8379,20 @@ func __octBatchRun[T any, U any, R any](items []T, worker func(T) R, isErr func(
 }
 `
 
-const __octUtilityHelpers = `
+const __octUtilityCandidate = `
+type __octUtilCandidate[T any] struct {
+	Valid bool
+	Value T
+	Score int
+}
+`
+
+const __octGenericUtilityHelpers = `
 type __octUtilitySiteState struct {
 	HasCurrent bool
 	Current any
 	Score int
 	CommitAge int
-}
-
-type __octUtilCandidate[T any] struct {
-	Valid bool
-	Value T
-	Score int
 }
 
 func __octUtilSelect[T any](sites map[int]__octUtilitySiteState, siteID int, hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue T) T {
@@ -8309,116 +8439,205 @@ func __octUtilSelect[T any](sites map[int]__octUtilitySiteState, siteID int, hys
 }
 `
 
-func flowHasUtilityWhen(flow MIRFlow) bool {
+const __octScalarUtilityHelpers = `
+type __octScalarUtilitySiteState[T comparable] struct {
+	HasCurrent bool
+	Current T
+	Score int
+	CommitAge int
+}
+
+func __octUtilSelectScalar[T comparable](site *__octScalarUtilitySiteState[T], hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue T) T {
+	next := __octUtilCandidate[T]{}
+	for _, candidate := range candidates {
+		if candidate.Valid && (!next.Valid || candidate.Score > next.Score) {
+			next = candidate
+		}
+	}
+	if !next.Valid {
+		next = __octUtilCandidate[T]{Valid: true, Value: elseValue, Score: 0}
+	}
+	if site.HasCurrent {
+		currentStillValid := false
+		for _, candidate := range candidates {
+			if candidate.Valid && candidate.Value == site.Current {
+				currentStillValid = true
+				break
+			}
+		}
+		if currentStillValid {
+			commitActive := site.CommitAge < minCommit
+			hysteresisBlocks := next.Score <= site.Score+hysteresis
+			if commitActive || hysteresisBlocks {
+				next = __octUtilCandidate[T]{Valid: true, Value: site.Current, Score: site.Score}
+			}
+		}
+	}
+	if !site.HasCurrent || site.Current != next.Value {
+		*site = __octScalarUtilitySiteState[T]{HasCurrent: true, Current: next.Value, Score: next.Score, CommitAge: 1}
+	} else {
+		site.Score = next.Score
+		site.CommitAge++
+	}
+	return next.Value
+}
+`
+
+type flowFeatures struct {
+	NeedsHistory        bool
+	NeedsResume         bool
+	NeedsUtilityMap     bool
+	NeedsGenericUtility bool
+	NeedsScalarUtility  bool
+	ScalarUtilitySites  map[int]string
+}
+
+func analyzeFlowFeatures(flow MIRFlow, usedBuiltins map[string]bool) flowFeatures {
+	features := flowFeatures{
+		NeedsHistory:       usedBuiltins["StateHistory"],
+		ScalarUtilitySites: map[int]string{},
+	}
+	var visitStmt func(MIRFlowStmt)
+	var visitAction func(MIRFlowWhenAction)
+	var visitExpr func(MIRFlowExpr)
+	visitExpr = func(expr MIRFlowExpr) {
+		switch e := expr.(type) {
+		case MIRFlowBinaryExpr:
+			visitExpr(e.Left)
+			visitExpr(e.Right)
+		case MIRFlowUnaryExpr:
+			visitExpr(e.Operand)
+		case MIRFlowCallExpr:
+			for _, arg := range e.Args {
+				visitExpr(arg)
+			}
+		case MIRFlowIndexExpr:
+			visitExpr(e.Target)
+			visitExpr(e.Index)
+		case MIRFlowRecordLiteralExpr:
+			for _, value := range e.FieldVals {
+				visitExpr(value)
+			}
+		case MIRFlowUtilityWhenExpr:
+			if e.ControllerBound && isDirectPolicyScalarType(e.ResultType) {
+				features.NeedsScalarUtility = true
+				features.ScalarUtilitySites[e.SiteID] = e.ResultType
+			} else {
+				features.NeedsGenericUtility = true
+				if e.ControllerBound {
+					features.NeedsUtilityMap = true
+				}
+			}
+			visitExpr(e.Hysteresis)
+			visitExpr(e.MinCommit)
+			for _, candidate := range e.Cases {
+				visitExpr(candidate.Value)
+				visitExpr(candidate.Condition)
+				visitExpr(candidate.Score)
+			}
+			visitExpr(e.Else)
+		case MIRFlowSwitchExpr:
+			if e.Subject != nil {
+				visitExpr(e.Subject)
+			}
+			for _, c := range e.Cases {
+				visitExpr(c.Match)
+				visitExpr(c.Value)
+			}
+			if e.Else != nil {
+				visitExpr(e.Else)
+			}
+		case MIRFlowMatchExpr:
+			visitExpr(e.Subject)
+			for _, c := range e.Cases {
+				visitExpr(c.Value)
+			}
+		case MIRFlowIfExpr:
+			visitExpr(e.Condition)
+			visitExpr(e.Then)
+			visitExpr(e.Else)
+		}
+	}
+	visitAction = func(action MIRFlowWhenAction) {
+		switch a := action.(type) {
+		case MIRFlowWhenReturn:
+			visitExpr(a.Value)
+		case MIRFlowWhenBlock:
+			for _, statement := range a.Statements {
+				visitStmt(statement)
+			}
+		}
+	}
+	visitStmt = func(stmt MIRFlowStmt) {
+		switch s := stmt.(type) {
+		case MIRFlowRemember, MIRFlowResume:
+			features.NeedsResume = true
+		case MIRFlowFieldAssign:
+			visitExpr(s.Value)
+		case MIRFlowFieldIndexAssign:
+			visitExpr(s.Value)
+			for _, index := range s.Indices {
+				visitExpr(index)
+			}
+		case MIRFlowLetStmt:
+			visitExpr(s.Value)
+		case MIRFlowReturn:
+			if s.Value != nil {
+				visitExpr(s.Value)
+			}
+		case MIRFlowIf:
+			visitExpr(s.Condition)
+			for _, statement := range s.Then {
+				visitStmt(statement)
+			}
+			for _, statement := range s.Else {
+				visitStmt(statement)
+			}
+		case MIRFlowWhen:
+			for _, c := range s.Cases {
+				visitExpr(c.Condition)
+				visitAction(c.Action)
+			}
+			visitAction(s.Else)
+		}
+	}
 	for _, state := range flow.States {
-		for _, stmt := range state.Statements {
-			if flowStmtHasUtility(stmt) {
-				return true
-			}
+		for _, statement := range state.Statements {
+			visitStmt(statement)
 		}
 	}
-	return false
+	return features
 }
 
-func flowStmtHasUtility(stmt MIRFlowStmt) bool {
-	switch s := stmt.(type) {
-	case MIRFlowFieldAssign:
-		return flowExprHasUtility(s.Value)
-	case MIRFlowFieldIndexAssign:
-		if flowExprHasUtility(s.Value) {
-			return true
-		}
-		for _, index := range s.Indices {
-			if flowExprHasUtility(index) {
-				return true
-			}
-		}
-		return false
-	case MIRFlowLetStmt:
-		return flowExprHasUtility(s.Value)
-	case MIRFlowReturn:
-		return flowExprHasUtility(s.Value)
-	case MIRFlowIf:
-		if flowExprHasUtility(s.Condition) {
-			return true
-		}
-		for _, st := range s.Then {
-			if flowStmtHasUtility(st) {
-				return true
-			}
-		}
-		for _, st := range s.Else {
-			if flowStmtHasUtility(st) {
-				return true
-			}
-		}
-	case MIRFlowWhen:
-		for _, c := range s.Cases {
-			if flowExprHasUtility(c.Condition) || flowWhenActionHasUtility(c.Action) {
-				return true
-			}
-		}
-		return flowWhenActionHasUtility(s.Else)
-	}
-	return false
-}
-
-func flowWhenActionHasUtility(action MIRFlowWhenAction) bool {
-	switch a := action.(type) {
-	case MIRFlowWhenReturn:
-		return flowExprHasUtility(a.Value)
-	case MIRFlowWhenBlock:
-		for _, statement := range a.Statements {
-			if flowStmtHasUtility(statement) {
-				return true
-			}
-		}
-		return false
-	default:
-		return false
-	}
-}
-
-func flowExprHasUtility(expr MIRFlowExpr) bool {
-	switch e := expr.(type) {
-	case MIRFlowBinaryExpr:
-		return flowExprHasUtility(e.Left) || flowExprHasUtility(e.Right)
-	case MIRFlowUnaryExpr:
-		return flowExprHasUtility(e.Operand)
-	case MIRFlowCallExpr:
-		for _, arg := range e.Args {
-			if flowExprHasUtility(arg) {
-				return true
-			}
-		}
-		return false
-	case MIRFlowIndexExpr:
-		return flowExprHasUtility(e.Target) || flowExprHasUtility(e.Index)
-	case MIRFlowRecordLiteralExpr:
-		for _, field := range e.FieldVals {
-			if flowExprHasUtility(field) {
-				return true
-			}
-		}
-		return false
-	case MIRFlowUtilityWhenExpr:
+func isDirectPolicyScalarType(typeName string) bool {
+	if typeName == "Bool" || typeName == "String" || typeName == "Int" || typeName == "Float" {
 		return true
-	case MIRFlowIfExpr:
-		return flowExprHasUtility(e.Condition) || flowExprHasUtility(e.Then) || flowExprHasUtility(e.Else)
-	default:
-		return false
 	}
+	return (strings.HasPrefix(typeName, "Int<") || strings.HasPrefix(typeName, "Float<")) && strings.HasSuffix(typeName, ">")
 }
 
-func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
+func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	structName := "__octFlow_" + flow.Package + "_" + flow.Name
 	resultType := flow.Return
 	fmt.Fprintf(b, "type %s struct {\n", structName)
 	b.WriteString("\tstarted bool\n\tcompleted bool\n\tcurrentState int\n\tinstruction int\n")
-	fmt.Fprintf(b, "\tresult %s\n\thasResult bool\n\thistory []string\n", goFlowResultType(resultType))
-	b.WriteString("\thasResumeTarget bool\n\tresumeTarget int\n")
-	if flowHasUtilityWhen(flow) {
+	fmt.Fprintf(b, "\tresult %s\n\thasResult bool\n", goFlowResultType(resultType))
+	if features.NeedsHistory {
+		b.WriteString("\thistory []string\n")
+	}
+	if features.NeedsResume {
+		b.WriteString("\thasResumeTarget bool\n\tresumeTarget int\n")
+	}
+	if features.NeedsUtilityMap {
 		b.WriteString("\tutilitySites map[int]__octUtilitySiteState\n")
+	}
+	utilitySiteIDs := make([]int, 0, len(features.ScalarUtilitySites))
+	for siteID := range features.ScalarUtilitySites {
+		utilitySiteIDs = append(utilitySiteIDs, siteID)
+	}
+	sort.Ints(utilitySiteIDs)
+	for _, siteID := range utilitySiteIDs {
+		fmt.Fprintf(b, "\tutilitySite%d __octScalarUtilitySiteState[%s]\n", siteID, goType(features.ScalarUtilitySites[siteID]))
 	}
 	for _, p := range flow.Parameters {
 		fmt.Fprintf(b, "\t%s %s\n", p.Name, goType(p.Type))
@@ -8440,7 +8659,7 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 	}
 	fmt.Fprintf(b, ") %s {\n", goType(flowInstanceTypeString(resultType)))
 	fmt.Fprintf(b, "\t__flow := &%s{}\n", structName)
-	if flowHasUtilityWhen(flow) {
+	if features.NeedsUtilityMap {
 		b.WriteString("\t__flow.utilitySites = map[int]__octUtilitySiteState{}\n")
 	}
 	for _, p := range flow.Parameters {
@@ -8457,15 +8676,25 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 	fmt.Fprintf(b, "func (f *%s) __octResult() (%s, bool) {\n", structName, goFlowResultType(resultType))
 	b.WriteString("\treturn f.result, f.hasResult\n}\n\n")
 	fmt.Fprintf(b, "func (f *%s) __octStateHistory() []string {\n", structName)
-	b.WriteString("\tout := make([]string, len(f.history))\n\tcopy(out, f.history)\n\treturn out\n}\n\n")
-	fmt.Fprintf(b, "func (f *%s) __octStateName(id int) string {\n", structName)
-	b.WriteString("\tswitch id {\n")
-	for idx, state := range flow.States {
-		fmt.Fprintf(b, "\tcase %d: return %q\n", idx, state.Name)
+	if features.NeedsHistory {
+		b.WriteString("\tout := make([]string, len(f.history))\n\tcopy(out, f.history)\n\treturn out\n}\n\n")
+	} else {
+		b.WriteString("\treturn nil\n}\n\n")
 	}
-	b.WriteString("\tdefault: return \"\"\n\t}\n}\n\n")
+	if features.NeedsResume {
+		fmt.Fprintf(b, "func (f *%s) __octStateName(id int) string {\n", structName)
+		b.WriteString("\tswitch id {\n")
+		for idx, state := range flow.States {
+			fmt.Fprintf(b, "\tcase %d: return %q\n", idx, state.Name)
+		}
+		b.WriteString("\tdefault: return \"\"\n\t}\n}\n\n")
+	}
 	fmt.Fprintf(b, "func (f *%s) __octResumeTarget() string {\n", structName)
-	b.WriteString("\tif !f.hasResumeTarget { return \"\" }\n\treturn f.__octStateName(f.resumeTarget)\n}\n\n")
+	if features.NeedsResume {
+		b.WriteString("\tif !f.hasResumeTarget { return \"\" }\n\treturn f.__octStateName(f.resumeTarget)\n}\n\n")
+	} else {
+		b.WriteString("\treturn \"\"\n}\n\n")
+	}
 	fmt.Fprintf(b, "func (f *%s) __octBoardSnapshot() (any, bool) {\n", structName)
 	if len(flow.Board) == 0 {
 		b.WriteString("\treturn nil, false\n}\n\n")
@@ -8488,7 +8717,11 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 			break
 		}
 	}
-	fmt.Fprintf(b, "\tif !f.started { f.started = true; f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q) }\n", entryID, flow.EntryState)
+	if features.NeedsHistory {
+		fmt.Fprintf(b, "\tif !f.started { f.started = true; f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q) }\n", entryID, flow.EntryState)
+	} else {
+		fmt.Fprintf(b, "\tif !f.started { f.started = true; f.currentState = %d; f.instruction = 0 }\n", entryID)
+	}
 	b.WriteString("\tfor {\n\t\tswitch f.currentState {\n")
 	stateIDs := map[string]int{}
 	for idx, state := range flow.States {
@@ -8498,7 +8731,7 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 		fmt.Fprintf(b, "\t\tcase %d:\n\t\t\tswitch f.instruction {\n", idx)
 		for stmtIdx, stmt := range state.Statements {
 			fmt.Fprintf(b, "\t\t\tcase %d:\n", stmtIdx)
-			src, err := emitGoFlowStmt(stmt, flow.Package, stateIDs, resultType)
+			src, err := emitGoFlowStmt(stmt, flow.Package, stateIDs, resultType, features)
 			if err != nil {
 				return fmt.Errorf("flow %s.%s state %s: %w", flow.Package, flow.Name, state.Name, err)
 			}
@@ -8559,20 +8792,27 @@ func collectFlowLetLocals(flow MIRFlow) []MIRField {
 	return locals
 }
 
-func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string, features flowFeatures) (string, error) {
 	switch s := stmt.(type) {
 	case MIRFlowGoto:
 		target, ok := stateIDs[s.Target]
 		if !ok {
 			return "", fmt.Errorf("unknown goto target %s", s.Target)
 		}
-		return fmt.Sprintf("f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q); continue", target, s.Target), nil
+		if features.NeedsHistory {
+			return fmt.Sprintf("f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q); continue", target, s.Target), nil
+		}
+		return fmt.Sprintf("f.currentState = %d; f.instruction = 0; continue", target), nil
 	case MIRFlowSuspend:
 		return "f.instruction++\nreturn", nil
 	case MIRFlowRemember:
 		return "f.hasResumeTarget = true\nf.resumeTarget = f.currentState\nf.instruction++\ncontinue", nil
 	case MIRFlowResume:
-		return "if !f.hasResumeTarget { panic(\"runtime error: resume called with empty resume slot\") }\n__resumeTarget := f.resumeTarget\nf.hasResumeTarget = false\nf.resumeTarget = -1\nf.currentState = __resumeTarget\nf.instruction = 0\nf.history = append(f.history, f.__octStateName(__resumeTarget))\ncontinue", nil
+		resume := "if !f.hasResumeTarget { panic(\"runtime error: resume called with empty resume slot\") }\n__resumeTarget := f.resumeTarget\nf.hasResumeTarget = false\nf.resumeTarget = -1\nf.currentState = __resumeTarget\nf.instruction = 0"
+		if features.NeedsHistory {
+			resume += "\nf.history = append(f.history, f.__octStateName(__resumeTarget))"
+		}
+		return resume + "\ncontinue", nil
 	case MIRFlowFieldAssign:
 		v, err := emitGoFlowExpr(s.Value, pkg)
 		if err != nil {
@@ -8607,13 +8847,13 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		if err != nil {
 			return "", err
 		}
-		thenSrc, err := emitGoFlowInlineBlock(s.Then, pkg, stateIDs, resultType)
+		thenSrc, err := emitGoFlowInlineBlock(s.Then, pkg, stateIDs, resultType, features)
 		if err != nil {
 			return "", err
 		}
 		out := "if " + cond + " {\n" + thenSrc + "\n}"
 		if len(s.Else) > 0 {
-			elseSrc, err := emitGoFlowInlineBlock(s.Else, pkg, stateIDs, resultType)
+			elseSrc, err := emitGoFlowInlineBlock(s.Else, pkg, stateIDs, resultType, features)
 			if err != nil {
 				return "", err
 			}
@@ -8628,13 +8868,13 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 			if err != nil {
 				return "", err
 			}
-			action, err := emitGoFlowWhenAction(c.Action, pkg, stateIDs, resultType)
+			action, err := emitGoFlowWhenAction(c.Action, pkg, stateIDs, resultType, features)
 			if err != nil {
 				return "", err
 			}
 			lines = append(lines, fmt.Sprintf("if %s {\n%s\n}", cond, action))
 		}
-		elseAction, err := emitGoFlowWhenAction(s.Else, pkg, stateIDs, resultType)
+		elseAction, err := emitGoFlowWhenAction(s.Else, pkg, stateIDs, resultType, features)
 		if err != nil {
 			return "", err
 		}
@@ -8669,10 +8909,10 @@ func emitGoFlowFieldIndexAssign(s MIRFlowFieldIndexAssign, pkg string, advance b
 	return assignment, nil
 }
 
-func emitGoFlowInlineBlock(stmts []MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+func emitGoFlowInlineBlock(stmts []MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string, features flowFeatures) (string, error) {
 	lines := make([]string, 0, len(stmts))
 	for _, stmt := range stmts {
-		src, err := emitGoFlowInlineStmt(stmt, pkg, stateIDs, resultType)
+		src, err := emitGoFlowInlineStmt(stmt, pkg, stateIDs, resultType, features)
 		if err != nil {
 			return "", err
 		}
@@ -8681,7 +8921,7 @@ func emitGoFlowInlineBlock(stmts []MIRFlowStmt, pkg string, stateIDs map[string]
 	return strings.Join(lines, "\n"), nil
 }
 
-func emitGoFlowInlineStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+func emitGoFlowInlineStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string, features flowFeatures) (string, error) {
 	switch s := stmt.(type) {
 	case MIRFlowFieldAssign:
 		v, err := emitGoFlowExpr(s.Value, pkg)
@@ -8701,20 +8941,24 @@ func emitGoFlowInlineStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int,
 		}
 		return fmt.Sprintf("%s = %s", s.Name, v), nil
 	case MIRFlowIf:
-		return emitGoFlowStmt(s, pkg, stateIDs, resultType)
+		return emitGoFlowStmt(s, pkg, stateIDs, resultType, features)
 	default:
-		return emitGoFlowStmt(s, pkg, stateIDs, resultType)
+		return emitGoFlowStmt(s, pkg, stateIDs, resultType, features)
 	}
 }
 
-func emitGoFlowWhenAction(action MIRFlowWhenAction, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+func emitGoFlowWhenAction(action MIRFlowWhenAction, pkg string, stateIDs map[string]int, resultType string, features flowFeatures) (string, error) {
 	switch a := action.(type) {
 	case MIRFlowWhenGoto:
 		target, ok := stateIDs[a.Target]
 		if !ok {
 			return "", fmt.Errorf("unknown goto target %s", a.Target)
 		}
-		return fmt.Sprintf("f.currentState = %d\nf.instruction = 0\nf.history = append(f.history, %q)\ncontinue", target, a.Target), nil
+		transition := fmt.Sprintf("f.currentState = %d\nf.instruction = 0", target)
+		if features.NeedsHistory {
+			transition += fmt.Sprintf("\nf.history = append(f.history, %q)", a.Target)
+		}
+		return transition + "\ncontinue", nil
 	case MIRFlowWhenSuspend:
 		return "f.instruction++\nreturn", nil
 	case MIRFlowWhenReturn:
@@ -8726,7 +8970,7 @@ func emitGoFlowWhenAction(action MIRFlowWhenAction, pkg string, stateIDs map[str
 	case MIRFlowWhenBlock:
 		lines := make([]string, 0, len(a.Statements))
 		for _, statement := range a.Statements {
-			src, err := emitGoFlowWhenBlockStmt(statement, pkg, stateIDs, resultType)
+			src, err := emitGoFlowWhenBlockStmt(statement, pkg, stateIDs, resultType, features)
 			if err != nil {
 				return "", err
 			}
@@ -8738,7 +8982,7 @@ func emitGoFlowWhenAction(action MIRFlowWhenAction, pkg string, stateIDs map[str
 	}
 }
 
-func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
+func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string, features flowFeatures) (string, error) {
 	switch s := stmt.(type) {
 	case MIRFlowRemember:
 		return "f.hasResumeTarget = true\nf.resumeTarget = f.currentState", nil
@@ -8764,11 +9008,19 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 		if !ok {
 			return "", fmt.Errorf("unknown goto target %s", s.Target)
 		}
-		return fmt.Sprintf("f.currentState = %d\nf.instruction = 0\nf.history = append(f.history, %q)\ncontinue", target, s.Target), nil
+		transition := fmt.Sprintf("f.currentState = %d\nf.instruction = 0", target)
+		if features.NeedsHistory {
+			transition += fmt.Sprintf("\nf.history = append(f.history, %q)", s.Target)
+		}
+		return transition + "\ncontinue", nil
 	case MIRFlowSuspend:
 		return "f.instruction++\nreturn", nil
 	case MIRFlowResume:
-		return "if !f.hasResumeTarget { panic(\"runtime error: resume called with empty resume slot\") }\n__resumeTarget := f.resumeTarget\nf.hasResumeTarget = false\nf.resumeTarget = -1\nf.currentState = __resumeTarget\nf.instruction = 0\nf.history = append(f.history, f.__octStateName(__resumeTarget))\ncontinue", nil
+		resume := "if !f.hasResumeTarget { panic(\"runtime error: resume called with empty resume slot\") }\n__resumeTarget := f.resumeTarget\nf.hasResumeTarget = false\nf.resumeTarget = -1\nf.currentState = __resumeTarget\nf.instruction = 0"
+		if features.NeedsHistory {
+			resume += "\nf.history = append(f.history, f.__octStateName(__resumeTarget))"
+		}
+		return resume + "\ncontinue", nil
 	case MIRFlowReturn:
 		if s.Value == nil {
 			if resultType == "Void" {
@@ -8899,6 +9151,10 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 		}
 		sites := "map[int]__octUtilitySiteState{}"
 		if e.ControllerBound {
+			if isDirectPolicyScalarType(e.ResultType) {
+				return fmt.Sprintf("__octUtilSelectScalar[%s](&f.utilitySite%d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
+					valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
+			}
 			sites = "f.utilitySites"
 		}
 		return fmt.Sprintf("__octUtilSelect[%s](%s, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
@@ -9841,7 +10097,7 @@ func isTwoDimensionalArrayType(t string) bool {
 }
 
 func cloneCompiledValueExpr(expr string, typeName string) string {
-	if typeName == "Bytes" || strings.HasSuffix(typeName, "[]") || parseMatrixElemTypeOK(typeName) || parseVectorElemTypeOK(typeName) {
+	if compiledValueNeedsClone(typeName) {
 		return "__octClone(" + expr + ")"
 	}
 	return expr

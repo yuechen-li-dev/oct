@@ -1,0 +1,45 @@
+package MainValid
+
+flow PersistentPolicyController() -> Int {
+    board {
+        Tick: Int
+        LastChoice: Int
+    }
+
+    state Decide {
+        let choice = when policy {
+            hysteresis: 8
+            min_commit: 3
+        } {
+            case 1 when true score 60
+            case 2 when board.Tick == 1 score 65
+            case 2 when board.Tick >= 2 score 90
+            else 0
+        }
+        board.LastChoice = choice
+        board.Tick = board.Tick + 1
+        suspend
+        goto Decide
+    }
+}
+
+[Fact]
+fn PersistentPolicyStateSurvivesRepeatedSteps() -> Void {
+    let controller = PersistentPolicyController()
+
+    Step(controller)
+    let first = BoardSnapshot(controller)!
+    Assert.Equal(1, first.LastChoice, "first decision selects the initial candidate")
+
+    Step(controller)
+    let second = BoardSnapshot(controller)!
+    Assert.Equal(1, second.LastChoice, "hysteresis rejects a small challenger gain")
+
+    Step(controller)
+    let third = BoardSnapshot(controller)!
+    Assert.Equal(1, third.LastChoice, "minimum commit rejects an early clear win")
+
+    Step(controller)
+    let fourth = BoardSnapshot(controller)!
+    Assert.Equal(2, fourth.LastChoice, "the clear winner takes over after commitment expires")
+}
