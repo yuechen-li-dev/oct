@@ -188,6 +188,24 @@ directly from ordinary Oct code. Normal backend lowering excludes them.
 
 Artifact functions write files explicitly from user code.
 Prefer `Artifact.Write*` helpers (`WriteText`, `WriteLines`, `WriteMarkdown`, `WriteCsv`, `WriteJson`, `WriteOctagon`) when authoring `[Artifact]` functions.
+`StaticAssert.True`, `StaticAssert.False`, `StaticAssert.Equal`,
+`StaticAssert.Near`, and `StaticAssert.Error` validate publication invariants in
+this phase without requiring `[Fact]` and without entering the runtime backend.
+They are a general language feature and may appear in ordinary deterministic
+helpers, including helpers that use loops and table indexing. A call is
+evaluated only while its call graph runs under a compiler-owned static phase;
+the current concrete phase is `oct artifact`. Ordinary runtime execution does
+not degrade a `StaticAssert` into a runtime assertion, and normal backend
+lowering excludes artifact entry points. Artifact-phase capability checks still reject ambient
+I/O, time, mutation outside declared outputs, and other impure operations;
+`Require` remains the bounded refinement-admission mechanism.
+
+`Artifact.WriteCompiledData(path, symbol, value)` sends typed immutable data
+directly to the Go static-data backend. The initial backend supports scalars,
+arrays, records, tag-only enums, refined scalar Concepts, and record tables.
+For a record table it emits a fixed Go row array plus nominal row/enum types and
+compiler-owned logical/schema hashes and row count. It emits no decoder,
+reflection materializer, `init` function, append loop, or runtime constructor.
 Use `Artifact.Checkpoint(label)` and `Artifact.Progress(label, current, total)` for deterministic progress output in long-running artifact functions.
 
 `oct artifact <path> [--output-root <directory>]` selects artifact functions in the entry package by

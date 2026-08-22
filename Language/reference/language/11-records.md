@@ -60,7 +60,16 @@ bounds checking and returns a compiler-owned immutable row value whose fields
 have the declared cell types. The row type has no source-level name. Direct
 column access returns the stored typed array.
 
-Tables are immutable. Table `with`, row/column assignment, append/delete,
+Tables are immutable. Table `with` replaces one or more complete columns and
+returns a new value of the same nominal table type. Each replacement must have
+the declared column type and the same extent as the source table. Columns not
+listed in the update are preserved, the source table is unchanged, and a
+dynamic extent mismatch terminates with `OCT-RTBL004`. The current interpreter
+and Go backend construct a new table header while sharing unchanged column
+values; no observable mutable alias is introduced because arrays and tables
+retain value semantics.
+
+Row/column assignment, append/delete,
 nested table-valued cells, row iteration syntax, queries, joins, and mutable
 views are not part of this bounded form. Iterate row indices with
 `for i in 0..Len(table)` and project `table[i]`.

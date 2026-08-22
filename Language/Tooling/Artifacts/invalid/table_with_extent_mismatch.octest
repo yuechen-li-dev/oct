@@ -1,0 +1,10 @@
+package Main
+
+record table Rows { ID: Int Name: String }
+
+[Artifact]
+fn RejectExtentMismatch() -> Void {
+    let rows = Rows { ID: [1, 2] Name: ["A", "B"] }
+    let invalid = rows with { Name: ["only-one"] }
+    Artifact.WriteText("must-not-publish.txt", invalid.Name[0])
+}

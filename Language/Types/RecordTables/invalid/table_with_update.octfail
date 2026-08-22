@@ -1,4 +1,4 @@
-expect error: "record tables are immutable"
+expect error: "record table 'Measurements' column 'Stage': array element 0 expects String, got Int"
 
 package MainInvalid
 
@@ -6,6 +6,6 @@ record table Measurements {Stage: String}
 
 fn Main() -> Int {
     let table = Measurements {Stage:["A"]}
-    let bad = table with {Stage:["B"]}
+    let bad = table with {Stage:[1]}
     return Len(bad)
 }

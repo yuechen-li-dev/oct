@@ -57,6 +57,25 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 		return Value{Kind: ValueArray, Array: elements}, nil
 	}
 
+	if refinement, refinementPkg, ok := i.lookupRefinementDecl(currentPkg, expectedTypeName(expectedType)); ok {
+		base, err := i.materializeOctagonValue(refinementPkg, refinement.Target, expr)
+		if err != nil {
+			return Value{}, fmt.Errorf("expected refined concept %s: %w", expectedTypeString(expectedType), err)
+		}
+		constructor, exists := i.functions[refinementPkg+".__oct_refine_"+refinement.Name]
+		if !exists {
+			return Value{}, fmt.Errorf("runtime invariant violation: missing refinement constructor for %s", expectedTypeString(expectedType))
+		}
+		checked, err := i.executeFunction(constructor, refinementPkg, []Value{base})
+		if err != nil {
+			return Value{}, err
+		}
+		if checked.hasError {
+			return Value{}, fmt.Errorf("%s", checked.errorVal.Error.Message)
+		}
+		return checked.value, nil
+	}
+
 	if expectedType.Package == "" {
 		switch expectedType.Name {
 		case "Int":
@@ -123,8 +142,16 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 			if !ok {
 				return Value{}, fmt.Errorf("record %s missing field %s", expectedTypeString(expectedType), declaredField.Name)
 			}
-			value, err := i.materializeOctagonValue(currentPkg, declaredField.Type, fieldExpr)
+			fieldType := declaredField.Type
+			if recordDecl.IsTable {
+				fieldType.ArrayDepth++
+				fieldType.IsArray = true
+			}
+			value, err := i.materializeOctagonValue(currentPkg, fieldType, fieldExpr)
 			if err != nil {
+				if recordDecl.IsTable {
+					return Value{}, fmt.Errorf("record table %s column %s mismatch: %w", expectedTypeString(expectedType), declaredField.Name, err)
+				}
 				return Value{}, fmt.Errorf("record field %s mismatch: %w", declaredField.Name, err)
 			}
 			values[declaredField.Name] = value
@@ -178,6 +205,15 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 	}
 
 	return Value{}, fmt.Errorf("unsupported expected type %s", expectedTypeString(expectedType))
+}
+
+func (i interpreter) lookupRefinementDecl(currentPackage string, typeName string) (ast.ConceptDecl, string, bool) {
+	if pkgName, localName, ok := splitQualifiedTypeName(typeName); ok {
+		decl, exists := i.refinements[pkgName+"."+localName]
+		return decl, pkgName, exists
+	}
+	decl, exists := i.refinements[currentPackage+"."+typeName]
+	return decl, currentPackage, exists
 }
 
 func unwrapParenExpr(expr ast.Expr) ast.Expr {

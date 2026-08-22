@@ -616,6 +616,8 @@ func artifactMIMEType(ext string) string {
 		return "text/markdown"
 	case ".txt":
 		return "text/plain"
+	case ".go":
+		return "text/x-go"
 	case ".octagon":
 		return "application/octet-stream"
 	case ".png":

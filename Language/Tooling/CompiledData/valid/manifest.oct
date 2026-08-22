@@ -1,0 +1,23 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency { Name: String VersionRequirement: String }
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "CompiledDataValid"
+        Version: "0.1.0"
+        Description: "Typed immutable data publication contracts"
+        Authors: ["Oct contributors"]
+        Date: "2026-08-21"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}

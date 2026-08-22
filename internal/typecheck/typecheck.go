@@ -158,6 +158,7 @@ type functionContext struct {
 	isFact                  bool
 	isTheory                bool
 	isBenchmark             bool
+	isArtifact              bool
 	isMakeFile              bool
 	requiresMakeAuthority   bool
 	isMakePure              bool
@@ -799,7 +800,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		}
 	}
 
-	ctx := functionContext{name: function.Name, sourcePath: function.SourcePath, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure, isRefinementConstructor: function.IsRefinementConstructor}
+	ctx := functionContext{name: function.Name, sourcePath: function.SourcePath, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isArtifact: function.IsArtifact, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure, isRefinementConstructor: function.IsRefinementConstructor}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
@@ -3012,6 +3013,12 @@ regularCall:
 		}
 		return c.checkAssertCallExpr(scope, calleeName, expr.Arguments, ctx)
 	}
+	if hasDirectName && strings.HasPrefix(calleeName, "StaticAssert.") {
+		if len(expr.TypeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", calleeName)
+		}
+		return c.checkAssertCallExpr(scope, calleeName, expr.Arguments, ctx)
+	}
 	if hasDirectName && calleeName == "SkipTest" {
 		if len(expr.TypeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", calleeName)
@@ -3331,7 +3338,8 @@ func splitTwoSegmentQualifiedName(name string) (string, string, bool) {
 
 func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	voidType := ExprType{ValueType: Type{Base: BaseTypeVoid}}
-	switch callee {
+	normalized := strings.TrimPrefix(callee, "Static")
+	switch normalized {
 	case "Assert.True", "Assert.False":
 		if len(arguments) != 2 {
 			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
@@ -3591,7 +3599,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkWriteOctagonBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
-	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
+	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" || callee == "ArtifactCompileData" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -6133,6 +6141,31 @@ func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, a
 }
 
 func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "ArtifactCompileData" {
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function 'Artifact.WriteCompiledData' expects (path: String, symbol: String, value: typed data); got %d arguments", len(arguments))
+		}
+		for index := 0; index < 2; index++ {
+			t, err := c.checkExpr(scope, arguments[index], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if t.Fallible || t.ValueType != (Type{Base: BaseTypeString}) {
+				return ExprType{}, fmt.Errorf("function 'Artifact.WriteCompiledData' argument %d expects String, got %s", index+1, t.ValueType)
+			}
+		}
+		if path, ok := arguments[0].(ast.StringLiteralExpr); ok && !strings.HasSuffix(path.Value, ".go") {
+			return ExprType{}, fmt.Errorf("Artifact.WriteCompiledData path must end with .go")
+		}
+		valueType, err := c.checkExpr(scope, arguments[2], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if valueType.Fallible || !isOctagonRepresentableType(valueType.ValueType) {
+			return ExprType{}, fmt.Errorf("function 'Artifact.WriteCompiledData' argument 3 expects typed immutable data, got %s", valueType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+	}
 	delegate := ""
 	switch callee {
 	case "ArtifactWriteText":
@@ -6500,8 +6533,13 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 			if elementType.Fallible {
 				return Type{}, fmt.Errorf("array element %d is fallible and must be handled explicitly", index)
 			}
-			if err := c.admitRefined(scope, element, elementType.ValueType, elementExpected); err != nil {
-				return Type{}, fmt.Errorf("invalid refined array element %d: %w", index, err)
+			if !isAssignable(elementType.ValueType, elementExpected) {
+				if !c.isRefinedExpected(elementExpected) {
+					return Type{}, fmt.Errorf("array element %d expects %s, got %s", index, elementExpected, elementType.ValueType)
+				}
+				if err := c.admitRefined(scope, element, elementType.ValueType, elementExpected); err != nil {
+					return Type{}, fmt.Errorf("invalid refined array element %d: %w", index, err)
+				}
 			}
 		}
 		return *expected, nil
@@ -6624,6 +6662,9 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 		}
 		actualType, err := c.checkExprWithExpected(scope, field.Value, ctx, &expectedType)
 		if err != nil {
+			if recordDecl.isTable {
+				return ExprType{}, fmt.Errorf("[OCT-RTBL010] record table '%s' column '%s': %w", expr.TypeName, field.Name, err)
+			}
 			return ExprType{}, err
 		}
 		if actualType.Fallible {
@@ -6699,9 +6740,6 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 	if !ok {
 		return ExprType{}, fmt.Errorf("unknown record type: %s", sourceType.ValueType.Name)
 	}
-	if recordDecl.isTable {
-		return ExprType{}, fmt.Errorf("[OCT-RTBL004] record tables are immutable; construct a validated replacement table instead of using 'with'")
-	}
 	for _, field := range expr.Fields {
 		fieldType, exists := recordDecl.fields[field.Name]
 		if !exists {
@@ -6709,6 +6747,9 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 		}
 		valueType, err := c.checkExprWithExpected(scope, field.Value, ctx, &fieldType)
 		if err != nil {
+			if recordDecl.isTable {
+				return ExprType{}, fmt.Errorf("[OCT-RTBL004] record table '%s' column '%s': %w", sourceType.ValueType.Name, field.Name, err)
+			}
 			return ExprType{}, err
 		}
 		if valueType.Fallible {
@@ -6716,6 +6757,9 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 		}
 		if !isAssignable(valueType.ValueType, fieldType) {
 			if !c.isRefinedExpected(fieldType) {
+				if recordDecl.isTable {
+					return ExprType{}, fmt.Errorf("[OCT-RTBL004] record table '%s' column '%s' expects %s, got %s", sourceType.ValueType.Name, field.Name, fieldType, valueType.ValueType)
+				}
 				return ExprType{}, fmt.Errorf("field '%s' on type '%s' expects %s, got %s", field.Name, sourceType.ValueType.Name, fieldType, valueType.ValueType)
 			}
 			if err := c.admitRefined(scope, field.Value, valueType.ValueType, fieldType); err != nil {

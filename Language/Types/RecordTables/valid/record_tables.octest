@@ -69,3 +69,22 @@ fn RecordTableZeroAndDynamicRows() -> Void {
     let nested = ArrayCells { Samples: [[1.0, 2.0], [3.0]] }
     Assert.Equal(2.0, nested[0].Samples[1], "array-valued cell types add one unambiguous storage depth")
 }
+
+[Fact]
+fn RecordTableWithReplacesColumnsImmutably() -> Void {
+    let original = Measurements {
+        Stage:["A", "B"]
+        Kind:[StageKind.Input, StageKind.Output]
+        Latency:[1.0, 2.0]
+        Count:[3, 4]
+        Meta:[Meta {Native: false}, Meta {Native: true}]
+    }
+    let updated = original with {
+        Latency:[10.0, 20.0]
+        Count:[30, 40]
+    }
+    Assert.Equal(1.0, original.Latency[0], "with leaves the source table unchanged")
+    Assert.Equal(10.0, updated.Latency[0], "with replaces a complete column")
+    Assert.Equal("B", updated.Stage[1], "with preserves columns not named by the update")
+    Assert.Equal(40, updated[1].Count, "with preserves the nominal table row projection")
+}

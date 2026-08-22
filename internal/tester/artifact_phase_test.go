@@ -185,6 +185,9 @@ func TestArtifactCapabilityRejectsUnsafePathsDuplicatesEffectsAndFailures(t *tes
 		{"duplicate_output.octest", "duplicate artifact output path"},
 		{"ambient_write.octest", "outside Artifact.Write*"},
 		{"fallible_failure.octest", "artifact failure is visible"},
+		{"static_assert_duplicate.octest", "static assertion failed in RejectDuplicateIDs: duplicate ID 7"},
+		{"static_assert_unsorted.octest", "static assertion failed in RejectUnsortedIndex: row-ID index is not sorted"},
+		{"table_with_extent_mismatch.octest", "replacement column 'Name' has extent 1; expected 2"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.file, func(t *testing.T) {

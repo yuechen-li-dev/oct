@@ -1,0 +1,66 @@
+package CompiledDataValid
+
+enum Status { Draft Published }
+
+concept PositivePrice = Float {
+    Require(Self > 0.0, "price must be positive")
+}
+
+record table Catalog {
+    ID: Int
+    Status: Status
+    Price: PositivePrice
+    Name: String
+}
+
+fn AllIDsUnique(table: Catalog) -> Bool {
+    for i in 0..Len(table) {
+        for j in (i + 1)..Len(table) {
+            if table[i].ID == table[j].ID { return false }
+        }
+    }
+    return true
+}
+
+fn IDsSorted(table: Catalog) -> Bool {
+    for i in 1..Len(table) {
+        if table[i - 1].ID > table[i].ID { return false }
+    }
+    return true
+}
+
+fn DerivePublishedIDs(table: Catalog) -> Int[] {
+    var ids: Int[] = []
+    for i in 0..Len(table) {
+        if table[i].Status == Status.Published { ids = Append(ids, table[i].ID) }
+    }
+    return ids
+}
+
+fn ValidateCatalog(table: Catalog, publishedIDs: Int[]) -> Void {
+    StaticAssert.True(AllIDsUnique(table), "catalog IDs must be unique")
+    StaticAssert.True(IDsSorted(table), "catalog IDs must be sorted")
+    StaticAssert.Equal(4, Len(publishedIDs), "published index extent must match")
+}
+
+[Artifact]
+fn PublishCatalog() -> Void ! Error {
+    let source = LoadOctagon<Catalog>("Language/Tooling/CompiledData/valid/catalog.octagon")?
+    let updated = source with { Price: [1.25, 2.25, 3.25, 4.25, 5.25, 6.25] }
+    let publishedIDs = DerivePublishedIDs(updated)
+    ValidateCatalog(updated, publishedIDs)
+    Artifact.WriteCompiledData("compiled/catalog.generated.go", "CatalogData", updated)
+    Artifact.WriteCompiledData("compiled/published_ids.generated.go", "PublishedIDs", publishedIDs)
+}
+
+[Fact]
+fn HelpersRemainOrdinaryDeterministicOct() -> Void {
+    let table = Catalog {
+        ID: [1, 2]
+        Status: [Status.Draft, Status.Published]
+        Price: [1.0, 2.0]
+        Name: ["A", "B"]
+    }
+    Assert.True(AllIDsUnique(table), "publication helpers are reusable ordinary pure functions")
+    Assert.Equal(2, DerivePublishedIDs(table)[0], "derived index uses normal table projection")
+}

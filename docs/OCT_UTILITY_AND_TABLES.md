@@ -154,8 +154,9 @@ may accept and return table values, and tables may be fields of ordinary
 records.
 
 `for row in table` is deferred because Oct's current `for` syntax is explicitly
-range-based. Use `for i in 0..Len(table) { let row = table[i] }`. Table `with`,
-mutation, append/delete, table-valued cells, SQL, joins, group-by, reflection,
+range-based. Use `for i in 0..Len(table) { let row = table[i] }`. Table `with`
+performs immutable complete-column replacement with exact type and extent
+checks. Mutation, append/delete, table-valued cells, SQL, joins, group-by, reflection,
 and dataframe query planning are excluded.
 
 Diagnostics introduced by this detour are:
@@ -163,7 +164,7 @@ Diagnostics introduced by this detour are:
 - `OCT-RTBL001`: empty table schema;
 - `OCT-RTBL002`: inconsistent statically known literal lengths;
 - `OCT-RTBL003`: inconsistent dynamic lengths at construction;
-- `OCT-RTBL004`: immutable table update through `with`;
+- `OCT-RTBL004`: invalid table `with` column type or extent;
 - `OCT-RTBL005`: row bounds failure.
 - `OCT-RTBL006`: unsupported table-valued cell type.
 - `OCT-RTBL007`: duplicate table column;

@@ -1,0 +1,6 @@
+PublicationCatalog {
+    ID: [1, 2, 3]
+    Status: [PublicationStatus.Draft, PublicationStatus.Published, PublicationStatus.Published]
+    Price: [1.25, 2.0, 2.5]
+    Name: ["Alpha", "Beta", "Gamma"]
+}

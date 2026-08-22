@@ -46,6 +46,7 @@ var names = map[string]struct{}{
 	"ArtifactWriteCsv":         {},
 	"ArtifactWriteJson":        {},
 	"ArtifactWriteOctagon":     {},
+	"ArtifactCompileData":      {},
 	"ArtifactProgress":         {},
 	"ArtifactCheckpoint":       {},
 	"LoadOctagon":              {},

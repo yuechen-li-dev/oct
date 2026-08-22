@@ -315,6 +315,7 @@ type interpreter struct {
 	functions                map[string]ast.FunctionDecl
 	records                  map[string]ast.RecordDecl
 	enums                    map[string]ast.EnumDecl
+	refinements              map[string]ast.ConceptDecl
 	flows                    map[string]ast.FlowDecl
 	functionSource           map[string]string
 	flowSource               map[string]string
@@ -608,6 +609,7 @@ func newInterpreter(program project.Program, stdout io.Writer) (interpreter, err
 		functions:      make(map[string]ast.FunctionDecl),
 		records:        make(map[string]ast.RecordDecl),
 		enums:          make(map[string]ast.EnumDecl),
+		refinements:    make(map[string]ast.ConceptDecl),
 		flows:          make(map[string]ast.FlowDecl),
 		functionSource: make(map[string]string),
 		flowSource:     make(map[string]string),
@@ -631,6 +633,11 @@ func newInterpreter(program project.Program, stdout io.Writer) (interpreter, err
 		}
 		for _, enumDecl := range pkg.Enums {
 			interp.enums[currentPkg+"."+enumDecl.Name] = enumDecl
+		}
+		for _, conceptDecl := range pkg.Concepts {
+			if len(conceptDecl.Requirements) > 0 {
+				interp.refinements[currentPkg+"."+conceptDecl.Name] = conceptDecl
+			}
 		}
 		for _, function := range pkg.Functions {
 			key := currentPkg + "." + function.Name
@@ -2359,9 +2366,12 @@ regularCall:
 			}
 		}
 	}
-	if hasDirectName && strings.HasPrefix(calleeName, "Assert.") {
+	if hasDirectName && (strings.HasPrefix(calleeName, "Assert.") || strings.HasPrefix(calleeName, "StaticAssert.")) {
 		if len(expr.TypeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Assert functions do not accept type arguments")
+		}
+		if strings.HasPrefix(calleeName, "StaticAssert.") && i.artifactCapability == nil {
+			return evalResult{}, fmt.Errorf("StaticAssert requires a compiler-owned static evaluation phase; ordinary runtime execution cannot evaluate it")
 		}
 		return i.evalAssertCallExpr(env, pkgName, calleeName, expr.Arguments)
 	}
@@ -2451,7 +2461,11 @@ regularCall:
 }
 
 func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	isStatic := strings.HasPrefix(callee, "StaticAssert.")
 	fail := func(message string) (evalResult, error) {
+		if isStatic {
+			return evalResult{}, fmt.Errorf("static assertion failed in %s: %s", i.currentFunctionName, message)
+		}
 		return evalResult{}, fmt.Errorf("assertion failed: %s", message)
 	}
 	recordAssertion := func() {
@@ -2468,7 +2482,8 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 		return argument, nil
 	}
 
-	switch callee {
+	normalized := strings.TrimPrefix(callee, "Static")
+	switch normalized {
 	case "Assert.True":
 		recordAssertion()
 		condition, err := evalArg(0)
@@ -5305,6 +5320,13 @@ func (i interpreter) evalRecordUpdateExpr(env *environment, pkgName string, expr
 	if source.value.Kind != ValueRecord {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: record update requires record value, got %s", valueTypeName(source.value))
 	}
+	recordDecl, _, isRecord := i.lookupRecordDecl(pkgName, source.value.Record.TypeName)
+	isTable := isRecord && recordDecl.IsTable
+	wantExtent := -1
+	if isTable && len(recordDecl.Fields) > 0 {
+		first := source.value.Record.Fields[recordDecl.Fields[0].Name]
+		wantExtent = len(first.Array)
+	}
 
 	fields := make(map[string]Value, len(source.value.Record.Fields))
 	for name, value := range source.value.Record.Fields {
@@ -5318,10 +5340,18 @@ func (i interpreter) evalRecordUpdateExpr(env *environment, pkgName string, expr
 		if value.hasError {
 			return evalResult{hasError: true, errorVal: value.errorVal}, nil
 		}
+		if isTable {
+			if value.value.Kind != ValueArray {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: record table '%s' replacement column '%s' is not an array", source.value.Record.TypeName, field.Name)
+			}
+			if len(value.value.Array) != wantExtent {
+				return evalResult{}, fmt.Errorf("runtime error [OCT-RTBL004]: record table '%s' replacement column '%s' has extent %d; expected %d", source.value.Record.TypeName, field.Name, len(value.value.Array), wantExtent)
+			}
+		}
 		fields[field.Name] = value.value
 	}
 
-	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: source.value.Record.TypeName, Fields: fields}}}, nil
+	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: source.value.Record.TypeName, FieldOrder: append([]string(nil), source.value.Record.FieldOrder...), Fields: fields}}}, nil
 }
 
 func (i interpreter) lookupRecordDecl(currentPackage string, typeName string) (ast.RecordDecl, string, bool) {

@@ -1,0 +1,6 @@
+package Main
+
+[Artifact]
+fn RejectUnsortedIndex() -> Void {
+    StaticAssert.True(false, "row-ID index is not sorted")
+}

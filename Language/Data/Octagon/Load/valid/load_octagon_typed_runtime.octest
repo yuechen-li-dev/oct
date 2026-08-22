@@ -61,10 +61,35 @@ fn LoadNestedRecordArrayEnum() -> Void ! Error {
     Assert.Equal(3, Len(samples.Samples), "nested array field")
 }
 
+enum PublicationStatus {
+    Draft
+    Published
+}
+
+concept PositivePrice = Float {
+    Require(Self > 0.0, "price must be positive")
+}
+
+record table PublicationCatalog {
+    ID: Int
+    Status: PublicationStatus
+    Price: PositivePrice
+    Name: String
+}
+
 [Fact]
 fn LoadSignedNumericData() -> Void ! Error {
     let values = LoadOctagon<SignedSamplesConfig>("Language/Data/Octagon/Load/valid/signed_samples_config.octagon")?
     Assert.Near(-0.5, values.Offset, 0.0000001, "signed scalar field")
     Assert.Near(-1.25, values.Samples[0], 0.0000001, "signed array float")
     Assert.Near(2.0, values.Samples[1], 0.0000001, "positive array float")
+}
+
+[Fact]
+fn LoadNominalRecordTableWithEnumAndRefinementCells() -> Void ! Error {
+    let catalog = LoadOctagon<PublicationCatalog>("Language/Data/Octagon/Load/valid/publication_catalog.octagon")?
+    Assert.Equal(3, Len(catalog), "nominal table materializes column storage")
+    Assert.Equal(PublicationStatus.Published, catalog[1].Status, "enum cells retain nominal identity")
+    Assert.True(catalog[2].Price == 2.5, "refined cells are admitted by their Concept")
+    Assert.Equal("Alpha", catalog[0].Name, "ordinary cells share the same materialization path")
 }

@@ -1,0 +1,6 @@
+package Main
+
+[Artifact]
+fn RejectDuplicateIDs() -> Void {
+    StaticAssert.True(false, "duplicate ID 7")
+}

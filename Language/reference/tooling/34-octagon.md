@@ -25,6 +25,12 @@ Load and write are explicit through builtins.
 - Load rejects enum type/variant mismatches.
 - Load rejects array element type mismatches.
 - Load rejects dimension mismatches.
+- A nominal `record table` is represented by its declared table literal: each
+  field is one complete column array. The loader applies the schema's implicit
+  column array depth exactly once in interpreted and compiled execution.
+- Enum-valued table cells retain their nominal enum and refined-Concept cells
+  are checked through the same authoritative refinement admission used by
+  ordinary construction.
 
 See also [31 octest](./31-octest.md) for artifact and benchmark workflows.
 
@@ -33,8 +39,6 @@ See also [31 octest](./31-octest.md) for artifact and benchmark workflows.
 Valid `.octagon` content:
 
 ```oct
-package Main
-
 SimulationConfig {
     Name: "Cantilever"
     Dt: 0.001s

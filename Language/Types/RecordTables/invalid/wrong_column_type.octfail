@@ -1,4 +1,4 @@
-expect error: "record 'Measurements' field 'Latency' expects Float[], got String[]"
+expect error: "record table 'Measurements' column 'Latency': array element 0 expects Float, got String"
 
 package MainInvalid
 

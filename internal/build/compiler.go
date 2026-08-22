@@ -814,7 +814,7 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			if fn.IsGoImport {
 				continue
 			}
-			if options.selectedReachableOnly && !isReachableFunction(reachable, pkgName, fn.Name) {
+			if options.selectedReachableOnly && !isReachableFunction(reachable, pkgName, fn.Name) && !fn.IsRefinementConstructor {
 				continue
 			}
 			if fn.IsArtifact {
@@ -3309,7 +3309,20 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			values = append(values, fmt.Sprintf("%s.%s", source, field.Name))
 		}
 		tmp := c.temp(sourceType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: sourceType, FieldNames: names, FieldVals: values})
+		if table, _, isTable := c.lookupRecordTable(sourceType); isTable && len(table.Fields) > 0 {
+			checks := make([]string, 0, len(e.Fields))
+			for _, field := range e.Fields {
+				checks = append(checks, fmt.Sprintf("if len(%s) != len(%s.%s) { panic(fmt.Sprintf(\"runtime error [OCT-RTBL004]: record table '%s' replacement column '%s' has extent %%d; expected %%d\", len(%s), len(%s.%s))) }", overrides[field.Name], source, table.Fields[0].Name, table.Name, field.Name, overrides[field.Name], source, table.Fields[0].Name))
+			}
+			parts := make([]string, 0, len(names))
+			for index := range names {
+				parts = append(parts, fmt.Sprintf("%s: %s", names[index], values[index]))
+			}
+			valueExpr := fmt.Sprintf("func() %s { %s; return %s{%s} }()", goType(sourceType), strings.Join(checks, "; "), goType(sourceType), strings.Join(parts, ", "))
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: valueExpr})
+		} else {
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: sourceType, FieldNames: names, FieldVals: values})
+		}
 		return tmp, sourceType, false, nil
 	case ast.EnumValueExpr:
 		enumType := e.EnumName
@@ -6529,7 +6542,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		b.WriteString("const (\n")
 		b.WriteString("\t__octParsedInt __octParsedKind = iota\n\t__octParsedFloat\n\t__octParsedBool\n\t__octParsedString\n\t__octParsedArray\n\t__octParsedRecord\n\t__octParsedEnum\n)\n\n")
 		b.WriteString("type __octParsedValue struct {\n\tKind __octParsedKind\n\tInt int\n\tFloat float64\n\tBool bool\n\tText string\n\tArray []__octParsedValue\n\tRecordType string\n\tRecordFields map[string]__octParsedValue\n\tEnumType string\n\tEnumVariant string\n}\n\n")
-		b.WriteString("type __octRecordMeta struct {\n\tFullName string\n\tShortName string\n\tFields []string\n}\n\n")
+		b.WriteString("type __octRecordMeta struct {\n\tFullName string\n\tShortName string\n\tFields []string\n\tFieldTypes map[string]string\n}\n\n")
 		b.WriteString("type __octEnumMeta struct {\n\tFullName string\n\tShortName string\n\tVariants []string\n}\n\n")
 		b.WriteString("var __octRecordMetaByGoType = map[string]__octRecordMeta{\n")
 		for _, r := range m.Records {
@@ -6539,6 +6552,13 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 					b.WriteString(", ")
 				}
 				fmt.Fprintf(&b, "%q", f.Name)
+			}
+			b.WriteString("}, FieldTypes: map[string]string{")
+			for i, f := range r.Fields {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(&b, "%q: %q", f.Name, f.Type)
 			}
 			b.WriteString("}},\n")
 		}
@@ -6565,6 +6585,13 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 			}
 		}
 		if usedBuiltins["LoadOctagon"] {
+			b.WriteString("func __octValidateRefinement(expectedType string, value reflect.Value) error {\n\tswitch expectedType {\n")
+			for _, refinement := range m.Refinements {
+				fmt.Fprintf(&b, "\tcase %q, %q:\n", refinement.Package+"."+refinement.Name, refinement.Name)
+				fmt.Fprintf(&b, "\t\tchecked := fn_%s___oct_refine_%s(value.Interface().(%s))\n", refinement.Package, refinement.Name, goType(refinement.Base))
+				b.WriteString("\t\tif checked.IsErr { return errors.New(checked.Err) }\n")
+			}
+			b.WriteString("\t}\n\treturn nil\n}\n\n")
 			b.WriteString(__octLoadHelpers)
 			loadTypeNames := make([]string, 0, len(loadTypes))
 			for t := range loadTypes {
@@ -8227,7 +8254,11 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 		for i, v := range meta.Variants {
 			if v == value.EnumVariant {
 				out := reflect.New(target).Elem()
-				out.SetInt(int64(i))
+				tag := out.FieldByName("Tag")
+				if !tag.IsValid() || !tag.CanSet() {
+					return reflect.Value{}, fmt.Errorf("enum %s has unsupported compiled representation", expectedType)
+				}
+				tag.SetInt(int64(i))
 				return out, nil
 			}
 		}
@@ -8240,6 +8271,7 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 		}
 		out := reflect.New(target).Elem()
 		out.SetInt(int64(value.Int))
+		if err := __octValidateRefinement(expectedType, out); err != nil { return reflect.Value{}, err }
 		return out, nil
 	case reflect.Float64:
 		if value.Kind != __octParsedFloat {
@@ -8247,6 +8279,7 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 		}
 		out := reflect.New(target).Elem()
 		out.SetFloat(value.Float)
+		if err := __octValidateRefinement(expectedType, out); err != nil { return reflect.Value{}, err }
 		return out, nil
 	case reflect.Bool:
 		if value.Kind != __octParsedBool {
@@ -8254,6 +8287,7 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 		}
 		out := reflect.New(target).Elem()
 		out.SetBool(value.Bool)
+		if err := __octValidateRefinement(expectedType, out); err != nil { return reflect.Value{}, err }
 		return out, nil
 	case reflect.String:
 		if value.Kind != __octParsedString {
@@ -8261,14 +8295,16 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 		}
 		out := reflect.New(target).Elem()
 		out.SetString(value.Text)
+		if err := __octValidateRefinement(expectedType, out); err != nil { return reflect.Value{}, err }
 		return out, nil
 	case reflect.Slice:
 		if value.Kind != __octParsedArray {
 			return reflect.Value{}, fmt.Errorf("expected %s, got non-array value", expectedType)
 		}
 		out := reflect.MakeSlice(target, 0, len(value.Array))
+		elementExpectedType := strings.TrimSuffix(expectedType, "[]")
 		for i, item := range value.Array {
-			element, err := __octMaterialize(item, target.Elem(), target.Elem().String())
+			element, err := __octMaterialize(item, target.Elem(), elementExpectedType)
 			if err != nil {
 				return reflect.Value{}, fmt.Errorf("array element %d mismatch: %w", i, err)
 			}
@@ -8292,7 +8328,8 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 			if !ok {
 				return reflect.Value{}, fmt.Errorf("record %s missing field %s", expectedType, field)
 			}
-			materialized, err := __octMaterialize(fieldValue, out.FieldByName(field).Type(), out.FieldByName(field).Type().String())
+			fieldExpectedType := meta.FieldTypes[field]
+			materialized, err := __octMaterialize(fieldValue, out.FieldByName(field).Type(), fieldExpectedType)
 			if err != nil {
 				return reflect.Value{}, fmt.Errorf("record field %s mismatch: %w", field, err)
 			}
