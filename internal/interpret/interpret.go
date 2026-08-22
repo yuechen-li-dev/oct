@@ -1012,6 +1012,9 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 		return stmtResult{}, nil
 	case ast.AssignStmt:
+		if handled, result, err := i.executeSelfAppendAssignment(env, pkgName, node); handled {
+			return result, err
+		}
 		value, err := i.evalExpr(env, pkgName, node.Value)
 		if err != nil {
 			return stmtResult{}, err
@@ -1289,6 +1292,44 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 	default:
 		return stmtResult{}, fmt.Errorf("runtime invariant violation: unsupported statement %T", stmt)
 	}
+}
+
+// executeSelfAppendAssignment preserves the immutable result semantics of
+// xs = Append(xs, value) while avoiding two full-array clones per iteration.
+// Other bindings receive deep copies at their binding boundary, so the mutable
+// target owns this slice and may safely retain its capacity across iterations.
+func (i interpreter) executeSelfAppendAssignment(env *environment, pkgName string, node ast.AssignStmt) (bool, stmtResult, error) {
+	call, ok := node.Value.(ast.CallExpr)
+	if !ok || len(call.TypeArguments) != 0 || len(call.Arguments) != 2 {
+		return false, stmtResult{}, nil
+	}
+	callee, ok := call.Callee.(ast.IdentifierExpr)
+	if !ok || callee.Name != "Append" {
+		return false, stmtResult{}, nil
+	}
+	source, ok := call.Arguments[0].(ast.IdentifierExpr)
+	if !ok || source.Name != node.Name {
+		return false, stmtResult{}, nil
+	}
+	bindingValue, ok := env.lookup(node.Name)
+	if !ok || !bindingValue.mutable || bindingValue.value.Kind != ValueArray {
+		return false, stmtResult{}, nil
+	}
+	element, err := i.evalExpr(env, pkgName, call.Arguments[1])
+	if err != nil {
+		return true, stmtResult{}, err
+	}
+	if element.hasError {
+		return true, stmtResult{value: element.errorVal, returned: true}, nil
+	}
+	if len(bindingValue.value.Array) > 0 && !sameValueType(bindingValue.value.Array[0], element.value) {
+		return true, stmtResult{}, fmt.Errorf("runtime invariant violation: Append element type mismatch: expected %s, got %s", valueTypeName(bindingValue.value.Array[0]), valueTypeName(element.value))
+	}
+	bindingValue.value.Array = append(bindingValue.value.Array, cloneValue(element.value))
+	if !env.assign(node.Name, bindingValue.value) {
+		return true, stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Name)
+	}
+	return true, stmtResult{}, nil
 }
 
 func assignNestedArrayIndex(target Value, indices []int64, value Value) (Value, error) {

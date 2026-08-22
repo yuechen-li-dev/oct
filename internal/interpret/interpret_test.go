@@ -197,3 +197,36 @@ func TestExecuteMainEvaluatesFirstClassRangeForms(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteMainSelfAppendAssignmentPreservesPriorSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "main.oct")
+	source := `package Main
+
+fn Main() -> Int {
+    var values: Int[] = []
+    for i in 0..10000 { values = Append(values, i) }
+    let prior = values
+    values = Append(values, 10000)
+    return Len(prior) * 100000 + prior[9999] * 10 + Len(values)
+}
+`
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	program, err := project.Load(dir)
+	if err != nil {
+		t.Fatalf("load program: %v", err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatalf("typecheck program: %v", err)
+	}
+	result, err := ExecuteMain(program, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("execute program: %v", err)
+	}
+	const want = int64(1_000_109_991)
+	if result.Kind != ValueInt || result.Int != want {
+		t.Fatalf("expected immutable prior snapshot encoding %d, got %#v", want, result)
+	}
+}

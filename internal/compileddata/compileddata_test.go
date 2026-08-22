@@ -32,7 +32,15 @@ func TestEmitGoIsDeterministicStaticData(t *testing.T) {
 }
 
 func BenchmarkEmitGo10000Rows(b *testing.B) {
-	dataset := benchmarkDataset(10_000)
+	benchmarkEmitGoRows(b, 10_000)
+}
+
+func BenchmarkEmitGo100000Rows(b *testing.B) {
+	benchmarkEmitGoRows(b, 100_000)
+}
+
+func benchmarkEmitGoRows(b *testing.B, rows int) {
+	dataset := benchmarkDataset(rows)
 	var last Result
 	b.ReportAllocs()
 	b.ResetTimer()
