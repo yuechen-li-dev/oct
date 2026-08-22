@@ -124,7 +124,7 @@ The backend also emits deterministic constructor helpers for expression position
 
 The intended use is small helper data that makes shader control/data shape explicit without pushing SDSL-V toward CUDA-style ad hoc branching boilerplate.
 
-The M9 examples under `examples/SDSL-V/M9/` show:
+The M9 examples under `Examples/SDSL-V/M9/` show:
 
 - basic payload enum construction and exhaustive match;
 - a tile-load-style helper that returns either a loaded value or an explicit zero case without changing Prometheus runtime dispatch.

@@ -2,7 +2,7 @@
 
 ## 1. Language status and authority
 
-This document and the canonical corpus at `examples/SDSL-V/conformance/` define
+This document and the canonical corpus at `Examples/SDSL-V/conformance/` define
 SDSL-V. GoOct is the reference implementation. Behavior that conflicts with
 this specification is a compiler defect; no particular parser, validator, or
 emitter is independently authoritative.
@@ -351,7 +351,7 @@ paths, unique entry identities, expected diagnostics, reference hashes, and
 bundle integrity. The canonical source of conformance truth is:
 
 ```text
-examples/SDSL-V/conformance/manifest.json
+Examples/SDSL-V/conformance/manifest.json
 ```
 
 ## 8. Explicitly unsupported features

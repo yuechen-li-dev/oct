@@ -137,7 +137,7 @@
   ],
   "invalid_fixture_results": [
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionQContractedWithValue.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionQContractedWithValue.sdslvinvalid",
       "mistake": "Q contracted with V instead of K",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -148,7 +148,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionKeyUsedAsValue.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionKeyUsedAsValue.sdslvinvalid",
       "mistake": "K used where V is required",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -159,7 +159,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionUnpositionedQuery.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionUnpositionedQuery.sdslvinvalid",
       "mistake": "unpositioned Q paired with positioned K",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -170,7 +170,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionRopeAppliedTwice.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionRopeAppliedTwice.sdslvinvalid",
       "mistake": "RoPE applied twice",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -181,7 +181,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionIncompatiblePositionConvention.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionIncompatiblePositionConvention.sdslvinvalid",
       "mistake": "incompatible positioned key convention",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -192,7 +192,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionQwenResidual.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionQwenResidual.sdslvinvalid",
       "mistake": "Qwen hidden state used as a Z-Image residual",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -203,7 +203,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionProbabilityAsScore.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionProbabilityAsScore.sdslvinvalid",
       "mistake": "attention probability treated as score",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -214,7 +214,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionScoreBeforeNormalization.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionScoreBeforeNormalization.sdslvinvalid",
       "mistake": "attention score aggregated before normalization",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -225,7 +225,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionHeadResidual.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionHeadResidual.sdslvinvalid",
       "mistake": "attention head added as model residual",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -236,7 +236,7 @@
       "names_operation": true
     },
     {
-      "fixture": "examples/SDSL-V/conformance/invalid/AttentionWrongRopeCoordinate.sdslvinvalid",
+      "fixture": "Examples/SDSL-V/conformance/invalid/AttentionWrongRopeCoordinate.sdslvinvalid",
       "mistake": "text-token coordinate supplied to image RoPE",
       "rejected": true,
       "code": "SDSL-V4123",
@@ -267,8 +267,8 @@
     ],
     "duplicate_name_diagnostic": "SDSL-V1509",
     "duplicate_space_diagnostic": "SDSL-V4124",
-    "grouped_source": "examples/SDSL-V/AttentionSpacePoc/GroupedSpaceEquivalence.sdslv",
-    "expanded_source": "examples/SDSL-V/AttentionSpacePoc/ExpandedSpaceEquivalence.sdslv",
+    "grouped_source": "Examples/SDSL-V/AttentionSpacePoc/GroupedSpaceEquivalence.sdslv",
+    "expanded_source": "Examples/SDSL-V/AttentionSpacePoc/ExpandedSpaceEquivalence.sdslv",
     "grouped_hlsl_sha256": "51502080c6e6d5776cc5eb88aa9caa18b071ce406b16d2ab19eb4282cff93468",
     "expanded_hlsl_sha256": "51502080c6e6d5776cc5eb88aa9caa18b071ce406b16d2ab19eb4282cff93468",
     "hlsl_byte_identical": true,
@@ -278,8 +278,8 @@
     "spirv_validated": true
   },
   "backend_erasure": {
-    "semantic_source": "examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid",
-    "erased_source": "examples/SDSL-V/conformance/compute/AttentionSpacePocErased.sdslvvalid",
+    "semantic_source": "Examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid",
+    "erased_source": "Examples/SDSL-V/conformance/compute/AttentionSpacePocErased.sdslvvalid",
     "semantic_source_sha256": "5282a11317a094d521d3ad75cf7ec4e0fb302ca226093e704dcfb83cc21402dc",
     "erased_source_sha256": "4b63b6b44f11c9f7e4abd2e4ed1de7916605b5bac345bd273c1058be52c7b303",
     "semantic_hlsl_sha256": "9957188bf20cd6dd41205bbfb3b811e814f234779361c27b66406a6181e66dd2",

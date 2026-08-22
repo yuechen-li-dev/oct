@@ -15,13 +15,13 @@ This example is a small, runnable greenhouse control demo showing multiple core 
 ## Run
 
 ```bash
-go run ./cmd/oct test examples/SmartGreenhouseController
-go run ./cmd/oct test examples/SmartGreenhouseController --execution compiled
-go run ./cmd/oct test examples/SmartGreenhouseController --execution auto
+go run ./cmd/oct test Examples/SmartGreenhouseController
+go run ./cmd/oct test Examples/SmartGreenhouseController --execution compiled
+go run ./cmd/oct test Examples/SmartGreenhouseController --execution auto
 ```
 
 ## Notes
 
-- Compiled mode is currently green for this example (`go run ./cmd/oct test examples/SmartGreenhouseController --execution compiled`).
+- Compiled mode is currently green for this example (`go run ./cmd/oct test Examples/SmartGreenhouseController --execution compiled`).
 - The flow keeps temperature as a dimensioned `Float<K>` board field; board snapshots preserve the unit-qualified scalar type instead of forcing manual unit stripping.
 - Candidate selection in `when policy` is intentionally static; dynamic candidate sets are demonstrated elsewhere via `Libraries/Octomata` helpers.

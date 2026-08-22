@@ -32,7 +32,7 @@ Compiler proof:
 
 Hardware proof:
 
-- `examples/SDSL-V/M33b/TensorConstruction.sdslvtest` is a dedicated Vulkan
+- `Examples/SDSL-V/M33b/TensorConstruction.sdslvtest` is a dedicated Vulkan
   execution suite.
 - Green cases cover rank-1/2/4 Fill, rank-1/2/3/4 Generate, identity
   generation, Fill exactly-once, Generate exactly-once-per-coordinate,
@@ -78,7 +78,7 @@ Representative execution cases:
 The dedicated suite ran green end-to-end and the replay command:
 
 ```text
-go run ./cmd/oct sdslv test examples/SDSL-V/M33b/TensorConstruction.sdslvtest --case sdslv-9de6ff0e1e3f80bc55565623
+go run ./cmd/oct sdslv test Examples/SDSL-V/M33b/TensorConstruction.sdslvtest --case sdslv-9de6ff0e1e3f80bc55565623
 ```
 
 returned a stable PASS record.
@@ -87,7 +87,7 @@ returned a stable PASS record.
 
 Representative proof source:
 
-- `examples/SDSL-V/M33b/TensorConstructionProofs.sdslv`
+- `Examples/SDSL-V/M33b/TensorConstructionProofs.sdslv`
 
 Compiled entries and SPIR-V sizes:
 
@@ -114,8 +114,8 @@ spelling:
 
 | Fixture | Before | After | Reduction |
 | --- | ---: | ---: | ---: |
-| `examples/SDSL-V/M33a/NDArrayComputeProof.sdslv` | 13 lines | 8 lines | 5 lines |
-| `examples/SDSL-V/M32b2/TensorExecution.sdslvtest` | 256 lines | 251 lines | 5 lines |
+| `Examples/SDSL-V/M33a/NDArrayComputeProof.sdslv` | 13 lines | 8 lines | 5 lines |
+| `Examples/SDSL-V/M32b2/TensorExecution.sdslvtest` | 256 lines | 251 lines | 5 lines |
 
 The migrated rank-4 proofs now use:
 

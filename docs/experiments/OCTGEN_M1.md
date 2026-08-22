@@ -133,3 +133,10 @@ Make—not just OctGen.
 Proceed to **OCTGEN-M2: one additional independent production consumer with
 coordinated implementation and test declarations**, reusing the package-local
 typed-table vocabulary before considering any broader Go declaration model.
+
+For future extensibility, prefer a **typed downstream host-renderer extension**
+over schema-driven arbitrary Go generation. That keeps Oct responsible for
+semantic generation intent while downstream Go code owns Go syntax, imported
+APIs, and rendering. M1 does not implement registration or a plugin mechanism;
+the current built-in tool still requires a decoder and renderer in Oct for each
+new supported semantic model.

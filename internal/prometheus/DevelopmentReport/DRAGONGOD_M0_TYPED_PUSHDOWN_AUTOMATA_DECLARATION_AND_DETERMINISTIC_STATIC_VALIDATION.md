@@ -74,8 +74,8 @@ the configured Vulkan SDK include path available, and both passed cleanly.
 
 ## New specimens
 
-- `examples/Concept-Vulkan/evt1_dragongod_m0_language.concept`
-- `examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_dragongod_m0_language.concept`
+- `Examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept`
 
 The language specimen proves:
 
@@ -144,8 +144,8 @@ resource lifecycle names without widening the runtime mechanism surface.
   `internal/conceptvulkan/evt1_generate.go`,
   `internal/conceptvulkan/evt1_test.go`
 - specimens / checked outputs:
-  `examples/Concept-Vulkan/evt1_dragongod_m0_language.concept`,
-  `examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept`,
+  `Examples/Concept-Vulkan/evt1_dragongod_m0_language.concept`,
+  `Examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept`,
   corresponding checked outputs under `internal/conceptvulkan/generated/`
 - docs / handoff:
   `docs/OCT_SDSLV_PROMETHEUS_LIVING_STATUS.md`,

@@ -39,11 +39,11 @@ CLI; it is not a second compiler interface.
 
 ```text
 go test ./internal/sdslv/...
-go run ./cmd/sdslv conformance ./examples/SDSL-V/conformance
+go run ./cmd/sdslv conformance ./Examples/SDSL-V/conformance
 ```
 
 Golden graphics outputs are already committed under
-`examples/SDSL-V/conformance/artifacts/`. Regenerating validated SPIR-V requires
+`Examples/SDSL-V/conformance/artifacts/`. Regenerating validated SPIR-V requires
 DXC and `spirv-val`; compile-only Go tests remain portable.
 
 ## Prometheus source and hardware lanes

@@ -86,9 +86,9 @@ SDSL-V M23 does not support when policy; hysteresis/min_commit require persisten
 
 ## Examples
 
-- `examples/SDSL-V/M23/FlowBoardBasic.sdslv`
-- `examples/SDSL-V/M23/FlowBoardComptimeFor.sdslv`
-- `examples/SDSL-V/M23/FlowBoardGuardedTileLoad.sdslv`
+- `Examples/SDSL-V/M23/FlowBoardBasic.sdslv`
+- `Examples/SDSL-V/M23/FlowBoardComptimeFor.sdslv`
+- `Examples/SDSL-V/M23/FlowBoardGuardedTileLoad.sdslv`
 
 ## M24 Follow-Up
 

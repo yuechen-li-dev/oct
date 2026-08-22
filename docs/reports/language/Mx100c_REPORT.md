@@ -28,7 +28,7 @@ Legacy bracket call syntax `[...]` is no longer accepted for call-site type argu
 
 - `type arguments must use '<...>'; legacy '[...]' syntax is no longer supported`
 
-## 4) Docs/examples/tests updated
+## 4) Docs/Examples/tests updated
 
 Updated locations include:
 

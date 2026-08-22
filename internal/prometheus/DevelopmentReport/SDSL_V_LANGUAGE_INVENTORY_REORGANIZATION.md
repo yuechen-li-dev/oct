@@ -33,7 +33,7 @@ means accepted compatibility behavior, not removal.
 | Lowering and IR | `internal/sdslv/lower/lower.go`, `internal/sdslv/vdmir/*.go` and tests |
 | Backend/toolchain | `internal/sdslv/emit/hlsl/*.go`, `internal/sdslv/toolchain/*.go` |
 | Corpus | `internal/sdslv/testdata/language/**/*.sdslvvalid`, `.sdslvinvalid`, `.sdslvtest` |
-| Examples/production | `examples/SDSL-V/**`, `internal/prometheus/shaders/sdslv/production/**` |
+| Examples/production | `Examples/SDSL-V/**`, `internal/prometheus/shaders/sdslv/production/**` |
 | Runtime/reports | `internal/prometheus/DevelopmentReport/SDSL_V_M*.md`, `PROMETHEUS_SHADER_REGISTRY_GRAPHICS_BOUNDARY.md`, `docs/SDSL_V_M*.md` |
 | Prior specification | former `docs/SDSL_V_LANGUAGE_SPEC.md` |
 
@@ -85,7 +85,7 @@ is flow/test dispatcher implementation code, not source support.
 | Runtime `match` has enum and fallible `ok`/`err` forms | Parser accepts qualified enum arms only; AST has enum fields only | Kept enum `match` as implemented; marked fallible form absent/deferred. |
 | Graphics-adjacent stage words imply graphics support | VD-MIR has only `ComputeEntryPoint`; HLSL emits compute entries; no graphics runtime | Marked `vertex`/`pixel` spelling partial and all graphics pipeline features planned/deferred. |
 | Milestone “adds” wording describes current status | Later code contains broader/narrower restrictions and proof levels | Replaced milestone labels with status vocabulary; preserved history only in appendix. |
-| Historical M9 example is a current executable contract | `examples/SDSL-V/M9/PayloadEnumBasic.sdslv` fails current parsing because `sum` is now a reserved token at line 24 | Did not alter language behavior or silently repair the example; recorded as a stale example/fixture inconsistency for a separate compatibility decision. |
+| Historical M9 example is a current executable contract | `Examples/SDSL-V/M9/PayloadEnumBasic.sdslv` fails current parsing because `sum` is now a reserved token at line 24 | Did not alter language behavior or silently repair the example; recorded as a stale example/fixture inconsistency for a separate compatibility decision. |
 
 ## Implemented but previously under-emphasized
 

@@ -143,7 +143,7 @@
       "skill": "oct-workflow",
       "mcpTools": [],
       "commands": [
-        "oct test examples/SmartGreenhouseController --execution compiled"
+        "oct test Examples/SmartGreenhouseController --execution compiled"
       ],
       "repairIterations": 0,
       "diagnostic": "execution summary",

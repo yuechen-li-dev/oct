@@ -33,16 +33,16 @@ func TestKaijuBenchCanonicalNDArrayHardware(t *testing.T) {
 	path := findBenchSource(t)
 	report, err := runKaiju(path, Manifest{
 		SchemaVersion: 1,
-		Source: "examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
+		Source:        "Examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
 		Benchmarks: []Case{{
-			ID: "sdslvbench-8b1f66233dd54390f518e9c7",
-			Name: "NDArrayMaterializeStorage",
-			EntryPoint: "NDArrayMaterializeStorage",
-			WorkgroupSize: [3]uint32{1, 1, 1},
+			ID:             "sdslvbench-8b1f66233dd54390f518e9c7",
+			Name:           "NDArrayMaterializeStorage",
+			EntryPoint:     "NDArrayMaterializeStorage",
+			WorkgroupSize:  [3]uint32{1, 1, 1},
 			DispatchGroups: [3]uint32{4, 1, 1},
-			Warmup: 2,
-			Iterations: 8,
-			ReplayID: "sdslvbench-replay-c15d871f78df565436b4d384",
+			Warmup:         2,
+			Iterations:     8,
+			ReplayID:       "sdslvbench-replay-c15d871f78df565436b4d384",
 			Resources: []Resource{
 				{Set: 0, Binding: 0, Access: "readonly", ElementType: "f32", ByteLength: 16, PayloadBase64: "AAAAAAAAAAAAAAAAAAAAAA=="},
 				{Set: 0, Binding: 1, Access: "readwrite", ElementType: "f32", ByteLength: 16, PayloadBase64: "AAAAAAAAAAAAAAAAAAAAAA==", Readback: true},
@@ -50,14 +50,14 @@ func TestKaijuBenchCanonicalNDArrayHardware(t *testing.T) {
 			Shader: "CanonicalNDArrayBench",
 		}},
 	}, []Case{{
-		ID: "sdslvbench-8b1f66233dd54390f518e9c7",
-		Name: "NDArrayMaterializeStorage",
-		EntryPoint: "NDArrayMaterializeStorage",
-		WorkgroupSize: [3]uint32{1, 1, 1},
+		ID:             "sdslvbench-8b1f66233dd54390f518e9c7",
+		Name:           "NDArrayMaterializeStorage",
+		EntryPoint:     "NDArrayMaterializeStorage",
+		WorkgroupSize:  [3]uint32{1, 1, 1},
 		DispatchGroups: [3]uint32{4, 1, 1},
-		Warmup: 2,
-		Iterations: 8,
-		ReplayID: "sdslvbench-replay-c15d871f78df565436b4d384",
+		Warmup:         2,
+		Iterations:     8,
+		ReplayID:       "sdslvbench-replay-c15d871f78df565436b4d384",
 		Resources: []Resource{
 			{Set: 0, Binding: 0, Access: "readonly", ElementType: "f32", ByteLength: 16, PayloadBase64: "AAAAAAAAAAAAAAAAAAAAAA=="},
 			{Set: 0, Binding: 1, Access: "readwrite", ElementType: "f32", ByteLength: 16, PayloadBase64: "AAAAAAAAAAAAAAAAAAAAAA==", Readback: true},
@@ -90,6 +90,6 @@ func findBenchSource(t *testing.T) string {
 		}
 		dir = parent
 	}
-	t.Fatalf("source file not found: %s", filepath.Join("examples", "SDSL-V", "M36a", "BasicBenchmarks.sdslvbench"))
+	t.Fatalf("source file not found: %s", filepath.Join("Examples", "SDSL-V", "M36a", "BasicBenchmarks.sdslvbench"))
 	return ""
 }

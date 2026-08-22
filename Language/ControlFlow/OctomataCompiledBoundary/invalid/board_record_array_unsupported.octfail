@@ -1,0 +1,14 @@
+expect error: "flow BoardRecordArrayUnsupported board field Samples: board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types"
+
+package ControlFlowOctomataCompiledBoundary
+
+record SampleValue {
+    Count: Int
+}
+
+flow BoardRecordArrayUnsupported() -> Void {
+    board {
+        Samples: SampleValue[]
+    }
+    state Start { return }
+}

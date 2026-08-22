@@ -173,7 +173,7 @@ float ExpF32(float value)
 {
     float __sdslv_inline_hlsl_3;
     {
-        // BEGIN INLINE HLSL examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid:117
+        // BEGIN INLINE HLSL Examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid:117
          __sdslv_inline_hlsl_3 = exp(value); 
         // END INLINE HLSL
     }

@@ -5,7 +5,7 @@
       "schemaVersion": 1,
       "name": "NDArrayMaterializeStorage",
       "benchmarkId": "sdslvbench-8b1f66233dd54390f518e9c7",
-      "source": "examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
+      "source": "Examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
       "sourceSha256": "26c1457d50e2cfb2a9c5b806d8dc1152437542c699bd5146047c9aa122a922ae",
       "compiler": "github.com/yuechen-li-dev/oct@(devel)",
       "dxcPath": "C:/VulkanSDK/1.4.341.1/Bin/dxc.exe",
@@ -18,8 +18,8 @@
         "-spirv",
         "-fspv-target-env=vulkan1.0",
         "-Fo",
-        "examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv",
-        "examples/SDSL-V/M36a/artifacts/ndarraymaterialize.hlsl"
+        "Examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv",
+        "Examples/SDSL-V/M36a/artifacts/ndarraymaterialize.hlsl"
       ],
       "vulkanTarget": "vulkan1.0",
       "entryPoint": "main",
@@ -54,7 +54,7 @@
         }
       ],
       "pushConstantsBytes": 0,
-      "spirvPath": "examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv",
+      "spirvPath": "Examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv",
       "spirvBytes": 1560,
       "spirvSha256": "7ee4a36be544f4742c30aa13d159ce8312d31a527403c00d7b67ab0d377a397a"
     },
@@ -62,7 +62,7 @@
       "schemaVersion": 1,
       "name": "TensorContractionStorage",
       "benchmarkId": "sdslvbench-a2b7fd8383074dd673a365d5",
-      "source": "examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
+      "source": "Examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
       "sourceSha256": "26c1457d50e2cfb2a9c5b806d8dc1152437542c699bd5146047c9aa122a922ae",
       "compiler": "github.com/yuechen-li-dev/oct@(devel)",
       "dxcPath": "C:/VulkanSDK/1.4.341.1/Bin/dxc.exe",
@@ -75,8 +75,8 @@
         "-spirv",
         "-fspv-target-env=vulkan1.0",
         "-Fo",
-        "examples/SDSL-V/M36a/artifacts/tensorcontraction.spv",
-        "examples/SDSL-V/M36a/artifacts/tensorcontraction.hlsl"
+        "Examples/SDSL-V/M36a/artifacts/tensorcontraction.spv",
+        "Examples/SDSL-V/M36a/artifacts/tensorcontraction.hlsl"
       ],
       "vulkanTarget": "vulkan1.0",
       "entryPoint": "main",
@@ -111,7 +111,7 @@
         }
       ],
       "pushConstantsBytes": 0,
-      "spirvPath": "examples/SDSL-V/M36a/artifacts/tensorcontraction.spv",
+      "spirvPath": "Examples/SDSL-V/M36a/artifacts/tensorcontraction.spv",
       "spirvBytes": 2820,
       "spirvSha256": "9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7"
     }

@@ -119,6 +119,6 @@ M14 extends the same constrained staging model with `comptime match` for multi-w
 
 ## Examples
 
-- `examples/SDSL-V/M13/ComptimeLet.sdslv`
-- `examples/SDSL-V/M13/ComptimeIf.sdslv`
-- `examples/SDSL-V/M13/ComptimeTileConfig.sdslv`
+- `Examples/SDSL-V/M13/ComptimeLet.sdslv`
+- `Examples/SDSL-V/M13/ComptimeIf.sdslv`
+- `Examples/SDSL-V/M13/ComptimeTileConfig.sdslv`

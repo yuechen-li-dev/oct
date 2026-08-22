@@ -4,7 +4,7 @@
 
 For new Octomata experiments, keep a fast smoke lane before artifact coupling:
 
-1. Start with a tiny `flow` using **scalar board fields only** (`Bool`, `Int`, `Float`, `String`).
+1. Start with a tiny `flow` using supported board fields (`Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`, or arrays of those scalar types).
 2. Validate `Complete()`, `Result()`, and `StateHistory()` in a small `[Fact]` test.
 3. Only after smoke lane passes, add artifact writes (`[Artifact]` path).
 4. Keep `[Artifact]` helpers separate from `[Fact]` / `[Theory]` flow-smoke tests.
@@ -13,14 +13,11 @@ This keeps flow-state debugging and artifact IO/debugging decoupled, so failures
 
 ## Design follow-up: board arrays / accumulator shape
 
-### Observed blocker
+### Current support
 
-Current board field types reject arrays:
+Current board field types accept scalar `Bool`, `String`, `Int`/`Int<D>`, and `Float`/`Float<D>`, plus arrays (including nested arrays) of those types. Records, enums, vectors, matrices, and other aggregates remain unsupported.
 
-- supported: `Bool`, `Int`, `Float`, `String`
-- unsupported: array board fields such as `Float[]`
-
-This is a known design/runtime boundary and is **not changed in this quick-win pass**.
+This support landed after the original quick-win pass; the older scalar-only note was stale.
 
 ### Why it matters
 
@@ -28,8 +25,8 @@ Kalman-style M3 authoring needs history-like lanes (e.g., recovered/innovation a
 
 ### Candidate design directions (deferred)
 
-- **A. Allow scalar arrays on board**, e.g. `Float[]` board fields.
-- **B. Keep board scalar-only** and route accumulators/history via external records/layers outside flow board.
+- **A. Scalar arrays on board**, e.g. `Float[]`, are supported.
+- **B. External records/layers** remain appropriate when accumulator state is not behavior-local flow state.
 
 ### Questions to resolve before implementation
 

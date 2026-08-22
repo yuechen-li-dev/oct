@@ -162,7 +162,7 @@ Hardware:
 
 Dedicated ndarray `.sdslvtest` suite:
 
-- path: `examples/SDSL-V/M33a/NDArrayExecution.sdslvtest`
+- path: `Examples/SDSL-V/M33a/NDArrayExecution.sdslvtest`
 - workgroup geometry: `[1, 1, 1]`
 - dispatch geometry: `[1, 1, 1]`
 
@@ -185,7 +185,7 @@ Observed result:
 
 Representative direct SPIR-V proof:
 
-- `examples/SDSL-V/M33a/NDArrayComputeProof.sdslv`
+- `Examples/SDSL-V/M33a/NDArrayComputeProof.sdslv`
 - `oct sdslv compile-spv ...`
 - entry: `NDArrayComputeProof_CS`
 - target: `cs_6_0`, `-spirv`, `vulkan1.0`, `-O3`
@@ -194,7 +194,7 @@ Representative direct SPIR-V proof:
 
 At least one existing M32b.2 proof source now uses ndarray directly.
 
-Two committed cases in `examples/SDSL-V/M32b2/TensorExecution.sdslvtest` were
+Two committed cases in `Examples/SDSL-V/M32b2/TensorExecution.sdslvtest` were
 refactored:
 
 - `Rank3BatchedMatmul`
@@ -231,10 +231,10 @@ M33a preserves the completed M29-M32 ownership boundaries:
 Validated regression lanes:
 
 - `go test ./internal/sdslv/...`
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M29`
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M30/FixedTestInputResources.sdslvtest`
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M31b/FlowStacks.sdslvtest`
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M32b2/TensorExecution.sdslvtest`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M29`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M30/FixedTestInputResources.sdslvtest`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M31b/FlowStacks.sdslvtest`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M32b2/TensorExecution.sdslvtest`
 - six production SGEMM `sdslv check` passes
 
 ## Non-goals retained

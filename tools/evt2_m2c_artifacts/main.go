@@ -170,8 +170,8 @@ func main() {
 		"spaces":      []string{"JointEmbedding", "JointQueryHead", "JointKeyHead", "PositionedJointQueryHead", "PositionedJointKeyHead", "ImageCoordinate", "ContextCoordinate"},
 		"transitions": []string{"JointEmbedding -> JointQueryHead", "JointEmbedding -> JointKeyHead", "JointQueryHead -> PositionedJointQueryHead", "JointKeyHead -> PositionedJointKeyHead"},
 		"invalid_fixtures": []map[string]string{
-			{"path": "examples/SDSL-V/conformance/invalid/MainTransformerContextKeyAsImageKey.sdslvinvalid", "diagnostic": "SDSL-V4123", "mistake": "cross-stream positioned-key use"},
-			{"path": "examples/SDSL-V/conformance/invalid/MainTransformerContextCoordinateAsImageCoordinate.sdslvinvalid", "diagnostic": "SDSL-V4123", "mistake": "context coordinate passed to image RoPE"},
+			{"path": "Examples/SDSL-V/conformance/invalid/MainTransformerContextKeyAsImageKey.sdslvinvalid", "diagnostic": "SDSL-V4123", "mistake": "cross-stream positioned-key use"},
+			{"path": "Examples/SDSL-V/conformance/invalid/MainTransformerContextCoordinateAsImageCoordinate.sdslvinvalid", "diagnostic": "SDSL-V4123", "mistake": "context coordinate passed to image RoPE"},
 		},
 		"erasure":   "nominal vector-value aliases erase before HLSL/SPIR-V; descriptor ABI, buffer layout, and runtime tags are unchanged",
 		"non_claim": "token axes and probability-to-value token alignment remain out of scope for current SDSL-V tensor-axis typing",

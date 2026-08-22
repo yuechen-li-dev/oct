@@ -115,7 +115,7 @@ The 421-line concept expansion pass is intentionally separate from the record im
 - language implementation: `internal/ast/program.go`, `internal/lex`, `internal/parse`, `internal/concept/expand.go`, `internal/project/project.go`, `internal/typecheck/typecheck.go`, `internal/interpret/interpret.go`, and `internal/build/compiler.go`;
 - implementation integration tests: lexer/parser tests, `internal/build/compiler_test.go`, `internal/octgen/octgen_test.go`, and `internal/octgen/testdata/invalid_requirement/generator.oct`;
 - semantic contracts: `Language/Types/ConceptsM0`, the `Language/Functions/Calls` requirement fixtures, and the Units fact;
-- specimens: `Libraries/Units/Units.Core.oct`, `tools/compiled_model_lock/audit_stages.oct`, and `examples/ConceptsM0/main.oct`;
+- specimens: `Libraries/Units/Units.Core.oct`, `tools/compiled_model_lock/audit_stages.oct`, and `Examples/ConceptsM0/main.oct`;
 - compatibility migrations: Cooking, Mechanics Endurance/Fatigue/Notch/Shafts/Stress, Octomata AntiWindup, Random Core/CoinToss/Dice/Distributions, Statistics Core/Regression/Summary, and UI Style;
 - reference and evidence: `Language/reference/README.md`, types, units, builtins, records, the new concepts chapter, and this report.
 

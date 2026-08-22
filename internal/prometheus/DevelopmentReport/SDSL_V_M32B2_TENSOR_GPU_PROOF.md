@@ -16,7 +16,7 @@ tensor source
 ```
 
 The dedicated executable suite is
-`examples/SDSL-V/M32b2/TensorExecution.sdslvtest`. It stays within the settled
+`Examples/SDSL-V/M32b2/TensorExecution.sdslvtest`. It stays within the settled
 M29-M32b.1 ownership split:
 
 - parser/validator own tensor/test syntax and static metadata;
@@ -124,9 +124,9 @@ preserves the M29 grouping contract rather than forcing per-case recompilation.
 
 Stable replay evidence:
 
-- whole-suite replay via `oct sdslv test examples/SDSL-V/M32b2/TensorExecution.sdslvtest`
+- whole-suite replay via `oct sdslv test Examples/SDSL-V/M32b2/TensorExecution.sdslvtest`
 - selected-case replay via
-  `oct sdslv test examples/SDSL-V/M32b2/TensorExecution.sdslvtest --case sdslv-783e8b0535804de633c44695`
+  `oct sdslv test Examples/SDSL-V/M32b2/TensorExecution.sdslvtest --case sdslv-783e8b0535804de633c44695`
 - deterministic repeated host replay for
   `MultipleInvocationsKeepTensorStatePrivate`
 
@@ -140,8 +140,8 @@ Stable replay evidence:
 - `go run ./tools/prometheus_native_manifest -check`
 - `bash -n internal/prometheus/native/build_linux.sh`
 - `git diff --check`
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M32b2/TensorExecution.sdslvtest`
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M32b2/TensorExecution.sdslvtest --case sdslv-783e8b0535804de633c44695`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M32b2/TensorExecution.sdslvtest`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M32b2/TensorExecution.sdslvtest --case sdslv-783e8b0535804de633c44695`
 
 ## Limitations
 

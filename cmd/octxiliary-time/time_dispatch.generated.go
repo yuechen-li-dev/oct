@@ -4,7 +4,7 @@ package main
 import (
 	"fmt"
 	"time"
-	"github.com/yuechen-li-dev/oct/internal/octxiliary"
+	"github.com/yuechen-li-dev/oct/pkg/octxiliary"
 )
 
 func dispatch(req octxiliary.Request) (octxiliary.Value, error) {

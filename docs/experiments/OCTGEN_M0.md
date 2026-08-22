@@ -104,6 +104,22 @@ The model contains only ordered arrays and closed values. Repeated generation
 is tested byte-for-byte, and the committed result contains no source-machine
 paths, timestamps, random values, or ambient environment data.
 
+## External-use contract
+
+OctGen is externally usable but experimental. An external Go repository may
+consume Go emitted for a supported semantic generation model; emitted code
+depends only on public Oct packages such as `pkg/octxiliary`, never an Oct
+`internal/` package. Oct returns one of the closed structured models supported
+by this host. Go owns model decoding, Go syntax, imported APIs, validation, and
+rendering.
+
+This is a bounded generation seam, not arbitrary Go metaprogramming and not a
+stable Oct 1.0 ABI. Adding another built-in semantic generation model currently
+requires adding its typed decoder and host-side renderer to Oct. External hosts
+that need a different model can use the experimental `experimental/octgen`
+execution boundary and own their typed decoding and rendering, without making
+Go syntax part of the Oct protocol.
+
 ## M0 measurements
 
 | Measure | Result |

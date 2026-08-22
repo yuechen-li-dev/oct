@@ -28,7 +28,7 @@ Wrapper-backed stable module families are `Archive`, `Compression`, `Csv`,
 `Hash`, `Image`, `IO`, `Json`, `Pdf`, `Plot`, and `Text`. Their compiled path
 requires the documented Octxiliary sidecars; absence is an explicit error, not
 an interpreter fallback. `ArtifactUsage`, `Cooking`, `HelloScience`, and
-`Deployment` are examples/reference packages, not separately versioned APIs.
+`Deployment` are Examples/reference packages, not separately versioned APIs.
 
 ## Experimental, internal, or separately governed
 

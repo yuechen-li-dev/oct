@@ -118,7 +118,7 @@ Templates and concepts for compile-time shader specialization arrive in M5 on to
 
 ## Examples
 
-- `examples/SDSL-V/M4/WorkgroupTileCopy.sdslv`
-- `examples/SDSL-V/M4/BarrierSmoke.sdslv`
+- `Examples/SDSL-V/M4/WorkgroupTileCopy.sdslv`
+- `Examples/SDSL-V/M4/BarrierSmoke.sdslv`
 
 These examples keep scope small while proving the source model needed for future tiled kernels.

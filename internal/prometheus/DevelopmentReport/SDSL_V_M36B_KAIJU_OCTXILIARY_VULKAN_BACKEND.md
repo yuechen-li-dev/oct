@@ -14,8 +14,8 @@ checked-in source, isolated compilation and recorded toolchain identity:
 
 | Case | Stable ID | SPIR-V | Bytes | SHA-256 |
 |---|---|---|---:|---|
-| NDArrayMaterializeStorage | `sdslvbench-8b1f66233dd54390f518e9c7` | `examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv` | 1560 | `7ee4a36be544f4742c30aa13d159ce8312d31a527403c00d7b67ab0d377a397a` |
-| TensorContractionStorage | `sdslvbench-a2b7fd8383074dd673a365d5` | `examples/SDSL-V/M36a/artifacts/tensorcontraction.spv` | 2820 | `9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7` |
+| NDArrayMaterializeStorage | `sdslvbench-8b1f66233dd54390f518e9c7` | `Examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv` | 1560 | `7ee4a36be544f4742c30aa13d159ce8312d31a527403c00d7b67ab0d377a397a` |
+| TensorContractionStorage | `sdslvbench-a2b7fd8383074dd673a365d5` | `Examples/SDSL-V/M36a/artifacts/tensorcontraction.spv` | 2820 | `9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7` |
 
 Generate with `go run ./tools/generate_m36b_canonical`. The manifest records
 DXC 1.9.0.5180 (`e35541826`), `-spirv -T cs_6_0 -E main

@@ -98,7 +98,7 @@ PM7 dogfood coverage verifies:
 3. Every registry entry matches the package manifest name, version, and kind mapping.
 4. No duplicate `Name@Version` entries exist.
 5. `Mathematics@0.1.0` appears and no `Math` alias appears.
-6. A temp consumer copied from `examples/PackageRegistryDogfood` can add the canonical registry, add `Mathematics@0.1.0`, sync, run an Oct test importing `Mathematics`, write `lock.octagon`, remove synced packages, sync with `--locked`, and run the Oct test again.
+6. A temp consumer copied from `Examples/PackageRegistryDogfood` can add the canonical registry, add `Mathematics@0.1.0`, sync, run an Oct test importing `Mathematics`, write `lock.octagon`, remove synced packages, sync with `--locked`, and run the Oct test again.
 7. A wrapper package entry can sync as source without creating `.oct/wrappers`.
 
 ## Future hosting path

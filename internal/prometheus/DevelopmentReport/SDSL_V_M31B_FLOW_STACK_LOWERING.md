@@ -56,7 +56,7 @@ Fresh toolchain/runtime environment:
 
 Stable replay proof:
 
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M31b/FlowStacks.sdslvtest --list`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M31b/FlowStacks.sdslvtest --list`
   produced deterministic stable IDs
 - `TestSdslvM31bStableCaseReplay` replayed `NestedPushPopLifo` by stable ID and
   passed
@@ -113,7 +113,7 @@ Passed in this workspace:
 - `go test ./internal/sdslv/...`
 - `go test ./cmd/oct`
 - `go test ./internal/... ./cmd/oct`
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M31b/FlowStacks.sdslvtest`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M31b/FlowStacks.sdslvtest`
 - `go run ./tools/prometheus_native_manifest -check`
 - `bash -n internal/prometheus/native/build_linux.sh`
 - `git diff --check`

@@ -37,20 +37,20 @@ or generated authority exists in this pass.
 ## 2. Inspected M1A authority
 
 - `internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1A_PAYLOAD_ENUMS_AND_EXHAUSTIVE_MATCH.md`
-- `examples/Concept-Vulkan/evt1_m1a_language.concept`
-- `examples/Concept-Vulkan/evt1_m1a_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_m1a_language.concept`
+- `Examples/Concept-Vulkan/evt1_m1a_vulkan.concept`
 
 ## 3. Inspected M1B-A authority
 
 - `internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_A_MUTABLE_STRUCTS_AND_NAMED_CONCEPT_REQUIREMENTS.md`
-- `examples/Concept-Vulkan/evt1_m1b_a_language.concept`
-- `examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_a_language.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept`
 
 ## 4. Inspected M1B-B authority
 
 - `internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_B_CONCEPT_CONSTRAINED_TEMPLATES_AND_DETERMINISTIC_MONOMORPHIZATION.md`
-- `examples/Concept-Vulkan/evt1_m1b_b_language.concept`
-- `examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_b_language.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept`
 
 ## 5. Preflight
 
@@ -354,11 +354,11 @@ New or materially extended diagnostics include:
 
 ## 52. Hardware-independent specimen
 
-- `examples/Concept-Vulkan/evt1_m1b_c_language.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_c_language.concept`
 
 ## 53. Vulkan-shaped specimen
 
-- `examples/Concept-Vulkan/evt1_m1b_c_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_c_vulkan.concept`
 
 ## 54. Native execution result
 

@@ -71,6 +71,72 @@ func TestGenerateUsesTypeCheckedInterpreterAndIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestGeneratedTimeDispatchCompilesInExternalModule(t *testing.T) {
+	consumer := t.TempDir()
+	generator := copyGenerator(t, filepath.Join("..", "..", "cmd", "octxiliary-time", "time_dispatch.oct"))
+	generated, err := Generate(generator, filepath.Join(filepath.Dir(generator), "time_dispatch.generated.go"))
+	if err != nil {
+		t.Fatalf("Generate external consumer output: %v", err)
+	}
+	if bytes.Contains(generated, []byte("github.com/yuechen-li-dev/oct/internal/")) {
+		t.Fatalf("external generated Go imports an Oct internal package:\n%s", generated)
+	}
+	if err := os.WriteFile(filepath.Join(consumer, "time_dispatch.generated.go"), generated, 0o644); err != nil {
+		t.Fatalf("write generated consumer output: %v", err)
+	}
+	support := `package main
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/yuechen-li-dev/oct/pkg/octxiliary"
+)
+
+func parseIso8601(value string) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil { return time.Time{}, err }
+	return parsed.UTC(), nil
+}
+
+func stringValue(value string) octxiliary.Value {
+	return octxiliary.Value{Kind: octxiliary.ValueString, String: value}
+}
+
+func intValue(value int) octxiliary.Value {
+	return octxiliary.Value{Kind: octxiliary.ValueInt, Int: value}
+}
+
+func expect(args []octxiliary.Value, kinds ...octxiliary.ValueKind) error {
+	if len(args) != len(kinds) { return fmt.Errorf("expected %d args, got %d", len(kinds), len(args)) }
+	for index, kind := range kinds {
+		if args[index].Kind != kind { return fmt.Errorf("arg %d expected %s, got %s", index+1, kind, args[index].Kind) }
+	}
+	return nil
+}
+`
+	if err := os.WriteFile(filepath.Join(consumer, "support.go"), []byte(support), 0o644); err != nil {
+		t.Fatalf("write external consumer support: %v", err)
+	}
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("resolve Oct module root: %v", err)
+	}
+	commands := [][]string{
+		{"mod", "init", "example.com/octgenconsumer"},
+		{"mod", "edit", "-require=github.com/yuechen-li-dev/oct@v0.0.0"},
+		{"mod", "edit", "-replace=github.com/yuechen-li-dev/oct=" + filepath.ToSlash(root)},
+		{"test", "-mod=mod", "."},
+	}
+	for _, arguments := range commands {
+		command := exec.Command("go", arguments...)
+		command.Dir = consumer
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("external module go %s: %v\n%s", strings.Join(arguments, " "), err, output)
+		}
+	}
+}
+
 func TestWriteAndCheckDetectStaleOutput(t *testing.T) {
 	generator := timeGenerator(t)
 	output := filepath.Join(filepath.Dir(generator), "time_dispatch.generated.go")

@@ -59,12 +59,12 @@ func TestSdslvValidatedTestDeclContainsAssertCallsAndExactSpans(t *testing.T) {
 }
 func TestSdslvStableIdsDeriveFromValidatedTests(t *testing.T) {
 	tests := validatedTestFixture(t)
-	cases := ValidatedTestCases(tests, "examples/SDSL-V/M29/fixture.sdslvtest")
+	cases := ValidatedTestCases(tests, "Examples/SDSL-V/M29/fixture.sdslvtest")
 	if len(cases) != 3 || cases[1].StableID == cases[2].StableID || cases[1].DisplayName != "Rows[0]" {
 		t.Fatalf("canonical cases: %#v", cases)
 	}
 	// Reversing a grouping/projection cannot change an already-derived ID.
-	again := ValidatedTestCases(tests, "examples/SDSL-V/M29/fixture.sdslvtest")
+	again := ValidatedTestCases(tests, "Examples/SDSL-V/M29/fixture.sdslvtest")
 	if cases[0].StableID != again[0].StableID || cases[1].StableID != again[1].StableID {
 		t.Fatal("stable IDs depend on downstream ordering")
 	}

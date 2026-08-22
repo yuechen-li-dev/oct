@@ -62,7 +62,7 @@ I/O, reflection, mutable compile-time state, or a hidden runtime.
 ## Independent compiler contract
 
 A future Wyrmcoil or Aurelian adapter should consume
-`examples/SDSL-V/conformance/manifest.json` and proceed through the six tiers:
+`Examples/SDSL-V/conformance/manifest.json` and proceed through the six tiers:
 
 1. acceptance/rejection parity;
 2. semantic manifest parity;

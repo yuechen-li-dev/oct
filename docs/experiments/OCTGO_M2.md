@@ -104,7 +104,7 @@ The generated bridge is an isolated nested Go module so ordinary Riemann
 `go build ./...` skips it. Its `go.mod` uses relative replacements for sibling
 checkouts named `Riemann` and `oct`; committed files contain no absolute path.
 This also works around an upstream Oct module-zip collision between `Examples/`
-and `examples/` on Windows.
+and `Examples/` on Windows.
 
 With both repositories checked out as siblings:
 

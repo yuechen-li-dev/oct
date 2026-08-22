@@ -220,7 +220,7 @@ with canonical SDSL-V HLSL generation, DXC SPIR-V generation, and `spirv-val`.
 
 | Evidence | Semantic | Erased control |
 |---|---|---|
-| HLSL SHA-256 | `9957188bf20cd6dd41205bbfb3b811e814f234779361c27b66406a6181e66dd2` | `dd2a71447f52fbde5c8fb505269b08f702c7b5a44f01c49c030a2df199904d27` |
+| HLSL SHA-256 | `798682fd39f37f97134ac17282bffe34658f6eb561c2c5cd423c6b300a144c98` | `3868b53b2a84c6084975b5a0a0e5580a5744f111c35ef7962d37d9c76a8eddad` |
 | SPIR-V SHA-256 | `bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743` | `bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743` |
 | `spirv-val` | pass | pass |
 
@@ -306,7 +306,7 @@ All closeout lanes passed on Windows:
 - canonical conformance verification, including every new valid/invalid fixture
   and the unchanged graphics-space corpus
 - `go run ./cmd/oct sdslv test
-  examples/SDSL-V/AttentionSpacePoc/AttentionSpaceGpuProof.sdslvtest`
+  Examples/SDSL-V/AttentionSpacePoc/AttentionSpaceGpuProof.sdslvtest`
 - semantic and erased HLSL/SPIR-V generation through DXC
 - standalone `spirv-val` on both modules
 - SPIR-V resource-interface disassembly inspection

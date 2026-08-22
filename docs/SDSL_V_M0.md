@@ -1,7 +1,7 @@
 # SDSL-V M0
 
 > Historical milestone note. The canonical language authority is now
-> `docs/SDSL_V_LANGUAGE_SPEC.md` plus `examples/SDSL-V/conformance/`; GoOct is
+> `docs/SDSL_V_LANGUAGE_SPEC.md` plus `Examples/SDSL-V/conformance/`; GoOct is
 > the reference implementation. Statements below describe the M0 subset at the
 > time and do not define current SDSL-V.
 
@@ -80,12 +80,12 @@ Compile-time concepts/configs/template shader specialization arrives in M5 and i
 ## CLI
 
 ```powershell
-go run ./cmd/oct sdslv check examples/SDSL-V/M0/VectorAdd.sdslv
-go run ./cmd/oct sdslv emit-vdmir examples/SDSL-V/M0/VectorAdd.sdslv
-go run ./cmd/oct sdslv emit-hlsl examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.hlsl
-go run ./cmd/oct sdslv compile-spv examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.spv
-go run ./cmd/oct sdslv generate-header examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add_spirv.h --symbol k_sdslv_vector_add_spirv
-go run ./cmd/oct sdslv test examples/SDSL-V/M0/basic.sdslvtest
+go run ./cmd/oct sdslv check Examples/SDSL-V/M0/VectorAdd.sdslv
+go run ./cmd/oct sdslv emit-vdmir Examples/SDSL-V/M0/VectorAdd.sdslv
+go run ./cmd/oct sdslv emit-hlsl Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.hlsl
+go run ./cmd/oct sdslv compile-spv Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.spv
+go run ./cmd/oct sdslv generate-header Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add_spirv.h --symbol k_sdslv_vector_add_spirv
+go run ./cmd/oct sdslv test Examples/SDSL-V/M0/basic.sdslvtest
 ```
 
 `emit-hlsl`, `compile-spv`, and `generate-header` all emit HLSL from `VD-MIR` rather than directly from the parsed SDSL-V AST.

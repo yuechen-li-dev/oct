@@ -36,7 +36,7 @@ The purity boundary permits literals, `Self`, bounded Boolean/numeric operators,
 
 Expansion synthesizes one package-local ordinary fallible function named internally as `__oct_refine_Name`. The function evaluates the declaration's requirement AST and returns the unwrapped representation on success. User syntax is rewritten to that function before checking and lowering. A compiler-only marker permits only this function's final base value to acquire the refined return identity.
 
-MIR keeps the refined type on storage and signatures but contains a constructor call only where source used explicit checked construction. Go emits `type Package_Name = concrete`, so allocation and wrapper counts are zero. The `examples/ConceptsM1` evidence has one static `255`, one runtime source, and two downstream consumers: MIR contains one constructor call; the static binding and both consumers contain no requirement text or branch. Generated Go has one `int` alias and exactly two requirement-failure branches inside the explicit constructor.
+MIR keeps the refined type on storage and signatures but contains a constructor call only where source used explicit checked construction. Go emits `type Package_Name = concrete`, so allocation and wrapper counts are zero. The `Examples/ConceptsM1` evidence has one static `255`, one runtime source, and two downstream consumers: MIR contains one constructor call; the static binding and both consumers contain no requirement text or branch. Generated Go has one `int` alias and exactly two requirement-failure branches inside the explicit constructor.
 
 ## Primary specimen: UI color
 
@@ -87,7 +87,7 @@ The executable-name scan covered `.oct`, `.octest`, `.octfail`, and non-Promethe
 | utility feature/evidence validators | `Libraries/Statistics.UtilityFit` | 2 | names, dimensions, observation consistency | 2 | retained |
 | point/vector-field-output validators | `Libraries/Tensor2D` | 6 | vector dimensional shape | 2 | retained |
 | thermal mass/cp and tau/dt helpers | `Libraries/Thermofluids` | 3 | relations between independent quantities | 3 | retained |
-| `CheckTools*` helpers | `examples/Chimera*` | 2 | tool availability / make target | 6 | retained; operational failure, not membership |
+| `CheckTools*` helpers | `Examples/Chimera*` | 2 | tool availability / make target | 6 | retained; operational failure, not membership |
 | name/version/manifest/wrapper/lock/registry validators | `internal/newpkg`, `manifest*`, `pkgmgr` | 9 | external metadata and graph consistency | 4 | retained at host boundary |
 | request/response/value validators | `internal/octxiliary` | 1 direct plus nested calls | transport and handle graph validation | 4 | retained; external protocol boundary |
 | OctGen artifact validation/check helpers | `internal/octgen`, `experimental/octgen` | 3 | path safety and generated-output freshness | 4/6 | retained; external artifact boundary / operational check |
@@ -145,7 +145,7 @@ Final command ledger:
 - language contracts: all 11 files under `Language/Types/ConceptsM1`;
 - production/specimen code: `Libraries/UI/UI.Style.oct`, `Libraries/Geometry/Geometry.Refinements.oct`, `Geometry.Planar.oct`, and `Geometry.Solids.oct`;
 - production tests: `Libraries/UI/UI.ConceptsM1.octest`, `Libraries/UI/UI.ConceptsM1InvalidChannel.octfail`, `Libraries/Geometry/Geometry.Planar.octest`, and `Geometry.Solids.octest`;
-- evidence and documentation: `examples/ConceptsM1/main.oct`, `Language/reference/language/18-concepts.md`, and `CONCEPTS_M1.md`.
+- evidence and documentation: `Examples/ConceptsM1/main.oct`, `Language/reference/language/18-concepts.md`, and `CONCEPTS_M1.md`.
 
 ## Limitations and rejected alternatives
 

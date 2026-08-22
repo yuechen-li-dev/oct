@@ -1,6 +1,6 @@
 {
   "schema": "concept-vulkan-evt1-mir.v1",
-  "module": "examples/Concept-Vulkan/evt1_dragongod_m1_language.concept",
+  "module": "Examples/Concept-Vulkan/evt1_dragongod_m1_language.concept",
   "enums": [
     {
       "name": "LifecycleSignal",
@@ -518,7 +518,7 @@
         {
           "id": "OutcomeCode.02",
           "kind": "match_expr",
-          "detail": "5 arms",
+          "detail": "6 arms",
           "source_span": {
             "line": 116,
             "column": 12
@@ -622,6 +622,24 @@
             "line": 121,
             "column": 53
           }
+        },
+        {
+          "id": "OutcomeCode.14",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::EffectBatchOccupied",
+          "source_span": {
+            "line": 122,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.15",
+          "kind": "literal",
+          "detail": "6",
+          "source_span": {
+            "line": 122,
+            "column": 57
+          }
         }
       ],
       "source_span": {
@@ -635,7 +653,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 125,
+          "line": 126,
           "column": 1
         }
       },
@@ -645,7 +663,7 @@
           "kind": "instance_decl",
           "detail": "ImmediateLifecycle lifecycle",
           "source_span": {
-            "line": 127,
+            "line": 128,
             "column": 5
           }
         },
@@ -654,7 +672,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 128,
+            "line": 129,
             "column": 5
           }
         },
@@ -663,7 +681,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 128,
+            "line": 129,
             "column": 12
           }
         },
@@ -672,7 +690,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 128,
+            "line": 129,
             "column": 24
           }
         },
@@ -681,13 +699,13 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Create",
           "source_span": {
-            "line": 128,
+            "line": 129,
             "column": 44
           }
         }
       ],
       "source_span": {
-        "line": 125,
+        "line": 126,
         "column": 5
       }
     },
@@ -697,7 +715,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 131,
+          "line": 132,
           "column": 1
         }
       },
@@ -707,7 +725,7 @@
           "kind": "instance_decl",
           "detail": "SingleStepLifecycle lifecycle",
           "source_span": {
-            "line": 133,
+            "line": 134,
             "column": 5
           }
         },
@@ -716,7 +734,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 134,
+            "line": 135,
             "column": 5
           }
         },
@@ -725,7 +743,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 134,
+            "line": 135,
             "column": 12
           }
         },
@@ -734,7 +752,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 134,
+            "line": 135,
             "column": 24
           }
         },
@@ -743,13 +761,13 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Create",
           "source_span": {
-            "line": 134,
+            "line": 135,
             "column": 44
           }
         }
       ],
       "source_span": {
-        "line": 131,
+        "line": 132,
         "column": 5
       }
     },
@@ -759,7 +777,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 137,
+          "line": 138,
           "column": 1
         }
       },
@@ -769,7 +787,7 @@
           "kind": "instance_decl",
           "detail": "ResourceLifecycle lifecycle",
           "source_span": {
-            "line": 139,
+            "line": 140,
             "column": 5
           }
         },
@@ -779,7 +797,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "first",
           "source_span": {
-            "line": 140,
+            "line": 141,
             "column": 29
           }
         },
@@ -788,7 +806,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 140,
+            "line": 141,
             "column": 37
           }
         },
@@ -797,7 +815,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 140,
+            "line": 141,
             "column": 57
           }
         },
@@ -807,7 +825,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "second",
           "source_span": {
-            "line": 141,
+            "line": 142,
             "column": 29
           }
         },
@@ -816,7 +834,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 141,
+            "line": 142,
             "column": 38
           }
         },
@@ -825,7 +843,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Create",
           "source_span": {
-            "line": 141,
+            "line": 142,
             "column": 58
           }
         },
@@ -834,7 +852,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 142,
+            "line": 143,
             "column": 5
           }
         },
@@ -843,7 +861,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 142,
+            "line": 143,
             "column": 36
           }
         },
@@ -852,7 +870,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 142,
+            "line": 143,
             "column": 31
           }
         },
@@ -861,7 +879,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 142,
+            "line": 143,
             "column": 12
           }
         },
@@ -870,7 +888,7 @@
           "kind": "name",
           "detail": "first",
           "source_span": {
-            "line": 142,
+            "line": 143,
             "column": 24
           }
         },
@@ -879,7 +897,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 142,
+            "line": 143,
             "column": 33
           }
         },
@@ -888,7 +906,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 142,
+            "line": 143,
             "column": 38
           }
         },
@@ -897,13 +915,13 @@
           "kind": "name",
           "detail": "second",
           "source_span": {
-            "line": 142,
+            "line": 143,
             "column": 50
           }
         }
       ],
       "source_span": {
-        "line": 137,
+        "line": 138,
         "column": 5
       }
     },
@@ -913,7 +931,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 145,
+          "line": 146,
           "column": 1
         }
       },
@@ -923,7 +941,7 @@
           "kind": "instance_decl",
           "detail": "ResourceLifecycle lifecycle",
           "source_span": {
-            "line": 147,
+            "line": 148,
             "column": 5
           }
         },
@@ -933,7 +951,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 148,
+            "line": 149,
             "column": 29
           }
         },
@@ -942,7 +960,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 148,
+            "line": 149,
             "column": 33
           }
         },
@@ -951,7 +969,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Create",
           "source_span": {
-            "line": 148,
+            "line": 149,
             "column": 53
           }
         },
@@ -961,7 +979,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 149,
+            "line": 150,
             "column": 29
           }
         },
@@ -970,7 +988,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 149,
+            "line": 150,
             "column": 33
           }
         },
@@ -979,7 +997,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Clean",
           "source_span": {
-            "line": 149,
+            "line": 150,
             "column": 53
           }
         },
@@ -989,7 +1007,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "c",
           "source_span": {
-            "line": 150,
+            "line": 151,
             "column": 29
           }
         },
@@ -998,7 +1016,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 150,
+            "line": 151,
             "column": 33
           }
         },
@@ -1007,7 +1025,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Release",
           "source_span": {
-            "line": 150,
+            "line": 151,
             "column": 53
           }
         },
@@ -1017,7 +1035,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "d",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 29
           }
         },
@@ -1026,7 +1044,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 33
           }
         },
@@ -1035,7 +1053,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Sweep",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 53
           }
         },
@@ -1045,7 +1063,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "e",
           "source_span": {
-            "line": 152,
+            "line": 153,
             "column": 29
           }
         },
@@ -1054,7 +1072,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 152,
+            "line": 153,
             "column": 33
           }
         },
@@ -1063,7 +1081,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Confirm",
           "source_span": {
-            "line": 152,
+            "line": 153,
             "column": 53
           }
         },
@@ -1073,7 +1091,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "f",
           "source_span": {
-            "line": 153,
+            "line": 154,
             "column": 29
           }
         },
@@ -1082,7 +1100,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 153,
+            "line": 154,
             "column": 33
           }
         },
@@ -1091,7 +1109,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 153,
+            "line": 154,
             "column": 53
           }
         },
@@ -1100,7 +1118,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 5
           }
         },
@@ -1109,7 +1127,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 158,
+            "line": 159,
             "column": 29
           }
         },
@@ -1118,7 +1136,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 157,
+            "line": 158,
             "column": 30
           }
         },
@@ -1127,7 +1145,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 156,
+            "line": 157,
             "column": 31
           }
         },
@@ -1136,7 +1154,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 155,
+            "line": 156,
             "column": 32
           }
         },
@@ -1145,7 +1163,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 36
           }
         },
@@ -1154,7 +1172,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 27
           }
         },
@@ -1163,7 +1181,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 12
           }
         },
@@ -1172,7 +1190,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 24
           }
         },
@@ -1181,7 +1199,7 @@
           "kind": "literal",
           "detail": "100000",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 29
           }
         },
@@ -1190,7 +1208,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 155,
+            "line": 156,
             "column": 24
           }
         },
@@ -1199,7 +1217,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 155,
+            "line": 156,
             "column": 9
           }
         },
@@ -1208,7 +1226,7 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 155,
+            "line": 156,
             "column": 21
           }
         },
@@ -1217,7 +1235,7 @@
           "kind": "literal",
           "detail": "10000",
           "source_span": {
-            "line": 155,
+            "line": 156,
             "column": 26
           }
         },
@@ -1226,7 +1244,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 156,
+            "line": 157,
             "column": 24
           }
         },
@@ -1235,7 +1253,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 156,
+            "line": 157,
             "column": 9
           }
         },
@@ -1244,7 +1262,7 @@
           "kind": "name",
           "detail": "c",
           "source_span": {
-            "line": 156,
+            "line": 157,
             "column": 21
           }
         },
@@ -1253,7 +1271,7 @@
           "kind": "literal",
           "detail": "1000",
           "source_span": {
-            "line": 156,
+            "line": 157,
             "column": 26
           }
         },
@@ -1262,7 +1280,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 157,
+            "line": 158,
             "column": 24
           }
         },
@@ -1271,7 +1289,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 157,
+            "line": 158,
             "column": 9
           }
         },
@@ -1280,7 +1298,7 @@
           "kind": "name",
           "detail": "d",
           "source_span": {
-            "line": 157,
+            "line": 158,
             "column": 21
           }
         },
@@ -1289,7 +1307,7 @@
           "kind": "literal",
           "detail": "100",
           "source_span": {
-            "line": 157,
+            "line": 158,
             "column": 26
           }
         },
@@ -1298,7 +1316,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 158,
+            "line": 159,
             "column": 24
           }
         },
@@ -1307,7 +1325,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 158,
+            "line": 159,
             "column": 9
           }
         },
@@ -1316,7 +1334,7 @@
           "kind": "name",
           "detail": "e",
           "source_span": {
-            "line": 158,
+            "line": 159,
             "column": 21
           }
         },
@@ -1325,7 +1343,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 158,
+            "line": 159,
             "column": 26
           }
         },
@@ -1334,7 +1352,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 159,
+            "line": 160,
             "column": 9
           }
         },
@@ -1343,13 +1361,13 @@
           "kind": "name",
           "detail": "f",
           "source_span": {
-            "line": 159,
+            "line": 160,
             "column": 21
           }
         }
       ],
       "source_span": {
-        "line": 145,
+        "line": 146,
         "column": 5
       }
     },
@@ -1359,7 +1377,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 162,
+          "line": 163,
           "column": 1
         }
       },
@@ -1369,7 +1387,7 @@
           "kind": "instance_decl",
           "detail": "ResourceLifecycle lifecycle",
           "source_span": {
-            "line": 164,
+            "line": 165,
             "column": 5
           }
         },
@@ -1379,7 +1397,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 165,
+            "line": 166,
             "column": 29
           }
         },
@@ -1388,7 +1406,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 165,
+            "line": 166,
             "column": 33
           }
         },
@@ -1397,7 +1415,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Create",
           "source_span": {
-            "line": 165,
+            "line": 166,
             "column": 53
           }
         },
@@ -1407,7 +1425,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 166,
+            "line": 167,
             "column": 29
           }
         },
@@ -1416,7 +1434,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 166,
+            "line": 167,
             "column": 33
           }
         },
@@ -1425,7 +1443,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Begin",
           "source_span": {
-            "line": 166,
+            "line": 167,
             "column": 53
           }
         },
@@ -1435,7 +1453,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "c",
           "source_span": {
-            "line": 167,
+            "line": 168,
             "column": 29
           }
         },
@@ -1444,7 +1462,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 167,
+            "line": 168,
             "column": 33
           }
         },
@@ -1453,7 +1471,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Clean",
           "source_span": {
-            "line": 167,
+            "line": 168,
             "column": 53
           }
         },
@@ -1463,7 +1481,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "d",
           "source_span": {
-            "line": 168,
+            "line": 169,
             "column": 29
           }
         },
@@ -1472,7 +1490,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 168,
+            "line": 169,
             "column": 33
           }
         },
@@ -1481,7 +1499,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Release",
           "source_span": {
-            "line": 168,
+            "line": 169,
             "column": 53
           }
         },
@@ -1491,7 +1509,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "e",
           "source_span": {
-            "line": 169,
+            "line": 170,
             "column": 29
           }
         },
@@ -1500,7 +1518,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 169,
+            "line": 170,
             "column": 33
           }
         },
@@ -1509,7 +1527,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Sweep",
           "source_span": {
-            "line": 169,
+            "line": 170,
             "column": 53
           }
         },
@@ -1519,7 +1537,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "f",
           "source_span": {
-            "line": 170,
+            "line": 171,
             "column": 29
           }
         },
@@ -1528,7 +1546,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 170,
+            "line": 171,
             "column": 33
           }
         },
@@ -1537,7 +1555,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Confirm",
           "source_span": {
-            "line": 170,
+            "line": 171,
             "column": 53
           }
         },
@@ -1547,7 +1565,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "g",
           "source_span": {
-            "line": 171,
+            "line": 172,
             "column": 29
           }
         },
@@ -1556,7 +1574,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 171,
+            "line": 172,
             "column": 33
           }
         },
@@ -1565,7 +1583,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Tick",
           "source_span": {
-            "line": 171,
+            "line": 172,
             "column": 53
           }
         },
@@ -1574,7 +1592,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 172,
+            "line": 173,
             "column": 5
           }
         },
@@ -1583,7 +1601,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 177,
+            "line": 178,
             "column": 29
           }
         },
@@ -1592,7 +1610,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 176,
+            "line": 177,
             "column": 30
           }
         },
@@ -1601,7 +1619,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 175,
+            "line": 176,
             "column": 31
           }
         },
@@ -1610,7 +1628,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 174,
+            "line": 175,
             "column": 32
           }
         },
@@ -1619,7 +1637,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 173,
+            "line": 174,
             "column": 33
           }
         },
@@ -1628,7 +1646,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 172,
+            "line": 173,
             "column": 37
           }
         },
@@ -1637,7 +1655,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 172,
+            "line": 173,
             "column": 27
           }
         },
@@ -1646,7 +1664,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 172,
+            "line": 173,
             "column": 12
           }
         },
@@ -1655,7 +1673,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 172,
+            "line": 173,
             "column": 24
           }
         },
@@ -1664,7 +1682,7 @@
           "kind": "literal",
           "detail": "1000000",
           "source_span": {
-            "line": 172,
+            "line": 173,
             "column": 29
           }
         },
@@ -1673,7 +1691,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 173,
+            "line": 174,
             "column": 24
           }
         },
@@ -1682,7 +1700,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 173,
+            "line": 174,
             "column": 9
           }
         },
@@ -1691,7 +1709,7 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 173,
+            "line": 174,
             "column": 21
           }
         },
@@ -1700,7 +1718,7 @@
           "kind": "literal",
           "detail": "100000",
           "source_span": {
-            "line": 173,
+            "line": 174,
             "column": 26
           }
         },
@@ -1709,7 +1727,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 174,
+            "line": 175,
             "column": 24
           }
         },
@@ -1718,7 +1736,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 174,
+            "line": 175,
             "column": 9
           }
         },
@@ -1727,7 +1745,7 @@
           "kind": "name",
           "detail": "c",
           "source_span": {
-            "line": 174,
+            "line": 175,
             "column": 21
           }
         },
@@ -1736,7 +1754,7 @@
           "kind": "literal",
           "detail": "10000",
           "source_span": {
-            "line": 174,
+            "line": 175,
             "column": 26
           }
         },
@@ -1745,7 +1763,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 175,
+            "line": 176,
             "column": 24
           }
         },
@@ -1754,7 +1772,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 175,
+            "line": 176,
             "column": 9
           }
         },
@@ -1763,7 +1781,7 @@
           "kind": "name",
           "detail": "d",
           "source_span": {
-            "line": 175,
+            "line": 176,
             "column": 21
           }
         },
@@ -1772,7 +1790,7 @@
           "kind": "literal",
           "detail": "1000",
           "source_span": {
-            "line": 175,
+            "line": 176,
             "column": 26
           }
         },
@@ -1781,7 +1799,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 176,
+            "line": 177,
             "column": 24
           }
         },
@@ -1790,7 +1808,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 176,
+            "line": 177,
             "column": 9
           }
         },
@@ -1799,7 +1817,7 @@
           "kind": "name",
           "detail": "e",
           "source_span": {
-            "line": 176,
+            "line": 177,
             "column": 21
           }
         },
@@ -1808,7 +1826,7 @@
           "kind": "literal",
           "detail": "100",
           "source_span": {
-            "line": 176,
+            "line": 177,
             "column": 26
           }
         },
@@ -1817,7 +1835,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 177,
+            "line": 178,
             "column": 24
           }
         },
@@ -1826,7 +1844,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 177,
+            "line": 178,
             "column": 9
           }
         },
@@ -1835,7 +1853,7 @@
           "kind": "name",
           "detail": "f",
           "source_span": {
-            "line": 177,
+            "line": 178,
             "column": 21
           }
         },
@@ -1844,7 +1862,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 177,
+            "line": 178,
             "column": 26
           }
         },
@@ -1853,7 +1871,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 178,
+            "line": 179,
             "column": 9
           }
         },
@@ -1862,13 +1880,13 @@
           "kind": "name",
           "detail": "g",
           "source_span": {
-            "line": 178,
+            "line": 179,
             "column": 21
           }
         }
       ],
       "source_span": {
-        "line": 162,
+        "line": 163,
         "column": 5
       }
     },
@@ -1878,7 +1896,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 181,
+          "line": 182,
           "column": 1
         }
       },
@@ -1888,7 +1906,7 @@
           "kind": "instance_decl",
           "detail": "ResourceLifecycle lifecycle",
           "source_span": {
-            "line": 183,
+            "line": 184,
             "column": 5
           }
         },
@@ -1898,7 +1916,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 184,
+            "line": 185,
             "column": 29
           }
         },
@@ -1907,7 +1925,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 184,
+            "line": 185,
             "column": 33
           }
         },
@@ -1916,7 +1934,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Create",
           "source_span": {
-            "line": 184,
+            "line": 185,
             "column": 53
           }
         },
@@ -1926,7 +1944,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 185,
+            "line": 186,
             "column": 29
           }
         },
@@ -1935,7 +1953,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 185,
+            "line": 186,
             "column": 33
           }
         },
@@ -1944,7 +1962,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Clean",
           "source_span": {
-            "line": 185,
+            "line": 186,
             "column": 53
           }
         },
@@ -1954,7 +1972,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "c",
           "source_span": {
-            "line": 186,
+            "line": 187,
             "column": 29
           }
         },
@@ -1963,7 +1981,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 186,
+            "line": 187,
             "column": 33
           }
         },
@@ -1972,7 +1990,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Release",
           "source_span": {
-            "line": 186,
+            "line": 187,
             "column": 53
           }
         },
@@ -1982,7 +2000,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "d",
           "source_span": {
-            "line": 187,
+            "line": 188,
             "column": 29
           }
         },
@@ -1991,7 +2009,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 187,
+            "line": 188,
             "column": 33
           }
         },
@@ -2000,7 +2018,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Sweep",
           "source_span": {
-            "line": 187,
+            "line": 188,
             "column": 53
           }
         },
@@ -2010,7 +2028,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "e",
           "source_span": {
-            "line": 188,
+            "line": 189,
             "column": 29
           }
         },
@@ -2019,7 +2037,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 188,
+            "line": 189,
             "column": 33
           }
         },
@@ -2028,7 +2046,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 188,
+            "line": 189,
             "column": 53
           }
         },
@@ -2038,7 +2056,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "f",
           "source_span": {
-            "line": 189,
+            "line": 190,
             "column": 29
           }
         },
@@ -2047,7 +2065,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 189,
+            "line": 190,
             "column": 33
           }
         },
@@ -2056,7 +2074,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Tick",
           "source_span": {
-            "line": 189,
+            "line": 190,
             "column": 53
           }
         },
@@ -2065,7 +2083,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 190,
+            "line": 191,
             "column": 5
           }
         },
@@ -2074,7 +2092,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 194,
+            "line": 195,
             "column": 29
           }
         },
@@ -2083,7 +2101,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 193,
+            "line": 194,
             "column": 30
           }
         },
@@ -2092,7 +2110,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 192,
+            "line": 193,
             "column": 31
           }
         },
@@ -2101,7 +2119,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 191,
+            "line": 192,
             "column": 32
           }
         },
@@ -2110,7 +2128,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 190,
+            "line": 191,
             "column": 36
           }
         },
@@ -2119,7 +2137,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 190,
+            "line": 191,
             "column": 27
           }
         },
@@ -2128,7 +2146,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 190,
+            "line": 191,
             "column": 12
           }
         },
@@ -2137,7 +2155,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 190,
+            "line": 191,
             "column": 24
           }
         },
@@ -2146,7 +2164,7 @@
           "kind": "literal",
           "detail": "100000",
           "source_span": {
-            "line": 190,
+            "line": 191,
             "column": 29
           }
         },
@@ -2155,7 +2173,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 191,
+            "line": 192,
             "column": 24
           }
         },
@@ -2164,7 +2182,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 191,
+            "line": 192,
             "column": 9
           }
         },
@@ -2173,7 +2191,7 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 191,
+            "line": 192,
             "column": 21
           }
         },
@@ -2182,7 +2200,7 @@
           "kind": "literal",
           "detail": "10000",
           "source_span": {
-            "line": 191,
+            "line": 192,
             "column": 26
           }
         },
@@ -2191,7 +2209,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 192,
+            "line": 193,
             "column": 24
           }
         },
@@ -2200,7 +2218,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 192,
+            "line": 193,
             "column": 9
           }
         },
@@ -2209,7 +2227,7 @@
           "kind": "name",
           "detail": "c",
           "source_span": {
-            "line": 192,
+            "line": 193,
             "column": 21
           }
         },
@@ -2218,7 +2236,7 @@
           "kind": "literal",
           "detail": "1000",
           "source_span": {
-            "line": 192,
+            "line": 193,
             "column": 26
           }
         },
@@ -2227,7 +2245,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 193,
+            "line": 194,
             "column": 24
           }
         },
@@ -2236,7 +2254,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 193,
+            "line": 194,
             "column": 9
           }
         },
@@ -2245,7 +2263,7 @@
           "kind": "name",
           "detail": "d",
           "source_span": {
-            "line": 193,
+            "line": 194,
             "column": 21
           }
         },
@@ -2254,7 +2272,7 @@
           "kind": "literal",
           "detail": "100",
           "source_span": {
-            "line": 193,
+            "line": 194,
             "column": 26
           }
         },
@@ -2263,7 +2281,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 194,
+            "line": 195,
             "column": 24
           }
         },
@@ -2272,7 +2290,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 194,
+            "line": 195,
             "column": 9
           }
         },
@@ -2281,7 +2299,7 @@
           "kind": "name",
           "detail": "e",
           "source_span": {
-            "line": 194,
+            "line": 195,
             "column": 21
           }
         },
@@ -2290,7 +2308,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 194,
+            "line": 195,
             "column": 26
           }
         },
@@ -2299,7 +2317,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 195,
+            "line": 196,
             "column": 9
           }
         },
@@ -2308,13 +2326,13 @@
           "kind": "name",
           "detail": "f",
           "source_span": {
-            "line": 195,
+            "line": 196,
             "column": 21
           }
         }
       ],
       "source_span": {
-        "line": 181,
+        "line": 182,
         "column": 5
       }
     },
@@ -2324,7 +2342,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 198,
+          "line": 199,
           "column": 1
         }
       },
@@ -2334,7 +2352,7 @@
           "kind": "instance_decl",
           "detail": "ResourceLifecycle left",
           "source_span": {
-            "line": 200,
+            "line": 201,
             "column": 5
           }
         },
@@ -2343,7 +2361,7 @@
           "kind": "instance_decl",
           "detail": "ResourceLifecycle right",
           "source_span": {
-            "line": 201,
+            "line": 202,
             "column": 5
           }
         },
@@ -2353,7 +2371,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 202,
+            "line": 203,
             "column": 29
           }
         },
@@ -2362,7 +2380,7 @@
           "kind": "dispatch",
           "detail": "left",
           "source_span": {
-            "line": 202,
+            "line": 203,
             "column": 33
           }
         },
@@ -2371,7 +2389,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Create",
           "source_span": {
-            "line": 202,
+            "line": 203,
             "column": 48
           }
         },
@@ -2381,7 +2399,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 203,
+            "line": 204,
             "column": 29
           }
         },
@@ -2390,7 +2408,7 @@
           "kind": "dispatch",
           "detail": "left",
           "source_span": {
-            "line": 203,
+            "line": 204,
             "column": 33
           }
         },
@@ -2399,7 +2417,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Tick",
           "source_span": {
-            "line": 203,
+            "line": 204,
             "column": 48
           }
         },
@@ -2409,7 +2427,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "c",
           "source_span": {
-            "line": 204,
+            "line": 205,
             "column": 29
           }
         },
@@ -2418,7 +2436,7 @@
           "kind": "dispatch",
           "detail": "right",
           "source_span": {
-            "line": 204,
+            "line": 205,
             "column": 33
           }
         },
@@ -2427,7 +2445,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 204,
+            "line": 205,
             "column": 49
           }
         },
@@ -2437,7 +2455,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "d",
           "source_span": {
-            "line": 205,
+            "line": 206,
             "column": 29
           }
         },
@@ -2446,7 +2464,7 @@
           "kind": "dispatch",
           "detail": "right",
           "source_span": {
-            "line": 205,
+            "line": 206,
             "column": 33
           }
         },
@@ -2455,7 +2473,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Create",
           "source_span": {
-            "line": 205,
+            "line": 206,
             "column": 49
           }
         },
@@ -2464,7 +2482,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 206,
+            "line": 207,
             "column": 5
           }
         },
@@ -2473,7 +2491,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 208,
+            "line": 209,
             "column": 29
           }
         },
@@ -2482,7 +2500,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 207,
+            "line": 208,
             "column": 30
           }
         },
@@ -2491,7 +2509,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 206,
+            "line": 207,
             "column": 34
           }
         },
@@ -2500,7 +2518,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 206,
+            "line": 207,
             "column": 27
           }
         },
@@ -2509,7 +2527,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 206,
+            "line": 207,
             "column": 12
           }
         },
@@ -2518,7 +2536,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 206,
+            "line": 207,
             "column": 24
           }
         },
@@ -2527,7 +2545,7 @@
           "kind": "literal",
           "detail": "1000",
           "source_span": {
-            "line": 206,
+            "line": 207,
             "column": 29
           }
         },
@@ -2536,7 +2554,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 207,
+            "line": 208,
             "column": 24
           }
         },
@@ -2545,7 +2563,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 207,
+            "line": 208,
             "column": 9
           }
         },
@@ -2554,7 +2572,7 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 207,
+            "line": 208,
             "column": 21
           }
         },
@@ -2563,7 +2581,7 @@
           "kind": "literal",
           "detail": "100",
           "source_span": {
-            "line": 207,
+            "line": 208,
             "column": 26
           }
         },
@@ -2572,7 +2590,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 208,
+            "line": 209,
             "column": 24
           }
         },
@@ -2581,7 +2599,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 208,
+            "line": 209,
             "column": 9
           }
         },
@@ -2590,7 +2608,7 @@
           "kind": "name",
           "detail": "c",
           "source_span": {
-            "line": 208,
+            "line": 209,
             "column": 21
           }
         },
@@ -2599,7 +2617,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 208,
+            "line": 209,
             "column": 26
           }
         },
@@ -2608,7 +2626,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 209,
+            "line": 210,
             "column": 9
           }
         },
@@ -2617,13 +2635,13 @@
           "kind": "name",
           "detail": "d",
           "source_span": {
-            "line": 209,
+            "line": 210,
             "column": 21
           }
         }
       ],
       "source_span": {
-        "line": 198,
+        "line": 199,
         "column": 5
       }
     }

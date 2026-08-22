@@ -5,12 +5,12 @@
     {
       "diagnostic": "SDSL-V4123",
       "mistake": "cross-stream positioned-key use",
-      "path": "examples/SDSL-V/conformance/invalid/MainTransformerContextKeyAsImageKey.sdslvinvalid"
+      "path": "Examples/SDSL-V/conformance/invalid/MainTransformerContextKeyAsImageKey.sdslvinvalid"
     },
     {
       "diagnostic": "SDSL-V4123",
       "mistake": "context coordinate passed to image RoPE",
-      "path": "examples/SDSL-V/conformance/invalid/MainTransformerContextCoordinateAsImageCoordinate.sdslvinvalid"
+      "path": "Examples/SDSL-V/conformance/invalid/MainTransformerContextCoordinateAsImageCoordinate.sdslvinvalid"
     }
   ],
   "non_claim": "token axes and probability-to-value token alignment remain out of scope for current SDSL-V tensor-axis typing",

@@ -136,11 +136,11 @@ SDSL-V M23 does not support when policy; hysteresis/min_commit require persisten
 
 ## Examples
 
-- `examples/SDSL-V/M19/GuardWhenBasic.sdslv`
-- `examples/SDSL-V/M19/GuardWhenTilePath.sdslv`
-- `examples/SDSL-V/M19/GuardWhenWithComptimeFor.sdslv`
-- `examples/SDSL-V/M21/BoardGuardWhenTileLoad.sdslv`
-- `examples/SDSL-V/M22/FlowStateGuardWhenTileLoad.sdslv`
+- `Examples/SDSL-V/M19/GuardWhenBasic.sdslv`
+- `Examples/SDSL-V/M19/GuardWhenTilePath.sdslv`
+- `Examples/SDSL-V/M19/GuardWhenWithComptimeFor.sdslv`
+- `Examples/SDSL-V/M21/BoardGuardWhenTileLoad.sdslv`
+- `Examples/SDSL-V/M22/FlowStateGuardWhenTileLoad.sdslv`
 
 ## Prometheus M20 Usage
 

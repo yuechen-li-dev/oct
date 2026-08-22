@@ -116,7 +116,7 @@ Focused permanent coverage added in this milestone:
 
 ## GPU execution suite
 
-`examples/SDSL-V/M35a/PackedVectorIntrinsics.sdslvtest` passes on the native
+`Examples/SDSL-V/M35a/PackedVectorIntrinsics.sdslvtest` passes on the native
 host path and covers:
 
 - float2/3/4 component access
@@ -212,7 +212,7 @@ The following requested validation commands passed in this checkout:
 Additional M35a proof commands passed:
 
 - `go run ./cmd/oct sdslv check` on both M35a valid fixtures
-- `go run ./cmd/oct sdslv test examples/SDSL-V/M35a/PackedVectorIntrinsics.sdslvtest`
+- `go run ./cmd/oct sdslv test Examples/SDSL-V/M35a/PackedVectorIntrinsics.sdslvtest`
 - `go run ./cmd/oct sdslv test ... --case sdslv-cee03b47422cb60a9e363bfb`
 - `out\\prometheus\\native\\marionette_tests.exe PrometheusAuditOriginalFivePairwiseHardware`
 - the same audit lane with `PROMETHEUS_VK_VALIDATION=1`

@@ -43,7 +43,7 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
-			module, err := ParseEVT1(filepath.ToSlash(filepath.Join("examples", "Concept-Vulkan", name)), src)
+			module, err := ParseEVT1(filepath.ToSlash(filepath.Join("Examples", "Concept-Vulkan", name)), src)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -125,7 +125,7 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
-			module, err := ParseEVT1(filepath.ToSlash(filepath.Join("examples", "Concept-Vulkan", name)), src)
+			module, err := ParseEVT1(filepath.ToSlash(filepath.Join("Examples", "Concept-Vulkan", name)), src)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -142,7 +142,7 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 
 func TestEVT1DoubleGenerationMatchesAcrossDirectories(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_m1b_b_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestEVT1DoubleGenerationMatchesAcrossDirectories(t *testing.T) {
 
 func TestEVT1CGenerationUsesTransparentStructsAndNoConceptRuntime(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_m1b_b_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,7 +547,7 @@ func TestEVT1M1BDDiagnosticsAreStable(t *testing.T) {
 
 func TestEVT1M1BCGenerationErasesComptimeRuntime(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_m1b_c_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_c_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_c_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,7 +569,7 @@ func TestEVT1M1BCGenerationErasesComptimeRuntime(t *testing.T) {
 
 func TestEVT1M1BDGenerationErasesComptimeRuntime(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_m1b_d_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_d_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_d_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +593,7 @@ func TestEVT1M1BDGenerationErasesComptimeRuntime(t *testing.T) {
 
 func TestDragonGodM0GenerationErasesAutomataRuntime(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_dragongod_m0_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m0_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m0_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +612,7 @@ func TestDragonGodM0GenerationErasesAutomataRuntime(t *testing.T) {
 
 func TestDragonGodM1GenerationIncludesRuntimeDispatch(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_dragongod_m1_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m1_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m1_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -637,7 +637,7 @@ func TestDragonGodM1GenerationIncludesRuntimeDispatch(t *testing.T) {
 
 func TestDragonGodM2GenerationIncludesGuardedDispatch(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_dragongod_m2_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m2_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m2_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -662,7 +662,7 @@ func TestDragonGodM2GenerationIncludesGuardedDispatch(t *testing.T) {
 
 func TestDragonGodM3GenerationIncludesEffectBatchStaging(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_dragongod_m3_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m3_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m3_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,7 +695,7 @@ func TestDragonGodM4SpecimensParseAndGenerate(t *testing.T) {
 	} {
 		t.Run(fixture, func(t *testing.T) {
 			src := readEVT1Fixture(t, fixture)
-			module, err := ParseEVT1("examples/Concept-Vulkan/"+fixture, src)
+			module, err := ParseEVT1("Examples/Concept-Vulkan/"+fixture, src)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -919,7 +919,7 @@ func TestDragonGodM0DiagnosticsAreStable(t *testing.T) {
 		},
 		{
 			name: "machine count limit",
-			src: "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) {\ninitial machine M0 { initial state S { on Signal::Go goto D; } terminal state D { finish; } }\nmachine M1 { initial terminal state S { pop; } }\nmachine M2 { initial terminal state S { pop; } }\nmachine M3 { initial terminal state S { pop; } }\nmachine M4 { initial terminal state S { pop; } }\nmachine M5 { initial terminal state S { pop; } }\nmachine M6 { initial terminal state S { pop; } }\nmachine M7 { initial terminal state S { pop; } }\nmachine M8 { initial terminal state S { pop; } }\nmachine M9 { initial terminal state S { pop; } }\nmachine M10 { initial terminal state S { pop; } }\nmachine M11 { initial terminal state S { pop; } }\nmachine M12 { initial terminal state S { pop; } }\nmachine M13 { initial terminal state S { pop; } }\nmachine M14 { initial terminal state S { pop; } }\nmachine M15 { initial terminal state S { pop; } }\nmachine M16 { initial terminal state S { pop; } }\n}\nint Value() { return 1; }\n",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) {\ninitial machine M0 { initial state S { on Signal::Go goto D; } terminal state D { finish; } }\nmachine M1 { initial terminal state S { pop; } }\nmachine M2 { initial terminal state S { pop; } }\nmachine M3 { initial terminal state S { pop; } }\nmachine M4 { initial terminal state S { pop; } }\nmachine M5 { initial terminal state S { pop; } }\nmachine M6 { initial terminal state S { pop; } }\nmachine M7 { initial terminal state S { pop; } }\nmachine M8 { initial terminal state S { pop; } }\nmachine M9 { initial terminal state S { pop; } }\nmachine M10 { initial terminal state S { pop; } }\nmachine M11 { initial terminal state S { pop; } }\nmachine M12 { initial terminal state S { pop; } }\nmachine M13 { initial terminal state S { pop; } }\nmachine M14 { initial terminal state S { pop; } }\nmachine M15 { initial terminal state S { pop; } }\nmachine M16 { initial terminal state S { pop; } }\n}\nint Value() { return 1; }\n",
 			code: "CV4265",
 		},
 		{
@@ -1089,7 +1089,7 @@ func TestDragonGodM3DiagnosticsAreStable(t *testing.T) {
 
 func TestEVT1CheckRejectsHandEdit(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_m1b_a_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_a_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_a_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1111,7 +1111,7 @@ func TestEVT1CheckRejectsHandEdit(t *testing.T) {
 
 func TestEVT1TemplateInstancesAreDeterministicAndDeduplicated(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_m1b_b_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1148,7 +1148,7 @@ func TestEVT1LanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_m1b_a_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_a_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_a_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1194,7 +1194,7 @@ func TestEVT1VulkanSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_m1b_a_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1233,7 +1233,7 @@ func TestEVT1TemplateLanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_m1b_b_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1284,7 +1284,7 @@ func TestEVT1TemplateVulkanSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_m1b_b_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1333,7 +1333,7 @@ func TestEVT1M1BCLanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_m1b_c_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_c_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_c_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1361,7 +1361,7 @@ func TestEVT1M1BCVulkanSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_m1b_c_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_c_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_c_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1389,7 +1389,7 @@ func TestEVT1M1BDLanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_m1b_d_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_d_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_d_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1416,7 +1416,7 @@ func TestEVT1M1BDVulkanSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_m1b_d_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_d_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_m1b_d_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1445,7 +1445,7 @@ func TestDragonGodM0LanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m0_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m0_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m0_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1470,7 +1470,7 @@ func TestDragonGodM0VulkanSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m0_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1498,7 +1498,7 @@ func TestDragonGodM1LanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m1_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m1_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m1_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1527,7 +1527,7 @@ func TestDragonGodM1VulkanSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m1_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m1_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m1_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1556,7 +1556,7 @@ func TestDragonGodM2LanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m2_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m2_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m2_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1587,7 +1587,7 @@ func TestDragonGodM2VulkanSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m2_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m2_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m2_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1618,7 +1618,7 @@ func TestDragonGodM3LanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m3_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m3_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m3_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1692,7 +1692,7 @@ func TestDragonGodM3VulkanSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m3_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1749,7 +1749,7 @@ func TestDragonGodM4LanguageSpecimenNativeC11(t *testing.T) {
 		t.Skip("native C11 harness is only configured for Windows in this repository")
 	}
 	src := readEVT1Fixture(t, "evt1_dragongod_m4_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m4_language.concept", src)
+	module, err := ParseEVT1("Examples/Concept-Vulkan/evt1_dragongod_m4_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}

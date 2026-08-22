@@ -7,15 +7,15 @@
     },
     {
       "path": "evt1_dragongod_m0_language.generated.c",
-      "sha256": "326390aed9052b8fcdaef214cc14d50ea50c1ea9cd6df3f39c12e1fc3f86ff76"
+      "sha256": "6dd6a5953fcbc4b1fad01beafee58b2c0a027f34ebc7a900dd9bc5034bdfe12d"
     },
     {
       "path": "evt1_dragongod_m0_language.mir.json",
-      "sha256": "387e35a81186d90ee0d401b258bc2af616f758e99bfd621444be0ba80b86abd8"
+      "sha256": "29f87c76837613d5f8bdd57e2404851dc402c7ec71eec10b36c6b21f30a6d7dd"
     },
     {
       "path": "evt1_dragongod_m0_language.map.json",
-      "sha256": "73406cfb79c9fed40e39c7d97be3c0e519d0499f4f3edb0acf64b0b84cf00936"
+      "sha256": "7ac9a58f15e3188b061cf7435c5b49e89c42a5dd1b7c07ce97bd3c0d81bdebb1"
     }
   ],
   "options": {
@@ -24,6 +24,6 @@
   },
   "profile": "Vulkan",
   "schema": "concept-vulkan-evt1-generation-manifest.v1",
-  "source": "examples/Concept-Vulkan/evt1_dragongod_m0_language.concept",
+  "source": "Examples/Concept-Vulkan/evt1_dragongod_m0_language.concept",
   "source_sha256": "27bb869e719457a517e4061c2613c5a726918658cb0142d326436a2909a5e656"
 }

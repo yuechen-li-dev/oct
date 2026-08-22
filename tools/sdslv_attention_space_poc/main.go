@@ -20,10 +20,10 @@ import (
 
 const (
 	artifactDirectory = "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc"
-	semanticSource    = "examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid"
-	erasedSource      = "examples/SDSL-V/conformance/compute/AttentionSpacePocErased.sdslvvalid"
-	groupedSource     = "examples/SDSL-V/AttentionSpacePoc/GroupedSpaceEquivalence.sdslv"
-	expandedSource    = "examples/SDSL-V/AttentionSpacePoc/ExpandedSpaceEquivalence.sdslv"
+	semanticSource    = "Examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid"
+	erasedSource      = "Examples/SDSL-V/conformance/compute/AttentionSpacePocErased.sdslvvalid"
+	groupedSource     = "Examples/SDSL-V/AttentionSpacePoc/GroupedSpaceEquivalence.sdslv"
+	expandedSource    = "Examples/SDSL-V/AttentionSpacePoc/ExpandedSpaceEquivalence.sdslv"
 )
 
 type artifact struct {
@@ -339,7 +339,7 @@ func compile(input, name string) (compiledPaths, error) {
 func collectInvalidResults() ([]invalidResult, error) {
 	results := make([]invalidResult, 0, len(invalidFixtures))
 	for _, spec := range invalidFixtures {
-		path := filepath.Join("examples", "SDSL-V", "conformance", "invalid", spec.File)
+		path := filepath.Join("Examples", "SDSL-V", "conformance", "invalid", spec.File)
 		file, err := source.Load(path)
 		if err != nil {
 			return nil, err

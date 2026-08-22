@@ -13,7 +13,7 @@
     "production_source_root": "internal/prometheus/shaders/sdslv/production",
     "experimental_source_root": "internal/prometheus/shaders/sdslv/experimental",
     "historical_audit_root": "internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE",
-    "canonical_benchmark_root": "examples/SDSL-V/M36a"
+    "canonical_benchmark_root": "Examples/SDSL-V/M36a"
   },
   "shader_assets": [
     {"id":1,"name":"sgemm-baseline-scalar","stage":"compute","source_language":"spirv","source":"shaders/historical/sgemm_baseline_scalar.spv.base64","header":"shaders/historical/sgemm_baseline_scalar.spv.base64","symbol":"k_prom_sgemm_spirv","entry_point":"main"},

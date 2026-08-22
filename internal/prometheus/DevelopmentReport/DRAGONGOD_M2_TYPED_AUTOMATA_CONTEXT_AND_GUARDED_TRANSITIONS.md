@@ -191,9 +191,9 @@ through private specialized code.
 ## New specimens
 
 - language specimen:
-  `examples/Concept-Vulkan/evt1_dragongod_m2_language.concept`
+  `Examples/Concept-Vulkan/evt1_dragongod_m2_language.concept`
 - Vulkan-shaped specimen:
-  `examples/Concept-Vulkan/evt1_dragongod_m2_vulkan.concept`
+  `Examples/Concept-Vulkan/evt1_dragongod_m2_vulkan.concept`
 
 The language specimen proves:
 
@@ -270,10 +270,10 @@ Observed native result:
   - `internal/conceptvulkan/evt1_types.go`
   - `internal/conceptvulkan/evt1_validate.go`
 - specimens and checked outputs:
-  - `examples/Concept-Vulkan/evt1_dragongod_m1_language.concept`
-  - `examples/Concept-Vulkan/evt1_dragongod_m1_vulkan.concept`
-  - `examples/Concept-Vulkan/evt1_dragongod_m2_language.concept`
-  - `examples/Concept-Vulkan/evt1_dragongod_m2_vulkan.concept`
+  - `Examples/Concept-Vulkan/evt1_dragongod_m1_language.concept`
+  - `Examples/Concept-Vulkan/evt1_dragongod_m1_vulkan.concept`
+  - `Examples/Concept-Vulkan/evt1_dragongod_m2_language.concept`
+  - `Examples/Concept-Vulkan/evt1_dragongod_m2_vulkan.concept`
   - corresponding generated outputs under `internal/conceptvulkan/generated/`
 - docs / handoff:
   - `docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md`

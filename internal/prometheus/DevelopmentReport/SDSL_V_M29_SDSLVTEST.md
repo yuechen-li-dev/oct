@@ -129,11 +129,11 @@ native host executed the committed M29 suite on **NVIDIA GeForce RTX 3070**,
 NVIDIA driver **596.36**, Vulkan device API **1.4.329** (loader 1.4.350). All
 four ABI-v1 result-buffer cases emitted deterministic PASS JSON:
 
-- `sdslv-11e3deb3d1ad94f0071f3d8d` — inline-HLSL Fact
-- `sdslv-5664efcb0ab3deb7eb8c871b` and `sdslv-a20bf18c1aa6672e75d2b267` — Theory rows 0/1
-- `sdslv-ea0387cf37037ceec9e4083d` — explicit workgroup `[32,1,1]`, dispatch `[1,1,1]`
+- `sdslv-6f0c815f69506af931c8e29d` — inline-HLSL Fact
+- `sdslv-b5a40570a1bd37bca746f2a2` and `sdslv-bba048707a3df484d781ef83` — Theory rows 0/1
+- `sdslv-f0513f0c292555490b1f6b65` — explicit workgroup `[32,1,1]`, dispatch `[1,1,1]`
 
-Exact replay of `sdslv-5664efcb0ab3deb7eb8c871b` also passed. This proves the
+Exact replay of `sdslv-b5a40570a1bd37bca746f2a2` also passed. This proves the
 preserved fixed result ABI, deterministic JSON readback, per-row execution,
 and explicit 32-thread launch for the current bounded bootstrap path.
 
@@ -489,8 +489,8 @@ Final validation for this closure included `go test ./internal/source`,
 `go test ./internal/diagnostic`, `go test ./internal/sdslv/...`,
 `go test ./cmd/oct`, focused valid and invalid language fixture corpus tests,
 focused expected-failure/XYZ/Near/exactly-once/first-failure/ABI/stable replay
-native host tests, `go run ./cmd/oct sdslv test examples/SDSL-V/M29`,
-`go run ./cmd/oct sdslv test examples/SDSL-V/M30`, and the canonical Windows
+native host tests, `go run ./cmd/oct sdslv test Examples/SDSL-V/M29`,
+`go run ./cmd/oct sdslv test Examples/SDSL-V/M30`, and the canonical Windows
 native build through `internal\prometheus\native\build_windows_launcher.cmd`,
 which rebuilt `sdslv_test_host.exe`, `prometheus_reactor.dll`, and the
 Marionette executables with verified outputs.

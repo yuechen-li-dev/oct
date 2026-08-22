@@ -132,6 +132,6 @@ M15 keeps that boundary intact: `reg_tile` gives structured per-thread accumulat
 
 ## Examples
 
-- `examples/SDSL-V/M14a/ComptimeWhenUtilityBasic.sdslv`
-- `examples/SDSL-V/M14a/ComptimeWhenUtilityTieReject.sdslv`
-- `examples/SDSL-V/M14a/ComptimeWhenUtilityTilePolicy.sdslv`
+- `Examples/SDSL-V/M14a/ComptimeWhenUtilityBasic.sdslv`
+- `Examples/SDSL-V/M14a/ComptimeWhenUtilityTieReject.sdslv`
+- `Examples/SDSL-V/M14a/ComptimeWhenUtilityTilePolicy.sdslv`

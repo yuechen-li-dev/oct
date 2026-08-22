@@ -910,7 +910,7 @@ func (c checker) resolveFlowBoardFieldType(ref ast.TypeRef) (Type, error) {
 		return Type{}, err
 	}
 	if t.IsVector || t.IsMatrix || t.Name != "" || t.Base == BaseTypeError || t.Base == BaseTypeVoid || t.Base == BaseTypeComplex || t.Base == BaseTypeRange || t.Base == BaseTypeUI || t.Base == BaseTypeIndex {
-		return Type{}, fmt.Errorf("board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types")
+		return Type{}, invalidFlowBoardFieldTypeError()
 	}
 	scalar := t
 	for scalar.IsArray {
@@ -920,8 +920,12 @@ func (c checker) resolveFlowBoardFieldType(ref ast.TypeRef) (Type, error) {
 	case BaseTypeBool, BaseTypeInt, BaseTypeFloat, BaseTypeString:
 		return t, nil
 	default:
-		return Type{}, fmt.Errorf("board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types")
+		return Type{}, invalidFlowBoardFieldTypeError()
 	}
+}
+
+func invalidFlowBoardFieldTypeError() error {
+	return fmt.Errorf("board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types")
 }
 
 func (c checker) checkInlineDataExpr(expr ast.Expr) (Type, error) {

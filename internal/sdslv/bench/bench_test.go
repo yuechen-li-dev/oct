@@ -51,7 +51,7 @@ func TestM36BCanonicalArtifactsRegenerateByteForByte(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Chdir(oldWD) }()
-	root := filepath.Join("examples", "SDSL-V", "M36a")
+	root := filepath.Join("Examples", "SDSL-V", "M36a")
 	committed, err := os.ReadFile(filepath.Join(root, "artifacts", "manifest.json"))
 	if err != nil {
 		t.Fatal(err)

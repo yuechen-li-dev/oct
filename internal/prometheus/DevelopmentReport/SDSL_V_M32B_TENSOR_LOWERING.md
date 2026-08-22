@@ -67,7 +67,7 @@ and offsets, flattened declarations, hygienic generated names, left-to-right
 preludes, one-shot compound destinations, guarded reads, inline HLSL, and the
 absence of supported-expression placeholders.
 
-`examples/SDSL-V/M32b1/TensorBackendMaterialization.sdslv` is the focused
+`Examples/SDSL-V/M32b1/TensorBackendMaterialization.sdslv` is the focused
 real-path compiler proof. It combines a rank-four fixed tensor, row-major
 indexed reads/writes, and an inline-HLSL tensor operand. On July 11, 2026 it
 passed `sdslv check`, deterministic VD-MIR emission, shared HLSL emission, and
@@ -88,7 +88,7 @@ That follow-up keeps the M32b.1 lowering architecture intact and adds the
 missing execution proof:
 
 - a dedicated green `.sdslvtest` tensor suite at
-  `examples/SDSL-V/M32b2/TensorExecution.sdslvtest`;
+  `Examples/SDSL-V/M32b2/TensorExecution.sdslvtest`;
 - real Vulkan execution on RTX 3070 hardware for rank-1 through rank-4 tensor
   cases, reductions, guarded reads, inline HLSL, Theory rows, and
   multi-invocation determinism;

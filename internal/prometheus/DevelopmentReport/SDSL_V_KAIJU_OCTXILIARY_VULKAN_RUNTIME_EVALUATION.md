@@ -236,7 +236,7 @@ the current benchmark source, isolated per benchmark with DXC Vulkan 1.0 and
 (1,560 bytes); the canonical tensor artifact is
 `9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7`
 (2,820 bytes). Their stable IDs, exact source/toolchain provenance and resource
-contracts are in `examples/SDSL-V/M36a/artifacts/manifest.json`.
+contracts are in `Examples/SDSL-V/M36a/artifacts/manifest.json`.
 
 The existing Kaiju JSON proof executable ran these exact bytes successfully on
 the RTX 3070, with explicit `main`, set-0 bindings 0/1, readback and eight real

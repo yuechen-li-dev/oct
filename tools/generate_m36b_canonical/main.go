@@ -9,8 +9,8 @@ import (
 )
 
 func main() {
-	source := flag.String("source", "examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench", "M36a benchmark source")
-	out := flag.String("out", "examples/SDSL-V/M36a/artifacts", "canonical artifact directory")
+	source := flag.String("source", "Examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench", "M36a benchmark source")
+	out := flag.String("out", "Examples/SDSL-V/M36a/artifacts", "canonical artifact directory")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "usage: go run ./tools/generate_m36b_canonical [--source path] [--out path]")

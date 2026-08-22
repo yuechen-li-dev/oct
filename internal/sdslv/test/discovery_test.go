@@ -41,7 +41,7 @@ func TestSdslvStableIdsRemainUnchangedForM29Fixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	m, err := Discover(filepath.Join("examples", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
+	m, err := Discover(filepath.Join("Examples", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestSdslvStableIdsRemainUnchangedForM29Fixtures(t *testing.T) {
 	for _, c := range m.Cases {
 		got = append(got, c.StableID)
 	}
-	want := []string{"sdslv-11e3deb3d1ad94f0071f3d8d", "sdslv-5664efcb0ab3deb7eb8c871b", "sdslv-a20bf18c1aa6672e75d2b267", "sdslv-ea0387cf37037ceec9e4083d"}
+	want := []string{"sdslv-6f0c815f69506af931c8e29d", "sdslv-b5a40570a1bd37bca746f2a2", "sdslv-bba048707a3df484d781ef83", "sdslv-f0513f0c292555490b1f6b65"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("stable IDs changed: got %v, want %v", got, want)
 	}
@@ -74,7 +74,7 @@ func TestSdslvGroupingAndManifestAreCanonicalProjections(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	suite, err := Prepare(filepath.Join("examples", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
+	suite, err := Prepare(filepath.Join("Examples", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
 	if err != nil {
 		t.Fatal(err)
 	}

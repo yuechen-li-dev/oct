@@ -76,8 +76,8 @@ Still excluded:
 
 ## 5. New specimen authority
 
-- `examples/Concept-Vulkan/evt1_m1b_d_language.concept`
-- `examples/Concept-Vulkan/evt1_m1b_d_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_d_language.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_d_vulkan.concept`
 
 The language specimen proves ordered arrays of integers, nested arrays,
 struct-containing arrays, arrays of structs, duplicate-key structural

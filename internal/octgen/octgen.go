@@ -212,7 +212,7 @@ func render(model File) ([]byte, error) {
 		Decls: []ast.Decl{&ast.GenDecl{Tok: token.IMPORT, Specs: []ast.Spec{
 			&ast.ImportSpec{Path: stringLiteral("fmt")},
 			&ast.ImportSpec{Path: stringLiteral("time")},
-			&ast.ImportSpec{Path: stringLiteral("github.com/yuechen-li-dev/oct/internal/octxiliary")},
+			&ast.ImportSpec{Path: stringLiteral("github.com/yuechen-li-dev/oct/pkg/octxiliary")},
 		}}, decl},
 	}
 	var formatted bytes.Buffer

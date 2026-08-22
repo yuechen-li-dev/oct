@@ -189,9 +189,9 @@ identity remains stable across pure emission-order changes.
 ## New specimens
 
 - language specimen:
-  `examples/Concept-Vulkan/evt1_dragongod_m3_language.concept`
+  `Examples/Concept-Vulkan/evt1_dragongod_m3_language.concept`
 - Vulkan-shaped specimen:
-  `examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept`
+  `Examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept`
 
 The language specimen proves:
 
@@ -288,8 +288,8 @@ Observed native result:
   - `internal/conceptvulkan/evt1_types.go`
   - `internal/conceptvulkan/evt1_validate.go`
 - specimens and checked outputs:
-  - `examples/Concept-Vulkan/evt1_dragongod_m3_language.concept`
-  - `examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept`
+  - `Examples/Concept-Vulkan/evt1_dragongod_m3_language.concept`
+  - `Examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept`
   - corresponding generated outputs under `internal/conceptvulkan/generated/`
 - docs / handoff:
   - `docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md`

@@ -1,4 +1,5 @@
 {
+  "actuators": null,
   "assertions": null,
   "automata": [
     {
@@ -333,7 +334,7 @@
     {
       "name": "UniqueGuardSelectionCode",
       "span": {
-        "line": 111,
+        "line": 112,
         "column": 5
       },
       "symbol": "concept_vulkan_evt1_dragongod_m2_language_unique_guard_selection_code"
@@ -341,7 +342,7 @@
     {
       "name": "FallbackSelectionCode",
       "span": {
-        "line": 119,
+        "line": 120,
         "column": 5
       },
       "symbol": "concept_vulkan_evt1_dragongod_m2_language_fallback_selection_code"
@@ -349,7 +350,7 @@
     {
       "name": "GuardedUnhandledPreservesStateCode",
       "span": {
-        "line": 130,
+        "line": 131,
         "column": 5
       },
       "symbol": "concept_vulkan_evt1_dragongod_m2_language_guarded_unhandled_preserves_state_code"
@@ -357,7 +358,7 @@
     {
       "name": "AmbiguousPreservesStateCode",
       "span": {
-        "line": 143,
+        "line": 144,
         "column": 5
       },
       "symbol": "concept_vulkan_evt1_dragongod_m2_language_ambiguous_preserves_state_code"
@@ -365,7 +366,7 @@
     {
       "name": "AlreadyFinishedSkipsGuardSelectionCode",
       "span": {
-        "line": 158,
+        "line": 159,
         "column": 5
       },
       "symbol": "concept_vulkan_evt1_dragongod_m2_language_already_finished_skips_guard_selection_code"
@@ -373,7 +374,7 @@
     {
       "name": "ContextlessCompatibilityCode",
       "span": {
-        "line": 166,
+        "line": 167,
         "column": 5
       },
       "symbol": "concept_vulkan_evt1_dragongod_m2_language_contextless_compatibility_code"
@@ -653,7 +654,7 @@
         {
           "id": "OutcomeCode.02",
           "kind": "match_expr",
-          "detail": "5 arms",
+          "detail": "6 arms",
           "source_span": {
             "line": 102,
             "column": 12
@@ -757,6 +758,24 @@
             "line": 107,
             "column": 53
           }
+        },
+        {
+          "id": "OutcomeCode.14",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::EffectBatchOccupied",
+          "source_span": {
+            "line": 108,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.15",
+          "kind": "literal",
+          "detail": "6",
+          "source_span": {
+            "line": 108,
+            "column": 57
+          }
         }
       ],
       "source_span": {
@@ -770,7 +789,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 111,
+          "line": 112,
           "column": 1
         }
       },
@@ -781,7 +800,7 @@
             "name": "LifecycleContext",
             "kind": "struct",
             "span": {
-              "line": 111,
+              "line": 112,
               "column": 30
             }
           }
@@ -793,7 +812,7 @@
           "kind": "instance_decl",
           "detail": "GuardedLifecycle lifecycle",
           "source_span": {
-            "line": 113,
+            "line": 114,
             "column": 5
           }
         },
@@ -803,7 +822,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 114,
+            "line": 115,
             "column": 29
           }
         },
@@ -812,7 +831,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 114,
+            "line": 115,
             "column": 33
           }
         },
@@ -821,7 +840,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Submit",
           "source_span": {
-            "line": 114,
+            "line": 115,
             "column": 53
           }
         },
@@ -831,7 +850,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 115,
+            "line": 116,
             "column": 29
           }
         },
@@ -840,7 +859,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 115,
+            "line": 116,
             "column": 33
           }
         },
@@ -849,7 +868,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 115,
+            "line": 116,
             "column": 53
           }
         },
@@ -858,7 +877,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 5
           }
         },
@@ -867,7 +886,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 32
           }
         },
@@ -876,7 +895,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 27
           }
         },
@@ -885,7 +904,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 12
           }
         },
@@ -894,7 +913,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 24
           }
         },
@@ -903,7 +922,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 29
           }
         },
@@ -912,7 +931,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 34
           }
         },
@@ -921,13 +940,13 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 46
           }
         }
       ],
       "source_span": {
-        "line": 111,
+        "line": 112,
         "column": 5
       }
     },
@@ -937,7 +956,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 119,
+          "line": 120,
           "column": 1
         }
       },
@@ -948,7 +967,7 @@
             "name": "LifecycleContext",
             "kind": "struct",
             "span": {
-              "line": 119,
+              "line": 120,
               "column": 27
             }
           }
@@ -960,7 +979,7 @@
           "kind": "instance_decl",
           "detail": "GuardedLifecycle lifecycle",
           "source_span": {
-            "line": 121,
+            "line": 122,
             "column": 5
           }
         },
@@ -970,7 +989,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 122,
+            "line": 123,
             "column": 29
           }
         },
@@ -979,7 +998,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 122,
+            "line": 123,
             "column": 33
           }
         },
@@ -988,7 +1007,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Submit",
           "source_span": {
-            "line": 122,
+            "line": 123,
             "column": 53
           }
         },
@@ -998,7 +1017,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 123,
+            "line": 124,
             "column": 29
           }
         },
@@ -1007,7 +1026,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 123,
+            "line": 124,
             "column": 33
           }
         },
@@ -1016,7 +1035,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Resolve",
           "source_span": {
-            "line": 123,
+            "line": 124,
             "column": 53
           }
         },
@@ -1026,7 +1045,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "c",
           "source_span": {
-            "line": 124,
+            "line": 125,
             "column": 29
           }
         },
@@ -1035,7 +1054,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 124,
+            "line": 125,
             "column": 33
           }
         },
@@ -1044,7 +1063,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 124,
+            "line": 125,
             "column": 53
           }
         },
@@ -1053,7 +1072,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 5
           }
         },
@@ -1062,7 +1081,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 126,
+            "line": 127,
             "column": 29
           }
         },
@@ -1071,7 +1090,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 33
           }
         },
@@ -1080,7 +1099,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 27
           }
         },
@@ -1089,7 +1108,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 12
           }
         },
@@ -1098,7 +1117,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 24
           }
         },
@@ -1107,7 +1126,7 @@
           "kind": "literal",
           "detail": "100",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 29
           }
         },
@@ -1116,7 +1135,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 126,
+            "line": 127,
             "column": 24
           }
         },
@@ -1125,7 +1144,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 126,
+            "line": 127,
             "column": 9
           }
         },
@@ -1134,7 +1153,7 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 126,
+            "line": 127,
             "column": 21
           }
         },
@@ -1143,7 +1162,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 126,
+            "line": 127,
             "column": 26
           }
         },
@@ -1152,7 +1171,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 127,
+            "line": 128,
             "column": 9
           }
         },
@@ -1161,13 +1180,13 @@
           "kind": "name",
           "detail": "c",
           "source_span": {
-            "line": 127,
+            "line": 128,
             "column": 21
           }
         }
       ],
       "source_span": {
-        "line": 119,
+        "line": 120,
         "column": 5
       }
     },
@@ -1177,7 +1196,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 130,
+          "line": 131,
           "column": 1
         }
       },
@@ -1188,7 +1207,7 @@
             "name": "LifecycleContext",
             "kind": "struct",
             "span": {
-              "line": 130,
+              "line": 131,
               "column": 40
             }
           }
@@ -1200,7 +1219,7 @@
           "kind": "instance_decl",
           "detail": "GuardedLifecycle lifecycle",
           "source_span": {
-            "line": 132,
+            "line": 133,
             "column": 5
           }
         },
@@ -1210,7 +1229,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 133,
+            "line": 134,
             "column": 29
           }
         },
@@ -1219,7 +1238,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 133,
+            "line": 134,
             "column": 33
           }
         },
@@ -1228,7 +1247,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Resolve",
           "source_span": {
-            "line": 133,
+            "line": 134,
             "column": 53
           }
         },
@@ -1238,7 +1257,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 134,
+            "line": 135,
             "column": 29
           }
         },
@@ -1247,7 +1266,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 134,
+            "line": 135,
             "column": 33
           }
         },
@@ -1256,7 +1275,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Submit",
           "source_span": {
-            "line": 134,
+            "line": 135,
             "column": 53
           }
         },
@@ -1266,7 +1285,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "c",
           "source_span": {
-            "line": 135,
+            "line": 136,
             "column": 29
           }
         },
@@ -1275,7 +1294,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 135,
+            "line": 136,
             "column": 33
           }
         },
@@ -1284,7 +1303,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Resolve",
           "source_span": {
-            "line": 135,
+            "line": 136,
             "column": 53
           }
         },
@@ -1294,7 +1313,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "d",
           "source_span": {
-            "line": 136,
+            "line": 137,
             "column": 29
           }
         },
@@ -1303,7 +1322,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 136,
+            "line": 137,
             "column": 33
           }
         },
@@ -1312,7 +1331,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 136,
+            "line": 137,
             "column": 53
           }
         },
@@ -1321,7 +1340,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 137,
+            "line": 138,
             "column": 5
           }
         },
@@ -1330,7 +1349,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 139,
+            "line": 140,
             "column": 29
           }
         },
@@ -1339,7 +1358,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 138,
+            "line": 139,
             "column": 30
           }
         },
@@ -1348,7 +1367,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 137,
+            "line": 138,
             "column": 34
           }
         },
@@ -1357,7 +1376,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 137,
+            "line": 138,
             "column": 27
           }
         },
@@ -1366,7 +1385,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 137,
+            "line": 138,
             "column": 12
           }
         },
@@ -1375,7 +1394,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 137,
+            "line": 138,
             "column": 24
           }
         },
@@ -1384,7 +1403,7 @@
           "kind": "literal",
           "detail": "1000",
           "source_span": {
-            "line": 137,
+            "line": 138,
             "column": 29
           }
         },
@@ -1393,7 +1412,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 138,
+            "line": 139,
             "column": 24
           }
         },
@@ -1402,7 +1421,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 138,
+            "line": 139,
             "column": 9
           }
         },
@@ -1411,7 +1430,7 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 138,
+            "line": 139,
             "column": 21
           }
         },
@@ -1420,7 +1439,7 @@
           "kind": "literal",
           "detail": "100",
           "source_span": {
-            "line": 138,
+            "line": 139,
             "column": 26
           }
         },
@@ -1429,7 +1448,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 139,
+            "line": 140,
             "column": 24
           }
         },
@@ -1438,7 +1457,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 139,
+            "line": 140,
             "column": 9
           }
         },
@@ -1447,7 +1466,7 @@
           "kind": "name",
           "detail": "c",
           "source_span": {
-            "line": 139,
+            "line": 140,
             "column": 21
           }
         },
@@ -1456,7 +1475,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 139,
+            "line": 140,
             "column": 26
           }
         },
@@ -1465,7 +1484,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 140,
+            "line": 141,
             "column": 9
           }
         },
@@ -1474,13 +1493,13 @@
           "kind": "name",
           "detail": "d",
           "source_span": {
-            "line": 140,
+            "line": 141,
             "column": 21
           }
         }
       ],
       "source_span": {
-        "line": 130,
+        "line": 131,
         "column": 5
       }
     },
@@ -1490,7 +1509,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 143,
+          "line": 144,
           "column": 1
         }
       },
@@ -1501,7 +1520,7 @@
             "name": "LifecycleContext",
             "kind": "struct",
             "span": {
-              "line": 143,
+              "line": 144,
               "column": 33
             }
           }
@@ -1513,7 +1532,7 @@
           "kind": "instance_decl",
           "detail": "GuardedLifecycle lifecycle",
           "source_span": {
-            "line": 145,
+            "line": 146,
             "column": 5
           }
         },
@@ -1523,7 +1542,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 146,
+            "line": 147,
             "column": 29
           }
         },
@@ -1532,7 +1551,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 146,
+            "line": 147,
             "column": 33
           }
         },
@@ -1541,7 +1560,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Submit",
           "source_span": {
-            "line": 146,
+            "line": 147,
             "column": 53
           }
         },
@@ -1551,7 +1570,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 147,
+            "line": 148,
             "column": 29
           }
         },
@@ -1560,7 +1579,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 147,
+            "line": 148,
             "column": 33
           }
         },
@@ -1569,7 +1588,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Resolve",
           "source_span": {
-            "line": 147,
+            "line": 148,
             "column": 53
           }
         },
@@ -1579,7 +1598,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "c",
           "source_span": {
-            "line": 148,
+            "line": 149,
             "column": 29
           }
         },
@@ -1588,7 +1607,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 148,
+            "line": 149,
             "column": 33
           }
         },
@@ -1597,7 +1616,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Submit",
           "source_span": {
-            "line": 148,
+            "line": 149,
             "column": 53
           }
         },
@@ -1607,7 +1626,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "d",
           "source_span": {
-            "line": 149,
+            "line": 150,
             "column": 29
           }
         },
@@ -1616,7 +1635,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 149,
+            "line": 150,
             "column": 33
           }
         },
@@ -1625,7 +1644,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Resolve",
           "source_span": {
-            "line": 149,
+            "line": 150,
             "column": 53
           }
         },
@@ -1635,7 +1654,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "e",
           "source_span": {
-            "line": 150,
+            "line": 151,
             "column": 29
           }
         },
@@ -1644,7 +1663,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 150,
+            "line": 151,
             "column": 33
           }
         },
@@ -1653,7 +1672,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 150,
+            "line": 151,
             "column": 53
           }
         },
@@ -1662,7 +1681,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 5
           }
         },
@@ -1671,7 +1690,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 29
           }
         },
@@ -1680,7 +1699,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 153,
+            "line": 154,
             "column": 30
           }
         },
@@ -1689,7 +1708,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 152,
+            "line": 153,
             "column": 31
           }
         },
@@ -1698,7 +1717,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 35
           }
         },
@@ -1707,7 +1726,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 27
           }
         },
@@ -1716,7 +1735,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 12
           }
         },
@@ -1725,7 +1744,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 24
           }
         },
@@ -1734,7 +1753,7 @@
           "kind": "literal",
           "detail": "10000",
           "source_span": {
-            "line": 151,
+            "line": 152,
             "column": 29
           }
         },
@@ -1743,7 +1762,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 152,
+            "line": 153,
             "column": 24
           }
         },
@@ -1752,7 +1771,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 152,
+            "line": 153,
             "column": 9
           }
         },
@@ -1761,7 +1780,7 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 152,
+            "line": 153,
             "column": 21
           }
         },
@@ -1770,7 +1789,7 @@
           "kind": "literal",
           "detail": "1000",
           "source_span": {
-            "line": 152,
+            "line": 153,
             "column": 26
           }
         },
@@ -1779,7 +1798,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 153,
+            "line": 154,
             "column": 24
           }
         },
@@ -1788,7 +1807,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 153,
+            "line": 154,
             "column": 9
           }
         },
@@ -1797,7 +1816,7 @@
           "kind": "name",
           "detail": "c",
           "source_span": {
-            "line": 153,
+            "line": 154,
             "column": 21
           }
         },
@@ -1806,7 +1825,7 @@
           "kind": "literal",
           "detail": "100",
           "source_span": {
-            "line": 153,
+            "line": 154,
             "column": 26
           }
         },
@@ -1815,7 +1834,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 24
           }
         },
@@ -1824,7 +1843,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 9
           }
         },
@@ -1833,7 +1852,7 @@
           "kind": "name",
           "detail": "d",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 21
           }
         },
@@ -1842,7 +1861,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 154,
+            "line": 155,
             "column": 26
           }
         },
@@ -1851,7 +1870,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 155,
+            "line": 156,
             "column": 9
           }
         },
@@ -1860,13 +1879,13 @@
           "kind": "name",
           "detail": "e",
           "source_span": {
-            "line": 155,
+            "line": 156,
             "column": 21
           }
         }
       ],
       "source_span": {
-        "line": 143,
+        "line": 144,
         "column": 5
       }
     },
@@ -1876,7 +1895,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 158,
+          "line": 159,
           "column": 1
         }
       },
@@ -1887,7 +1906,7 @@
             "name": "LifecycleContext",
             "kind": "struct",
             "span": {
-              "line": 158,
+              "line": 159,
               "column": 44
             }
           }
@@ -1899,7 +1918,7 @@
           "kind": "instance_decl",
           "detail": "GuardedLifecycle lifecycle",
           "source_span": {
-            "line": 160,
+            "line": 161,
             "column": 5
           }
         },
@@ -1907,7 +1926,7 @@
           "id": "AlreadyFinishedSkipsGuardSelectionCode.02",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 161,
+            "line": 162,
             "column": 5
           }
         },
@@ -1916,7 +1935,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 161,
+            "line": 162,
             "column": 5
           }
         },
@@ -1925,7 +1944,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Submit",
           "source_span": {
-            "line": 161,
+            "line": 162,
             "column": 25
           }
         },
@@ -1933,7 +1952,7 @@
           "id": "AlreadyFinishedSkipsGuardSelectionCode.05",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 162,
+            "line": 163,
             "column": 5
           }
         },
@@ -1942,7 +1961,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 162,
+            "line": 163,
             "column": 5
           }
         },
@@ -1951,7 +1970,7 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 162,
+            "line": 163,
             "column": 25
           }
         },
@@ -1960,7 +1979,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 163,
+            "line": 164,
             "column": 5
           }
         },
@@ -1969,7 +1988,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 163,
+            "line": 164,
             "column": 12
           }
         },
@@ -1978,7 +1997,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 163,
+            "line": 164,
             "column": 24
           }
         },
@@ -1987,13 +2006,13 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Submit",
           "source_span": {
-            "line": 163,
+            "line": 164,
             "column": 44
           }
         }
       ],
       "source_span": {
-        "line": 158,
+        "line": 159,
         "column": 5
       }
     },
@@ -2003,7 +2022,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 166,
+          "line": 167,
           "column": 1
         }
       },
@@ -2013,7 +2032,7 @@
           "kind": "instance_decl",
           "detail": "ImmediateLifecycle lifecycle",
           "source_span": {
-            "line": 168,
+            "line": 169,
             "column": 5
           }
         },
@@ -2022,7 +2041,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 169,
+            "line": 170,
             "column": 5
           }
         },
@@ -2031,7 +2050,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 169,
+            "line": 170,
             "column": 12
           }
         },
@@ -2040,7 +2059,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 169,
+            "line": 170,
             "column": 24
           }
         },
@@ -2049,19 +2068,19 @@
           "kind": "enum_construct",
           "detail": "LifecycleSignal::Stop",
           "source_span": {
-            "line": 169,
+            "line": 170,
             "column": 44
           }
         }
       ],
       "source_span": {
-        "line": 166,
+        "line": 167,
         "column": 5
       }
     }
   ],
   "schema": "concept-vulkan-evt1-source-map.v1",
-  "source": "examples/Concept-Vulkan/evt1_dragongod_m2_language.concept",
+  "source": "Examples/Concept-Vulkan/evt1_dragongod_m2_language.concept",
   "static_asserts": null,
   "structs": [
     {

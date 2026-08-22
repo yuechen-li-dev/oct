@@ -9,9 +9,9 @@ This is the repository ownership guide. Language truth remains in
 |---|---|---|
 | `internal/sdslv/` | compiler, toolchain, fixtures, benchmark execution | compiler/tooling only |
 | `internal/sdslv/testdata/language/` | `.sdslvvalid` / `.sdslvinvalid` contracts | test tooling only |
-| `examples/SDSL-V/` | examples, `.sdslvtest`, permanent benchmarks | no |
-| `examples/SDSL-V/conformance/` | canonical shared/compute/graphics acceptance, diagnostics, manifests, and golden artifacts | no |
-| `examples/SDSL-V/M36a/` | permanent benchmark corpus and canonical artifacts | benchmark/audit tooling only |
+| `Examples/SDSL-V/` | examples, `.sdslvtest`, permanent benchmarks | no |
+| `Examples/SDSL-V/conformance/` | canonical shared/compute/graphics acceptance, diagnostics, manifests, and golden artifacts | no |
+| `Examples/SDSL-V/M36a/` | permanent benchmark corpus and canonical artifacts | benchmark/audit tooling only |
 | `internal/prometheus/shaders/sdslv/production/` | sole Prometheus SDSL-V source authority | yes |
 | `internal/prometheus/shaders/sdslv/production/reduction/` | M39b row-wise sum/max/softmax source authority | yes |
 | `internal/prometheus/shaders/sdslv/experimental/` | bounded candidates, including the M40a/M40b cooperative SGEMM | bounded experimental runtime only |
@@ -76,7 +76,7 @@ production reduction registry table. They are dispatchable by the fixed
 reduction planner but are not eligible for the SGEMM selector.
 
 Permanent semantic GPU coverage is in
-`examples/SDSL-V/M39b/FusedReductionSemantics.sdslvtest`; native lifecycle,
+`Examples/SDSL-V/M39b/FusedReductionSemantics.sdslvtest`; native lifecycle,
 planning, fault, validation, and hardware correctness coverage is in
 `internal/prometheus/native/Marionette/reactor_reduction_tests.cpp`; the bounded
 RTX corpus is in `reactor_reduction_benchmarks.cpp`.
@@ -114,7 +114,7 @@ is disabled by default; this evidence does not assign a production shader ID.
 and replay identity derives from source identity, so M36/M37 paths stay put.
 
 M41 makes `docs/SDSL_V_LANGUAGE_SPEC.md` plus
-`examples/SDSL-V/conformance/manifest.json` the canonical language authority;
+`Examples/SDSL-V/conformance/manifest.json` the canonical language authority;
 GoOct is the reference implementation. The conformance corpus owns portable
 source acceptance, exact diagnostic spans, semantic interface facts, and the
 explicit graphics/compute golden artifacts. The existing workspace checker
@@ -123,7 +123,7 @@ validates this manifest and bundle alongside production ownership checks:
 ```powershell
 go test ./internal/sdslv/conformance
 go run ./tools/sdslv_workspace_check
-go run ./cmd/oct sdslv compile-graphics examples/SDSL-V/conformance/graphics/CanonicalGraphicsProgram.sdslvvalid --program ForwardTextured --out out/m41/graphics
+go run ./cmd/oct sdslv compile-graphics Examples/SDSL-V/conformance/graphics/CanonicalGraphicsProgram.sdslvvalid --program ForwardTextured --out out/m41/graphics
 ```
 
 The graphics command requires DXC and `spirv-val` and emits paired vertex/pixel

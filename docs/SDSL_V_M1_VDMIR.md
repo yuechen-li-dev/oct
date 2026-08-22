@@ -100,7 +100,7 @@ DXC, SPIR-V generation, and runtime dispatch wiring are still deferred.
 Use:
 
 ```powershell
-go run ./cmd/oct sdslv emit-vdmir examples/SDSL-V/M0/VectorAdd.sdslv
+go run ./cmd/oct sdslv emit-vdmir Examples/SDSL-V/M0/VectorAdd.sdslv
 ```
 
 The dump is human-readable and deterministic, but it is not yet a stable external serialization format.

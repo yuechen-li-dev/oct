@@ -1,4 +1,5 @@
 {
+  "actuators": null,
   "assertions": null,
   "automata": [
     {
@@ -288,7 +289,7 @@
     {
       "name": "VulkanEffectfulSubmitCode",
       "span": {
-        "line": 107,
+        "line": 108,
         "column": 5
       },
       "symbol": "concept_vulkan_evt1_dragongod_m3_vulkan_vulkan_effectful_submit_code"
@@ -296,7 +297,7 @@
     {
       "name": "VulkanZeroEmitTransitionCode",
       "span": {
-        "line": 114,
+        "line": 115,
         "column": 5
       },
       "symbol": "concept_vulkan_evt1_dragongod_m3_vulkan_vulkan_zero_emit_transition_code"
@@ -458,7 +459,7 @@
         {
           "id": "OutcomeCode.02",
           "kind": "match_expr",
-          "detail": "5 arms",
+          "detail": "6 arms",
           "source_span": {
             "line": 98,
             "column": 12
@@ -562,6 +563,24 @@
             "line": 103,
             "column": 53
           }
+        },
+        {
+          "id": "OutcomeCode.14",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::EffectBatchOccupied",
+          "source_span": {
+            "line": 104,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.15",
+          "kind": "literal",
+          "detail": "6",
+          "source_span": {
+            "line": 104,
+            "column": 57
+          }
         }
       ],
       "source_span": {
@@ -575,7 +594,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 107,
+          "line": 108,
           "column": 1
         }
       },
@@ -586,7 +605,7 @@
             "name": "BufferContext",
             "kind": "struct",
             "span": {
-              "line": 107,
+              "line": 108,
               "column": 31
             }
           }
@@ -597,7 +616,7 @@
             "name": "VkBuffer",
             "kind": "builtin",
             "span": {
-              "line": 107,
+              "line": 108,
               "column": 54
             }
           }
@@ -609,7 +628,7 @@
           "kind": "instance_decl",
           "detail": "BufferLifecycle lifecycle",
           "source_span": {
-            "line": 109,
+            "line": 110,
             "column": 5
           }
         },
@@ -618,7 +637,7 @@
           "kind": "effects_decl",
           "detail": "BufferLifecycle emitted",
           "source_span": {
-            "line": 110,
+            "line": 111,
             "column": 5
           }
         },
@@ -627,7 +646,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 5
           }
         },
@@ -636,7 +655,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 12
           }
         },
@@ -645,7 +664,7 @@
           "kind": "dispatch",
           "detail": "lifecycle -\u003e emitted",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 24
           }
         },
@@ -654,13 +673,13 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submit",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 44
           }
         }
       ],
       "source_span": {
-        "line": 107,
+        "line": 108,
         "column": 5
       }
     },
@@ -670,7 +689,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 114,
+          "line": 115,
           "column": 1
         }
       },
@@ -681,7 +700,7 @@
             "name": "BufferContext",
             "kind": "struct",
             "span": {
-              "line": 114,
+              "line": 115,
               "column": 34
             }
           }
@@ -692,7 +711,7 @@
             "name": "VkCommandPool",
             "kind": "builtin",
             "span": {
-              "line": 114,
+              "line": 115,
               "column": 57
             }
           }
@@ -704,7 +723,7 @@
           "kind": "instance_decl",
           "detail": "BufferLifecycle lifecycle",
           "source_span": {
-            "line": 116,
+            "line": 117,
             "column": 5
           }
         },
@@ -713,7 +732,7 @@
           "kind": "effects_decl",
           "detail": "BufferLifecycle emitted",
           "source_span": {
-            "line": 117,
+            "line": 118,
             "column": 5
           }
         },
@@ -721,7 +740,7 @@
           "id": "VulkanZeroEmitTransitionCode.03",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 118,
+            "line": 119,
             "column": 5
           }
         },
@@ -730,7 +749,7 @@
           "kind": "dispatch",
           "detail": "lifecycle -\u003e emitted",
           "source_span": {
-            "line": 118,
+            "line": 119,
             "column": 5
           }
         },
@@ -739,7 +758,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submit",
           "source_span": {
-            "line": 118,
+            "line": 119,
             "column": 25
           }
         },
@@ -748,7 +767,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 119,
+            "line": 120,
             "column": 5
           }
         },
@@ -757,7 +776,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 119,
+            "line": 120,
             "column": 12
           }
         },
@@ -766,7 +785,7 @@
           "kind": "dispatch",
           "detail": "lifecycle -\u003e emitted",
           "source_span": {
-            "line": 119,
+            "line": 120,
             "column": 24
           }
         },
@@ -775,19 +794,19 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submitted",
           "source_span": {
-            "line": 119,
+            "line": 120,
             "column": 44
           }
         }
       ],
       "source_span": {
-        "line": 114,
+        "line": 115,
         "column": 5
       }
     }
   ],
   "schema": "concept-vulkan-evt1-source-map.v1",
-  "source": "examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept",
+  "source": "Examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept",
   "static_asserts": null,
   "structs": [
     {

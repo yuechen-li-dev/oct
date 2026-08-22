@@ -15,8 +15,8 @@ Expected commit for this pass: `concept-vulkan: add constrained templates`
 
 - `internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1A_PAYLOAD_ENUMS_AND_EXHAUSTIVE_MATCH.md`
 - `docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md`
-- `examples/Concept-Vulkan/evt1_m1a_language.concept`
-- `examples/Concept-Vulkan/evt1_m1a_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_m1a_language.concept`
+- `Examples/Concept-Vulkan/evt1_m1a_vulkan.concept`
 - checked M1A generated outputs under `internal/conceptvulkan/generated/`
 
 ## 3. Inspected M1B-A struct authority
@@ -26,8 +26,8 @@ Expected commit for this pass: `concept-vulkan: add constrained templates`
 - `internal/conceptvulkan/evt1_validate.go`
 - `internal/conceptvulkan/evt1_generate.go`
 - `internal/conceptvulkan/evt1_types.go`
-- `examples/Concept-Vulkan/evt1_m1b_a_language.concept`
-- `examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_a_language.concept`
+- `Examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept`
 
 ## 4. Inspected M1B-A immovability authority
 
@@ -331,7 +331,7 @@ Focused negative sources now cover:
 
 ## 40. Language specimen
 
-`examples/Concept-Vulkan/evt1_m1b_b_language.concept` proves:
+`Examples/Concept-Vulkan/evt1_m1b_b_language.concept` proves:
 
 - two concrete types satisfying one named concept graph
 - same-named exact free-function operation binding across those types
@@ -342,7 +342,7 @@ Focused negative sources now cover:
 
 ## 41. Vulkan-shaped specimen
 
-`examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept` proves:
+`Examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept` proves:
 
 - same mechanism for Vulkan-shaped ordinary and immovable host-side types
 - compilation against real Vulkan headers

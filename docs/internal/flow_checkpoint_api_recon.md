@@ -74,7 +74,7 @@ Controller-bound utility `when` uses this state to enforce hysteresis and minimu
 
 Flow board fields are constrained by the typechecker to `Bool`, `String`, `Int`/dimensioned `Int`, `Float`/dimensioned `Float`, and arrays of those types. The interpreted `BoardSnapshot` builtin copies the current synthetic board record into a typed snapshot record, and the Octagon writer/loader path supports records, arrays, scalar ints/floats with dimensions, bools, strings, and payload-free enums. For legal board fields today, board snapshots are logically representable as Octagon-compatible data, including arrays of scalar board fields.
 
-There is one documentation gap: the runtime reference currently says `BoardSnapshot` supports scalar board fields and says arrays are unsupported, while the current typechecker and fixtures accept arrays of scalar board fields. The implementation design should follow current semantic contracts in `Language/ControlFlow` and update the reference in a separate documentation fix if desired.
+The former documentation gap is closed: the runtime reference now matches the typechecker and fixtures by documenting arrays of supported scalar board fields, including nested arrays.
 
 ### Compiled Octomata support
 

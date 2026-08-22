@@ -105,7 +105,7 @@ This gate is independent from `OCT_RUN_SLOW_TESTS`; both may be used together wh
 Keep explicit command checks available for focused regression validation:
 
 ```bash
-go run ./cmd/oct test examples/SmartGreenhouseController --execution compiled
+go run ./cmd/oct test Examples/SmartGreenhouseController --execution compiled
 go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M5 --suite Experiments.FmBrownNoiseKalman.M5.FlowSmoke --execution compiled
 go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M4 --suite Experiments.FmBrownNoiseKalman.M4.FlowSmoke --execution compiled
 go build -o .tmp/octxiliary-io ./cmd/octxiliary-io

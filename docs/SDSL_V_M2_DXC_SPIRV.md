@@ -14,7 +14,7 @@ SDSL-V source
   -> generated C header
 ```
 
-This milestone is intentionally scoped to toolchain generation and a tiny compute shader proof such as `examples/SDSL-V/M0/VectorAdd.sdslv`. It does not wire new Prometheus SGEMM kernels, change Prometheus runtime dispatch, or require DXC for ordinary Go/native builds.
+This milestone is intentionally scoped to toolchain generation and a tiny compute shader proof such as `Examples/SDSL-V/M0/VectorAdd.sdslv`. It does not wire new Prometheus SGEMM kernels, change Prometheus runtime dispatch, or require DXC for ordinary Go/native builds.
 
 ## Process-call pattern used
 
@@ -33,8 +33,8 @@ SDSL-V M2 reuses that exact shape in `internal/sdslv/toolchain/process.go` inste
 ## New commands
 
 ```powershell
-go run ./cmd/oct sdslv compile-spv examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.spv
-go run ./cmd/oct sdslv generate-header examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add_spirv.h --symbol k_sdslv_vector_add_spirv
+go run ./cmd/oct sdslv compile-spv Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.spv
+go run ./cmd/oct sdslv generate-header Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add_spirv.h --symbol k_sdslv_vector_add_spirv
 ```
 
 Supported options:
@@ -145,9 +145,9 @@ This metadata lane closes an important source-of-truth gap for generated compute
 On a machine with DXC available, the current proof lane is:
 
 ```powershell
-go run ./cmd/oct sdslv emit-hlsl examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.hlsl
-go run ./cmd/oct sdslv compile-spv examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.spv
-go run ./cmd/oct sdslv generate-header examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add_spirv.h --symbol k_sdslv_vector_add_spirv
+go run ./cmd/oct sdslv emit-hlsl Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.hlsl
+go run ./cmd/oct sdslv compile-spv Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.spv
+go run ./cmd/oct sdslv generate-header Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add_spirv.h --symbol k_sdslv_vector_add_spirv
 ```
 
 Ordinary repository builds still consume checked-in native assets directly and do not require DXC unless the user explicitly invokes shader regeneration.

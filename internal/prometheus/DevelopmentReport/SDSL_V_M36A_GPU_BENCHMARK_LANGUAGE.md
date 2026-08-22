@@ -50,9 +50,9 @@ are not historical authorities. M36b therefore declares two regenerated,
 checked-in benchmark artifacts authoritative from this milestone forward:
 `NDArrayMaterializeStorage` (`sdslvbench-8b1f66233dd54390f518e9c7`) and
 `TensorContractionStorage` (`sdslvbench-a2b7fd8383074dd673a365d5`). Their
-source is `examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench`; isolated HLSL,
+source is `Examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench`; isolated HLSL,
 SPIR-V, and the toolchain/resource manifest are in
-`examples/SDSL-V/M36a/artifacts/`.
+`Examples/SDSL-V/M36a/artifacts/`.
 
 The manifest records source digest, compiler identity, DXC version and flags,
 Vulkan target, entry point, launch contract, resources, sizes and SHA-256.

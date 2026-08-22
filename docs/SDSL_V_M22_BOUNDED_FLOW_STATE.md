@@ -120,9 +120,9 @@ Generated HLSL must not contain source-level `flow` or `state` spelling.
 
 ## Examples
 
-- `examples/SDSL-V/M22/FlowStateBasic.sdslv`
-- `examples/SDSL-V/M22/FlowStateBoardLoadCoord.sdslv`
-- `examples/SDSL-V/M22/FlowStateGuardWhenTileLoad.sdslv`
+- `Examples/SDSL-V/M22/FlowStateBasic.sdslv`
+- `Examples/SDSL-V/M22/FlowStateBoardLoadCoord.sdslv`
+- `Examples/SDSL-V/M22/FlowStateGuardWhenTileLoad.sdslv`
 
 These examples demonstrate:
 

@@ -90,7 +90,7 @@ flow Controller(temp: Float<K>) -> Float<K> {
 ```
 
 Interpreted mode passed the snapshot assertion, and compiled mode also passed this particular board probe.
-This is better than expected from the older scalar-only wording in the Octomata reference, which says `BoardSnapshot` returns scalar board fields (`Bool`/`Int`/`Float`/`String` only).
+This was better than expected from the older scalar-only wording in the Octomata reference. The reference now reflects implementation truth: `BoardSnapshot` supports the accepted scalar board types and arrays of those types.
 Because `Float<K>` is a dimensioned `Float`, the implementation preserves the unit type in the typed snapshot; F6 tightened the reference wording and added interpreted/compiled language coverage for dimensioned scalar board fields.
 
 ## Awkward today

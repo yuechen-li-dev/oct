@@ -14,10 +14,10 @@ under different ownership systems. The complete significant-path inventory is:
 | `internal/sdslv/{lex,parse,validate,lower,emit,toolchain,vdmir}` | compiler/tooling | Go implementation |
 | `internal/sdslv/testdata/language/` | permanent language test | SDSL-V fixture corpus |
 | `internal/sdslv/test/out/` | temporary output | uncommitted test scratch |
-| `examples/SDSL-V/*.sdslv` | example/tutorial | examples only |
-| `examples/SDSL-V/*.sdslvtest` | permanent GPU test | bounded GPU test corpus |
-| `examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench` | benchmark corpus | stable benchmark/replay source |
-| `examples/SDSL-V/M36a/artifacts/` | canonical benchmark artifact | manifest hash record |
+| `Examples/SDSL-V/*.sdslv` | example/tutorial | examples only |
+| `Examples/SDSL-V/*.sdslvtest` | permanent GPU test | bounded GPU test corpus |
+| `Examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench` | benchmark corpus | stable benchmark/replay source |
+| `Examples/SDSL-V/M36a/artifacts/` | canonical benchmark artifact | manifest hash record |
 | `internal/prometheus/shaders/sdslv/production/sgemm/` | production source authority | Prometheus registry source |
 | `internal/prometheus/shaders/sdslv/experimental/` | experimental source | no source exists yet; policy boundary |
 | `internal/prometheus/shaders/sdslv/historical/` | historical/audit pointer | no duplicate files |

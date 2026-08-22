@@ -1,4 +1,5 @@
 {
+  "actuators": null,
   "assertions": null,
   "automata": [
     {
@@ -457,7 +458,7 @@
     }
   ],
   "schema": "concept-vulkan-evt1-source-map.v1",
-  "source": "examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept",
+  "source": "Examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept",
   "static_asserts": null,
   "structs": null,
   "templates": null

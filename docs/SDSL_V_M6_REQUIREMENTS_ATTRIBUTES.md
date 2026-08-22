@@ -131,6 +131,6 @@ M6 keeps the backend boundary explicit:
 
 ## Example
 
-- `examples/SDSL-V/M6/ConfigCheckedTileCopy.sdslv`
+- `Examples/SDSL-V/M6/ConfigCheckedTileCopy.sdslv`
 
 This example combines concept requirements, config validation, template static asserts, workgroup sizing from config, explicit resource bindings, a loop hint, and `compile ... as ...` specialization.

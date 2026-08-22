@@ -28,8 +28,8 @@ Inspected before implementation:
 - `internal/conceptvulkan/evt1_validate.go`
 - `internal/conceptvulkan/evt1_generate.go`
 - `internal/conceptvulkan/evt1_test.go`
-- `examples/Concept-Vulkan/evt1_m1a_language.concept`
-- `examples/Concept-Vulkan/evt1_m1a_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_m1a_language.concept`
+- `Examples/Concept-Vulkan/evt1_m1a_vulkan.concept`
 - checked M1A generated outputs under `internal/conceptvulkan/generated/`
 - Oct concept terminology in `Language/reference/language/18-concepts.md`
 - historical Oct concept background in `docs/experiments/CONCEPTS_M0.md`
@@ -370,7 +370,7 @@ Focused negative tests cover:
 
 ## 33. Language specimen
 
-Added `examples/Concept-Vulkan/evt1_m1b_a_language.concept`. It proves:
+Added `Examples/Concept-Vulkan/evt1_m1b_a_language.concept`. It proves:
 
 - ordinary structs
 - nested structs
@@ -387,7 +387,7 @@ Added `examples/Concept-Vulkan/evt1_m1b_a_language.concept`. It proves:
 
 ## 34. Vulkan-shaped specimen
 
-Added `examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept`. It proves:
+Added `Examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept`. It proves:
 
 - an ordinary Vulkan-handle range struct
 - an immovable Vulkan-handle lifecycle struct

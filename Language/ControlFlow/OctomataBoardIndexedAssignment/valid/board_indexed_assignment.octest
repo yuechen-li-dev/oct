@@ -36,6 +36,42 @@ flow BoardDimensionedFloatArrayProbe() -> Float<m> {
     }
 }
 
+flow BoardBoolArrayProbe() -> Bool {
+    board {
+        Values: Bool[]
+    }
+
+    state Start {
+        board.Values = [false, false]
+        board.Values[1] = true
+        return board.Values[1]
+    }
+}
+
+flow BoardStringArrayProbe() -> String[] {
+    board {
+        Values: String[]
+    }
+
+    state Start {
+        board.Values = ["before", "unchanged"]
+        board.Values[0] = "after"
+        return board.Values
+    }
+}
+
+flow BoardDimensionedIntArrayProbe() -> Int<m> {
+    board {
+        Values: Int<m>[]
+    }
+
+    state Start {
+        board.Values = [1m, 2m]
+        board.Values[0] = 7m
+        return board.Values[0]
+    }
+}
+
 flow BoardNestedFloatArrayProbe() -> Float {
     board {
         Matrix: Float[][]
@@ -83,6 +119,28 @@ fn BoardDimensionedFloatArrayIndexedAssignmentReturnsUpdatedValue() -> Void {
     Step(machine)
     let value = Result(machine)!
     Assert.Equal(4.5m, value, "updated dimensioned float board array element")
+}
+
+[Fact]
+fn BoardBoolArrayIndexedAssignmentReturnsUpdatedValue() -> Void {
+    let machine = BoardBoolArrayProbe()
+    Step(machine)
+    Assert.Equal(true, Result(machine)!, "updated bool board array element")
+}
+
+[Fact]
+fn BoardStringArrayIndexedAssignmentReturnsUpdatedValue() -> Void {
+    let machine = BoardStringArrayProbe()
+    Step(machine)
+    let values = Result(machine)!
+    Assert.Equal("after", values[0], "updated string board array element")
+}
+
+[Fact]
+fn BoardDimensionedIntArrayIndexedAssignmentReturnsUpdatedValue() -> Void {
+    let machine = BoardDimensionedIntArrayProbe()
+    Step(machine)
+    Assert.Equal(7m, Result(machine)!, "updated dimensioned int board array element")
 }
 
 [Fact]

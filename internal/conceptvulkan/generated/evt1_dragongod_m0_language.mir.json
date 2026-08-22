@@ -1,6 +1,6 @@
 {
   "schema": "concept-vulkan-evt1-mir.v1",
-  "module": "examples/Concept-Vulkan/evt1_dragongod_m0_language.concept",
+  "module": "Examples/Concept-Vulkan/evt1_dragongod_m0_language.concept",
   "enums": [
     {
       "name": "LifecycleSignal",

@@ -412,7 +412,7 @@ func check(root string, inventory bool) error {
 		"docs/SDSL_V_GRAPHICS_RECONCILIATION.md",
 		"docs/SDSL_V_GRAPHICS_RECONCILIATION.json",
 		"docs/SDSL_V_WORKSPACE.md",
-		"examples/SDSL-V/conformance/manifest.json",
+		"Examples/SDSL-V/conformance/manifest.json",
 		"internal/prometheus/DevelopmentReport/SDSL_V_M41_CANONICAL_FULL_LANGUAGE_IMPLEMENTATION.md",
 		"internal/prometheus/DevelopmentReport/SDSL_V_M39A_WORKSPACE_PRODUCTIZATION.md",
 		"internal/prometheus/native/Marionette/reactor_shader_registry_tests.cpp",

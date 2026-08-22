@@ -41,8 +41,8 @@ go test -count=1 -parallel 8 -tags=toolchain ./...
 # Invalid-contract baseline (the Language container has no valid-package root):
 go run ./cmd/oct test Language --execution interpreted
 # Representative core interpreted/compiled parity fixture:
-go run ./cmd/oct test examples/SmartGreenhouseController --execution interpreted
-go run ./cmd/oct test examples/SmartGreenhouseController --execution compiled
+go run ./cmd/oct test Examples/SmartGreenhouseController --execution interpreted
+go run ./cmd/oct test Examples/SmartGreenhouseController --execution compiled
 go run ./tools/build_sidecars --out dist/sidecars
 $env:OCT_SLOW_TESTS = "1"
 $env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"

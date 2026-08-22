@@ -8,7 +8,7 @@ import (
 func TestHeaderFromWordsDeterministic(t *testing.T) {
 	opts := HeaderOptions{
 		Symbol:     "k_sdslv_vector_add_spirv",
-		SourcePath: "examples/SDSL-V/M0/VectorAdd.sdslv",
+		SourcePath: "Examples/SDSL-V/M0/VectorAdd.sdslv",
 		Compute: &ComputeHeaderMetadata{
 			EntryPoint:  "VectorAdd_CS",
 			NumThreadsX: 16,
@@ -24,7 +24,7 @@ func TestHeaderFromWordsDeterministic(t *testing.T) {
 				{Name: "THREADS_Y", Value: 16},
 			},
 		},
-		CommandLine: "oct sdslv generate-header examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add_spirv.h --symbol k_sdslv_vector_add_spirv",
+		CommandLine: "oct sdslv generate-header Examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add_spirv.h --symbol k_sdslv_vector_add_spirv",
 	}
 	first, err := HeaderFromWords([]uint32{0x07230203, 0x00010000, 0x0008000b, 0x0000002a}, opts)
 	if err != nil {

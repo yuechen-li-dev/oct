@@ -12,7 +12,7 @@
   "valid": [
     {
       "id": "shared.coordinate-spaces",
-      "source": "examples/SDSL-V/conformance/shared/CoordinateSpaces.sdslvvalid",
+      "source": "Examples/SDSL-V/conformance/shared/CoordinateSpaces.sdslvvalid",
       "profile": "shared",
       "entry_points": [],
       "stages": [],
@@ -26,7 +26,7 @@
     },
     {
       "id": "graphics.canonical-forward-textured",
-      "source": "examples/SDSL-V/conformance/graphics/CanonicalGraphicsProgram.sdslvvalid",
+      "source": "Examples/SDSL-V/conformance/graphics/CanonicalGraphicsProgram.sdslvvalid",
       "profile": "graphics",
       "entry_points": ["ForwardTextured_VS", "ForwardTextured_PS"],
       "stages": ["vertex", "pixel"],
@@ -43,17 +43,17 @@
       "locations": ["vertex-input:0:float3@space(object.position)", "vertex-input:1:float2", "varying:0:float2", "varying:1:float3@space(world.position)", "pixel-target:0:float4"],
       "builtins": ["vertex_id:u32", "instance_id:u32", "position:float4@space(clip.position)", "front_face:bool"],
       "required_capabilities": ["graphics-vertex-pixel", "sampled-texture2d", "uniform-material"],
-      "bundle": "examples/SDSL-V/conformance/artifacts/ForwardTextured.bundle.json",
+      "bundle": "Examples/SDSL-V/conformance/artifacts/ForwardTextured.bundle.json",
       "reference_artifacts": [
-        {"path": "examples/SDSL-V/conformance/artifacts/ForwardTextured.vertex.hlsl", "sha256": "adbec3af8425d50b51bba7b17d3bd5d7620e3f76d0551b618856bac92fd08a76"},
-        {"path": "examples/SDSL-V/conformance/artifacts/ForwardTextured.vertex.spv", "sha256": "b5da74f59d6985fed9cfa4d34430dc86b7e3dc66bdcdc9351457cf26db43faa2"},
-        {"path": "examples/SDSL-V/conformance/artifacts/ForwardTextured.pixel.hlsl", "sha256": "adbec3af8425d50b51bba7b17d3bd5d7620e3f76d0551b618856bac92fd08a76"},
-        {"path": "examples/SDSL-V/conformance/artifacts/ForwardTextured.pixel.spv", "sha256": "7ada711827920e644d5a33167fae348e5ace42d421994da23b766160d060afe7"}
+        {"path": "Examples/SDSL-V/conformance/artifacts/ForwardTextured.vertex.hlsl", "sha256": "adbec3af8425d50b51bba7b17d3bd5d7620e3f76d0551b618856bac92fd08a76"},
+        {"path": "Examples/SDSL-V/conformance/artifacts/ForwardTextured.vertex.spv", "sha256": "cbd22a4e5555af032032d5bafbe6d5148754044bdf26e1a118819a2d556a0d84"},
+        {"path": "Examples/SDSL-V/conformance/artifacts/ForwardTextured.pixel.hlsl", "sha256": "adbec3af8425d50b51bba7b17d3bd5d7620e3f76d0551b618856bac92fd08a76"},
+        {"path": "Examples/SDSL-V/conformance/artifacts/ForwardTextured.pixel.spv", "sha256": "890f4f6703da0042af550f0d3d965fca1d3f0651b7ec6f4899b59ece9f133b1b"}
       ]
     },
     {
       "id": "graphics.minimal-vertex",
-      "source": "examples/SDSL-V/conformance/graphics/MinimalVertex.sdslvvalid",
+      "source": "Examples/SDSL-V/conformance/graphics/MinimalVertex.sdslvvalid",
       "profile": "vertex",
       "entry_points": ["MinimalVertexProgram_VS"],
       "stages": ["vertex"],
@@ -64,13 +64,13 @@
       "builtins": ["position:float4@space(clip.position)"],
       "required_capabilities": ["graphics-vertex-pixel"],
       "reference_artifacts": [
-        {"path": "examples/SDSL-V/conformance/artifacts/MinimalVertexProgram.vertex.hlsl", "sha256": "2e45a6b54531abea80a7fd4426b06714d06b62d7d5d3106358ca6aadced9ecc1"},
-        {"path": "examples/SDSL-V/conformance/artifacts/MinimalVertexProgram.vertex.spv", "sha256": "c9919ab95d42551a3bdd5b6942e9884c07c78b8fad5810d2e45cbd6f35165ba2"}
+        {"path": "Examples/SDSL-V/conformance/artifacts/MinimalVertexProgram.vertex.hlsl", "sha256": "2e45a6b54531abea80a7fd4426b06714d06b62d7d5d3106358ca6aadced9ecc1"},
+        {"path": "Examples/SDSL-V/conformance/artifacts/MinimalVertexProgram.vertex.spv", "sha256": "c9919ab95d42551a3bdd5b6942e9884c07c78b8fad5810d2e45cbd6f35165ba2"}
       ]
     },
     {
       "id": "graphics.minimal-pixel",
-      "source": "examples/SDSL-V/conformance/graphics/MinimalPixel.sdslvvalid",
+      "source": "Examples/SDSL-V/conformance/graphics/MinimalPixel.sdslvvalid",
       "profile": "pixel",
       "entry_points": ["MinimalPixelProgram_PS"],
       "stages": ["pixel"],
@@ -81,13 +81,13 @@
       "builtins": [],
       "required_capabilities": ["graphics-vertex-pixel"],
       "reference_artifacts": [
-        {"path": "examples/SDSL-V/conformance/artifacts/MinimalPixelProgram.pixel.hlsl", "sha256": "528c671217ce146bce8dabcbee4b84857316384ebd3faac6e183f5292d12801d"},
-        {"path": "examples/SDSL-V/conformance/artifacts/MinimalPixelProgram.pixel.spv", "sha256": "67e672da8ac03777a3cb9d8057e18741ed6337ec90a74c328bb3d7ce2b81ac94"}
+        {"path": "Examples/SDSL-V/conformance/artifacts/MinimalPixelProgram.pixel.hlsl", "sha256": "528c671217ce146bce8dabcbee4b84857316384ebd3faac6e183f5292d12801d"},
+        {"path": "Examples/SDSL-V/conformance/artifacts/MinimalPixelProgram.pixel.spv", "sha256": "67e672da8ac03777a3cb9d8057e18741ed6337ec90a74c328bb3d7ce2b81ac94"}
       ]
     },
     {
       "id": "graphics.multiple-render-targets",
-      "source": "examples/SDSL-V/conformance/graphics/MultipleRenderTargets.sdslvvalid",
+      "source": "Examples/SDSL-V/conformance/graphics/MultipleRenderTargets.sdslvvalid",
       "profile": "pixel",
       "entry_points": ["GBufferProgram_PS"],
       "stages": ["pixel"],
@@ -98,13 +98,13 @@
       "builtins": [],
       "required_capabilities": ["graphics-vertex-pixel"],
       "reference_artifacts": [
-        {"path": "examples/SDSL-V/conformance/artifacts/GBufferProgram.pixel.hlsl", "sha256": "f31987695815633bae935ab4c827421bdf7013d1c981340496170b451b9aaec8"},
-        {"path": "examples/SDSL-V/conformance/artifacts/GBufferProgram.pixel.spv", "sha256": "e8a4eaf6ada7b08ea585be4bc88fce26f2573445842244cf2db47561b8006d45"}
+        {"path": "Examples/SDSL-V/conformance/artifacts/GBufferProgram.pixel.hlsl", "sha256": "f31987695815633bae935ab4c827421bdf7013d1c981340496170b451b9aaec8"},
+        {"path": "Examples/SDSL-V/conformance/artifacts/GBufferProgram.pixel.spv", "sha256": "e8a4eaf6ada7b08ea585be4bc88fce26f2573445842244cf2db47561b8006d45"}
       ]
     },
     {
       "id": "compute.zimage-attention-semantic-spaces",
-      "source": "examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid",
+      "source": "Examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid",
       "profile": "compute",
       "entry_points": ["AttentionSpacePoc_CS"],
       "stages": ["compute"],
@@ -115,13 +115,13 @@
       "builtins": ["dispatch_thread_id:uint3", "group_id:uint3", "group_thread_id:uint3", "group_index:u32"],
       "required_capabilities": [],
       "reference_artifacts": [
-        {"path": "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc/attention_space_poc.hlsl", "sha256": "9957188bf20cd6dd41205bbfb3b811e814f234779361c27b66406a6181e66dd2"},
+        {"path": "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc/attention_space_poc.hlsl", "sha256": "798682fd39f37f97134ac17282bffe34658f6eb561c2c5cd423c6b300a144c98"},
         {"path": "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc/attention_space_poc.spv", "sha256": "bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743"}
       ]
     },
     {
       "id": "compute.no-regression",
-      "source": "examples/SDSL-V/conformance/compute/ComputeNoRegression.sdslvvalid",
+      "source": "Examples/SDSL-V/conformance/compute/ComputeNoRegression.sdslvvalid",
       "profile": "compute",
       "entry_points": ["ComputeNoRegression_CS"],
       "stages": ["compute"],
@@ -132,46 +132,46 @@
       "builtins": ["dispatch_thread_id:uint3"],
       "required_capabilities": [],
       "reference_artifacts": [
-        {"path": "examples/SDSL-V/conformance/artifacts/ComputeNoRegression.compute.hlsl", "sha256": "598aed3baaa674af0702933f6ed455eca971b38fc943d99ef136ed24d008d56c"},
-        {"path": "examples/SDSL-V/conformance/artifacts/ComputeNoRegression.compute.spv", "sha256": "b3e444714a41678038ae481d075211237ffcc38744de2d2cb4dd819a3bfa7eae"}
+        {"path": "Examples/SDSL-V/conformance/artifacts/ComputeNoRegression.compute.hlsl", "sha256": "598aed3baaa674af0702933f6ed455eca971b38fc943d99ef136ed24d008d56c"},
+        {"path": "Examples/SDSL-V/conformance/artifacts/ComputeNoRegression.compute.spv", "sha256": "b3e444714a41678038ae481d075211237ffcc38744de2d2cb4dd819a3bfa7eae"}
       ]
     }
   ],
   "invalid": [
-    {"source": "examples/SDSL-V/conformance/invalid/SpaceGroupDuplicateTypeName.sdslvinvalid", "code": "SDSL-V1509", "line": 3, "column": 5, "related_line": 2, "related_column": 5, "category": "semantic-space-group-name"},
-    {"source": "examples/SDSL-V/conformance/invalid/SpaceGroupCanonicalIdentityCollision.sdslvinvalid", "code": "SDSL-V4124", "line": 3, "column": 5, "related_line": 2, "related_column": 5, "category": "semantic-space-group-identity"},
-    {"source": "examples/SDSL-V/conformance/invalid/SpaceGroupExplicitIdentityCollision.sdslvinvalid", "code": "SDSL-V4124", "line": 3, "column": 5, "related_line": 1, "related_column": 36, "category": "semantic-space-group-explicit-collision"},
-    {"source": "examples/SDSL-V/conformance/invalid/SpaceAnnotationRequiresAlias.sdslvinvalid", "code": "SDSL-V4120", "line": 1, "column": 26, "category": "semantic-space-declaration"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionQContractedWithValue.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 98, "category": "attention-space-pairing"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionKeyUsedAsValue.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 118, "category": "attention-space-value"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionUnpositionedQuery.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 87, "category": "attention-space-position"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionRopeAppliedTwice.sdslvinvalid", "code": "SDSL-V4123", "line": 5, "column": 111, "category": "attention-space-rope"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionIncompatiblePositionConvention.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 108, "category": "attention-space-position"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionQwenResidual.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 99, "category": "attention-space-residual"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionProbabilityAsScore.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 90, "category": "attention-space-normalization"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionScoreBeforeNormalization.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 106, "category": "attention-space-normalization"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionHeadResidual.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 99, "category": "attention-space-residual"},
-    {"source": "examples/SDSL-V/conformance/invalid/AttentionWrongRopeCoordinate.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 117, "category": "attention-space-coordinate"},
-    {"source": "examples/SDSL-V/conformance/invalid/CoordinateAssignment.sdslvinvalid", "code": "SDSL-V1503", "line": 4, "column": 33, "category": "coordinate-space-assignment"},
-    {"source": "examples/SDSL-V/conformance/invalid/CoordinateCallArgument.sdslvinvalid", "code": "SDSL-V1503", "line": 5, "column": 59, "category": "coordinate-space-call"},
-    {"source": "examples/SDSL-V/conformance/invalid/CoordinateReturn.sdslvinvalid", "code": "SDSL-V1504", "line": 4, "column": 60, "category": "coordinate-space-return"},
-    {"source": "examples/SDSL-V/conformance/invalid/CoordinateStreamField.sdslvinvalid", "code": "SDSL-V4111", "line": 6, "column": 39, "related_line": 5, "related_column": 40, "category": "coordinate-space-stream"},
-    {"source": "examples/SDSL-V/conformance/invalid/MissingVertexClipPosition.sdslvinvalid", "code": "SDSL-V4106", "line": 4, "column": 50, "category": "graphics-interface"},
-    {"source": "examples/SDSL-V/conformance/invalid/DuplicateClipPosition.sdslvinvalid", "code": "SDSL-V4107", "line": 4, "column": 38, "category": "graphics-interface"},
-    {"source": "examples/SDSL-V/conformance/invalid/LocationCollision.sdslvinvalid", "code": "SDSL-V4105", "line": 4, "column": 5, "category": "graphics-interface"},
-    {"source": "examples/SDSL-V/conformance/invalid/VaryingMismatch.sdslvinvalid", "code": "SDSL-V4111", "line": 5, "column": 13, "category": "stage-linkage"},
-    {"source": "examples/SDSL-V/conformance/invalid/IncompatibleCoordinateSpaces.sdslvinvalid", "code": "SDSL-V1504", "line": 4, "column": 57, "category": "coordinate-space"},
-    {"source": "examples/SDSL-V/conformance/invalid/InvalidBuiltinForStage.sdslvinvalid", "code": "SDSL-V4109", "line": 2, "column": 16, "category": "builtin"},
-    {"source": "examples/SDSL-V/conformance/invalid/WrongBuiltinType.sdslvinvalid", "code": "SDSL-V4110", "line": 2, "column": 47, "category": "builtin"},
-    {"source": "examples/SDSL-V/conformance/invalid/DuplicateResourceBinding.sdslvinvalid", "code": "SDSL-V4112", "line": 5, "column": 9, "related_line": 4, "related_column": 9, "category": "resource-binding"},
-    {"source": "examples/SDSL-V/conformance/invalid/MixedStreamRole.sdslvinvalid", "code": "SDSL-V4102", "line": 2, "column": 1, "category": "stream-role"},
-    {"source": "examples/SDSL-V/conformance/invalid/SampleWithoutSampler.sdslvinvalid", "code": "SDSL-V4118", "line": 7, "column": 29, "category": "texture-sampling"},
-    {"source": "examples/SDSL-V/conformance/invalid/WrongSampleCoordinate.sdslvinvalid", "code": "SDSL-V4119", "line": 10, "column": 62, "category": "texture-sampling"},
-    {"source": "examples/SDSL-V/conformance/invalid/UnmaterializedGenericEntry.sdslvinvalid", "code": "SDSL-V4113", "line": 6, "column": 1, "category": "materialization"},
-    {"source": "examples/SDSL-V/conformance/invalid/UnsatisfiedConcept.sdslvinvalid", "code": "SDSL-V4113", "line": 13, "column": 1, "category": "concept"},
-    {"source": "examples/SDSL-V/conformance/invalid/DeprecatedInterface.sdslvinvalid", "code": "SDSL-V4101", "line": 2, "column": 1, "category": "removed-interface"},
-    {"source": "examples/SDSL-V/conformance/invalid/RemovedFallibleSyntax.sdslvinvalid", "code": "SDSL-V4100", "line": 2, "column": 29, "category": "removed-fallibility"},
-    {"source": "examples/SDSL-V/conformance/invalid/UninitializedBinding.sdslvinvalid", "code": "SDSL-V3703", "line": 3, "column": 5, "category": "binding"},
-    {"source": "examples/SDSL-V/conformance/invalid/ImmutableMutation.sdslvinvalid", "code": "SDSL-V3701", "line": 4, "column": 5, "related_line": 3, "related_column": 9, "category": "binding"}
+    {"source": "Examples/SDSL-V/conformance/invalid/SpaceGroupDuplicateTypeName.sdslvinvalid", "code": "SDSL-V1509", "line": 3, "column": 5, "related_line": 2, "related_column": 5, "category": "semantic-space-group-name"},
+    {"source": "Examples/SDSL-V/conformance/invalid/SpaceGroupCanonicalIdentityCollision.sdslvinvalid", "code": "SDSL-V4124", "line": 3, "column": 5, "related_line": 2, "related_column": 5, "category": "semantic-space-group-identity"},
+    {"source": "Examples/SDSL-V/conformance/invalid/SpaceGroupExplicitIdentityCollision.sdslvinvalid", "code": "SDSL-V4124", "line": 3, "column": 5, "related_line": 1, "related_column": 36, "category": "semantic-space-group-explicit-collision"},
+    {"source": "Examples/SDSL-V/conformance/invalid/SpaceAnnotationRequiresAlias.sdslvinvalid", "code": "SDSL-V4120", "line": 1, "column": 26, "category": "semantic-space-declaration"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionQContractedWithValue.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 98, "category": "attention-space-pairing"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionKeyUsedAsValue.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 118, "category": "attention-space-value"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionUnpositionedQuery.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 87, "category": "attention-space-position"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionRopeAppliedTwice.sdslvinvalid", "code": "SDSL-V4123", "line": 5, "column": 111, "category": "attention-space-rope"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionIncompatiblePositionConvention.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 108, "category": "attention-space-position"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionQwenResidual.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 99, "category": "attention-space-residual"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionProbabilityAsScore.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 90, "category": "attention-space-normalization"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionScoreBeforeNormalization.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 106, "category": "attention-space-normalization"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionHeadResidual.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 99, "category": "attention-space-residual"},
+    {"source": "Examples/SDSL-V/conformance/invalid/AttentionWrongRopeCoordinate.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 117, "category": "attention-space-coordinate"},
+    {"source": "Examples/SDSL-V/conformance/invalid/CoordinateAssignment.sdslvinvalid", "code": "SDSL-V1503", "line": 4, "column": 33, "category": "coordinate-space-assignment"},
+    {"source": "Examples/SDSL-V/conformance/invalid/CoordinateCallArgument.sdslvinvalid", "code": "SDSL-V1503", "line": 5, "column": 59, "category": "coordinate-space-call"},
+    {"source": "Examples/SDSL-V/conformance/invalid/CoordinateReturn.sdslvinvalid", "code": "SDSL-V1504", "line": 4, "column": 60, "category": "coordinate-space-return"},
+    {"source": "Examples/SDSL-V/conformance/invalid/CoordinateStreamField.sdslvinvalid", "code": "SDSL-V4111", "line": 6, "column": 39, "related_line": 5, "related_column": 40, "category": "coordinate-space-stream"},
+    {"source": "Examples/SDSL-V/conformance/invalid/MissingVertexClipPosition.sdslvinvalid", "code": "SDSL-V4106", "line": 4, "column": 50, "category": "graphics-interface"},
+    {"source": "Examples/SDSL-V/conformance/invalid/DuplicateClipPosition.sdslvinvalid", "code": "SDSL-V4107", "line": 4, "column": 38, "category": "graphics-interface"},
+    {"source": "Examples/SDSL-V/conformance/invalid/LocationCollision.sdslvinvalid", "code": "SDSL-V4105", "line": 4, "column": 5, "category": "graphics-interface"},
+    {"source": "Examples/SDSL-V/conformance/invalid/VaryingMismatch.sdslvinvalid", "code": "SDSL-V4111", "line": 5, "column": 13, "category": "stage-linkage"},
+    {"source": "Examples/SDSL-V/conformance/invalid/IncompatibleCoordinateSpaces.sdslvinvalid", "code": "SDSL-V1504", "line": 4, "column": 57, "category": "coordinate-space"},
+    {"source": "Examples/SDSL-V/conformance/invalid/InvalidBuiltinForStage.sdslvinvalid", "code": "SDSL-V4109", "line": 2, "column": 16, "category": "builtin"},
+    {"source": "Examples/SDSL-V/conformance/invalid/WrongBuiltinType.sdslvinvalid", "code": "SDSL-V4110", "line": 2, "column": 47, "category": "builtin"},
+    {"source": "Examples/SDSL-V/conformance/invalid/DuplicateResourceBinding.sdslvinvalid", "code": "SDSL-V4112", "line": 5, "column": 9, "related_line": 4, "related_column": 9, "category": "resource-binding"},
+    {"source": "Examples/SDSL-V/conformance/invalid/MixedStreamRole.sdslvinvalid", "code": "SDSL-V4102", "line": 2, "column": 1, "category": "stream-role"},
+    {"source": "Examples/SDSL-V/conformance/invalid/SampleWithoutSampler.sdslvinvalid", "code": "SDSL-V4118", "line": 7, "column": 29, "category": "texture-sampling"},
+    {"source": "Examples/SDSL-V/conformance/invalid/WrongSampleCoordinate.sdslvinvalid", "code": "SDSL-V4119", "line": 10, "column": 62, "category": "texture-sampling"},
+    {"source": "Examples/SDSL-V/conformance/invalid/UnmaterializedGenericEntry.sdslvinvalid", "code": "SDSL-V4113", "line": 6, "column": 1, "category": "materialization"},
+    {"source": "Examples/SDSL-V/conformance/invalid/UnsatisfiedConcept.sdslvinvalid", "code": "SDSL-V4113", "line": 13, "column": 1, "category": "concept"},
+    {"source": "Examples/SDSL-V/conformance/invalid/DeprecatedInterface.sdslvinvalid", "code": "SDSL-V4101", "line": 2, "column": 1, "category": "removed-interface"},
+    {"source": "Examples/SDSL-V/conformance/invalid/RemovedFallibleSyntax.sdslvinvalid", "code": "SDSL-V4100", "line": 2, "column": 29, "category": "removed-fallibility"},
+    {"source": "Examples/SDSL-V/conformance/invalid/UninitializedBinding.sdslvinvalid", "code": "SDSL-V3703", "line": 3, "column": 5, "category": "binding"},
+    {"source": "Examples/SDSL-V/conformance/invalid/ImmutableMutation.sdslvinvalid", "code": "SDSL-V3701", "line": 4, "column": 5, "related_line": 3, "related_column": 9, "category": "binding"}
   ]
 }

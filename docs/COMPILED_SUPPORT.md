@@ -121,11 +121,11 @@ Measured using `go run ./cmd/oct test ... --execution compiled|auto` on May 21, 
 | remember | Supported | Supported | `OctomataResumeM57/runtime/valid/single_slot_resume_behaviors.octest` | Single-slot semantics only; latest remember overwrites prior slot. |
 | when policy / utility when | Supported | Supported | `OctomataCoreB` + `OctomataUtilityWhen` suites | Must satisfy existing utility-when shape/type constraints. |
 | board declarations | Supported | Supported | `OctomataBlackboardM6/valid/flow_declared_board_surface.octest` | Placement/type rules still enforced by invalid fixtures. |
-| scalar board fields Bool/Int/Float/String | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Scalar-only field contract. |
+| board fields Bool/String/Int/Float, dimensioned numeric scalars, and arrays of those types | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest`; `OctomataBoardIndexedAssignment/valid/board_indexed_assignment.octest` | Arrays may be nested; record, enum, vector, matrix, and other aggregate fields remain unsupported. |
 | flow-state local `let` temporaries | Supported | Supported (state/block scoped, immutable, non-persistent) | `OctomataFlowLocals/valid/flow_state_let_surface.octest` | Local bindings are scoped to the current state/block only; they do not persist across states and do not appear in board/history snapshots. Fallible flow-let RHS remains unsupported in compiled mode. |
 | flow expression calls (pure builtins) | Supported | Supported (builtin-only in flow state expressions) | `OctomataFlowCallExpr/valid/flow_call_builtin_surface.octest` | Calls inside flow expressions are currently limited to non-fallible pure builtins (`Len`, `Abs`, `Sqrt`, trig/log family, `FloorToInt`/`CeilToInt`/`RoundToInt`, `FormatFloat`). Fallible or side-effectful wrappers remain deferred. |
 | flow expression indexing | Supported (array indexing) | Supported (array indexing `T[]` with `Int` index in flow expressions) | `OctomataFlowIndexExpr/valid/flow_index_expr_surface.octest` | Current compiled flow support is scoped to single-dimension array indexing. String/matrix/vector flow-expression indexing remains deferred until explicitly verified. |
-| board array fields | Unsupported | Unsupported | `OctomataCompiledBoundary/invalid/board_array_unsupported.octfail` | Diagnostic: board fields must be Bool/Int/Float/String. |
+| board array fields over supported scalar element types | Supported | Supported | `OctomataBoardIndexedAssignment/valid/board_indexed_assignment.octest` | Covers Bool, String, Int/Int&lt;D&gt;, Float/Float&lt;D&gt;, nested arrays, indexed writes, and snapshots. |
 | Step(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Mutates flow in place; returns `Int` sentinel in lowered MIR. |
 | Active(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Returns empty string before first step and after completion. |
 | Complete(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | `false` until completed terminal path executes. |
@@ -159,7 +159,7 @@ Notes:
 | `ast.MatchExpr` | Partial | **Yes (enum-tag/payload M0)** | Yes (enum-only) | Implemented | Compiled flow supports enum `match` with tag dispatch and optional single payload binding in arm scope. |
 | `ast.BatchExpr` / runtime-heavy expression forms | Yes (ordinary functions) | No | No | Keep ordinary support; defer flow placement | Ordinary compiled batch uses `MIRBatchMap` plus sequential/chunked specialization. It is still outside the current pure local flow-expression scope. |
 
-M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed, and compiled `BoardSnapshot` support is now green for M0 scalar board fields (`Bool`/`Int`/`Float`/`String`) with board arrays intentionally unsupported.
+M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed. Later board work also made compiled `BoardSnapshot` green for supported scalar board fields and arrays of those scalar types.
 
 ## Array cross-section
 
@@ -215,20 +215,20 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 3. Isolate and clear remaining M2/M2b compiled blockers with focused fixtures.
 4. Expand compiled sweep fixtures only after each newly-green surface is measured.
 
-| BoardSnapshot(machine) | Supported | Supported (scalar board fields, including `Int<D>`/`Float<D>`) | `OctomataBoardSnapshot`; `DimensionedScalarBoardProbe`; `Experiments.FmBrownNoiseKalman.M3.FlowSmoke` | Compiled support returns detached/read-only snapshots of scalar board fields (`Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`). Board arrays, vectors, matrices, records, and enums remain unsupported. |
+| BoardSnapshot(machine) | Supported | Supported (supported scalar and scalar-array board fields, including dimensioned numeric elements) | `OctomataBoardSnapshot`; `OctomataBoardIndexedAssignment`; `DimensionedScalarBoardProbe`; `Experiments.FmBrownNoiseKalman.M3.FlowSmoke` | Compiled support returns detached/read-only snapshots. Vectors, matrices, records, enums, and other board aggregates remain unsupported. |
 
 ## 2026-06-12 F6 SI board and BaseUnit release contract
 
 - Compiled mode supports `BaseUnit(Float<D>) -> Float` and dimensionless `BaseUnit(Float) -> Float`; the lowering erases only the static dimension and leaves the numeric value unchanged. `BaseValue` remains accepted as the older spelling.
-- Compiled Octomata board fields support scalar `Int<D>` and `Float<D>` values in addition to `Bool`, `Int`, `Float`, and `String`.
-- Compiled `BoardSnapshot(machine)!` preserves exact dimensioned scalar field types in the generated snapshot record.
+- Compiled Octomata board fields support `Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`, and arrays (including nested arrays) of those scalar types.
+- Compiled `BoardSnapshot(machine)!` preserves exact dimensioned scalar and array element types in the generated snapshot record.
 - Board arrays, vectors, matrices, records, enums, and non-scalar runtime values remain outside the compiled board snapshot contract.
 
 ## 2026-05-23 SmartGreenhouse compiled convergence pass 2
 
 - `ast.MatchExpr` now has compiled M0 support for enum-tag dispatch with optional single payload binding and expression-valued arms.
 - Added focused fixture: `Language/ControlFlow/EnumPayloadMatchCompiled/valid/payload_match.octest` (compiled/auto/default green).
-- `examples/SmartGreenhouseController --execution compiled` now passes `EnumPayloadMatchWorks`; the prior blocker `unsupported expression ast.MatchExpr` is resolved.
+- `Examples/SmartGreenhouseController --execution compiled` now passes `EnumPayloadMatchWorks`; the prior blocker `unsupported expression ast.MatchExpr` is resolved.
 - Remaining SmartGreenhouse compiled blockers (unchanged semantics):
   - Matrix/vector codegen mismatch in generated Go (`[]float64` emitted where scalar/vector ops are expected) in `MatrixVectorDistinctFromArray`.
   - Runtime assertion failure `battery consumed` in `FlowCompletesAndHistoryPresent`.
@@ -238,7 +238,7 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 - Fixed compiled vector codegen mismatch by lowering vector arithmetic operators to dedicated compiled helpers instead of raw Go `+/-/*//` on slices, preserving vector semantics distinct from arrays.
 - Fixed compiled vector indexing type propagation so indexing `Vector<T>` now lowers to scalar `T` (instead of incorrectly carrying `Vector<T>`).
 - Fixed compiled flow `if` block emission so sequential field updates inside a single conditional no longer short-circuit after the first assignment.
-- `examples/SmartGreenhouseController --execution compiled` is now fully green, including:
+- `Examples/SmartGreenhouseController --execution compiled` is now fully green, including:
   - `MatrixVectorDistinctFromArray`
   - `FlowCompletesAndHistoryPresent`
 

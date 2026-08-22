@@ -194,7 +194,7 @@ Location:
 - **Expected files/packages:** `Libraries/UI/*`, language/reference or docs updates, UI wrapper tests.
 - **Non-goals:** no IR redesign, no layout-row implementation.
 - **Tests required:** UI wrapper behavior tests, compatibility tests with existing builtins.
-- **Acceptance:** user examples/tests use `UI.*`; raw builtin usage is internal.
+- **Acceptance:** user Examples/tests use `UI.*`; raw builtin usage is internal.
 - **Surface:** user-facing.
 
 ### M104 — LayoutRow/LayoutDocument/ResolvedLayoutDocument core

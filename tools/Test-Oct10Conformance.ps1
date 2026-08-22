@@ -31,7 +31,7 @@ $stableSources = @(
     "Language/Types/EnumsAssociated/valid/associated_data_enums_match_binding.octest",
     "Language/Types/UnitsM1/valid/signed_exponents_and_hz_alias_m1.octest",
     "Language/Types/VectorsMatricesM92/valid/dimensioned_linear_algebra_m92.octest",
-    "examples/SmartGreenhouseController/SmartGreenhouseController.octest"
+    "Examples/SmartGreenhouseController/SmartGreenhouseController.octest"
 )
 
 $compiled = 0

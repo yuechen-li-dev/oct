@@ -29,6 +29,7 @@ typedef enum concept_vulkan_automata_dispatch_outcome_tag {
   CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_AMBIGUOUS = 2,
   CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_FINISHED = 3,
   CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_ALREADY_FINISHED = 4,
+  CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_EFFECT_BATCH_OCCUPIED = 5,
 } concept_vulkan_automata_dispatch_outcome_tag;
 
 typedef struct concept_vulkan_automata_dispatch_outcome {

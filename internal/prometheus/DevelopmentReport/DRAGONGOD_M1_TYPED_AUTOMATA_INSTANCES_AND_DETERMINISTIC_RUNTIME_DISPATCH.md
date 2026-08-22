@@ -167,8 +167,8 @@ families actually used through local instances.
 
 ## New specimens
 
-- `examples/Concept-Vulkan/evt1_dragongod_m1_language.concept`
-- `examples/Concept-Vulkan/evt1_dragongod_m1_vulkan.concept`
+- `Examples/Concept-Vulkan/evt1_dragongod_m1_language.concept`
+- `Examples/Concept-Vulkan/evt1_dragongod_m1_vulkan.concept`
 
 The language specimen proves:
 

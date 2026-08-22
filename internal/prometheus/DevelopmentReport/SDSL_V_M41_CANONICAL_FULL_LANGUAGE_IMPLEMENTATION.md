@@ -6,7 +6,7 @@ Convergence outcome: **SUCCESS**. Milestone state: **COMPLETE**.
 
 SDSL-V is now one shared language with compute, vertex, and pixel profiles. The
 normative authority is `docs/SDSL_V_LANGUAGE_SPEC.md` together with
-`examples/SDSL-V/conformance/`; GoOct is the reference implementation. A parser,
+`Examples/SDSL-V/conformance/`; GoOct is the reference implementation. A parser,
 validator, or emitter that disagrees with those authorities is defective.
 
 The historical Wyrmcoil/Aurelian graphics document contributed useful stage,
@@ -90,7 +90,7 @@ normalized SPIR-V interface facts, locations, targets, builtins, resources,
 material layout, capabilities, and deterministic replay identity. Pipeline
 state and runtime objects are intentionally absent.
 
-The permanent corpus is `examples/SDSL-V/conformance/` with 6 valid fixture
+The permanent corpus is `Examples/SDSL-V/conformance/` with 6 valid fixture
 records and 21 invalid fixture records. The canonical graphics source subsumes
 paired varyings, clip position, explicit inputs, texture/sampler, material,
 concept specialization, payload match, record/with, flow, comptime, spaces,
@@ -102,9 +102,9 @@ Reference artifacts:
 | Artifact | SHA-256 |
 |---|---|
 | ForwardTextured vertex HLSL | `adbec3af8425d50b51bba7b17d3bd5d7620e3f76d0551b618856bac92fd08a76` |
-| ForwardTextured vertex SPIR-V | `b5da74f59d6985fed9cfa4d34430dc86b7e3dc66bdcdc9351457cf26db43faa2` |
+| ForwardTextured vertex SPIR-V | `cbd22a4e5555af032032d5bafbe6d5148754044bdf26e1a118819a2d556a0d84` |
 | ForwardTextured pixel HLSL | `adbec3af8425d50b51bba7b17d3bd5d7620e3f76d0551b618856bac92fd08a76` |
-| ForwardTextured pixel SPIR-V | `7ada711827920e644d5a33167fae348e5ace42d421994da23b766160d060afe7` |
+| ForwardTextured pixel SPIR-V | `890f4f6703da0042af550f0d3d965fca1d3f0651b7ec6f4899b59ece9f133b1b` |
 
 DXC selected `vs_6_0` and `ps_6_0`; `spirv-val` accepted all committed graphics
 modules. Structural inspection proves vertex locations 0/1, Position,

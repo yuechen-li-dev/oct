@@ -21,7 +21,7 @@
 - Use `--execution auto` first to probe compiled support posture.
 - Oct syntax uses one statement per line/block statement; semicolon-separated inline statements are not supported.
 
-- For Octomata scalar board observation between steps, use `BoardSnapshot(machine)!` (or `?`/`match`) and keep per-step arrays in external accumulators.
+- For Octomata board observation between steps, use `BoardSnapshot(machine)!` (or `?`/`match`). Supported board arrays are detached in snapshots; keep only state that belongs to the flow on its board.
 
 - Prefer `switch` expressions for multi-way classification; Oct does not support `else if`.
 - Use semantic boolean operators: `and`, `or`, `not` (not `&&`, `||`, `!`).

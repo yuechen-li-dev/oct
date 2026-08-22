@@ -26,7 +26,7 @@ Inspected before implementation:
 - `internal/conceptvulkan/conceptvulkan.go`
 - `internal/conceptvulkan/conceptvulkan_test.go`
 - `cmd/concept-vulkan/main.go`
-- `examples/Concept-Vulkan/kernel54_probe.concept`
+- `Examples/Concept-Vulkan/kernel54_probe.concept`
 - `primer/cpp-primer.md`
 - `primer/vulkan-primer.md`
 
@@ -238,7 +238,7 @@ binding leakage, and owned payload rejection.
 
 ## 24. Native language specimen
 
-Added `examples/Concept-Vulkan/evt1_m1a_language.concept` plus generated
+Added `Examples/Concept-Vulkan/evt1_m1a_language.concept` plus generated
 authority under `internal/conceptvulkan/generated/`. It proves:
 
 - unit, one-payload, multi-payload, and enum-payload variants
@@ -249,7 +249,7 @@ authority under `internal/conceptvulkan/generated/`. It proves:
 
 ## 25. Vulkan-shaped specimen
 
-Added `examples/Concept-Vulkan/evt1_m1a_vulkan.concept` plus generated
+Added `Examples/Concept-Vulkan/evt1_m1a_vulkan.concept` plus generated
 authority under `internal/conceptvulkan/generated/`. It proves:
 
 - `Empty`
@@ -366,7 +366,7 @@ vertical.
 Rollback removes:
 
 - `internal/conceptvulkan/evt1_*`
-- `examples/Concept-Vulkan/evt1_m1a_*.concept`
+- `Examples/Concept-Vulkan/evt1_m1a_*.concept`
 - `internal/conceptvulkan/generated/evt1_m1a_*`
 - this report and the related constitution/status/evidence-index/handoff
   updates
