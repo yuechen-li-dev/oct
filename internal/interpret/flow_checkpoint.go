@@ -379,6 +379,13 @@ func checkpointDimension(value Value) string {
 func flowFingerprint(inst *FlowRuntimeInstance) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "pkg:%s\nflow:%s\n", inst.Package, inst.Decl.Name)
+	if inst.Decl.TurnInput != nil {
+		fmt.Fprintf(h, "input:%s:%s\n", inst.Decl.TurnInput.Name, expectedTypeString(inst.Decl.TurnInput.Type))
+	}
+	if inst.Decl.YieldType != nil {
+		fmt.Fprintf(h, "yield:%s\n", expectedTypeString(*inst.Decl.YieldType))
+	}
+	fmt.Fprintf(h, "return:%s\n", expectedTypeString(inst.Decl.ReturnType))
 	for _, field := range inst.Decl.Board {
 		fmt.Fprintf(h, "board:%s:%s\n", field.Name, expectedTypeString(field.Type))
 	}

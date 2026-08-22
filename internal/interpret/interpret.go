@@ -197,6 +197,8 @@ type FlowRuntimeInstance struct {
 	InstructionIndex int
 	Completed        bool
 	Result           Value
+	LastYield        Value
+	HasYield         bool
 	StateHistory     []string
 	UtilityWhenSites map[int]utilityWhenSiteState
 	DirtyBoardFields map[string]struct{}
@@ -861,6 +863,7 @@ type flowSignalKind int
 const (
 	flowSignalNone flowSignalKind = iota
 	flowSignalSuspend
+	flowSignalYield
 	flowSignalGoto
 	flowSignalReturn
 )
@@ -873,7 +876,18 @@ type flowSignal struct {
 
 const flowInstanceBindingName = "__oct_flow_instance"
 
-func (i interpreter) stepFlow(instance *FlowRuntimeInstance) error {
+func (i interpreter) stepFlow(instance *FlowRuntimeInstance, input *Value) error {
+	if instance.Completed && input != nil {
+		return fmt.Errorf("runtime error: input supplied after flow completion")
+	}
+	instance.HasYield = false
+	if instance.Decl.TurnInput != nil {
+		if input == nil {
+			return fmt.Errorf("runtime invariant violation: input-bearing flow stepped without input")
+		}
+		instance.RootEnv.define(instance.Decl.TurnInput.Name, cloneValue(*input), false)
+		defer delete(instance.RootEnv.values, instance.Decl.TurnInput.Name)
+	}
 	_, exhausted, _, err := i.stepFlowWithTransitionLimit(instance, 0)
 	if exhausted {
 		return fmt.Errorf("runtime invariant violation: unbounded Step exhausted an impossible transition limit")
@@ -917,6 +931,11 @@ func (i interpreter) stepFlowWithTransitionLimit(instance *FlowRuntimeInstance, 
 			instance.InstructionIndex++
 		case flowSignalSuspend:
 			instance.InstructionIndex++
+			return transitions, false, true, nil
+		case flowSignalYield:
+			instance.InstructionIndex++
+			instance.LastYield = cloneValue(signal.value)
+			instance.HasYield = true
 			return transitions, false, true, nil
 		case flowSignalGoto:
 			instance.CurrentState = signal.target
@@ -1380,6 +1399,15 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 		return flowSignal{kind: flowSignalGoto, target: node.Target}, nil
 	case ast.SuspendStmt:
 		return flowSignal{kind: flowSignalSuspend}, nil
+	case ast.YieldStmt:
+		value, err := i.evalExpr(env, pkgName, node.Value)
+		if err != nil {
+			return flowSignal{}, err
+		}
+		if value.hasError {
+			return flowSignal{}, fmt.Errorf("runtime invariant violation: yield expression was fallible")
+		}
+		return flowSignal{kind: flowSignalYield, value: value.value}, nil
 	case ast.RememberStmt:
 		instance, err := flowInstanceFromEnv(env)
 		if err != nil {
@@ -2994,8 +3022,8 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if len(typeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Step does not accept type arguments")
 		}
-		if len(argumentExprs) != 1 {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: Step expects 1 argument")
+		if len(argumentExprs) < 1 || len(argumentExprs) > 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Step expects 1 or 2 arguments")
 		}
 		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
 		if err != nil {
@@ -3007,10 +3035,40 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Step expects FlowInstance argument")
 		}
-		if err := i.stepFlow(argument.value.Flow); err != nil {
+		var input *Value
+		if len(argumentExprs) == 2 {
+			resolved, err := i.evalExpr(env, pkgName, argumentExprs[1])
+			if err != nil {
+				return evalResult{}, err
+			}
+			if resolved.hasError {
+				return evalResult{hasError: true, errorVal: resolved.errorVal}, nil
+			}
+			input = &resolved.value
+		}
+		if err := i.stepFlow(argument.value.Flow, input); err != nil {
 			return evalResult{}, err
 		}
 		return evalResult{value: Value{}}, nil
+	}
+	if callee == "DidYield" || callee == "Yielded" {
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects FlowInstance", callee)
+		}
+		if callee == "DidYield" {
+			return evalResult{value: Value{Kind: ValueBool, Bool: argument.value.Flow.HasYield}}, nil
+		}
+		if !argument.value.Flow.HasYield {
+			return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: "Yielded() called when the last turn did not yield"}}}, nil
+		}
+		return evalResult{value: cloneValue(argument.value.Flow.LastYield)}, nil
 	}
 	if callee == "Active" {
 		if len(typeArguments) != 0 {

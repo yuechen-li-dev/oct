@@ -1,0 +1,10 @@
+expect error: "function 'Step' cannot supply input to a non-input flow"
+
+package Main
+
+flow Plain() -> Void { state Active { suspend } }
+
+fn Main() -> Void {
+    let machine = Plain()
+    Step(machine, 1)
+}

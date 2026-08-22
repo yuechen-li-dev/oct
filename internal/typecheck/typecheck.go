@@ -53,6 +53,8 @@ type Type struct {
 	FlowIdentity      string
 	FlowResultType    string
 	FlowResult        *Type
+	FlowInput         *Type
+	FlowYield         *Type
 }
 
 type tupleType struct {
@@ -167,6 +169,7 @@ type functionContext struct {
 	states                  map[string]struct{}
 	boardType               Type
 	board                   map[string]Type
+	yieldType               *Type
 	isRefinementConstructor bool
 }
 
@@ -389,6 +392,8 @@ type refinementInfo struct {
 type flowSignature struct {
 	parameters []Type
 	returnType Type
+	inputType  *Type
+	yieldType  *Type
 	boardType  *Type
 }
 
@@ -739,6 +744,22 @@ func (c checker) resolveFlowSignature(flow ast.FlowDecl) (flowSignature, error) 
 		}
 		parameters = append(parameters, parameterType)
 	}
+	var inputType *Type
+	if flow.TurnInput != nil {
+		resolved, err := c.resolveNonReturnType(flow.TurnInput.Type)
+		if err != nil {
+			return flowSignature{}, fmt.Errorf("turn input %s: %w", flow.TurnInput.Name, err)
+		}
+		inputType = &resolved
+	}
+	var yieldType *Type
+	if flow.YieldType != nil {
+		resolved, err := c.resolveNonReturnType(*flow.YieldType)
+		if err != nil {
+			return flowSignature{}, fmt.Errorf("yield type: %w", err)
+		}
+		yieldType = &resolved
+	}
 	var boardType *Type
 	if len(flow.Board) > 0 {
 		snapshot := Type{Name: flow.Name + "BoardSnapshot"}
@@ -756,7 +777,7 @@ func (c checker) resolveFlowSignature(flow ast.FlowDecl) (flowSignature, error) 
 		c.typeNames[snapshot.Name] = struct{}{}
 		boardType = &snapshot
 	}
-	return flowSignature{parameters: parameters, returnType: returnType, boardType: boardType}, nil
+	return flowSignature{parameters: parameters, returnType: returnType, inputType: inputType, yieldType: yieldType, boardType: boardType}, nil
 }
 
 func (c checker) checkFunction(function ast.FunctionDecl) error {
@@ -831,6 +852,17 @@ func (c checker) checkFlow(flow ast.FlowDecl) error {
 		}
 		flowScope.define(parameter.Name, signature.parameters[i], false)
 	}
+	if flow.TurnInput != nil {
+		if flow.TurnInput.Name == "board" {
+			return fmt.Errorf("flow %s: turn input name 'board' is reserved", flow.Name)
+		}
+		for _, parameter := range flow.Parameters {
+			if parameter.Name == flow.TurnInput.Name {
+				return fmt.Errorf("flow %s: turn input '%s' conflicts with construction parameter", flow.Name, flow.TurnInput.Name)
+			}
+		}
+		flowScope.define(flow.TurnInput.Name, *signature.inputType, false)
+	}
 	boardFields := make(map[string]Type, len(flow.Board))
 	if len(flow.Board) > 0 {
 		for _, field := range flow.Board {
@@ -860,6 +892,7 @@ func (c checker) checkFlow(flow ast.FlowDecl) error {
 		states:     stateSet,
 		boardType:  Type{Name: "__flow_board_" + flow.Name},
 		board:      boardFields,
+		yieldType:  signature.yieldType,
 	}
 	for _, state := range flow.States {
 		stateCtx := ctx
@@ -930,8 +963,51 @@ func (c checker) checkBlock(parent *scope, block ast.Block, ctx functionContext)
 		if returned {
 			hasReturn = true
 		}
+		if stmtContainsYield(statement) {
+			// A yield is a durable turn boundary. State-local bindings are
+			// deliberately not continuation state; persistent values belong on board.
+			blockScope = newScope(parent)
+		}
 	}
 	return hasReturn, nil
+}
+
+func stmtContainsYield(stmt ast.Stmt) bool {
+	switch node := stmt.(type) {
+	case ast.YieldStmt:
+		return true
+	case ast.IfStmt:
+		if blockContainsYield(node.ThenBody) {
+			return true
+		}
+		return node.ElseBody != nil && blockContainsYield(*node.ElseBody)
+	case ast.WhenStmt:
+		for _, c := range node.Cases {
+			if whenActionContainsYield(c.Action) {
+				return true
+			}
+		}
+		return whenActionContainsYield(node.Else)
+	default:
+		return false
+	}
+}
+
+func blockContainsYield(block ast.Block) bool {
+	for _, stmt := range block.Statements {
+		if stmtContainsYield(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+func whenActionContainsYield(action ast.WhenAction) bool {
+	block, ok := action.(ast.WhenBlockAction)
+	if !ok {
+		return false
+	}
+	return blockContainsYield(ast.Block{Statements: block.Statements})
 }
 
 func genericUnhandledFallibleMessage() string {
@@ -1403,6 +1479,24 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 	case ast.SuspendStmt:
 		if !ctx.inState {
 			return false, fmt.Errorf("function %s: suspend is only valid inside flow state bodies", ctx.name)
+		}
+		return false, nil
+	case ast.YieldStmt:
+		if !ctx.inState {
+			return false, fmt.Errorf("function %s: yield is only valid inside flow state bodies", ctx.name)
+		}
+		if ctx.yieldType == nil {
+			return false, fmt.Errorf("flow %s: yield requires a declared 'yields T' contract", ctx.name)
+		}
+		actual, err := c.checkExprWithExpected(scope, node.Value, ctx, ctx.yieldType)
+		if err != nil {
+			return false, fmt.Errorf("flow %s: yield: %w", ctx.name, err)
+		}
+		if actual.Fallible {
+			return false, fmt.Errorf("flow %s: yield expression must not be fallible", ctx.name)
+		}
+		if !isAssignable(actual.ValueType, *ctx.yieldType) {
+			return false, fmt.Errorf("flow %s: yield expects %s, got %s", ctx.name, *ctx.yieldType, actual.ValueType)
 		}
 		return false, nil
 	case ast.RememberStmt:
@@ -3160,9 +3254,10 @@ func (c checker) enumVariantFromCallee(expr ast.Expr) (string, string, bool) {
 	}
 }
 
-func flowInstanceType(flowName string, resultType Type) Type {
+func flowInstanceType(flowName string, signature flowSignature) Type {
+	resultType := signature.returnType
 	resultCopy := resultType
-	return Type{IsFlowInstance: true, FlowIdentity: flowName, FlowResultType: resultType.String(), FlowResult: &resultCopy}
+	return Type{IsFlowInstance: true, FlowIdentity: flowName, FlowResultType: resultType.String(), FlowResult: &resultCopy, FlowInput: signature.inputType, FlowYield: signature.yieldType}
 }
 
 func (c checker) checkFlowCallArguments(displayName string, signature flowSignature, scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
@@ -3187,7 +3282,7 @@ func (c checker) checkFlowCallArguments(displayName string, signature flowSignat
 			}
 		}
 	}
-	return ExprType{ValueType: flowInstanceType(displayName, signature.returnType)}, nil
+	return ExprType{ValueType: flowInstanceType(displayName, signature)}, nil
 }
 
 func (c checker) checkFunctionCallArguments(displayName string, signature functionSignature, scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
@@ -3723,8 +3818,8 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Step' does not accept type arguments")
 		}
-		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function 'Step' expects 1 argument, got %d", len(arguments))
+		if len(arguments) < 1 || len(arguments) > 2 {
+			return ExprType{}, fmt.Errorf("function 'Step' expects a flow and its declared turn input, got %d arguments", len(arguments))
 		}
 		flowType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
@@ -3736,7 +3831,44 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if !flowType.ValueType.IsFlowInstance {
 			return ExprType{}, fmt.Errorf("function 'Step' argument 1 expects FlowInstance<T>, got %s", flowType.ValueType)
 		}
+		if flowType.ValueType.FlowInput == nil && len(arguments) == 2 {
+			return ExprType{}, fmt.Errorf("function 'Step' cannot supply input to a non-input flow")
+		}
+		if flowType.ValueType.FlowInput != nil && len(arguments) == 1 {
+			return ExprType{}, fmt.Errorf("function 'Step' requires turn input of type %s", *flowType.ValueType.FlowInput)
+		}
+		if len(arguments) == 2 {
+			input, err := c.checkExprWithExpected(scope, arguments[1], ctx, flowType.ValueType.FlowInput)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if input.Fallible || !isAssignable(input.ValueType, *flowType.ValueType.FlowInput) {
+				return ExprType{}, fmt.Errorf("function 'Step' turn input expects %s, got %s", *flowType.ValueType.FlowInput, input.ValueType)
+			}
+		}
 		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
+	}
+	if callee == "DidYield" || callee == "Yielded" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if !flowType.ValueType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function '%s' expects FlowInstance argument", callee)
+		}
+		if flowType.ValueType.FlowYield == nil {
+			return ExprType{}, fmt.Errorf("function '%s' requires a yielding flow", callee)
+		}
+		if callee == "DidYield" {
+			return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
+		}
+		return ExprType{ValueType: *flowType.ValueType.FlowYield, Fallible: true}, nil
 	}
 	if callee == "Active" {
 		if len(typeArguments) > 0 {

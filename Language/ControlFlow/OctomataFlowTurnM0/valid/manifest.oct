@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "typed reactive turn input and yield continuation contracts"
+        Authors: ["Codex"]
+        Date: "2026-08-21"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}

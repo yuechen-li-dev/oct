@@ -1,0 +1,9 @@
+expect error: "flow Bad: yield expects String, got Int"
+
+package Main
+
+flow Bad() yields String -> Void {
+    state Active { yield 1 }
+}
+
+fn Main() -> Void {}

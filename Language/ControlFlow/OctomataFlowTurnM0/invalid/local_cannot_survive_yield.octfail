@@ -1,0 +1,13 @@
+expect error: "undefined variable: transient"
+
+package Main
+
+flow Bad() yields Int -> Int {
+    state Active {
+        let transient = 4
+        yield transient
+        return transient
+    }
+}
+
+fn Main() -> Void {}

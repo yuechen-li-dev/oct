@@ -1,0 +1,9 @@
+expect error: "flow Bad: yield requires a declared 'yields T' contract"
+
+package Main
+
+flow Bad() -> Void {
+    state Active { yield 1 }
+}
+
+fn Main() -> Void {}

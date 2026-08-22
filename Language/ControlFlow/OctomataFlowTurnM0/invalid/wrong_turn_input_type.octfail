@@ -1,0 +1,12 @@
+expect error: "function 'Step' turn input expects Int, got Bool"
+
+package Main
+
+flow Reactive() accepts message: Int yields Int -> Void {
+    state Active { yield message goto Active }
+}
+
+fn Main() -> Void {
+    let machine = Reactive()
+    Step(machine, true)
+}

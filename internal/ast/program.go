@@ -116,6 +116,8 @@ type FunctionDecl struct {
 type FlowDecl struct {
 	Name       string
 	Parameters []Parameter
+	TurnInput  *Parameter
+	YieldType  *TypeRef
 	ReturnType TypeRef
 	Board      []BoardField
 	States     []StateDecl
@@ -293,6 +295,10 @@ func (GotoStmt) stmtNode() {}
 type SuspendStmt struct{}
 
 func (SuspendStmt) stmtNode() {}
+
+type YieldStmt struct{ Value Expr }
+
+func (YieldStmt) stmtNode() {}
 
 type RememberStmt struct{}
 

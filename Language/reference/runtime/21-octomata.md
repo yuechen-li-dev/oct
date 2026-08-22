@@ -22,6 +22,11 @@ Octomata and records are complementary:
 - In non-ambiguous identifier/binding positions, `flow`/`state`/`step` can still be used as ordinary names.
 
 - Flow declaration form is `flow Name(params) -> ReturnType { state ... }` (source also accepts `=>` for the arrow).
+- A reactive flow may separately declare one named turn input and one yielded type: `flow Name(params) accepts input: InputType yields YieldType -> FinalType { state ... }`.
+- Construction parameters are retained for the flow lifetime. The `accepts` binding exists only during one `Step(flow, input)` turn and is cleared at the boundary.
+- `yield value` publishes one value of the declared yield type, preserves the continuation immediately after the yield, and returns control without completing the flow.
+- Yield and final return types are distinct. Heterogeneous yielded values require a common nominal enum/record type.
+- State locals do not survive a yield. A reference after a yield must use construction state, the current turn input, or explicit private `board` state; a pre-yield local is out of scope.
 - A flow must declare at least one `state`.
 - State declaration form is `state Name { ... }`.
 - `goto StateName` transitions to a declared state.
@@ -44,13 +49,41 @@ Octomata and records are complementary:
 - Successful `resume` clears the slot.
 - `resume` with an empty slot is a runtime error.
 - `Step(flow)` advances one scheduling step.
+- Input-bearing flows require `Step(flow, input)` with the declared input type; non-input flows reject a second argument.
+- One turn executes from the current continuation through ordinary `goto` transitions until `yield`, `suspend`, or final `return`.
+- `DidYield(flow)` reports whether the most recent turn ended at `yield`.
+- `Yielded(flow)` is fallible and extracts the most recent turn's typed yielded value.
 - `Active(flow)` returns the active state name or `""` when inactive/completed-before-step.
 - `Complete(flow)` reports completion status.
 - `Result(flow)` is fallible because the flow may not have completed yet.
 - `ResumeTarget(flow)` reports the current remembered target or `""` when slot is empty.
 - `StateHistory(flow)` returns state-entry history as `String[]`.
-- Builtins `Step`, `Active`, `Complete`, `Result`, `ResumeTarget`, `StateHistory`, and `BoardSnapshot` require a flow instance argument.
+- Builtins `Step`, `DidYield`, `Yielded`, `Active`, `Complete`, `Result`, `ResumeTarget`, `StateHistory`, and `BoardSnapshot` require a flow instance argument.
 - `BoardSnapshot(flow)` returns a fallible, read-only typed record snapshot of current scalar board fields when the flow declares a board. Supported board field types are `Bool`, `String`, scalar `Int`/`Int<D>`, and scalar `Float`/`Float<D>`; arrays, vectors, matrices, records, enums, and other non-scalar runtime types are unsupported.
+
+## Turn and yield model (FLOW-TURN-M0)
+
+```oct
+flow Counter(start: Int) accepts amount: Int yields Int -> String {
+    board { Count: Int }
+
+    state Active {
+        board.Count = board.Count + amount
+        yield board.Count
+        goto Active
+    }
+}
+
+fn UseCounter() -> Void {
+    let counter = Counter(0)
+    Step(counter, 2)
+    let first = Yielded(counter)!
+    Step(counter, 5)
+    let second = Yielded(counter)!
+}
+```
+
+`yield` is a state-machine boundary, not a lazy collection operation. A yielding flow can model a generator, reactive controller, workflow, or decision machine without introducing a second coroutine/generator runtime. `suspend` remains a legal value-less scheduling boundary. `Result(flow)` remains unavailable until a final `return` completes the flow.
 
 
 ### Dimensioned scalar board fields

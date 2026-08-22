@@ -133,6 +133,8 @@ var names = map[string]struct{}{
 	"StateHistory":             {},
 	"ResumeTarget":             {},
 	"BoardSnapshot":            {},
+	"DidYield":                 {},
+	"Yielded":                  {},
 	"UIText":                   {},
 	"UIButton":                 {},
 	"UIColumn":                 {},

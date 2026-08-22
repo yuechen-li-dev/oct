@@ -935,6 +935,31 @@ func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
 	if _, err := p.expect(lex.RightParen, "expected ')' after parameter list"); err != nil {
 		return ast.FlowDecl{}, err
 	}
+	var turnInput *ast.Parameter
+	if p.current().Kind == lex.Identifier && p.current().Lexeme == "accepts" {
+		p.advance()
+		inputName, err := p.expect(lex.Identifier, "expected turn input name after 'accepts'")
+		if err != nil {
+			return ast.FlowDecl{}, err
+		}
+		if _, err := p.expect(lex.Colon, "expected ':' after turn input name"); err != nil {
+			return ast.FlowDecl{}, err
+		}
+		inputType, err := p.parseTypeRef()
+		if err != nil {
+			return ast.FlowDecl{}, err
+		}
+		turnInput = &ast.Parameter{Name: inputName.Lexeme, Type: inputType}
+	}
+	var yieldType *ast.TypeRef
+	if p.current().Kind == lex.Identifier && p.current().Lexeme == "yields" {
+		p.advance()
+		parsed, err := p.parseTypeRef()
+		if err != nil {
+			return ast.FlowDecl{}, err
+		}
+		yieldType = &parsed
+	}
 	if _, err := p.expect(lex.Arrow, "expected arrow before return type"); err != nil {
 		return ast.FlowDecl{}, err
 	}
@@ -982,7 +1007,7 @@ func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
 		states = append(states, stateDecl)
 	}
 	p.advance()
-	flow := ast.FlowDecl{Name: name.Lexeme, Parameters: parameters, ReturnType: returnType, Board: boardFields, States: states}
+	flow := ast.FlowDecl{Name: name.Lexeme, Parameters: parameters, TurnInput: turnInput, YieldType: yieldType, ReturnType: returnType, Board: boardFields, States: states}
 	if len(states) > 0 {
 		flow.EntryState = states[0].Name
 	}
@@ -1175,6 +1200,13 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		return p.parseGotoStmt()
 	case lex.KeywordSuspend:
 		return p.parseSuspendStmt()
+	case lex.KeywordYield:
+		p.advance()
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		return ast.YieldStmt{Value: value}, nil
 	case lex.KeywordRemember:
 		return p.parseRememberStmt()
 	case lex.KeywordResume:

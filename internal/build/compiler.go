@@ -102,6 +102,8 @@ type MIRFlow struct {
 	Package    string
 	Name       string
 	Parameters []MIRField
+	TurnInput  *MIRField
+	YieldType  string
 	Board      []MIRField
 	Return     string
 	EntryState string
@@ -122,6 +124,10 @@ func (MIRFlowGoto) mirFlowStmt() {}
 type MIRFlowSuspend struct{}
 
 func (MIRFlowSuspend) mirFlowStmt() {}
+
+type MIRFlowYield struct{ Value MIRFlowExpr }
+
+func (MIRFlowYield) mirFlowStmt() {}
 
 type MIRFlowRemember struct{}
 
@@ -2705,6 +2711,22 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Result", Args: []string{flowArg}, Builtin: true, RetType: resultType})
 			return tmp, resultType, true, nil
 		}
+		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "Yielded" {
+			if len(e.Arguments) != 1 {
+				return "", "", false, fmt.Errorf("Yielded expects one argument")
+			}
+			flowArg, flowType, _, err := c.lowerExpr(e.Arguments[0])
+			if err != nil {
+				return "", "", false, err
+			}
+			_, _, yieldType, ok := parseFlowInstanceDetails(flowType)
+			if !ok || yieldType == "" {
+				return "", "", false, fmt.Errorf("Yielded expects a yielding FlowInstance")
+			}
+			tmp := c.temp(fallibleType(yieldType))
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Yielded", Args: []string{flowArg}, Builtin: true, RetType: yieldType})
+			return tmp, yieldType, true, nil
+		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok {
 			switch ident.Name {
 			case "PrometheusMatMul":
@@ -3963,7 +3985,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 	switch x := callee.(type) {
 	case ast.IdentifierExpr:
 		switch x.Name {
-		case "Step", "Active", "Result", "Complete", "StateHistory", "ResumeTarget", "BoardSnapshot":
+		case "Step", "Active", "Result", "Complete", "StateHistory", "ResumeTarget", "BoardSnapshot", "DidYield", "Yielded":
 			switch x.Name {
 			case "Step":
 				return "Step", "Int", true, false, nil
@@ -3973,6 +3995,10 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return "Result", "", true, true, nil
 			case "Complete":
 				return "Complete", "Bool", true, false, nil
+			case "DidYield":
+				return "DidYield", "Bool", true, false, nil
+			case "Yielded":
+				return "Yielded", "", true, true, nil
 			case "StateHistory":
 				return "StateHistory", "String[]", true, false, nil
 			case "ResumeTarget":
@@ -4036,7 +4062,14 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		for _, flow := range c.pkg.Flows {
 			if flow.Name == x.Name {
-				return c.pkg.Name + "." + x.Name, flowInstanceTypeString(typeRefStringForPackage(c.pkg.Name, flow.ReturnType)), false, false, nil
+				inputType, yieldType := "", ""
+				if flow.TurnInput != nil {
+					inputType = typeRefStringForPackage(c.pkg.Name, flow.TurnInput.Type)
+				}
+				if flow.YieldType != nil {
+					yieldType = typeRefStringForPackage(c.pkg.Name, *flow.YieldType)
+				}
+				return c.pkg.Name + "." + x.Name, flowInstanceTypeString(typeRefStringForPackage(c.pkg.Name, flow.ReturnType), inputType, yieldType), false, false, nil
 			}
 		}
 		if meta, ok := findGenericWrapperFunction(c.pkg, x.Name); ok {
@@ -4557,7 +4590,10 @@ func isBuiltinTypeName(name string) bool {
 	}
 }
 
-func flowInstanceTypeString(resultType string) string {
+func flowInstanceTypeString(resultType string, details ...string) string {
+	if len(details) == 2 && (details[0] != "" || details[1] != "") {
+		return "FlowInstance<" + resultType + ";" + details[0] + ";" + details[1] + ">"
+	}
 	return "FlowInstance<" + resultType + ">"
 }
 
@@ -4655,7 +4691,22 @@ func parseFlowInstanceType(t string) (string, bool) {
 	if !strings.HasPrefix(t, "FlowInstance<") || !strings.HasSuffix(t, ">") {
 		return "", false
 	}
-	return strings.TrimSuffix(strings.TrimPrefix(t, "FlowInstance<"), ">"), true
+	inner := strings.TrimSuffix(strings.TrimPrefix(t, "FlowInstance<"), ">")
+	return strings.SplitN(inner, ";", 2)[0], true
+}
+
+func parseFlowInstanceDetails(t string) (result, input, yielded string, ok bool) {
+	if !strings.HasPrefix(t, "FlowInstance<") || !strings.HasSuffix(t, ">") {
+		return "", "", "", false
+	}
+	parts := strings.Split(strings.TrimSuffix(strings.TrimPrefix(t, "FlowInstance<"), ">"), ";")
+	if len(parts) == 1 {
+		return parts[0], "", "", true
+	}
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
 }
 
 func parseTupleTypeString(t string) ([]string, bool) {
@@ -5179,11 +5230,20 @@ func lowerFlow(program project.Program, pkgName string, flow ast.FlowDecl, pkg p
 	for _, p := range flow.Parameters {
 		env[p.Name] = typeRefStringForPackage(pkgName, p.Type)
 	}
+	if flow.TurnInput != nil {
+		env[flow.TurnInput.Name] = typeRefStringForPackage(pkgName, flow.TurnInput.Type)
+	}
 	out := MIRFlow{
 		Package:    pkgName,
 		Name:       flow.Name,
 		Return:     typeRefStringForPackage(pkgName, flow.ReturnType),
 		EntryState: flow.EntryState,
+	}
+	if flow.TurnInput != nil {
+		out.TurnInput = &MIRField{Name: flow.TurnInput.Name, Type: typeRefStringForPackage(pkgName, flow.TurnInput.Type)}
+	}
+	if flow.YieldType != nil {
+		out.YieldType = typeRefStringForPackage(pkgName, *flow.YieldType)
 	}
 	for _, p := range flow.Parameters {
 		out.Parameters = append(out.Parameters, MIRField{Name: p.Name, Type: typeRefStringForPackage(pkgName, p.Type)})
@@ -5232,8 +5292,49 @@ func lowerFlowBlock(block ast.Block, env map[string]string, locals map[string]bo
 			return nil, err
 		}
 		out = append(out, s)
+		if astStmtContainsYield(stmt) {
+			for name := range locals {
+				delete(env, name)
+			}
+			clear(locals)
+		}
 	}
 	return out, nil
+}
+
+func astStmtContainsYield(stmt ast.Stmt) bool {
+	switch node := stmt.(type) {
+	case ast.YieldStmt:
+		return true
+	case ast.IfStmt:
+		if astBlockContainsYield(node.ThenBody) {
+			return true
+		}
+		return node.ElseBody != nil && astBlockContainsYield(*node.ElseBody)
+	case ast.WhenStmt:
+		for _, c := range node.Cases {
+			if astWhenActionContainsYield(c.Action) {
+				return true
+			}
+		}
+		return astWhenActionContainsYield(node.Else)
+	default:
+		return false
+	}
+}
+
+func astBlockContainsYield(block ast.Block) bool {
+	for _, stmt := range block.Statements {
+		if astStmtContainsYield(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+func astWhenActionContainsYield(action ast.WhenAction) bool {
+	block, ok := action.(ast.WhenBlockAction)
+	return ok && astBlockContainsYield(ast.Block{Statements: block.Statements})
 }
 
 func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowStmt, error) {
@@ -5262,6 +5363,12 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 		return MIRFlowGoto{Target: s.Target}, nil
 	case ast.SuspendStmt:
 		return MIRFlowSuspend{}, nil
+	case ast.YieldStmt:
+		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowYield{Value: v}, nil
 	case ast.RememberStmt:
 		return MIRFlowRemember{}, nil
 	case ast.ResumeStmt:
@@ -6484,7 +6591,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	sort.Strings(flowTypeNames)
 	for _, t := range flowTypeNames {
 		fmt.Fprintf(&b, "type __octFlowInstance_%s interface {\n", goSafeName(t))
-		b.WriteString("\t__octStep()\n\t__octActive() string\n\t__octComplete() bool\n")
+		b.WriteString("\t__octStep(any)\n\t__octActive() string\n\t__octComplete() bool\n\t__octDidYield() bool\n\t__octYielded() (any, bool)\n")
 		fmt.Fprintf(&b, "\t__octResult() (%s, bool)\n", goFlowResultType(t))
 		b.WriteString("\t__octStateHistory() []string\n\t__octResumeTarget() string\n\t__octBoardSnapshot() (any, bool)\n}\n\n")
 		fmt.Fprintf(&b, "type __octResultFlow_%s struct {\n\tValue %s\n\tErr string\n\tIsErr bool\n}\n\n", goSafeName(t), goFlowResultType(t))
@@ -8527,12 +8634,16 @@ type flowFeatures struct {
 	NeedsGenericUtility bool
 	NeedsScalarUtility  bool
 	ScalarUtilitySites  map[int]string
+	NeedsInput          bool
+	NeedsYield          bool
 }
 
 func analyzeFlowFeatures(flow MIRFlow, usedBuiltins map[string]bool) flowFeatures {
 	features := flowFeatures{
 		NeedsHistory:       usedBuiltins["StateHistory"],
 		ScalarUtilitySites: map[int]string{},
+		NeedsInput:         flow.TurnInput != nil,
+		NeedsYield:         flow.YieldType != "",
 	}
 	var visitStmt func(MIRFlowStmt)
 	var visitAction func(MIRFlowWhenAction)
@@ -8622,6 +8733,8 @@ func analyzeFlowFeatures(flow MIRFlow, usedBuiltins map[string]bool) flowFeature
 			if s.Value != nil {
 				visitExpr(s.Value)
 			}
+		case MIRFlowYield:
+			visitExpr(s.Value)
 		case MIRFlowIf:
 			visitExpr(s.Condition)
 			for _, statement := range s.Then {
@@ -8659,6 +8772,12 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	fmt.Fprintf(b, "type %s struct {\n", structName)
 	b.WriteString("\tstarted bool\n\tcompleted bool\n\tcurrentState int\n\tinstruction int\n")
 	fmt.Fprintf(b, "\tresult %s\n\thasResult bool\n", goFlowResultType(resultType))
+	if features.NeedsInput {
+		fmt.Fprintf(b, "\t%s %s\n", flow.TurnInput.Name, goType(flow.TurnInput.Type))
+	}
+	if features.NeedsYield {
+		fmt.Fprintf(b, "\tlastYield %s\n\thasYield bool\n", goType(flow.YieldType))
+	}
 	if features.NeedsHistory {
 		b.WriteString("\thistory []string\n")
 	}
@@ -8710,6 +8829,17 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	}
 	b.WriteString("\tdefault: return \"\"\n\t}\n}\n\n")
 	fmt.Fprintf(b, "func (f *%s) __octComplete() bool { return f.completed }\n\n", structName)
+	if features.NeedsYield {
+		fmt.Fprintf(b, "func (f *%s) __octDidYield() bool { return f.hasYield }\n\n", structName)
+	} else {
+		fmt.Fprintf(b, "func (f *%s) __octDidYield() bool { return false }\n\n", structName)
+	}
+	fmt.Fprintf(b, "func (f *%s) __octYielded() (any, bool) {\n", structName)
+	if features.NeedsYield {
+		b.WriteString("\treturn f.lastYield, f.hasYield\n}\n\n")
+	} else {
+		b.WriteString("\treturn nil, false\n}\n\n")
+	}
 	fmt.Fprintf(b, "func (f *%s) __octResult() (%s, bool) {\n", structName, goFlowResultType(resultType))
 	b.WriteString("\treturn f.result, f.hasResult\n}\n\n")
 	fmt.Fprintf(b, "func (f *%s) __octStateHistory() []string {\n", structName)
@@ -8742,11 +8872,18 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 		}
 		b.WriteString("\t}, true\n}\n\n")
 	}
-	fmt.Fprintf(b, "func (f *%s) __octStep() {\n", structName)
+	fmt.Fprintf(b, "func (f *%s) __octStep(__input any) {\n", structName)
 	for _, local := range collectFlowLetLocals(flow) {
 		fmt.Fprintf(b, "\tvar %s %s\n", local.Name, goType(local.Type))
 	}
-	b.WriteString("\tif f.completed { return }\n")
+	if features.NeedsInput {
+		fmt.Fprintf(b, "\tif f.completed { panic(\"runtime error: input supplied after flow completion\") }\n\t__typedInput, __ok := __input.(%s); if !__ok { panic(\"runtime invariant violation: wrong flow turn input type\") }; f.%s = __typedInput\n\tdefer func() { var __zero %s; f.%s = __zero }()\n", goType(flow.TurnInput.Type), flow.TurnInput.Name, goType(flow.TurnInput.Type), flow.TurnInput.Name)
+	} else {
+		b.WriteString("\tif __input != nil { panic(\"runtime invariant violation: input supplied to non-input flow\") }\n\tif f.completed { return }\n")
+	}
+	if features.NeedsYield {
+		b.WriteString("\tf.hasYield = false\n")
+	}
 	entryID := 0
 	for idx, st := range flow.States {
 		if st.Name == flow.EntryState {
@@ -8842,6 +8979,12 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		return fmt.Sprintf("f.currentState = %d; f.instruction = 0; continue", target), nil
 	case MIRFlowSuspend:
 		return "f.instruction++\nreturn", nil
+	case MIRFlowYield:
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("f.lastYield = %s\nf.hasYield = true\nf.instruction++\nreturn", v), nil
 	case MIRFlowRemember:
 		return "f.hasResumeTarget = true\nf.resumeTarget = f.currentState\nf.instruction++\ncontinue", nil
 	case MIRFlowResume:
@@ -9052,6 +9195,12 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 		return transition + "\ncontinue", nil
 	case MIRFlowSuspend:
 		return "f.instruction++\nreturn", nil
+	case MIRFlowYield:
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("f.lastYield = %s\nf.hasYield = true\nf.instruction++\nreturn", v), nil
 	case MIRFlowResume:
 		resume := "if !f.hasResumeTarget { panic(\"runtime error: resume called with empty resume slot\") }\n__resumeTarget := f.resumeTarget\nf.hasResumeTarget = false\nf.resumeTarget = -1\nf.currentState = __resumeTarget\nf.instruction = 0"
 		if features.NeedsHistory {
@@ -9805,7 +9954,11 @@ func goStmt(s MIRStmt) (string, error) {
 			case "DirectoryRemoveAll":
 				return fmt.Sprintf("%s = __octDirectoryRemoveAll(%s)", st.Target, st.Args[0]), nil
 			case "Step":
-				return fmt.Sprintf("%s.__octStep(); %s = 0", st.Args[0], st.Target), nil
+				input := "nil"
+				if len(st.Args) == 2 {
+					input = st.Args[1]
+				}
+				return fmt.Sprintf("%s.__octStep(%s); %s = 0", st.Args[0], input, st.Target), nil
 			case "Active":
 				return fmt.Sprintf("%s = %s.__octActive()", st.Target, st.Args[0]), nil
 			case "Result":
@@ -9813,6 +9966,10 @@ func goStmt(s MIRStmt) (string, error) {
 					st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "Complete":
 				return fmt.Sprintf("%s = %s.__octComplete()", st.Target, st.Args[0]), nil
+			case "DidYield":
+				return fmt.Sprintf("%s = %s.__octDidYield()", st.Target, st.Args[0]), nil
+			case "Yielded":
+				return fmt.Sprintf("%s = func() %s { __value, __ok := %s.__octYielded(); if !__ok { return %s{Err: \"Yielded() called when the last turn did not yield\", IsErr: true} }; __typed, __typedOk := __value.(%s); if !__typedOk { return %s{Err: \"Yielded() flow yield type mismatch\", IsErr: true} }; return %s{Value: __typed} }()", st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "StateHistory":
 				return fmt.Sprintf("%s = %s.__octStateHistory()", st.Target, st.Args[0]), nil
 			case "ResumeTarget":

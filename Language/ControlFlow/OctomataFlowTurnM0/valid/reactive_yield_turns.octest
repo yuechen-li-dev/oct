@@ -1,0 +1,65 @@
+package Main
+
+flow Counter(start: Int) accepts amount: Int yields Int -> String {
+    board {
+        Count: Int
+    }
+
+    state Active {
+        board.Count = board.Count + amount
+        yield board.Count
+        goto Active
+    }
+}
+
+[Fact]
+fn TypedInputYieldAndContinuation() -> Void {
+    let machine = Counter(0)
+
+    Step(machine, 2)
+    Assert.Equal(true, DidYield(machine), "first turn should yield")
+    Assert.Equal(2, Yielded(machine)!, "first yield")
+    Assert.Equal(false, Complete(machine), "yield must not complete")
+
+    Step(machine, 5)
+    Assert.Equal(7, Yielded(machine)!, "next Step resumes after yield and sees only new input")
+    Assert.Equal(7, BoardSnapshot(machine)!.Count, "private board persists across turns")
+}
+
+flow Finisher() accepts done: Bool yields String -> Int {
+    state Active {
+        if done {
+            return 9
+        }
+        yield "waiting"
+        goto Active
+    }
+}
+
+[Fact]
+fn ReturnRemainsPermanentCompletion() -> Void {
+    let machine = Finisher()
+    Step(machine, false)
+    Assert.Equal("waiting", Yielded(machine)!, "plain reactive yield")
+    Step(machine, true)
+    Assert.Equal(true, Complete(machine), "return completes")
+    Assert.Equal(9, Result(machine)!, "final result is distinct from yielded value")
+}
+
+flow Generator() yields Int -> Void {
+    board { Count: Int }
+    state Next {
+        board.Count = board.Count + 1
+        yield board.Count
+        goto Next
+    }
+}
+
+[Fact]
+fn YieldDoesNotRequireTurnInput() -> Void {
+    let generator = Generator()
+    Step(generator)
+    Assert.Equal(1, Yielded(generator)!, "generator first item")
+    Step(generator)
+    Assert.Equal(2, Yielded(generator)!, "generator second item")
+}
