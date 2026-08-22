@@ -1,0 +1,71 @@
+package Main
+
+concept TurnMessage {
+    Amount: Int
+    PreferHigh: Bool
+}
+
+concept PositiveAmount = Int {
+    Require(Self > 0, "amount must be positive")
+}
+
+flow RefinedHost() accepts input: PositiveAmount yields Int -> Void {
+    state Active {
+        yield input
+        goto Active
+    }
+}
+
+enum HostCommand {
+    Add(Int)
+    Pause
+}
+
+flow HostEnum() accepts input: HostCommand yields Int -> Int {
+    state Active {
+        let amount = match input {
+            case HostCommand.Add(amount) => amount
+            case HostCommand.Pause => 0
+        }
+        yield amount
+        goto Active
+    }
+}
+
+flow DurableController(seed: Int) accepts input: TurnMessage yields Int -> String {
+    board {
+        Total: Int
+        Choice: Int
+    }
+
+    state Active {
+        board.Total = board.Total + seed + input.Amount
+        board.Choice = when policy {
+            hysteresis: 3
+            min_commit: 2
+        } {
+            case 2 when true score 20
+            case 1 when true score input.Amount
+            else 0
+        }
+        remember
+        yield board.Total + board.Choice
+        goto ResumeTurn
+    }
+
+    state ResumeTurn {
+        resume
+    }
+}
+
+flow NumberGenerator() yields Int -> Void {
+    board { Next: Int }
+
+    state Active {
+        board.Next = board.Next + 1
+        yield board.Next
+        goto Active
+    }
+}
+
+fn Main() -> Void {}

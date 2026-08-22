@@ -1,0 +1,25 @@
+package Main
+
+flow HistoryGenerator() yields Int -> Void {
+    board { Next: Int }
+
+    state First {
+        board.Next = board.Next + 1
+        yield board.Next
+        goto Second
+    }
+
+    state Second {
+        board.Next = board.Next + 1
+        yield board.Next
+        goto First
+    }
+}
+
+fn Main() -> Void {
+    let machine = HistoryGenerator()
+    Step(machine)
+    let history = StateHistory(machine)
+    let count = Len(history)
+}
+

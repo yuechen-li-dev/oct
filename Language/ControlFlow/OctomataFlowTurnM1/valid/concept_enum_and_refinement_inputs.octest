@@ -1,0 +1,56 @@
+package Main
+
+concept Mutation {
+    Amount: Int
+}
+
+concept PositiveAmount = Int {
+    Require(Self > 0, "amount must be positive")
+}
+
+enum AccountCommand {
+    Add(Int)
+    Freeze
+}
+
+flow ConceptInput() accepts input: Mutation yields Int -> Void {
+    state Active {
+        yield input.Amount
+        goto Active
+    }
+}
+
+flow RefinedInput() accepts input: PositiveAmount yields Int -> Void {
+    state Active {
+        yield input
+        goto Active
+    }
+}
+
+flow EnumInput() accepts input: AccountCommand yields Int -> Void {
+    state Active {
+        let amount = match input {
+            case AccountCommand.Add(value) => value
+            case AccountCommand.Freeze => 0
+        }
+        yield amount
+        goto Active
+    }
+}
+
+[Fact]
+fn OrdinaryConceptTypingDrivesStep() -> Void {
+    let machine = ConceptInput()
+    Step(machine, Mutation { Amount: 7 })
+    Assert.Equal(7, Yielded(machine)!, "record-shaped Concept input")
+
+    let refined = RefinedInput()
+    Step(refined, 4)
+    Assert.Equal(4, Yielded(refined)!, "compile-time-proved refinement input")
+
+    let commands = EnumInput()
+    Step(commands, AccountCommand.Add(9))
+    Assert.Equal(9, Yielded(commands)!, "nominal enum payload input")
+}
+
+fn Main() -> Void {}

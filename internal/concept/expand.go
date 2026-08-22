@@ -112,6 +112,13 @@ func ExpandFile(file ast.File) (ast.File, error) {
 		for j := range flow.Parameters {
 			flow.Parameters[j].Type = mustExpand(flow.Parameters[j].Type, aliases)
 		}
+		if flow.TurnInput != nil {
+			flow.TurnInput.Type = mustExpand(flow.TurnInput.Type, aliases)
+		}
+		if flow.YieldType != nil {
+			yieldType := mustExpand(*flow.YieldType, aliases)
+			flow.YieldType = &yieldType
+		}
 		flow.ReturnType = mustExpand(flow.ReturnType, aliases)
 		for j := range flow.Board {
 			flow.Board[j].Type = mustExpand(flow.Board[j].Type, aliases)

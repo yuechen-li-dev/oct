@@ -1,0 +1,71 @@
+package Main
+
+concept TurnMessage {
+    Amount: Int
+    PreferHigh: Bool
+}
+
+enum HostCommand {
+    Add(Int)
+    Pause
+}
+
+flow HostEnum() accepts input: HostCommand yields Int -> Int {
+    state Active {
+        let amount = match input {
+            case HostCommand.Add(amount) => amount
+            case HostCommand.Pause => 0
+        }
+        yield amount
+        goto Active
+    }
+}
+
+flow DurableController(seed: Int) accepts input: TurnMessage yields Int -> String {
+    board {
+        Total: Int
+        Choice: Int
+    }
+
+    state Active {
+        board.Total = board.Total + seed + input.Amount
+        board.Choice = when policy {
+            hysteresis: 3
+            min_commit: 2
+        } {
+            case 2 when true score 20
+            case 1 when true score input.Amount
+            else 0
+        }
+        remember
+        yield board.Total + board.Choice
+        goto ResumeTurn
+    }
+
+    state ResumeTurn {
+        resume
+    }
+}
+
+flow NumberGenerator() yields Int -> Void {
+    board { Next: Int }
+
+    state Active {
+        board.Next = board.Next + 1
+        yield board.Next
+        goto Active
+    }
+}
+
+[Fact]
+fn YieldBoundaryPreservesResidentState() -> Void {
+    let machine = DurableController(1)
+    Step(machine, TurnMessage { Amount: 3 PreferHigh: true })
+    Assert.Equal(6, Yielded(machine)!, "first typed decision")
+    Assert.Equal("Active", ResumeTarget(machine), "resume slot survives yield")
+    Assert.Equal(4, BoardSnapshot(machine)!.Total, "private board survives yield")
+    let history = StateHistory(machine)
+    Assert.Equal("Active", history[0], "history remains observable")
+}
+
+fn Main() -> Void {}

@@ -1,0 +1,16 @@
+expect error: "function 'Step' turn input expects Mutation, got Deposit"
+
+package Main
+
+concept Mutation { Amount: Int }
+record Deposit { Amount: Int }
+
+flow Receiver() accepts input: Mutation yields Int -> Void {
+    state Active { yield input.Amount goto Active }
+}
+
+fn Main() -> Void {
+    let machine = Receiver()
+    Step(machine, Deposit { Amount: 1 })
+}
+

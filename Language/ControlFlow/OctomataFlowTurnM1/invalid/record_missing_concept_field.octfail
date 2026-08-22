@@ -1,0 +1,15 @@
+expect error: "missing field 'Enabled'"
+
+package Main
+
+concept Mutation { Amount: Int Enabled: Bool }
+
+flow Receiver() accepts input: Mutation yields Int -> Void {
+    state Active { yield input.Amount goto Active }
+}
+
+fn Main() -> Void {
+    let machine = Receiver()
+    Step(machine, Mutation { Amount: 1 })
+}
+

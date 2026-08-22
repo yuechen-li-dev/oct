@@ -53,6 +53,8 @@ Octomata and records are complementary:
 - One turn executes from the current continuation through ordinary `goto` transitions until `yield`, `suspend`, or final `return`.
 - `DidYield(flow)` reports whether the most recent turn ended at `yield`.
 - `Yielded(flow)` is fallible and extracts the most recent turn's typed yielded value.
+- Starting another `Step` clears prior-turn yield observability before execution;
+  afterward `DidYield`/`Yielded` describe only the newly completed turn.
 - `Active(flow)` returns the active state name or `""` when inactive/completed-before-step.
 - `Complete(flow)` reports completion status.
 - `Result(flow)` is fallible because the flow may not have completed yet.
@@ -84,6 +86,36 @@ fn UseCounter() -> Void {
 ```
 
 `yield` is a state-machine boundary, not a lazy collection operation. A yielding flow can model a generator, reactive controller, workflow, or decision machine without introducing a second coroutine/generator runtime. `suspend` remains a legal value-less scheduling boundary. `Result(flow)` remains unavailable until a final `return` completes the flow.
+
+An iterator/generator is a yielding flow consumed repeatedly. This model has no
+hidden lazy-list semantics and does not require a parallel generator runtime.
+
+### Logical checkpoints and generated Go host facade (FLOW-TURN-M1)
+
+Embeddable compiled-Go emission exposes an experimental generated facade for
+each flow: `NewFlow`, a typed `Step` method, a typed turn with `Yielded`, and,
+for yielding flows, `Checkpoint` plus `RestoreFlow`. Record-shaped Concept
+inputs use their generated concrete Go struct; refinement Concepts use their
+lowered static representation; nominal enum inputs use the generated enum type
+and variant constructors. External Go does not need compiler-private
+`fn_...`/`__octStep` symbols.
+
+A checkpoint is legal after a turn ended at `yield`. It represents the machine
+after the yield: version and flow fingerprints, named state and opaque
+continuation position, construction values, private board, resume slot,
+feature-observed history, typed utility commitment state, and the last yielded
+value needed to preserve `DidYield`/`Yielded` observability. The completed turn
+input and state locals are absent. Restore rejects incompatible version, flow,
+fingerprint, state/continuation, board, construction, utility-site, and yield
+schemas with machine-readable reasons.
+
+The interpreter and compiled materializer use this same logical ownership
+model. They do not serialize ASTs, environments, Go pointers, or arbitrary
+object graphs. Because locals may not survive `yield`, durable continuation
+must be represented in construction state, the private board, resume slot, or
+utility policy state. Generated checkpoint bytes are deterministic typed JSON
+for the experimental host boundary; that byte encoding is not yet a permanent
+Oct 1.0 ABI.
 
 
 ### Dimensioned scalar board fields

@@ -23,6 +23,16 @@ Aliases do not add implicit conversions. They emit no Go declaration, wrapper, a
 
 Concept aliases are currently package-local in M0. A package may use its concepts across its own source files, but package-qualified concept alias references are deferred. Record-shaped concepts retain the existing package-qualified record behavior.
 
+Concepts compose with ordinary type-bearing positions, including a flow's
+`accepts input: T` declaration. There is no flow-specific message or Concept
+admission rule: a value passed to `Step(flow, value)` is checked exactly as an
+ordinary argument to `T`. A record-shaped Concept is itself a concrete nominal
+product type, so its literal/constructor is admitted while a separately named
+`record` with identical fields is not implicitly converted. Refined Concept
+inputs require the same compile-time proof or explicit checked construction as
+refined function arguments. Nominal enums remain the preferred closed sum for
+heterogeneous command protocols.
+
 ## Record-shaped concepts
 
 `concept Name { fields }` lowers directly to an ordinary nominal record declaration. Construction, field access, immutable `with` updates, arrays, equality, argument passing, return values, interpreted execution, Octagon-compatible record behavior, and Go struct emission therefore use the established record paths. Missing, extra, duplicate, and incorrectly typed fields are rejected by the record checker.
@@ -138,6 +148,12 @@ The interpreter executes only programs whose requirements have already passed an
 ## Relationship to future behavior
 
 Function signatures already describe parameter and return value shapes, and compiler-owned builtins already demonstrate bounded polymorphism. M0 does not have a user-defined conformance relation, specialization mechanism, overload search, or generic-function implementation, so behavioral concepts and concept-constrained functions are deferred. Future work should add one real behavioral consumer before choosing conformance or specialization syntax.
+
+`satisfies` is not a source-level relation in the current language. The
+existing transparent-alias, nominal-record, and refinement-admission rules are
+the authoritative relationships, and flow input does not justify adding a
+parallel conformance vocabulary. A Concept used as flow input is a semantic
+value contract, not a mailbox, actor protocol, or runtime capability object.
 
 Concepts-M0 does not add `type`, `interface`, `trait`, `template`, `constraint`, or `comptime` declarations. It also adds no macros, quotation, compiler-object access, reflection, or runtime type enumeration.
 

@@ -1,0 +1,15 @@
+expect error: "field 'Amount' expects Int, got String"
+
+package Main
+
+concept Mutation { Amount: Int }
+
+flow Receiver() accepts input: Mutation yields Int -> Void {
+    state Active { yield input.Amount goto Active }
+}
+
+fn Main() -> Void {
+    let machine = Receiver()
+    Step(machine, Mutation { Amount: "one" })
+}
+

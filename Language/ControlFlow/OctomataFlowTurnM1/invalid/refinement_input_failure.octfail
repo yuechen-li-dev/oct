@@ -1,0 +1,17 @@
+expect error: "invalid compile-time-known construction of refined concept PositiveAmount"
+
+package Main
+
+concept PositiveAmount = Int {
+    Require(Self > 0, "amount must be positive")
+}
+
+flow Receiver() accepts input: PositiveAmount yields Int -> Void {
+    state Active { yield input goto Active }
+}
+
+fn Main() -> Void {
+    let machine = Receiver()
+    Step(machine, 0)
+}
+

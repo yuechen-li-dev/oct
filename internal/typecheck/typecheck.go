@@ -3842,8 +3842,16 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			if err != nil {
 				return ExprType{}, err
 			}
-			if input.Fallible || !isAssignable(input.ValueType, *flowType.ValueType.FlowInput) {
+			if input.Fallible {
 				return ExprType{}, fmt.Errorf("function 'Step' turn input expects %s, got %s", *flowType.ValueType.FlowInput, input.ValueType)
+			}
+			if !isAssignable(input.ValueType, *flowType.ValueType.FlowInput) {
+				if !c.isRefinedExpected(*flowType.ValueType.FlowInput) {
+					return ExprType{}, fmt.Errorf("function 'Step' turn input expects %s, got %s", *flowType.ValueType.FlowInput, input.ValueType)
+				}
+				if err := c.admitRefined(scope, arguments[1], input.ValueType, *flowType.ValueType.FlowInput); err != nil {
+					return ExprType{}, fmt.Errorf("function 'Step' turn input: %w", err)
+				}
 			}
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil

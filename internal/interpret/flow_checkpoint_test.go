@@ -155,7 +155,7 @@ fn Main() -> Int { return 0 }
 	requireCheckpointReason(t, err, FlowCheckpointNotSuspended)
 }
 
-func TestExportFlowCheckpointRejectsStateLocalsUtilityAndMissingResume(t *testing.T) {
+func TestExportFlowCheckpointRejectsStateLocalsAndMissingResumeAndPreservesUtility(t *testing.T) {
 	inst, _ := suspendedInstance(t, `package Main
 flow Local() -> Int { state Start { let x = 1 suspend return x } }
 fn Main() -> Int { return 0 }
@@ -165,8 +165,13 @@ fn Main() -> Int { return 0 }
 
 	inst.StateEnv.values = map[string]binding{flowInstanceBindingName: inst.StateEnv.values[flowInstanceBindingName]}
 	inst.UtilityWhenSites[1] = utilityWhenSiteState{HasCurrent: true, Current: Value{Kind: ValueInt, Int: 1}, Score: 1}
-	_, err = ExportFlowCheckpoint(inst, FlowCheckpointOptions{})
-	requireCheckpointReason(t, err, FlowCheckpointUtilityStateUnsupported)
+	cp, err := ExportFlowCheckpoint(inst, FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatalf("export utility state: %v", err)
+	}
+	if len(cp.UtilitySites) != 1 || cp.UtilitySites[0].SiteID != 1 || cp.UtilitySites[0].Current.Int != 1 {
+		t.Fatalf("utility checkpoint = %#v", cp.UtilitySites)
+	}
 
 	inst.UtilityWhenSites = map[int]utilityWhenSiteState{}
 	inst.HasResumeTarget = true
@@ -319,6 +324,52 @@ fn Main() -> Int { return 0 }
 		if resumed.StateHistory[idx] != want[idx] {
 			t.Fatalf("history = %#v, want %#v", resumed.StateHistory, want)
 		}
+	}
+}
+
+func TestYieldCheckpointRestoresConstructionYieldUtilityAndContinuation(t *testing.T) {
+	program := checkpointProgram(t, `package Main
+flow Durable(seed: Int) accepts amount: Int yields Int -> Void {
+    board { Count: Int }
+    state Active { board.Count = board.Count + seed + amount yield board.Count goto Active }
+}
+fn Main() -> Void {}
+`)
+	interp, err := newInterpreter(program, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer interp.close()
+	flow := interp.flows["Main.Durable"]
+	instance := interp.instantiateFlow(flow, "Main", []Value{{Kind: ValueInt, Int: 2}})
+	if err := interp.stepFlow(instance, &Value{Kind: ValueInt, Int: 3}); err != nil {
+		t.Fatal(err)
+	}
+	instance.UtilityWhenSites[7] = utilityWhenSiteState{HasCurrent: true, Current: Value{Kind: ValueInt, Int: 2}, Score: 20, CommitAge: 1}
+	checkpoint, err := instance.ExportCheckpoint(FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checkpoint.Construction) != 1 || checkpoint.Construction[0].Value.Int != 2 || !checkpoint.HasYield || checkpoint.LastYield.Int != 5 {
+		t.Fatalf("checkpoint omitted lifetime/yield state: %#v", checkpoint)
+	}
+	restored, err := InstantiateFlowFromCheckpoint(program, "Main", "Durable", checkpoint, FlowRestoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.HasYield || restored.LastYield.Int != 5 || restored.UtilityWhenSites[7].CommitAge != 1 {
+		t.Fatalf("restore omitted yield/utility state: %#v", restored)
+	}
+	resumedInterpreter, err := newInterpreter(program, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumedInterpreter.close()
+	if err := resumedInterpreter.stepFlow(restored, &Value{Kind: ValueInt, Int: 4}); err != nil {
+		t.Fatal(err)
+	}
+	if !restored.HasYield || restored.LastYield.Int != 11 {
+		t.Fatalf("restored continuation yielded %#v, want 11", restored.LastYield)
 	}
 }
 

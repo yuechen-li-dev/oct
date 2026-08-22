@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/project"
 )
 
-const FlowCheckpointVersion = 1
+const FlowCheckpointVersion = 2
 
 const FlowCheckpointCursorTopLevelNext = "top-level-statement-next"
 
@@ -38,6 +39,9 @@ const (
 	FlowCheckpointBoardValueTypeMismatch         FlowCheckpointUnsupportedReason = "BoardValueTypeMismatch"
 	FlowCheckpointResumeCursorInvalid            FlowCheckpointUnsupportedReason = "ResumeCursorInvalid"
 	FlowCheckpointStateHistoryInvalid            FlowCheckpointUnsupportedReason = "StateHistoryInvalid"
+	FlowCheckpointConstructionParameterMismatch  FlowCheckpointUnsupportedReason = "ConstructionParameterMismatch"
+	FlowCheckpointUtilitySiteMismatch            FlowCheckpointUnsupportedReason = "UtilitySiteMismatch"
+	FlowCheckpointYieldSchemaMismatch            FlowCheckpointUnsupportedReason = "YieldSchemaMismatch"
 )
 
 type FlowCheckpointError struct {
@@ -165,13 +169,11 @@ func (i interpreter) instantiateFlowFromCheckpoint(pkg string, flowName string, 
 	if !ok {
 		return nil, checkpointErr(FlowCheckpointFlowMismatch, "missing flow "+key)
 	}
-	if len(flow.Parameters) != 0 {
-		return nil, checkpointErr(FlowCheckpointStateLocalsUnsupported, "flow parameters are not checkpointed in H2")
+	arguments, err := restoreFlowConstructionCheckpoint(flow, checkpoint.Construction)
+	if err != nil {
+		return nil, err
 	}
-	if flow.ReturnType.Name != "Int" || flow.ReturnType.IsArray || flow.ReturnType.ArrayDepth > 0 {
-		return nil, checkpointErr(FlowCheckpointFlowMismatch, "flow return shape is not compatible with H1 Make subset")
-	}
-	inst := i.instantiateFlow(flow, pkg, nil)
+	inst := i.instantiateFlow(flow, pkg, arguments)
 	if checkpoint.FlowFingerprint != "" && checkpoint.FlowFingerprint != flowFingerprint(inst) {
 		return nil, checkpointErr(FlowCheckpointFlowFingerprintMismatch, "current flow does not match checkpoint fingerprint")
 	}
@@ -201,6 +203,19 @@ func (i interpreter) instantiateFlowFromCheckpoint(pkg string, flowName string, 
 	if err := restoreFlowBoardCheckpoint(inst, checkpoint.Board); err != nil {
 		return nil, err
 	}
+	if checkpoint.YieldType != "" {
+		if flow.YieldType == nil || checkpoint.YieldType != expectedTypeString(*flow.YieldType) {
+			return nil, checkpointErr(FlowCheckpointYieldSchemaMismatch, fmt.Sprintf("checkpoint %q", checkpoint.YieldType))
+		}
+		lastYield, err := restoreCheckpointValue(checkpoint.LastYield, *flow.YieldType)
+		if err != nil {
+			return nil, checkpointErr(FlowCheckpointYieldSchemaMismatch, err.Error())
+		}
+		inst.LastYield = lastYield
+		inst.HasYield = checkpoint.HasYield
+	} else if checkpoint.HasYield {
+		return nil, checkpointErr(FlowCheckpointYieldSchemaMismatch, "yield value without yield schema")
+	}
 	inst.CurrentState = checkpoint.CurrentState
 	inst.InstructionIndex = checkpoint.Cursor.InstructionIndex
 	inst.HasResumeTarget = checkpoint.HasResumeTarget
@@ -210,7 +225,17 @@ func (i interpreter) instantiateFlowFromCheckpoint(pkg string, flowName string, 
 	inst.StateEnv.define(flowInstanceBindingName, Value{Kind: ValueFlow, Flow: inst}, false)
 	inst.Completed = false
 	inst.Result = Value{}
-	inst.UtilityWhenSites = make(map[int]utilityWhenSiteState)
+	inst.UtilityWhenSites = make(map[int]utilityWhenSiteState, len(checkpoint.UtilitySites))
+	for _, site := range checkpoint.UtilitySites {
+		if _, duplicate := inst.UtilityWhenSites[site.SiteID]; duplicate {
+			return nil, checkpointErr(FlowCheckpointUtilitySiteMismatch, fmt.Sprintf("duplicate site %d", site.SiteID))
+		}
+		current, err := restoreCheckpointValueWithoutType(site.Current)
+		if err != nil {
+			return nil, checkpointErr(FlowCheckpointUtilitySiteMismatch, fmt.Sprintf("site %d: %v", site.SiteID, err))
+		}
+		inst.UtilityWhenSites[site.SiteID] = utilityWhenSiteState{HasCurrent: site.HasCurrent, Current: current, Score: site.Score, CommitAge: site.CommitAge}
+	}
 	inst.DirtyBoardFields = make(map[string]struct{})
 	return inst, nil
 }
@@ -225,8 +250,21 @@ type FlowCheckpoint struct {
 	HasResumeTarget bool
 	ResumeTarget    string
 	Board           FlowBoardCheckpoint
+	Construction    []FlowCheckpointField
+	UtilitySites    []FlowUtilityCheckpoint
+	YieldType       string
+	HasYield        bool
+	LastYield       FlowCheckpointValue
 	StateHistory    []string
 	StepCount       int
+}
+
+type FlowUtilityCheckpoint struct {
+	SiteID     int
+	HasCurrent bool
+	Current    FlowCheckpointValue
+	Score      int64
+	CommitAge  int64
 }
 
 type FlowResumeCursor struct {
@@ -288,20 +326,94 @@ func ExportFlowCheckpoint(inst *FlowRuntimeInstance, opts FlowCheckpointOptions)
 	if hasUserStateLocals(inst.StateEnv) {
 		return FlowCheckpoint{}, checkpointErr(FlowCheckpointStateLocalsUnsupported, "state environment contains user bindings")
 	}
-	if len(inst.UtilityWhenSites) > 0 {
-		return FlowCheckpoint{}, checkpointErr(FlowCheckpointUtilityStateUnsupported, "utility when controller state is not serialized in H1")
-	}
 	board, err := exportFlowBoardCheckpoint(inst)
 	if err != nil {
 		return FlowCheckpoint{}, err
 	}
-	return FlowCheckpoint{
+	construction, err := exportFlowConstructionCheckpoint(inst)
+	if err != nil {
+		return FlowCheckpoint{}, err
+	}
+	utilitySites, err := exportFlowUtilityCheckpoint(inst)
+	if err != nil {
+		return FlowCheckpoint{}, err
+	}
+	checkpoint := FlowCheckpoint{
 		Version: FlowCheckpointVersion, Package: inst.Package, Flow: inst.Decl.Name,
 		FlowFingerprint: flowFingerprint(inst), CurrentState: inst.CurrentState,
 		Cursor:          FlowResumeCursor{InstructionIndex: inst.InstructionIndex, CursorKind: FlowCheckpointCursorTopLevelNext, StateBodyFingerprint: stateBodyFingerprint(state)},
-		HasResumeTarget: inst.HasResumeTarget, ResumeTarget: inst.ResumeTarget, Board: board,
+		HasResumeTarget: inst.HasResumeTarget, ResumeTarget: inst.ResumeTarget, Board: board, Construction: construction, UtilitySites: utilitySites,
 		StateHistory: append([]string(nil), inst.StateHistory...), StepCount: opts.StepCount,
-	}, nil
+	}
+	if inst.Decl.YieldType != nil {
+		checkpoint.YieldType = expectedTypeString(*inst.Decl.YieldType)
+		checkpoint.HasYield = inst.HasYield
+		if inst.HasYield {
+			checkpoint.LastYield, err = checkpointValue(inst.LastYield)
+			if err != nil {
+				return FlowCheckpoint{}, checkpointErr(FlowCheckpointYieldSchemaMismatch, err.Error())
+			}
+		}
+	}
+	return checkpoint, nil
+}
+
+func exportFlowConstructionCheckpoint(inst *FlowRuntimeInstance) ([]FlowCheckpointField, error) {
+	fields := make([]FlowCheckpointField, 0, len(inst.Decl.Parameters))
+	for _, parameter := range inst.Decl.Parameters {
+		binding, ok := inst.RootEnv.lookup(parameter.Name)
+		if !ok {
+			return nil, checkpointErr(FlowCheckpointConstructionParameterMismatch, "missing "+parameter.Name)
+		}
+		value, err := checkpointValue(binding.value)
+		if err != nil {
+			return nil, checkpointErr(FlowCheckpointUnsupportedValueType, "construction parameter "+parameter.Name+": "+err.Error())
+		}
+		fields = append(fields, FlowCheckpointField{Name: parameter.Name, Type: expectedTypeString(parameter.Type), Value: value})
+	}
+	return fields, nil
+}
+
+func restoreFlowConstructionCheckpoint(flow ast.FlowDecl, fields []FlowCheckpointField) ([]Value, error) {
+	if len(fields) != len(flow.Parameters) {
+		return nil, checkpointErr(FlowCheckpointConstructionParameterMismatch, fmt.Sprintf("parameter count %d want %d", len(fields), len(flow.Parameters)))
+	}
+	values := make([]Value, len(fields))
+	for index, parameter := range flow.Parameters {
+		field := fields[index]
+		expected := expectedTypeString(parameter.Type)
+		if field.Name != parameter.Name || field.Type != expected {
+			return nil, checkpointErr(FlowCheckpointConstructionParameterMismatch, fmt.Sprintf("parameter %d checkpoint %s:%s want %s:%s", index, field.Name, field.Type, parameter.Name, expected))
+		}
+		value, err := restoreCheckpointValue(field.Value, parameter.Type)
+		if err != nil {
+			return nil, checkpointErr(FlowCheckpointConstructionParameterMismatch, parameter.Name+": "+err.Error())
+		}
+		values[index] = value
+	}
+	return values, nil
+}
+
+func exportFlowUtilityCheckpoint(inst *FlowRuntimeInstance) ([]FlowUtilityCheckpoint, error) {
+	ids := make([]int, 0, len(inst.UtilityWhenSites))
+	for id := range inst.UtilityWhenSites {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	out := make([]FlowUtilityCheckpoint, 0, len(ids))
+	for _, id := range ids {
+		site := inst.UtilityWhenSites[id]
+		current := FlowCheckpointValue{}
+		if site.HasCurrent {
+			var err error
+			current, err = checkpointValue(site.Current)
+			if err != nil {
+				return nil, checkpointErr(FlowCheckpointUnsupportedValueType, fmt.Sprintf("utility site %d: %v", id, err))
+			}
+		}
+		out = append(out, FlowUtilityCheckpoint{SiteID: id, HasCurrent: site.HasCurrent, Current: current, Score: site.Score, CommitAge: site.CommitAge})
+	}
+	return out, nil
 }
 
 func checkpointErr(reason FlowCheckpointUnsupportedReason, detail string) FlowCheckpointError {
@@ -374,6 +486,33 @@ func checkpointDimension(value Value) string {
 		return ""
 	}
 	return value.Dimension.String()
+}
+
+func restoreCheckpointValueWithoutType(checkpoint FlowCheckpointValue) (Value, error) {
+	switch checkpoint.Kind {
+	case "":
+		return Value{}, nil
+	case string(ValueBool):
+		return Value{Kind: ValueBool, Bool: checkpoint.Bool}, nil
+	case string(ValueString):
+		return Value{Kind: ValueString, Text: checkpoint.String}, nil
+	case string(ValueInt):
+		return Value{Kind: ValueInt, Int: checkpoint.Int}, nil
+	case string(ValueFloat):
+		return Value{Kind: ValueFloat, Float: checkpoint.Float}, nil
+	case string(ValueArray):
+		values := make([]Value, len(checkpoint.Array))
+		for index, element := range checkpoint.Array {
+			value, err := restoreCheckpointValueWithoutType(element)
+			if err != nil {
+				return Value{}, fmt.Errorf("array[%d]: %w", index, err)
+			}
+			values[index] = value
+		}
+		return Value{Kind: ValueArray, Array: values}, nil
+	default:
+		return Value{}, fmt.Errorf("unsupported kind %s", checkpoint.Kind)
+	}
 }
 
 func flowFingerprint(inst *FlowRuntimeInstance) string {

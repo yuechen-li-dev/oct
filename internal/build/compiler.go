@@ -2,6 +2,8 @@ package build
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"go/format"
 	"go/token"
@@ -52,7 +54,7 @@ func EmitGoSource(path string, options GoSourceOptions) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	source, err := emitGoWithOptions(module, goEmitOptions{packageName: options.PackageName})
+	source, err := emitGoWithOptions(module, goEmitOptions{packageName: options.PackageName, hostFacade: true})
 	if err != nil {
 		return nil, err
 	}
@@ -6214,6 +6216,7 @@ func dumpFlowExpr(expr MIRFlowExpr) string {
 type goEmitOptions struct {
 	packageName string
 	includeMain bool
+	hostFacade  bool
 }
 
 type goSupportFeatures struct {
@@ -6396,6 +6399,14 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	supportFeatures := analyzeGoSupportFeatures(m, usedBuiltins)
 	importSet := map[string]struct{}{"fmt": {}, "os": {}, "reflect": {}}
+	if options.hostFacade {
+		for _, flow := range m.Flows {
+			if flow.YieldType != "" {
+				importSet["encoding/json"] = struct{}{}
+				break
+			}
+		}
+	}
 	if needsGenericUtilityHelpers {
 		importSet["reflect"] = struct{}{}
 	}
@@ -6517,6 +6528,13 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	for _, refinement := range m.Refinements {
 		fmt.Fprintf(&b, "type %s_%s = %s\n", refinement.Package, refinement.Name, goType(refinement.Base))
+		if options.hostFacade {
+			publicName := refinement.Name
+			if refinement.Package != m.EntryPackage {
+				publicName = refinement.Package + refinement.Name
+			}
+			fmt.Fprintf(&b, "func Admit%s(value %s) (%s_%s, error) { admitted := fn_%s___oct_refine_%s(value); if admitted.IsErr { var zero %s_%s; return zero, fmt.Errorf(\"%%s\", admitted.Err) }; return admitted.Value, nil }\n", publicName, goType(refinement.Base), refinement.Package, refinement.Name, refinement.Package, refinement.Name, refinement.Package, refinement.Name)
+		}
 	}
 	if len(m.Refinements) > 0 {
 		b.WriteString("\n")
@@ -6583,6 +6601,24 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 			fmt.Fprintf(&b, "\t%s_%s_tag = %d\n", e.Name, v.Name, i)
 		}
 		b.WriteString(")\n\n")
+		if options.hostFacade {
+			publicEnum := e.Name
+			if e.Package != m.EntryPackage {
+				publicEnum = e.Package + e.Name
+			}
+			for _, variant := range e.Variants {
+				fmt.Fprintf(&b, "func New%s%s(", publicEnum, variant.Name)
+				if variant.PayloadType != "" {
+					fmt.Fprintf(&b, "payload %s", goType(variant.PayloadType))
+				}
+				fmt.Fprintf(&b, ") %s_%s { return %s_%s{Tag: %s_%s_tag", e.Package, e.Name, e.Package, e.Name, e.Name, variant.Name)
+				if variant.PayloadType != "" {
+					b.WriteString(", Payload: payload")
+				}
+				b.WriteString("} }\n")
+			}
+			b.WriteString("\n")
+		}
 	}
 	flowTypeNames := make([]string, 0, len(flowResultTypes))
 	for t := range flowResultTypes {
@@ -6599,6 +6635,18 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	for _, flow := range m.Flows {
 		if err := emitGoFlow(&b, flow, analyzeFlowFeatures(flow, usedBuiltins)); err != nil {
 			return "", err
+		}
+	}
+	if options.hostFacade {
+		for _, flow := range m.Flows {
+			features := analyzeFlowFeatures(flow, usedBuiltins)
+			publicName := flow.Name
+			if flow.Package != m.EntryPackage {
+				publicName = flow.Package + flow.Name
+			}
+			if err := emitGoFlowHostFacade(&b, flow, features, publicName, m.Refinements); err != nil {
+				return "", err
+			}
 		}
 	}
 	if supportFeatures.NeedsArrayCoercion {
@@ -8921,6 +8969,276 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	}
 	b.WriteString("\t\tdefault:\n\t\t\tpanic(\"runtime invariant violation: unknown flow state\")\n\t\t}\n\t}\n}\n\n")
 	return nil
+}
+
+// emitGoFlowHostFacade emits the deliberately narrow embeddable-Go ABI.  The
+// private flow remains the single state-machine implementation; this layer only
+// gives external Go typed construction/turn methods and a logical checkpoint.
+func emitGoFlowHostFacade(b *strings.Builder, flow MIRFlow, features flowFeatures, publicName string, refinements []MIRRefinement) error {
+	structName := "__octFlow_" + flow.Package + "_" + flow.Name
+	machineName := publicName
+	turnName := publicName + "Turn"
+	fmt.Fprintf(b, "// %s is the generated, typed host facade for the Oct flow %s.%s.\n", machineName, flow.Package, flow.Name)
+	fmt.Fprintf(b, "type %s struct { flow *%s }\n\n", machineName, structName)
+	fmt.Fprintf(b, "func New%s(", publicName)
+	for i, parameter := range flow.Parameters {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(b, "%s %s", parameter.Name, goType(parameter.Type))
+	}
+	b.WriteString(") *" + machineName + " {\n")
+	fmt.Fprintf(b, "\treturn &%s{flow: fn_%s_%s(", machineName, flow.Package, flow.Name)
+	for i, parameter := range flow.Parameters {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(parameter.Name)
+	}
+	fmt.Fprintf(b, ").(*%s)}\n}\n\n", structName)
+
+	fmt.Fprintf(b, "type %s struct { machine *%s }\n\n", turnName, machineName)
+	fmt.Fprintf(b, "func (m *%s) Step(", machineName)
+	if features.NeedsInput {
+		fmt.Fprintf(b, "input %s", goType(flow.TurnInput.Type))
+	}
+	fmt.Fprintf(b, ") (turn %s, err error) {\n", turnName)
+	b.WriteString("\tif m == nil || m.flow == nil { return turn, fmt.Errorf(\"flow machine is nil\") }\n")
+	b.WriteString("\tdefer func() { if recovered := recover(); recovered != nil { err = fmt.Errorf(\"flow step: %v\", recovered) } }()\n")
+	if features.NeedsInput {
+		if refinement, ok := findMIRRefinement(flow.TurnInput.Type, refinements); ok {
+			fmt.Fprintf(b, "\tadmitted := fn_%s___oct_refine_%s(input)\n", refinement.Package, refinement.Name)
+			b.WriteString("\tif admitted.IsErr { return turn, fmt.Errorf(\"%s\", admitted.Err) }\n")
+			b.WriteString("\tm.flow.__octStep(admitted.Value)\n")
+		} else {
+			b.WriteString("\tm.flow.__octStep(input)\n")
+		}
+	} else {
+		b.WriteString("\tm.flow.__octStep(nil)\n")
+	}
+	fmt.Fprintf(b, "\treturn %s{machine: m}, nil\n}\n\n", turnName)
+	fmt.Fprintf(b, "func (t %s) DidYield() bool { return t.machine != nil && t.machine.flow != nil && t.machine.flow.__octDidYield() }\n", turnName)
+	fmt.Fprintf(b, "func (t %s) Active() string { if t.machine == nil || t.machine.flow == nil { return \"\" }; return t.machine.flow.__octActive() }\n", turnName)
+	fmt.Fprintf(b, "func (t %s) Complete() bool { return t.machine != nil && t.machine.flow != nil && t.machine.flow.__octComplete() }\n", turnName)
+	if features.NeedsYield {
+		fmt.Fprintf(b, "func (t %s) Yielded() (%s, error) {\n", turnName, goType(flow.YieldType))
+		fmt.Fprintf(b, "\tvar zero %s\n", goType(flow.YieldType))
+		b.WriteString("\tif t.machine == nil || t.machine.flow == nil { return zero, fmt.Errorf(\"flow turn is nil\") }\n")
+		b.WriteString("\tvalue, ok := t.machine.flow.__octYielded(); if !ok { return zero, fmt.Errorf(\"last turn did not yield\") }\n")
+		fmt.Fprintf(b, "\ttyped, ok := value.(%s); if !ok { return zero, fmt.Errorf(\"yield type invariant violated\") }; return typed, nil\n}\n\n", goType(flow.YieldType))
+	}
+	if flow.Return == "Void" {
+		fmt.Fprintf(b, "func (m *%s) Result() error { if m == nil || m.flow == nil { return fmt.Errorf(\"flow machine is nil\") }; _, ok := m.flow.__octResult(); if !ok { return fmt.Errorf(\"flow has not completed\") }; return nil }\n\n", machineName)
+	} else {
+		fmt.Fprintf(b, "func (m *%s) Result() (%s, error) {\n", machineName, goFlowResultType(flow.Return))
+		fmt.Fprintf(b, "\tvar zero %s; if m == nil || m.flow == nil { return zero, fmt.Errorf(\"flow machine is nil\") }; value, ok := m.flow.__octResult(); if !ok { return zero, fmt.Errorf(\"flow has not completed\") }; return value, nil\n}\n\n", goFlowResultType(flow.Return))
+	}
+	if len(flow.Board) > 0 {
+		fmt.Fprintf(b, "func (m *%s) Board() (%s_%sBoardSnapshot, error) {\n", machineName, flow.Package, flow.Name)
+		fmt.Fprintf(b, "\tvar zero %s_%sBoardSnapshot; if m == nil || m.flow == nil { return zero, fmt.Errorf(\"flow machine is nil\") }; value, ok := m.flow.__octBoardSnapshot(); if !ok { return zero, fmt.Errorf(\"flow has no board\") }; return value.(%s_%sBoardSnapshot), nil\n}\n\n", flow.Package, flow.Name, flow.Package, flow.Name)
+	}
+	if !features.NeedsYield {
+		return nil
+	}
+	return emitGoFlowCheckpointFacade(b, flow, features, publicName, structName, machineName)
+}
+
+func findMIRRefinement(typeName string, refinements []MIRRefinement) (MIRRefinement, bool) {
+	for _, refinement := range refinements {
+		if typeName == refinement.Package+"."+refinement.Name || typeName == refinement.Name {
+			return refinement, true
+		}
+	}
+	return MIRRefinement{}, false
+}
+
+func emitGoFlowCheckpointFacade(b *strings.Builder, flow MIRFlow, features flowFeatures, publicName string, structName string, machineName string) error {
+	cpName := publicName + "Checkpoint"
+	payloadName := "__oct" + publicName + "CheckpointPayload"
+	reasonName := publicName + "CheckpointReason"
+	errName := publicName + "CheckpointError"
+	fingerprint := compiledFlowFingerprint(flow, features)
+	boardSchema := compiledFlowBoardSchema(flow)
+	constructorSchema := compiledFlowConstructorSchema(flow)
+	yieldSchema := flow.YieldType
+	utilitySchema := compiledFlowUtilitySchema(features)
+
+	fmt.Fprintf(b, "type %s string\n\n", reasonName)
+	fmt.Fprintf(b, "const (\n\t%sVersionMismatch %s = \"CheckpointVersionMismatch\"\n\t%sFlowMismatch %s = \"FlowMismatch\"\n\t%sFingerprintMismatch %s = \"FlowFingerprintMismatch\"\n\t%sSchemaMismatch %s = \"SchemaMismatch\"\n\t%sStateMissing %s = \"StateMissing\"\n\t%sContinuationInvalid %s = \"ContinuationPositionInvalid\"\n\t%sBoardSchemaMismatch %s = \"BoardSchemaMismatch\"\n\t%sConstructionMismatch %s = \"ConstructionParameterMismatch\"\n\t%sUtilitySiteMismatch %s = \"UtilitySiteMismatch\"\n\t%sYieldSchemaMismatch %s = \"YieldSchemaMismatch\"\n\t%sNotAtYield %s = \"NotAtYieldBoundary\"\n)\n\n",
+		publicName, reasonName, publicName, reasonName, publicName, reasonName, publicName, reasonName, publicName, reasonName, publicName, reasonName, publicName, reasonName, publicName, reasonName, publicName, reasonName, publicName, reasonName, publicName, reasonName)
+	fmt.Fprintf(b, "type %s struct { Reason %s; Detail string }\n", errName, reasonName)
+	fmt.Fprintf(b, "func (e %s) Error() string { if e.Detail == \"\" { return \"flow checkpoint: \" + string(e.Reason) }; return \"flow checkpoint: \" + string(e.Reason) + \": \" + e.Detail }\n\n", errName)
+	fmt.Fprintf(b, "func __oct%sCheckpointError(reason %s, detail string) error { return %s{Reason: reason, Detail: detail} }\n\n", publicName, reasonName, errName)
+
+	fmt.Fprintf(b, "type %s struct { data []byte }\n", cpName)
+	fmt.Fprintf(b, "func (c %s) Bytes() []byte { out := make([]byte, len(c.data)); copy(out, c.data); return out }\n", cpName)
+	fmt.Fprintf(b, "func Parse%s(data []byte) (%s, error) { var payload %s; if err := json.Unmarshal(data, &payload); err != nil { return %s{}, err }; out := make([]byte, len(data)); copy(out, data); return %s{data: out}, nil }\n\n", cpName, cpName, payloadName, cpName, cpName)
+
+	if len(flow.Board) > 0 {
+		fmt.Fprintf(b, "type __oct%sCheckpointBoard struct {\n", publicName)
+		for _, field := range flow.Board {
+			fmt.Fprintf(b, "\t%s %s `json:%q`\n", field.Name, goType(field.Type), field.Name)
+		}
+		b.WriteString("}\n\n")
+	}
+	fmt.Fprintf(b, "type %s struct {\n", payloadName)
+	b.WriteString("\tVersion int `json:\"version\"`\n\tPackage string `json:\"package\"`\n\tFlow string `json:\"flow\"`\n\tFingerprint string `json:\"fingerprint\"`\n\tBoardSchema string `json:\"board_schema\"`\n\tConstructionSchema string `json:\"construction_schema\"`\n\tUtilitySchema string `json:\"utility_schema\"`\n\tYieldSchema string `json:\"yield_schema\"`\n\tCurrentState string `json:\"current_state\"`\n\tInstruction int `json:\"instruction\"`\n")
+	for _, parameter := range flow.Parameters {
+		fmt.Fprintf(b, "\tParameter%s %s `json:%q`\n", parameter.Name, goType(parameter.Type), "parameter_"+parameter.Name)
+	}
+	if len(flow.Board) > 0 {
+		fmt.Fprintf(b, "\tBoard __oct%sCheckpointBoard `json:\"board\"`\n", publicName)
+	}
+	if features.NeedsResume {
+		b.WriteString("\tHasResumeTarget bool `json:\"has_resume_target\"`\n\tResumeTarget string `json:\"resume_target\"`\n")
+	}
+	if features.NeedsHistory {
+		b.WriteString("\tHistory []string `json:\"history\"`\n")
+	}
+	for _, siteID := range sortedUtilitySiteIDs(features) {
+		fmt.Fprintf(b, "\tUtilitySite%d __octScalarUtilitySiteState[%s] `json:\"utility_site_%d\"`\n", siteID, goType(features.ScalarUtilitySites[siteID]), siteID)
+	}
+	fmt.Fprintf(b, "\tLastYield %s `json:\"last_yield\"`\n\tHasYield bool `json:\"has_yield\"`\n}\n\n", goType(flow.YieldType))
+
+	fmt.Fprintf(b, "func (m *%s) Checkpoint() (%s, error) {\n", machineName, cpName)
+	fmt.Fprintf(b, "\tif m == nil || m.flow == nil { return %s{}, __oct%sCheckpointError(%sNotAtYield, \"nil flow machine\") }\n", cpName, publicName, publicName)
+	fmt.Fprintf(b, "\tif m.flow.completed || !m.flow.hasYield { return %s{}, __oct%sCheckpointError(%sNotAtYield, \"checkpoint requires the completed turn to have yielded\") }\n", cpName, publicName, publicName)
+	if features.NeedsUtilityMap {
+		fmt.Fprintf(b, "\treturn %s{}, __oct%sCheckpointError(%sUtilitySiteMismatch, \"generic utility-site values are not checkpointable through the typed host ABI\")\n", cpName, publicName, publicName)
+		b.WriteString("}\n\n")
+	} else {
+		fmt.Fprintf(b, "\tpayload := %s{Version: 1, Package: %q, Flow: %q, Fingerprint: %q, BoardSchema: %q, ConstructionSchema: %q, UtilitySchema: %q, YieldSchema: %q, CurrentState: m.flow.__octActive(), Instruction: m.flow.instruction, LastYield: m.flow.lastYield, HasYield: m.flow.hasYield}\n", payloadName, flow.Package, flow.Name, fingerprint, boardSchema, constructorSchema, utilitySchema, yieldSchema)
+		for _, parameter := range flow.Parameters {
+			fmt.Fprintf(b, "\tpayload.Parameter%s = m.flow.%s\n", parameter.Name, parameter.Name)
+		}
+		if len(flow.Board) > 0 {
+			fmt.Fprintf(b, "\tpayload.Board = __oct%sCheckpointBoard{", publicName)
+			for i, field := range flow.Board {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(b, "%s: m.flow.board.%s", field.Name, field.Name)
+			}
+			b.WriteString("}\n")
+		}
+		if features.NeedsResume {
+			b.WriteString("\tpayload.HasResumeTarget = m.flow.hasResumeTarget\n\tif m.flow.hasResumeTarget { payload.ResumeTarget = m.flow.__octStateName(m.flow.resumeTarget) }\n")
+		}
+		if features.NeedsHistory {
+			b.WriteString("\tpayload.History = append([]string(nil), m.flow.history...)\n")
+		}
+		for _, siteID := range sortedUtilitySiteIDs(features) {
+			fmt.Fprintf(b, "\tpayload.UtilitySite%d = m.flow.utilitySite%d\n", siteID, siteID)
+		}
+		fmt.Fprintf(b, "\tdata, err := json.Marshal(payload); if err != nil { return %s{}, err }; return %s{data: data}, nil\n}\n\n", cpName, cpName)
+	}
+
+	fmt.Fprintf(b, "func Restore%s(checkpoint %s) (*%s, error) {\n", publicName, cpName, machineName)
+	fmt.Fprintf(b, "\tvar payload %s; if err := json.Unmarshal(checkpoint.data, &payload); err != nil { return nil, err }\n", payloadName)
+	fmt.Fprintf(b, "\tif payload.Version != 1 { return nil, __oct%sCheckpointError(%sVersionMismatch, fmt.Sprintf(\"version %%d\", payload.Version)) }\n", publicName, publicName)
+	fmt.Fprintf(b, "\tif payload.Package != %q || payload.Flow != %q { return nil, __oct%sCheckpointError(%sFlowMismatch, payload.Package+\".\"+payload.Flow) }\n", flow.Package, flow.Name, publicName, publicName)
+	fmt.Fprintf(b, "\tif payload.Fingerprint != %q { return nil, __oct%sCheckpointError(%sFingerprintMismatch, \"compiled flow changed\") }\n", fingerprint, publicName, publicName)
+	fmt.Fprintf(b, "\tif payload.BoardSchema != %q { return nil, __oct%sCheckpointError(%sBoardSchemaMismatch, \"board schema changed\") }\n", boardSchema, publicName, publicName)
+	fmt.Fprintf(b, "\tif payload.ConstructionSchema != %q { return nil, __oct%sCheckpointError(%sConstructionMismatch, \"construction schema changed\") }\n", constructorSchema, publicName, publicName)
+	fmt.Fprintf(b, "\tif payload.UtilitySchema != %q { return nil, __oct%sCheckpointError(%sUtilitySiteMismatch, \"utility site schema changed\") }\n", utilitySchema, publicName, publicName)
+	fmt.Fprintf(b, "\tif payload.YieldSchema != %q { return nil, __oct%sCheckpointError(%sYieldSchemaMismatch, \"yield schema changed\") }\n", yieldSchema, publicName, publicName)
+	fmt.Fprintf(b, "\tif !payload.HasYield { return nil, __oct%sCheckpointError(%sYieldSchemaMismatch, \"checkpoint is not a yielded machine boundary\") }\n", publicName, publicName)
+	fmt.Fprintf(b, "\tstateID, ok := __oct%sStateID(payload.CurrentState); if !ok { return nil, __oct%sCheckpointError(%sStateMissing, payload.CurrentState) }\n", publicName, publicName, publicName)
+	fmt.Fprintf(b, "\tif !__oct%sContinuationValid(stateID, payload.Instruction) { return nil, __oct%sCheckpointError(%sContinuationInvalid, fmt.Sprintf(\"%%s[%%d]\", payload.CurrentState, payload.Instruction)) }\n", publicName, publicName, publicName)
+	if features.NeedsHistory {
+		fmt.Fprintf(b, "\tfor _, state := range payload.History { if _, ok := __oct%sStateID(state); !ok { return nil, __oct%sCheckpointError(%sStateMissing, state) } }\n", publicName, publicName, publicName)
+	}
+	fmt.Fprintf(b, "\tflow := &%s{started: true, currentState: stateID, instruction: payload.Instruction, lastYield: payload.LastYield, hasYield: payload.HasYield}\n", structName)
+	for _, parameter := range flow.Parameters {
+		fmt.Fprintf(b, "\tflow.%s = payload.Parameter%s\n", parameter.Name, parameter.Name)
+	}
+	if len(flow.Board) > 0 {
+		for _, field := range flow.Board {
+			fmt.Fprintf(b, "\tflow.board.%s = payload.Board.%s\n", field.Name, field.Name)
+		}
+	}
+	if features.NeedsResume {
+		b.WriteString("\tflow.hasResumeTarget = payload.HasResumeTarget\n")
+		fmt.Fprintf(b, "\tif payload.HasResumeTarget { target, ok := __oct%sStateID(payload.ResumeTarget); if !ok { return nil, __oct%sCheckpointError(%sStateMissing, payload.ResumeTarget) }; flow.resumeTarget = target }\n", publicName, publicName, publicName)
+	}
+	if features.NeedsHistory {
+		b.WriteString("\tflow.history = append([]string(nil), payload.History...)\n")
+	}
+	if features.NeedsUtilityMap {
+		b.WriteString("\tflow.utilitySites = map[int]__octUtilitySiteState{}\n")
+	}
+	for _, siteID := range sortedUtilitySiteIDs(features) {
+		fmt.Fprintf(b, "\tflow.utilitySite%d = payload.UtilitySite%d\n", siteID, siteID)
+	}
+	fmt.Fprintf(b, "\treturn &%s{flow: flow}, nil\n}\n\n", machineName)
+
+	fmt.Fprintf(b, "func __oct%sStateID(name string) (int, bool) { switch name {\n", publicName)
+	for idx, state := range flow.States {
+		fmt.Fprintf(b, "\tcase %q: return %d, true\n", state.Name, idx)
+	}
+	b.WriteString("\tdefault: return 0, false\n} }\n")
+	fmt.Fprintf(b, "func __oct%sContinuationValid(state int, instruction int) bool { switch state {\n", publicName)
+	for idx, state := range flow.States {
+		fmt.Fprintf(b, "\tcase %d: return instruction >= 0 && instruction <= %d\n", idx, len(state.Statements))
+	}
+	b.WriteString("\tdefault: return false\n} }\n\n")
+	return nil
+}
+
+func sortedUtilitySiteIDs(features flowFeatures) []int {
+	ids := make([]int, 0, len(features.ScalarUtilitySites))
+	for id := range features.ScalarUtilitySites {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	return ids
+}
+
+func compiledFlowFingerprint(flow MIRFlow, features flowFeatures) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "package:%s\nflow:%s\ninput:%v\nyield:%s\nreturn:%s\nentry:%s\n", flow.Package, flow.Name, flow.TurnInput, flow.YieldType, flow.Return, flow.EntryState)
+	for _, parameter := range flow.Parameters {
+		fmt.Fprintf(&b, "parameter:%s:%s\n", parameter.Name, parameter.Type)
+	}
+	for _, field := range flow.Board {
+		fmt.Fprintf(&b, "board:%s:%s\n", field.Name, field.Type)
+	}
+	for _, state := range flow.States {
+		fmt.Fprintf(&b, "state:%s\n", state.Name)
+		for _, statement := range state.Statements {
+			fmt.Fprintf(&b, "statement:%s\n", dumpFlowStmt(statement))
+		}
+	}
+	fmt.Fprintf(&b, "utility:%s\n", compiledFlowUtilitySchema(features))
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+func compiledFlowBoardSchema(flow MIRFlow) string {
+	var b strings.Builder
+	for _, field := range flow.Board {
+		fmt.Fprintf(&b, "%s:%s;", field.Name, field.Type)
+	}
+	return b.String()
+}
+
+func compiledFlowConstructorSchema(flow MIRFlow) string {
+	var b strings.Builder
+	for _, parameter := range flow.Parameters {
+		fmt.Fprintf(&b, "%s:%s;", parameter.Name, parameter.Type)
+	}
+	return b.String()
+}
+
+func compiledFlowUtilitySchema(features flowFeatures) string {
+	var b strings.Builder
+	if features.NeedsUtilityMap {
+		b.WriteString("generic;")
+	}
+	for _, id := range sortedUtilitySiteIDs(features) {
+		fmt.Fprintf(&b, "%d:%s;", id, features.ScalarUtilitySites[id])
+	}
+	return b.String()
 }
 
 func collectFlowLetLocals(flow MIRFlow) []MIRField {
