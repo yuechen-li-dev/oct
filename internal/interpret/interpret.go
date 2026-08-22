@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"math/cmplx"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +15,8 @@ import (
 	"github.com/xuri/excelize/v2"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/batchcapture"
+	"github.com/yuechen-li-dev/oct/internal/batchplan"
 	"github.com/yuechen-li-dev/oct/internal/builtin"
 	"github.com/yuechen-li-dev/oct/internal/dimension"
 	machinauiir "github.com/yuechen-li-dev/oct/internal/machina/uiir"
@@ -719,6 +720,16 @@ func snapshotEnvironment(env *environment) *environment {
 	}
 	for idx := len(chain) - 1; idx >= 0; idx-- {
 		for name, bindingValue := range chain[idx].values {
+			snapshot.values[name] = binding{value: cloneValue(bindingValue.value), mutable: bindingValue.mutable}
+		}
+	}
+	return snapshot
+}
+
+func snapshotEnvironmentBindings(env *environment, names []string) *environment {
+	snapshot := newEnvironment(nil)
+	for _, name := range names {
+		if bindingValue, ok := env.lookup(name); ok {
 			snapshot.values[name] = binding{value: cloneValue(bindingValue.value), mutable: bindingValue.mutable}
 		}
 	}
@@ -1973,78 +1984,83 @@ func (i interpreter) evalBatchExpr(env *environment, pkgName string, expr ast.Ba
 		return evalResult{value: Value{Kind: ValueArray, Array: []Value{}}}, nil
 	}
 
-	type batchItemResult struct {
+	type batchFailure struct {
 		index    int
-		value    Value
+		failed   bool
 		hasError bool
 		errorVal Value
 		err      error
 	}
 
-	workerCount := runtime.GOMAXPROCS(0)
-	if workerCount < 1 {
-		workerCount = 1
+	const batchDepthBinding = "\x00oct.internal.batch.depth"
+	depth := int64(0)
+	if bindingValue, ok := env.lookup(batchDepthBinding); ok && bindingValue.value.Kind == ValueInt {
+		depth = bindingValue.value.Int
 	}
-	if workerCount > len(items) {
-		workerCount = len(items)
-	}
-
-	jobs := make(chan int, len(items))
-	results := make(chan batchItemResult, len(items))
-	var wg sync.WaitGroup
-	for w := 0; w < workerCount; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for index := range jobs {
-				itemEnv := snapshotEnvironment(env)
-				itemEnv.define(expr.ItemName, items[index], false)
-				outcome, execErr := i.executeBlock(itemEnv, pkgName, expr.Body)
-				if execErr != nil {
-					results <- batchItemResult{index: index, err: execErr}
-					continue
-				}
-				if !outcome.returned {
-					results <- batchItemResult{index: index, err: fmt.Errorf("runtime invariant violation: batch body must return exactly one value per item")}
-					continue
-				}
-				if outcome.value.Kind == ValueError {
-					results <- batchItemResult{index: index, hasError: true, errorVal: outcome.value}
-					continue
-				}
-				results <- batchItemResult{index: index, value: cloneValue(outcome.value)}
-			}
-		}()
-	}
-
-	for idx := range items {
-		jobs <- idx
-	}
-	close(jobs)
-	wg.Wait()
-	close(results)
-
+	plan := batchplan.Make(len(items), depth == 0)
+	captureNames := batchcapture.Names(expr.Body, expr.ItemName)
 	output := make([]Value, len(items))
-	var firstError error
-	var firstErrorVal Value
-	hasErrorValue := false
-	for result := range results {
-		if firstError == nil && result.err != nil {
-			firstError = result.err
-			continue
+	failures := make([]batchFailure, plan.WorkerCount)
+	processRange := func(slot, start, end int) {
+		failure := batchFailure{index: end}
+		for index := start; index < end; index++ {
+			itemEnv := snapshotEnvironmentBindings(env, captureNames)
+			itemEnv.define(batchDepthBinding, Value{Kind: ValueInt, Int: depth + 1}, false)
+			itemEnv.define(expr.ItemName, items[index], false)
+			outcome, execErr := i.executeBlock(itemEnv, pkgName, expr.Body)
+			if execErr != nil {
+				if !failure.failed {
+					failure = batchFailure{index: index, failed: true, err: execErr}
+				}
+				continue
+			}
+			if !outcome.returned {
+				if !failure.failed {
+					failure = batchFailure{index: index, failed: true, err: fmt.Errorf("runtime invariant violation: batch body must return exactly one value per item")}
+				}
+				continue
+			}
+			if outcome.value.Kind == ValueError {
+				if !failure.failed {
+					failure = batchFailure{index: index, failed: true, hasError: true, errorVal: outcome.value}
+				}
+				continue
+			}
+			output[index] = cloneValue(outcome.value)
 		}
-		if firstError == nil && result.hasError {
-			hasErrorValue = true
-			firstErrorVal = result.errorVal
-			continue
+		failures[slot] = failure
+	}
+	if plan.Strategy == batchplan.Sequential {
+		processRange(0, 0, len(items))
+	} else {
+		var wg sync.WaitGroup
+		for slot := 0; slot < plan.WorkerCount; slot++ {
+			start := slot * plan.ChunkSize
+			end := min(start+plan.ChunkSize, len(items))
+			if start >= end {
+				continue
+			}
+			wg.Add(1)
+			go func(slot, start, end int) {
+				defer wg.Done()
+				processRange(slot, start, end)
+			}(slot, start, end)
 		}
-		output[result.index] = result.value
+		wg.Wait()
 	}
-	if firstError != nil {
-		return evalResult{}, firstError
+	failedIndex := len(items)
+	var selected batchFailure
+	for _, failure := range failures {
+		if failure.failed && failure.index < failedIndex {
+			failedIndex = failure.index
+			selected = failure
+		}
 	}
-	if hasErrorValue {
-		return evalResult{hasError: true, errorVal: firstErrorVal}, nil
+	if selected.err != nil {
+		return evalResult{}, selected.err
+	}
+	if selected.hasError {
+		return evalResult{hasError: true, errorVal: selected.errorVal}, nil
 	}
 	return evalResult{value: Value{Kind: ValueArray, Array: output}}, nil
 }

@@ -4,6 +4,8 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Authors: String[]
+    Date: String
     Dependencies: Dependency[]
 }
 
@@ -17,6 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "BatchValid"
         Version: "0.1.0"
         Description: "structured batch/map contracts"
+        Authors: ["Oct contributors"]
+        Date: "2026-08-22"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

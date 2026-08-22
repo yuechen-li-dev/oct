@@ -15,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/batchcapture"
+	"github.com/yuechen-li-dev/oct/internal/batchplan"
 	"github.com/yuechen-li-dev/oct/internal/builtin"
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
@@ -440,6 +442,7 @@ type MIRBatchMap struct {
 	InputType  string
 	ResultType string
 	Captures   []string
+	Nested     bool
 }
 
 func (MIRBatchMap) mirStmt() {}
@@ -669,6 +672,7 @@ type lowerCtx struct {
 	tempID            int
 	userID            int
 	batchID           int
+	batchDepth        int
 	retType           string
 	fn                ast.FunctionDecl
 	extra             []MIRFunction
@@ -2040,6 +2044,7 @@ const (
 	internalProgramCounter internalSymbolKind = "pc"
 	internalTemporary      internalSymbolKind = "tmp"
 	internalBatchItem      internalSymbolKind = "batch_item"
+	internalBatchCapture   internalSymbolKind = "batch_capture"
 	internalBatchWorker    internalSymbolKind = "batch_worker"
 )
 
@@ -3446,6 +3451,7 @@ func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error)
 		InputType:  itemType,
 		ResultType: resultType,
 		Captures:   captureNames,
+		Nested:     c.batchDepth > 0,
 	})
 	value := c.temp(resultType + "[]")
 	okID := len(c.blocks)
@@ -3475,37 +3481,33 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 	c.batchID++
 	const retPlaceholder = "__oct_batch_ret__"
 	workerDecl := ast.FunctionDecl{Name: name, IsFallible: true, ErrorType: ast.TypeRef{Name: "Error"}}
-	captureNames := make([]string, 0, len(c.locals))
-	for localName := range c.locals {
-		if localName == e.ItemName {
-			continue
+	captureNames := make([]string, 0)
+	for _, name := range batchcapture.Names(e.Body, e.ItemName) {
+		if _, ok := c.locals[name]; ok {
+			captureNames = append(captureNames, name)
 		}
-		if strings.HasPrefix(localName, "_t") || strings.HasPrefix(localName, "__") {
-			continue
-		}
-		captureNames = append(captureNames, localName)
 	}
-	sort.Strings(captureNames)
 	workerLocals := make(map[string]string, len(captureNames)+1)
 	workerGoNames := make(map[string]string, len(captureNames)+1)
 	workerLocals[e.ItemName] = itemType
 	workerGoNames[e.ItemName] = internalName(internalBatchItem, c.batchID)
 	captureGoNames := make([]string, 0, len(captureNames))
-	for _, captureName := range captureNames {
+	for captureIndex, captureName := range captureNames {
 		workerLocals[captureName] = c.locals[captureName]
-		workerGoNames[captureName] = c.goLocalName(captureName)
+		workerGoNames[captureName] = fmt.Sprintf("%s_%d", internalName(internalBatchCapture, c.batchID), captureIndex)
 		captureGoNames = append(captureGoNames, c.goLocalName(captureName))
 	}
 	wctx := &lowerCtx{
-		pkg:      c.pkg,
-		program:  c.program,
-		locals:   workerLocals,
-		goNames:  workerGoNames,
-		blocks:   []MIRBlock{{Label: "entry"}},
-		cur:      0,
-		retType:  retPlaceholder,
-		fn:       workerDecl,
-		einTerms: map[string]einsteinTermMeta{},
+		pkg:        c.pkg,
+		program:    c.program,
+		locals:     workerLocals,
+		goNames:    workerGoNames,
+		blocks:     []MIRBlock{{Label: "entry"}},
+		cur:        0,
+		retType:    retPlaceholder,
+		fn:         workerDecl,
+		batchDepth: c.batchDepth + 1,
+		einTerms:   map[string]einsteinTermMeta{},
 	}
 	if err := wctx.lowerBlock(e.Body); err != nil {
 		return MIRFunction{}, "", nil, err
@@ -3516,9 +3518,10 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 	if wctx.lastRet == "" {
 		return MIRFunction{}, "", nil, fmt.Errorf("batch body return type could not be inferred")
 	}
+	c.extra = append(c.extra, wctx.extra...)
 	params := []MIRField{{Name: workerGoNames[e.ItemName], Type: itemType}}
 	for _, captureName := range captureNames {
-		params = append(params, MIRField{Name: c.goLocalName(captureName), Type: c.locals[captureName]})
+		params = append(params, MIRField{Name: workerGoNames[captureName], Type: c.locals[captureName]})
 	}
 	worker := MIRFunction{
 		Package:    c.pkg.Name,
@@ -6768,7 +6771,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		b.WriteString(__octOctxiliaryHelpers)
 	}
 	if usedBuiltins["BatchMap"] {
-		b.WriteString(__octBatchHelpers)
+		b.WriteString(octBatchHelpers())
 	}
 	for _, fn := range m.Functions {
 		fmt.Fprintf(&b, "func fn_%s_%s(", fn.Package, fn.Name)
@@ -8514,62 +8517,121 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 }
 `
 
-const __octBatchHelpers = `
-func __octBatchRun[T any, U any, R any](items []T, worker func(T) R, isErr func(R) bool, errMsg func(R) string, value func(R) U) ([]U, string, bool) {
-	if len(items) == 0 {
-		return []U{}, "", false
+const __octBatchHelpersTemplate = `
+type __octBatchStrategy uint8
+
+const (
+	__octBatchSequential __octBatchStrategy = iota
+	__octBatchChunkedParallel
+)
+
+type __octBatchPlan struct {
+	itemCount int
+	workerCount int
+	chunkSize int
+	strategy __octBatchStrategy
+}
+
+func __octMakeBatchPlan(itemCount int, parallelAllowed bool) __octBatchPlan {
+	plan := __octBatchPlan{itemCount: itemCount, workerCount: 1, chunkSize: itemCount, strategy: __octBatchSequential}
+	if itemCount <= __OCT_BATCH_SEQUENTIAL_MAX__ || !parallelAllowed {
+		return plan
 	}
 	workerCount := runtime.GOMAXPROCS(0)
 	if workerCount < 1 {
 		workerCount = 1
 	}
-	if workerCount > len(items) {
-		workerCount = len(items)
+	workersForSize := (itemCount + __OCT_BATCH_MIN_ITEMS_PER_WORKER__ - 1) / __OCT_BATCH_MIN_ITEMS_PER_WORKER__
+	if workerCount > workersForSize {
+		workerCount = workersForSize
 	}
-	type __octBatchItemResult[V any] struct {
-		index int
-		value V
-		err string
-		isErr bool
+	if workerCount <= 1 {
+		return plan
 	}
-	jobs := make(chan int, len(items))
-	results := make(chan __octBatchItemResult[U], len(items))
-	var wg sync.WaitGroup
-	for w := 0; w < workerCount; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for idx := range jobs {
-				out := worker(items[idx])
-				if isErr(out) {
-					results <- __octBatchItemResult[U]{index: idx, err: errMsg(out), isErr: true}
-					continue
-				}
-				results <- __octBatchItemResult[U]{index: idx, value: value(out)}
-			}
-		}()
+	plan.workerCount = workerCount
+	plan.chunkSize = (itemCount + workerCount - 1) / workerCount
+	plan.strategy = __octBatchChunkedParallel
+	return plan
+}
+
+func __octBatchRun[T any, U any, R any](items []T, worker func(T) R, isErr func(R) bool, errMsg func(R) string, value func(R) U, parallelAllowed bool) ([]U, string, bool) {
+	if len(items) == 0 {
+		return []U{}, "", false
 	}
-	for i := range items {
-		jobs <- i
-	}
-	close(jobs)
-	wg.Wait()
-	close(results)
+	plan := __octMakeBatchPlan(len(items), parallelAllowed)
 	ordered := make([]U, len(items))
-	var firstErr string
-	for result := range results {
-		if firstErr == "" && result.isErr {
-			firstErr = result.err
+	if plan.strategy == __octBatchSequential {
+		failedIndex := len(items)
+		var failedErr string
+		for index := range items {
+			out := worker(items[index])
+			if isErr(out) {
+				if index < failedIndex {
+					failedIndex = index
+					failedErr = errMsg(out)
+				}
+				continue
+			}
+			ordered[index] = value(out)
+		}
+		if failedIndex != len(items) {
+			return nil, failedErr, true
+		}
+		return ordered, "", false
+	}
+	type __octBatchFailure struct {
+		index int
+		err string
+		failed bool
+	}
+	failures := make([]__octBatchFailure, plan.workerCount)
+	var wg sync.WaitGroup
+	for slot := 0; slot < plan.workerCount; slot++ {
+		start := slot * plan.chunkSize
+		end := start + plan.chunkSize
+		if end > len(items) {
+			end = len(items)
+		}
+		if start >= end {
 			continue
 		}
-		ordered[result.index] = result.value
+		wg.Add(1)
+		go func(slot, start, end int) {
+			defer wg.Done()
+			failure := __octBatchFailure{index: end}
+			for index := start; index < end; index++ {
+				out := worker(items[index])
+				if isErr(out) {
+					if !failure.failed {
+						failure = __octBatchFailure{index: index, err: errMsg(out), failed: true}
+					}
+					continue
+				}
+				ordered[index] = value(out)
+			}
+			failures[slot] = failure
+		}(slot, start, end)
 	}
-	if firstErr != "" {
-		return nil, firstErr, true
+	wg.Wait()
+	failedIndex := len(items)
+	var failedErr string
+	for _, failure := range failures {
+		if failure.failed && failure.index < failedIndex {
+			failedIndex = failure.index
+			failedErr = failure.err
+		}
+	}
+	if failedIndex != len(items) {
+		return nil, failedErr, true
 	}
 	return ordered, "", false
 }
 `
+
+func octBatchHelpers() string {
+	helpers := strings.ReplaceAll(__octBatchHelpersTemplate, "__OCT_BATCH_SEQUENTIAL_MAX__", fmt.Sprint(batchplan.SequentialMaxItems))
+	return strings.ReplaceAll(helpers, "__OCT_BATCH_MIN_ITEMS_PER_WORKER__", fmt.Sprint(batchplan.MinItemsPerWorker))
+}
 
 const __octUtilityCandidate = `
 type __octUtilCandidate[T any] struct {
@@ -10503,7 +10565,7 @@ func goStmt(s MIRStmt) (string, error) {
 		if len(st.Captures) > 0 {
 			workerExpr = fmt.Sprintf("func(%s) %s { return %s(%s) }", strings.Join(forwarderParams, ", "), goResultTypeName(st.ResultType), workerName, strings.Join(forwarderArgs, ", "))
 		}
-		return fmt.Sprintf("%s = func() %s { __vals, __err, __isErr := __octBatchRun(%s, %s, func(r %s) bool { return r.IsErr }, func(r %s) string { return r.Err }, func(r %s) %s { return r.Value }); if __isErr { return %s{Err: __err, IsErr: true} }; return %s{Value: __vals} }()",
+		return fmt.Sprintf("%s = func() %s { __vals, __err, __isErr := __octBatchRun(%s, %s, func(r %s) bool { return r.IsErr }, func(r %s) string { return r.Err }, func(r %s) %s { return r.Value }, %t); if __isErr { return %s{Err: __err, IsErr: true} }; return %s{Value: __vals} }()",
 			st.Target,
 			goType(fallibleType(st.ResultType+"[]")),
 			st.Input,
@@ -10512,6 +10574,7 @@ func goStmt(s MIRStmt) (string, error) {
 			goResultTypeName(st.ResultType),
 			goResultTypeName(st.ResultType),
 			goType(st.ResultType),
+			!st.Nested,
 			goResultTypeName(st.ResultType+"[]"),
 			goResultTypeName(st.ResultType+"[]")), nil
 	default:

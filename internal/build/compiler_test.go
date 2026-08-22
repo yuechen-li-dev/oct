@@ -1374,6 +1374,73 @@ fn main() -> Int {
 	}
 }
 
+func TestBatchSpecializationKeepsMIRAndEmitsRangeOwnership(t *testing.T) {
+	target := filepath.Join("..", "..", "Language", "Concurrency", "Batch", "valid", "batch_valid.octest")
+	program, err := project.LoadForTest(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	module := MIRModule{EntryPackage: program.Entry}
+	pkg := program.Packages[program.Entry]
+	for _, function := range pkg.Functions {
+		lowered, err := lowerFunction(program, pkg, function)
+		if err != nil {
+			t.Fatal(err)
+		}
+		module.Functions = append(module.Functions, lowered...)
+	}
+	generated, err := emitGoWithOptions(module, goEmitOptions{packageName: "batchspecimen", includeMain: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"make(chan", "jobs :=", "results :=", "__octBatchItemResult"} {
+		if strings.Contains(generated, forbidden) {
+			t.Fatalf("optimized generated batch source contains old per-item transport %q", forbidden)
+		}
+	}
+	for _, required := range []string{"type __octBatchPlan struct", "__octMakeBatchPlan", "for index := start; index < end; index++", "ordered[index] = value(out)", "failures := make([]__octBatchFailure"} {
+		if !strings.Contains(generated, required) {
+			t.Fatalf("optimized generated batch source missing %q", required)
+		}
+	}
+
+	foundPreciseCapture := false
+	foundNested := false
+	for _, fn := range module.Functions {
+		for _, block := range fn.Blocks {
+			for _, statement := range block.Statements {
+				batch, ok := statement.(MIRBatchMap)
+				if !ok {
+					continue
+				}
+				if fn.Name == "BatchLargeOutputOwnsOrderedIndexes" {
+					foundPreciseCapture = true
+					if len(batch.Captures) != 1 {
+						t.Fatalf("large batch captures = %v, want only referenced offset", batch.Captures)
+					}
+				}
+				foundNested = foundNested || batch.Nested
+			}
+		}
+	}
+	if !foundPreciseCapture {
+		t.Fatal("did not find MIRBatchMap in large capture specimen")
+	}
+	if !foundNested {
+		t.Fatal("did not find nested MIRBatchMap specialization")
+	}
+	generatedAgain, err := emitGoWithOptions(module, goEmitOptions{packageName: "batchspecimen", includeMain: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generated != generatedAgain {
+		t.Fatal("batch generated Go is not deterministic")
+	}
+}
+
 func TestCompileAndRunFlowCoreRuntimeBuiltins(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

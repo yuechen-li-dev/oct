@@ -70,6 +70,47 @@ fn BatchSingleElementWorks() -> Void {
 }
 
 [Fact]
+fn BatchEmptyInputProducesEmptyOutput() -> Void {
+    var values: Int[] = []
+    let output = batch values as value {
+        return value + 1
+    }
+    Assert.Equal(0, Len(output), "empty batch returns an empty array")
+}
+
+[Fact]
+fn BatchLargeOutputOwnsOrderedIndexes() -> Void {
+    var values: Int[] = []
+    for i in 0..1024 {
+        values = Append(values, i)
+    }
+    let offset = 7
+    let unrelated = 1000
+    let output = batch values as value {
+        let doubled = value * 2
+        return doubled + offset
+    }
+    Assert.Equal(1024, Len(output), "large batch preserves length")
+    Assert.Equal(7, output[0], "large batch preserves first index")
+    Assert.Equal(1029, output[511], "large batch preserves middle index")
+    Assert.Equal(2053, output[1023], "large batch preserves last index")
+    Assert.Equal(1000, unrelated, "unrelated immutable local remains outside the worker capture set")
+}
+
+[Fact]
+fn NestedBatchPreservesJoinAndOrder() -> Void {
+    let output = batch [1, 2, 3] as outer {
+        let inner = batch [10, 20] as value {
+            return outer + value
+        }
+        return inner[0] + inner[1]
+    }
+    Assert.Equal(32, output[0], "first nested batch output")
+    Assert.Equal(34, output[1], "second nested batch output")
+    Assert.Equal(36, output[2], "third nested batch output")
+}
+
+[Fact]
 fn BatchRepeatedRunsAreDeterministicallyOrdered() -> Void {
     let input = [2, 4, 6]
     let first = batch input as value {
@@ -95,4 +136,55 @@ fn CollectWithPossibleFailure() -> Int[] ! Error {
         return MaybeSample(item)?
     }
     return results
+}
+
+fn FailAtSeveralIndexes(value: Int) -> Int ! Error {
+    if value == 2 {
+        return error("lowest failing index")
+    }
+    if value == 9 {
+        return error("later failing index")
+    }
+    return value
+}
+
+fn CollectWithSeveralFailures() -> Int[] ! Error {
+    return batch [2, 9, 2, 9] as item {
+        return FailAtSeveralIndexes(item)?
+    }
+}
+
+fn BenchmarkBatchTrivial(values: Int[]) -> Int[] {
+    return batch values as item {
+        return item + 1
+    }
+}
+
+fn BenchmarkBatchModerate(values: Int[]) -> Int[] {
+    return batch values as item {
+        var result = item
+        for round in 0..24 {
+            result = (result * 33 + 17) - (result / 8)
+        }
+        return result
+    }
+}
+
+fn BenchmarkBatchCaptured(values: Int[], offset: Int) -> Int[] {
+    return batch values as item {
+        return Trial(item) + offset
+    }
+}
+
+fn BenchmarkBatchFallible(values: Int[]) -> Int[] ! Error {
+    return batch values as item {
+        return FailAtSeveralIndexes(item)?
+    }
+}
+
+[Fact]
+fn BatchSeveralFailuresRemainWholeBatchFailuresAcrossRuns() -> Void {
+    for run in 0..32 {
+        Assert.Error(CollectWithSeveralFailures(), "multiple item failures must fail the whole batch deterministically")
+    }
 }

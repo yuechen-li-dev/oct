@@ -1,6 +1,6 @@
 # Compiled Support Tracker
 
-_Last updated: 2026-07-21._
+_Last updated: 2026-08-22._
 
 This is an implementation evidence tracker. The public Oct 1.0 compatibility
 contract is `docs/releases/OCT_1_0_CONTRACT.md`; a tracked stable surface is
@@ -26,6 +26,18 @@ Compiled programs are native operating-system executables. On Windows,
 `.lib`; Linux uses `.so`/`.a`; macOS uses `.dylib`/`.a`. The `.octbin`
 extension is reserved for a future portable, Oct-owned artifact format; this
 repository does not currently emit such a format.
+
+## BATCH-SPECIALIZE-M0 homogeneous batch lowering
+
+Ordinary compiled `batch` expressions retain the existing `MIRBatchMap` node
+and now select between a direct sequential loop for up to 256 items and bounded
+contiguous range workers above that threshold. Generated Go preallocates exact
+output storage, writes disjoint indexes directly, joins once, and selects the
+lowest failing input index deterministically. The optimized path has no
+per-item jobs channel, results channel, or result envelope. Nested batches run
+sequentially inside an active outer item to bound goroutine growth, and batch
+workers capture only referenced outer bindings. See
+`docs/internal/batch_specialize_m0.md` for measurements and limitations.
 
 
 ## F4 scalar `String.From<T>` compiled parity
@@ -145,7 +157,7 @@ Notes:
 | `ast.UtilityWhenExpr` | Yes | Yes | Yes | Keep | Compiled flow has dedicated utility-when MIR node. |
 | `ast.PropagateExpr` / `ast.UnwrapExpr` | Yes | No | No | Defer/reject | Flow expressions deliberately reject fallible expression handling in compiled mode. |
 | `ast.MatchExpr` | Partial | **Yes (enum-tag/payload M0)** | Yes (enum-only) | Implemented | Compiled flow supports enum `match` with tag dispatch and optional single payload binding in arm scope. |
-| `ast.BatchExpr` / runtime-heavy expression forms | Partial | No | No | Defer | Outside current pure, deterministic local flow-expression scope. |
+| `ast.BatchExpr` / runtime-heavy expression forms | Yes (ordinary functions) | No | No | Keep ordinary support; defer flow placement | Ordinary compiled batch uses `MIRBatchMap` plus sequential/chunked specialization. It is still outside the current pure local flow-expression scope. |
 
 M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed, and compiled `BoardSnapshot` support is now green for M0 scalar board fields (`Bool`/`Int`/`Float`/`String`) with board arrays intentionally unsupported.
 
