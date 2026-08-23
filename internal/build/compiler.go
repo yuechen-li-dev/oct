@@ -18,6 +18,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/batchcapture"
 	"github.com/yuechen-li-dev/oct/internal/batchplan"
 	"github.com/yuechen-li-dev/oct/internal/builtin"
+	"github.com/yuechen-li-dev/oct/internal/layoutcontract"
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
@@ -68,15 +69,16 @@ func EmitGoSource(path string, options GoSourceOptions) ([]byte, error) {
 }
 
 type MIRModule struct {
-	EntryPackage  string
-	EntryFunc     string
-	EntryReturn   string
-	EntryFallible bool
-	Records       []MIRRecord
-	Refinements   []MIRRefinement
-	Enums         []MIREnum
-	Flows         []MIRFlow
-	Functions     []MIRFunction
+	EntryPackage    string
+	EntryFunc       string
+	EntryReturn     string
+	EntryFallible   bool
+	Records         []MIRRecord
+	Refinements     []MIRRefinement
+	Enums           []MIREnum
+	Flows           []MIRFlow
+	Functions       []MIRFunction
+	LayoutContracts []layoutcontract.Contract
 }
 
 type MIRRefinement struct {
@@ -89,7 +91,17 @@ type MIRRecord struct {
 	Package string
 	Name    string
 	Fields  []MIRField
+	Kind    MIRRecordKind
+	Subject layoutcontract.DataSubjectRef
 }
+
+type MIRRecordKind string
+
+const (
+	MIRRecordOrdinary  MIRRecordKind = "record"
+	MIRRecordTableKind MIRRecordKind = "record-table"
+	MIRRecordTableRow  MIRRecordKind = "synthetic-table-row"
+)
 
 type MIREnum struct {
 	Package  string
@@ -777,7 +789,16 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			}
 		}
 		for _, r := range pkg.Records {
-			mr := MIRRecord{Package: pkgName, Name: r.Name}
+			mr := MIRRecord{Package: pkgName, Name: r.Name, Kind: MIRRecordOrdinary}
+			if r.IsTable {
+				identity := pkgName + "." + r.Name
+				mr.Kind = MIRRecordTableKind
+				mr.Subject = layoutcontract.DataSubjectRef{Kind: layoutcontract.MIRRecordTable, Identity: identity}
+				module.LayoutContracts = append(module.LayoutContracts, layoutcontract.Contract{
+					Subject:    mr.Subject,
+					Invariants: layoutcontract.Invariants{NominalIdentity: &layoutcontract.NominalIdentity{Provenance: layoutcontract.Provenance{Phase: layoutcontract.MIRLowering, Source: identity}}},
+				})
+			}
 			for _, f := range r.Fields {
 				fieldType := typeRefStringForPackage(pkgName, f.Type)
 				if r.IsTable {
@@ -787,7 +808,7 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			}
 			module.Records = append(module.Records, mr)
 			if r.IsTable {
-				row := MIRRecord{Package: pkgName, Name: "__oct_table_row_" + r.Name}
+				row := MIRRecord{Package: pkgName, Name: "__oct_table_row_" + r.Name, Kind: MIRRecordTableRow, Subject: layoutcontract.DataSubjectRef{Kind: layoutcontract.MIRTableRow, Identity: pkgName + "." + r.Name}}
 				for _, f := range r.Fields {
 					row.Fields = append(row.Fields, MIRField{Name: f.Name, Type: typeRefStringForPackage(pkgName, f.Type)})
 				}
@@ -807,7 +828,7 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 		}
 		for _, flow := range pkg.Flows {
 			if len(flow.Board) > 0 {
-				snapshot := MIRRecord{Package: pkgName, Name: flow.Name + "BoardSnapshot"}
+				snapshot := MIRRecord{Package: pkgName, Name: flow.Name + "BoardSnapshot", Kind: MIRRecordOrdinary}
 				for _, field := range flow.Board {
 					snapshot.Fields = append(snapshot.Fields, MIRField{
 						Name: field.Name,
@@ -6074,6 +6095,12 @@ func resolveFlowCall(callee ast.Expr, pkg string) (string, string, bool, bool, e
 func dumpMIR(m MIRModule) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "module entry=%s\n", m.EntryPackage)
+	for _, record := range m.Records {
+		fmt.Fprintf(&b, "record %s.%s kind=%s\n", record.Package, record.Name, record.Kind)
+	}
+	for _, contract := range m.LayoutContracts {
+		fmt.Fprintf(&b, "layout-contract %s\n", layoutcontract.Format(contract))
+	}
 	for _, flow := range m.Flows {
 		fmt.Fprintf(&b, "flow %s.%s -> %s\n", flow.Package, flow.Name, flow.Return)
 		for idx, state := range flow.States {

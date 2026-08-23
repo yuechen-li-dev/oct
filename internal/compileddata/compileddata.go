@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/yuechen-li-dev/oct/internal/layoutcontract"
 )
 
 type Kind string
@@ -60,11 +62,13 @@ type Dataset struct {
 }
 
 type Result struct {
-	Source      []byte
-	LogicalHash string
-	SchemaHash  string
-	RowCount    int
-	Timings     Timings
+	Source          []byte
+	LogicalHash     string
+	SchemaHash      string
+	RowCount        int
+	Timings         Timings
+	Contract        layoutcontract.Contract
+	Materialization string
 }
 
 type Timings struct {
@@ -74,6 +78,16 @@ type Timings struct {
 }
 
 func EmitGo(dataset Dataset) (Result, error) {
+	return emitGo(dataset, true)
+}
+
+// emitGoGeneric is the test/benchmark control for the pre-contract emitter.
+// It is intentionally unexported: this is not a user-facing compiler option.
+func emitGoGeneric(dataset Dataset) (Result, error) {
+	return emitGo(dataset, false)
+}
+
+func emitGo(dataset Dataset, useContract bool) (Result, error) {
 	validationStarted := time.Now()
 	if !validIdentifier(dataset.Symbol) {
 		return Result{}, fmt.Errorf("compiled data symbol %q is not a valid Go identifier", dataset.Symbol)
@@ -86,6 +100,7 @@ func EmitGo(dataset Dataset) (Result, error) {
 	logicalHash := hash(logical)
 	schemaHash := hash(schema)
 	validationElapsed := time.Since(validationStarted)
+	contract := deriveLayoutContract(dataset)
 
 	emissionStarted := time.Now()
 	var b strings.Builder
@@ -99,7 +114,13 @@ func EmitGo(dataset Dataset) (Result, error) {
 		rows = tableExtent(dataset.Value)
 		fmt.Fprintf(&b, "const %sRowCount = %d\n\n", dataset.Symbol, rows)
 		emitTable(&b, dataset.Symbol, dataset.Type, dataset.Value)
+		if useContract {
+			emitColumnProjections(&b, dataset.Symbol, dataset.Type, dataset.Value, contract)
+		}
 	} else {
+		if useContract && dataset.Type.Kind == Array && contract.Invariants.ExactExtent != nil {
+			fmt.Fprintf(&b, "const %sExtent = %d\n", dataset.Symbol, contract.Invariants.ExactExtent.Value)
+		}
 		b.WriteString("\nvar ")
 		b.WriteString(dataset.Symbol)
 		b.WriteString(" = ")
@@ -112,7 +133,75 @@ func EmitGo(dataset Dataset) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("format compiled Go data: %w", err)
 	}
-	return Result{Source: formatted, LogicalHash: logicalHash, SchemaHash: schemaHash, RowCount: rows, Timings: Timings{Validation: validationElapsed, Emission: emissionElapsed, Formatting: time.Since(formatStarted)}}, nil
+	materialization := "generic-static-value"
+	if dataset.Type.Kind == Record && dataset.Type.Table {
+		materialization = "row-array"
+		if useContract && len(contract.Metadata.ColumnProjections) > 0 {
+			materialization = "row-array+static-column-projections"
+		}
+	} else if dataset.Type.Kind == Array && contract.Invariants.ExactExtent != nil {
+		materialization = "fixed-array"
+	}
+	return Result{Source: formatted, LogicalHash: logicalHash, SchemaHash: schemaHash, RowCount: rows, Timings: Timings{Validation: validationElapsed, Emission: emissionElapsed, Formatting: time.Since(formatStarted)}, Contract: contract, Materialization: materialization}, nil
+}
+
+func deriveLayoutContract(dataset Dataset) layoutcontract.Contract {
+	phase := layoutcontract.Provenance{Phase: layoutcontract.PublicationMaterial, Source: "Artifact.WriteCompiledData"}
+	subjectKind := layoutcontract.CompiledDataRoot
+	identity := dataset.Symbol
+	contract := layoutcontract.Contract{Subject: layoutcontract.DataSubjectRef{Kind: subjectKind, Identity: identity}}
+	contract.Invariants.Immutable = &layoutcontract.Immutable{Provenance: phase}
+	if dataset.Type.Name != "" {
+		contract.Invariants.NominalIdentity = &layoutcontract.NominalIdentity{Provenance: phase}
+	}
+	if dataset.Type.Kind == Record && dataset.Type.Table {
+		contract.Invariants.ExactExtent = &layoutcontract.ExactExtent{Value: tableExtent(dataset.Value), Provenance: phase}
+		contract.Invariants.LogicalOrder = &layoutcontract.LogicalOrder{Provenance: phase}
+		for _, field := range dataset.Type.Fields {
+			if staticallyProjectable(field.Type) {
+				contract.Metadata.ColumnProjections = append(contract.Metadata.ColumnProjections, layoutcontract.ColumnProjectionEligibility{Field: field.Name, Provenance: phase})
+			}
+		}
+	} else if dataset.Type.Kind == Array {
+		contract.Subject.Kind = layoutcontract.StaticArray
+		contract.Invariants.ExactExtent = &layoutcontract.ExactExtent{Value: len(dataset.Value.Array), Provenance: phase}
+		contract.Invariants.LogicalOrder = &layoutcontract.LogicalOrder{Provenance: phase}
+	}
+	return contract
+}
+
+func staticallyProjectable(typ Type) bool {
+	if typ.Kind == Refinement && typ.Base != nil {
+		return staticallyProjectable(*typ.Base)
+	}
+	switch typ.Kind {
+	case Int, Float, Bool, String, Enum:
+		return true
+	default:
+		return false
+	}
+}
+
+func emitColumnProjections(b *strings.Builder, symbol string, typ Type, value Value, contract layoutcontract.Contract) {
+	if contract.Invariants.ExactExtent == nil || contract.Invariants.LogicalOrder == nil || contract.Invariants.Immutable == nil {
+		return
+	}
+	for _, candidate := range contract.Metadata.ColumnProjections {
+		for _, field := range typ.Fields {
+			if field.Name != candidate.Field {
+				continue
+			}
+			fmt.Fprintf(b, "\nvar %s%sColumn = [...]%s{", symbol, safeName(field.Name), goType(field.Type))
+			for index, item := range value.Fields[field.Name].Array {
+				if index > 0 {
+					b.WriteString(", ")
+				}
+				emitValue(b, field.Type, item)
+			}
+			b.WriteString("}\n")
+			break
+		}
+	}
 }
 
 func emitDeclarations(b *strings.Builder, typ Type, seen map[string]bool) {
