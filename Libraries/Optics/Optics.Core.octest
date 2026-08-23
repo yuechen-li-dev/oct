@@ -1,0 +1,83 @@
+package Optics
+
+[Fact]
+fn RefractiveIndexAndSpeedRoundTrip() -> Void {
+    let glass = IndexOfRefraction(199861638.6666667m/s)!
+    let speed = SpeedInMedium(glass)
+    Assert.Near(1.5, glass - 0.0, 0.000000001, "glass index")
+    Assert.Near(199861638.6666667, speed / (1.0m/s), 0.001, "speed recovered")
+}
+
+[Fact]
+fn RefractiveIndexConceptRejectsInvalidRuntimeValue() -> Void {
+    Assert.Error(AdmitRefractiveIndex(0.0), "zero refractive index")
+    Assert.Near(1.33, AdmitRefractiveIndex(1.33)! - 0.0, 0.000000001, "admitted water index")
+}
+
+[Fact]
+fn SnellAirToGlassBendsTowardNormal() -> Void {
+    let refracted = SnellRefractedAngle(1.0, 1.5, 30.0 * Pi() / 180.0)!
+    Assert.True(refracted < 30.0 * Pi() / 180.0, "ray bends toward normal in higher index")
+    Assert.Near(19.47, refracted * 180.0 / Pi(), 0.02, "air-to-glass textbook angle")
+}
+
+[Fact]
+fn CriticalAngleSeparatesTransmissionAndTIR() -> Void {
+    let critical = CriticalAngle(1.5, 1.0)!
+    Assert.False(HasTotalInternalReflection(1.5, 1.0, critical)!, "critical ray grazes interface")
+    Assert.True(HasTotalInternalReflection(1.5, 1.0, critical + 0.01)!, "above critical angle reflects internally")
+}
+
+[Fact]
+fn ThinLensProducesRealInvertedImageBeyondFocus() -> Void {
+    let image = ThinLensImage(0.1m, 0.3m)!
+    Assert.Near(0.15, image.Distance / 1.0m, 0.000000001, "thin-lens image distance")
+    Assert.Near(-0.5, image.Magnification, 0.000000001, "image magnification")
+    Assert.True(image.Real and image.Inverted, "real image beyond converging-lens focus")
+}
+
+[Fact]
+fn ThinLensProducesVirtualUprightImageInsideFocus() -> Void {
+    let image = ThinLensImage(0.1m, 0.05m)!
+    Assert.True(not image.Real and not image.Inverted, "magnifier image is virtual and upright")
+    Assert.Near(2.0, image.Magnification, 0.000000001, "magnifier doubles angular size in model")
+}
+
+[Fact]
+fn LensPowerUsesInverseMetres() -> Void {
+    let power = LensPower(0.5m)!
+    Assert.Near(2.0, power / 1.0m^-1, 0.000000001, "half-metre focal length is two dioptres")
+}
+
+[Fact]
+fn TwoSlitAndSingleSlitGiveReadableScales() -> Void {
+    let spacing = TwoSlitFringeSpacing(0.0000005m, 2.0m, 0.001m)!
+    let angle = SingleSlitMinimumAngle(0.0000005m, 0.0001m, 1)!
+    Assert.Near(0.001, spacing / 1.0m, 0.000000001, "one-millimetre fringe spacing")
+    Assert.Near(0.005, angle, 0.000001, "small-angle first minimum")
+}
+
+[Fact]
+fn GratingAndRayleighRelationsAreDimensionlessAngles() -> Void {
+    let grating = DiffractionGratingAngle(0.0000005m, 0.000002m, 1)!
+    let rayleigh = RayleighAngularResolution(0.0000005m, 0.1m)!
+    Assert.Near(14.4775, grating * 180.0 / Pi(), 0.001, "first-order grating angle")
+    Assert.Near(0.0000061, rayleigh, 0.000000001, "ten-centimetre aperture resolution")
+}
+
+[Fact]
+fn PhotonWavelengthFrequencyEnergyBridgeComposes() -> Void {
+    let wavelength = 0.0000005m
+    let frequency = PhotonFrequency(wavelength)!
+    let energy = PhotonEnergyFromWavelength(wavelength)!
+    Assert.True(frequency > 500000000000000.0Hz, "visible-light frequency")
+    Assert.True(energy > 0.0000000000000000003kg*m^2/s^2, "visible photon energy scale")
+}
+
+[Fact]
+fn OpticsRejectsUndefinedModels() -> Void {
+    Assert.Error(SnellRefractedAngle(1.5, 1.0, Pi() / 3.0), "TIR has no transmitted angle")
+    Assert.Error(ThinLensImage(0.1m, 0.1m), "object at focus gives image at infinity")
+    Assert.Error(DiffractionGratingAngle(1.0m, 0.5m, 1), "non-propagating order")
+    Assert.Error(PhotonFrequency(0.0m), "zero wavelength")
+}

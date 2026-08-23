@@ -1,0 +1,57 @@
+package Thermofluids
+
+[Fact]
+fn PlaneWallConductionAndResistanceAgree() -> Void {
+    let rate = PlaneWallConductionRate(0.5kg*m/s^3/K, 10.0m^2, 320.0K, 300.0K, 0.2m)!
+    let resistance = PlaneWallThermalResistance(0.2m, 0.5kg*m/s^3/K, 10.0m^2)!
+    let fromResistance = HeatRateFromResistance(20.0K, resistance)!
+    Assert.Near(500.0, rate / (1.0kg*m^2/s^3), 0.000001, "Fourier plane wall")
+    Assert.Near(rate / (1.0kg*m^2/s^3), fromResistance / (1.0kg*m^2/s^3), 0.000001, "resistance form")
+}
+
+[Fact]
+fn SeriesWallAndConvectionResistancesAdd() -> Void {
+    let inside = ConvectiveThermalResistance(10.0kg/s^3/K, 2.0m^2)!
+    let wall = PlaneWallThermalResistance(0.1m, 0.5kg*m/s^3/K, 2.0m^2)!
+    let outside = ConvectiveThermalResistance(20.0kg/s^3/K, 2.0m^2)!
+    let total = SeriesThermalResistance([inside, wall, outside])!
+    Assert.Near(0.175, total / (1.0K*s^3/kg/m^2), 0.000000001, "film plus wall plus film")
+}
+
+[Fact]
+fn NewtonConvectionSignShowsHeatDirection() -> Void {
+    let cooling = ConvectionHeatRate(10.0kg/s^3/K, 2.0m^2, 350.0K, 300.0K)!
+    let heating = ConvectionHeatRate(10.0kg/s^3/K, 2.0m^2, 280.0K, 300.0K)!
+    Assert.Near(1000.0, cooling / (1.0kg*m^2/s^3), 0.000001, "positive outward heat from hot surface")
+    Assert.True(heating < 0.0kg*m^2/s^3, "negative sign means heat enters colder surface")
+}
+
+[Fact]
+fn RadiationIsZeroAtEqualTemperatureAndPositiveWhenHotter() -> Void {
+    let equal = NetRadiationToSurroundings(0.8, 1.0m^2, 300.0K, 300.0K)!
+    let hot = NetRadiationToSurroundings(0.8, 1.0m^2, 400.0K, 300.0K)!
+    Assert.Near(0.0, equal / (1.0kg*m^2/s^3), 0.000000001, "radiative equilibrium")
+    Assert.True(hot > 0.0kg*m^2/s^3, "hot surface radiates net energy outward")
+}
+
+[Fact]
+fn LumpedCoolingMatchesOneTimeConstant() -> Void {
+    let tau = LumpedThermalTimeConstant(7800.0kg/m^3, 0.001m^3, 500.0m^2/s^2/K, 20.0kg/s^3/K, 0.2m^2)!
+    let temperature = LumpedTemperature(400.0K, 300.0K, tau, tau)!
+    Assert.Near(975.0, tau / 1.0s, 0.000001, "thermal mass divided by hA")
+    Assert.Near(300.0 + 100.0 / E(), temperature / 1.0K, 0.000001, "one-time-constant exponential decay")
+}
+
+[Fact]
+fn BiotHelperStatesConventionalLumpedCriterion() -> Void {
+    Assert.True(LumpedCapacitanceLikelyValid(0.05)!, "Bi below 0.1")
+    Assert.False(LumpedCapacitanceLikelyValid(0.1)!, "boundary is not below 0.1")
+}
+
+[Fact]
+fn HeatTransferRejectsInvalidDomains() -> Void {
+    Assert.Error(PlaneWallConductionRate(1.0kg*m/s^3/K, 1.0m^2, 300.0K, 290.0K, 0.0m), "zero wall thickness")
+    Assert.Error(NetRadiationToSurroundings(1.1, 1.0m^2, 300.0K, 290.0K), "emissivity above one")
+    Assert.Error(SeriesThermalResistance([]), "empty resistance network")
+    Assert.Error(LumpedTemperature(300.0K, 290.0K, 1.0s, 0.0s), "zero time constant")
+}

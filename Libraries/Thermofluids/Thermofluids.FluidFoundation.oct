@@ -1,0 +1,147 @@
+package Thermofluids
+
+/// Density rho = m/V.
+fn Density(mass: Float<kg>, volume: Float<m^3>) -> Float<kg/m^3> ! Error {
+    if mass < 0.0kg or volume <= 0.0m^3 {
+        return error("density requires mass >= 0 and volume > 0")
+    }
+    return mass / volume
+}
+
+/// Specific weight gamma = rho*g.
+fn SpecificWeight(density: Float<kg/m^3>, gravity: Float<m/s^2>) -> Float<kg/m^2/s^2> ! Error {
+    if density < 0.0kg/m^3 or gravity <= 0.0m/s^2 {
+        return error("specific weight requires density >= 0 and gravity > 0")
+    }
+    return density * gravity
+}
+
+/// Hydrostatic gauge-pressure increase Δp = rho*g*h.
+/// Assumes a constant-density fluid and uniform gravity.
+fn HydrostaticPressure(
+    density: Float<kg/m^3>,
+    gravity: Float<m/s^2>,
+    depth: Float<m>
+) -> Float<kg/m/s^2> ! Error {
+    if density < 0.0kg/m^3 or gravity <= 0.0m/s^2 or depth < 0.0m {
+        return error("hydrostatic pressure requires density >= 0, gravity > 0, and depth >= 0")
+    }
+    return density * gravity * depth
+}
+
+/// Archimedes buoyant force for fully displaced volume: F_b = rho*g*V.
+fn BuoyantForce(
+    fluidDensity: Float<kg/m^3>,
+    gravity: Float<m/s^2>,
+    displacedVolume: Float<m^3>
+) -> Float<kg*m/s^2> ! Error {
+    if fluidDensity < 0.0kg/m^3 or gravity <= 0.0m/s^2 or displacedVolume < 0.0m^3 {
+        return error("buoyancy requires density >= 0, gravity > 0, and displaced volume >= 0")
+    }
+    return fluidDensity * gravity * displacedVolume
+}
+
+/// Volume flow rate Q = A*v.
+fn VolumeFlowRate(area: Float<m^2>, averageVelocity: Float<m/s>) -> Float<m^3/s> ! Error {
+    if area < 0.0m^2 {
+        return error("volume flow rate requires non-negative area")
+    }
+    return area * averageVelocity
+}
+
+/// Mass flow rate m_dot = rho*Q.
+fn MassFlowRate(density: Float<kg/m^3>, volumeFlowRate: Float<m^3/s>) -> Float<kg/s> ! Error {
+    if density < 0.0kg/m^3 {
+        return error("mass flow rate requires non-negative density")
+    }
+    return density * volumeFlowRate
+}
+
+/// Incompressible one-stream continuity: v2 = A1*v1/A2.
+fn ContinuityVelocity(
+    inletArea: Float<m^2>,
+    inletVelocity: Float<m/s>,
+    outletArea: Float<m^2>
+) -> Float<m/s> ! Error {
+    if inletArea < 0.0m^2 or outletArea <= 0.0m^2 {
+        return error("continuity requires inlet area >= 0 and outlet area > 0")
+    }
+    return inletArea * inletVelocity / outletArea
+}
+
+/// Dynamic pressure q = rho*v^2/2.
+fn DynamicPressure(density: Float<kg/m^3>, velocity: Float<m/s>) -> Float<kg/m/s^2> ! Error {
+    if density < 0.0kg/m^3 {
+        return error("dynamic pressure requires non-negative density")
+    }
+    return 0.5 * density * velocity * velocity
+}
+
+/// Bernoulli total mechanical pressure p + rho*v^2/2 + rho*g*z.
+/// Assumes steady, incompressible, inviscid flow along a streamline with no shaft work or loss.
+fn BernoulliTotalPressure(
+    staticPressure: Float<kg/m/s^2>,
+    density: Float<kg/m^3>,
+    velocity: Float<m/s>,
+    gravity: Float<m/s^2>,
+    elevation: Float<m>
+) -> Float<kg/m/s^2> ! Error {
+    if density < 0.0kg/m^3 or gravity <= 0.0m/s^2 {
+        return error("Bernoulli relation requires density >= 0 and gravity > 0")
+    }
+    return staticPressure + 0.5 * density * velocity * velocity + density * gravity * elevation
+}
+
+/// Pressure head h = p/(rho*g).
+fn PressureHead(
+    pressure: Float<kg/m/s^2>,
+    density: Float<kg/m^3>,
+    gravity: Float<m/s^2>
+) -> Float<m> ! Error {
+    if density <= 0.0kg/m^3 or gravity <= 0.0m/s^2 {
+        return error("pressure head requires positive density and gravity")
+    }
+    return pressure / (density * gravity)
+}
+
+/// Hydraulic diameter D_h = 4A/P_wetted.
+fn HydraulicDiameter(flowArea: Float<m^2>, wettedPerimeter: Float<m>) -> Float<m> ! Error {
+    if flowArea <= 0.0m^2 or wettedPerimeter <= 0.0m {
+        return error("hydraulic diameter requires positive area and wetted perimeter")
+    }
+    return 4.0 * flowArea / wettedPerimeter
+}
+
+/// Darcy laminar pipe friction factor f = 64/Re.
+/// Valid only for fully developed laminar internal flow, here bounded to 0 < Re <= 2300.
+fn LaminarPipeFrictionFactor(reynolds: Float) -> Float ! Error {
+    if reynolds <= 0.0 or reynolds > 2300.0 {
+        return error("laminar friction factor supports 0 < Reynolds <= 2300")
+    }
+    return 64.0 / reynolds
+}
+
+/// Haaland turbulent Darcy friction-factor approximation.
+/// Valid here for Re >= 4000 and 0 <= relative roughness <= 0.05; transition is rejected.
+fn HaalandFrictionFactor(reynolds: Float, relativeRoughness: Float) -> Float ! Error {
+    if reynolds < 4000.0 or relativeRoughness < 0.0 or relativeRoughness > 0.05 {
+        return error("Haaland correlation requires Reynolds >= 4000 and relative roughness in [0, 0.05]")
+    }
+    let inverseRoot = -1.8 * Log10(Pow(relativeRoughness / 3.7, 1.11) + 6.9 / reynolds)
+    return 1.0 / (inverseRoot * inverseRoot)
+}
+
+/// Darcy-Weisbach pressure drop Δp = f*(L/D)*rho*v^2/2.
+/// The supplied Darcy factor must come from a model appropriate to the flow regime/roughness.
+fn DarcyWeisbachPressureDrop(
+    darcyFrictionFactor: Float,
+    length: Float<m>,
+    hydraulicDiameter: Float<m>,
+    density: Float<kg/m^3>,
+    averageVelocity: Float<m/s>
+) -> Float<kg/m/s^2> ! Error {
+    if darcyFrictionFactor < 0.0 or length < 0.0m or hydraulicDiameter <= 0.0m or density < 0.0kg/m^3 {
+        return error("Darcy-Weisbach requires f >= 0, length >= 0, diameter > 0, and density >= 0")
+    }
+    return darcyFrictionFactor * (length / hydraulicDiameter) * density * averageVelocity * averageVelocity / 2.0
+}

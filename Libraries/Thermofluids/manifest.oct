@@ -19,8 +19,11 @@ fn Manifest() -> PackageManifest {
         Name: "Thermofluids"
         Version: "0.1.0"
         Authors: ["Codex"]
-        Date: "2026-06-15"
-        Description: "Lumped thermal and simple fluid process helpers"
-        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Date: "2026-08-23"
+        Description: "Typed thermodynamics, fluid mechanics, dimensionless analysis, heat transfer, and process models"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Physics" VersionRequirement: "0.1.0" }
+        ]
     }
 }

@@ -1,0 +1,155 @@
+package Thermofluids
+
+import Physics
+
+/// Specific gas constant R_s = R_u/M for an ideal gas.
+fn SpecificGasConstant(molarMass: Float<kg/mol>) -> Float<m^2/s^2/K> ! Error {
+    if molarMass <= 0.0kg/mol {
+        return error("specific gas constant requires positive molar mass")
+    }
+    return Physics.GasConstantSI() / molarMass
+}
+
+/// Ideal-gas pressure p = m*R_s*T/V.
+/// Assumption: equilibrium ideal-gas approximation with constant supplied R_s.
+fn IdealGasPressure(
+    mass: Float<kg>,
+    specificGasConstant: Float<m^2/s^2/K>,
+    temperature: Float<K>,
+    volume: Float<m^3>
+) -> Float<kg/m/s^2> ! Error {
+    let ok = ValidateIdealGasState(mass, specificGasConstant, temperature, volume)?
+    return mass * specificGasConstant * temperature / volume
+}
+
+/// Ideal-gas volume V = m*R_s*T/p.
+fn IdealGasVolume(
+    mass: Float<kg>,
+    specificGasConstant: Float<m^2/s^2/K>,
+    temperature: Float<K>,
+    pressure: Float<kg/m/s^2>
+) -> Float<m^3> ! Error {
+    if mass <= 0.0kg or specificGasConstant <= 0.0m^2/s^2/K or temperature <= 0.0K or pressure <= 0.0kg/m/s^2 {
+        return error("ideal-gas volume requires positive mass, gas constant, absolute temperature, and pressure")
+    }
+    return mass * specificGasConstant * temperature / pressure
+}
+
+/// Sensible heat for constant supplied specific heat: Q = m*c*(T_final-T_initial).
+fn SensibleHeat(
+    mass: Float<kg>,
+    specificHeat: Float<m^2/s^2/K>,
+    initialTemperature: Float<K>,
+    finalTemperature: Float<K>
+) -> Float<kg*m^2/s^2> ! Error {
+    if mass < 0.0kg or specificHeat <= 0.0m^2/s^2/K or initialTemperature < 0.0K or finalTemperature < 0.0K {
+        return error("sensible heat requires mass >= 0, specific heat > 0, and non-negative absolute temperatures")
+    }
+    return mass * specificHeat * (finalTemperature - initialTemperature)
+}
+
+/// Ideal-gas internal-energy change ΔU = m*c_v*ΔT for constant c_v.
+fn IdealGasInternalEnergyChange(
+    mass: Float<kg>,
+    cv: Float<m^2/s^2/K>,
+    initialTemperature: Float<K>,
+    finalTemperature: Float<K>
+) -> Float<kg*m^2/s^2> ! Error {
+    return SensibleHeat(mass, cv, initialTemperature, finalTemperature)?
+}
+
+/// Ideal-gas enthalpy change ΔH = m*c_p*ΔT for constant c_p.
+fn IdealGasEnthalpyChange(
+    mass: Float<kg>,
+    cp: Float<m^2/s^2/K>,
+    initialTemperature: Float<K>,
+    finalTemperature: Float<K>
+) -> Float<kg*m^2/s^2> ! Error {
+    return SensibleHeat(mass, cp, initialTemperature, finalTemperature)?
+}
+
+/// Closed-system first law with work positive out: Q_in = ΔU + W_out.
+fn ClosedSystemHeatInput(
+    internalEnergyChange: Float<kg*m^2/s^2>,
+    workBySystem: Float<kg*m^2/s^2>
+) -> Float<kg*m^2/s^2> {
+    return internalEnergyChange + workBySystem
+}
+
+/// Specific-heat ratio gamma = c_p/c_v.
+fn HeatCapacityRatio(cp: Float<m^2/s^2/K>, cv: Float<m^2/s^2/K>) -> Float ! Error {
+    if cp <= 0.0m^2/s^2/K or cv <= 0.0m^2/s^2/K or cp <= cv {
+        return error("heat-capacity ratio requires cp > cv > 0")
+    }
+    return cp / cv
+}
+
+/// Final temperature for a reversible adiabatic ideal-gas pressure change.
+/// T2/T1 = (p2/p1)^((gamma-1)/gamma); constant gamma and ideal gas assumed.
+fn IsentropicFinalTemperature(
+    initialTemperature: Float<K>,
+    pressureRatio: Float,
+    gamma: Float
+) -> Float<K> ! Error {
+    if initialTemperature <= 0.0K or pressureRatio <= 0.0 or gamma <= 1.0 {
+        return error("isentropic temperature relation requires T1 > 0, pressure ratio > 0, and gamma > 1")
+    }
+    let exponent = (gamma - 1.0) / gamma
+    return initialTemperature * Pow(pressureRatio, exponent)
+}
+
+/// Thermal efficiency eta = net work output / heat input.
+fn ThermalEfficiency(
+    netWorkOutput: Float<kg*m^2/s^2>,
+    heatInput: Float<kg*m^2/s^2>
+) -> Float ! Error {
+    if heatInput <= 0.0kg*m^2/s^2 or netWorkOutput < 0.0kg*m^2/s^2 or netWorkOutput > heatInput {
+        return error("thermal efficiency requires 0 <= work output <= positive heat input")
+    }
+    return netWorkOutput / heatInput
+}
+
+/// Reversible Carnot engine efficiency eta = 1 - Tc/Th.
+fn CarnotEfficiency(hotTemperature: Float<K>, coldTemperature: Float<K>) -> Float ! Error {
+    let ok = ValidateReservoirTemperatures(hotTemperature, coldTemperature)?
+    return 1.0 - coldTemperature / hotTemperature
+}
+
+/// Reversible Carnot refrigerator COP = Tc/(Th-Tc).
+fn CarnotRefrigeratorCOP(hotTemperature: Float<K>, coldTemperature: Float<K>) -> Float ! Error {
+    let ok = ValidateReservoirTemperatures(hotTemperature, coldTemperature)?
+    return coldTemperature / (hotTemperature - coldTemperature)
+}
+
+/// Reversible Carnot heat-pump COP = Th/(Th-Tc).
+fn CarnotHeatPumpCOP(hotTemperature: Float<K>, coldTemperature: Float<K>) -> Float ! Error {
+    let ok = ValidateReservoirTemperatures(hotTemperature, coldTemperature)?
+    return hotTemperature / (hotTemperature - coldTemperature)
+}
+
+/// Phase-change energy Q = m*L for a supplied latent heat.
+fn PhaseChangeEnergy(mass: Float<kg>, latentHeat: Float<m^2/s^2>) -> Float<kg*m^2/s^2> ! Error {
+    if mass < 0.0kg or latentHeat < 0.0m^2/s^2 {
+        return error("phase-change energy requires non-negative mass and latent heat")
+    }
+    return mass * latentHeat
+}
+
+fn ValidateIdealGasState(
+    mass: Float<kg>,
+    specificGasConstant: Float<m^2/s^2/K>,
+    temperature: Float<K>,
+    volume: Float<m^3>
+) -> Bool ! Error {
+    if mass <= 0.0kg or specificGasConstant <= 0.0m^2/s^2/K or temperature <= 0.0K or volume <= 0.0m^3 {
+        return error("ideal-gas state requires positive mass, gas constant, absolute temperature, and volume")
+    }
+    return true
+}
+
+fn ValidateReservoirTemperatures(hotTemperature: Float<K>, coldTemperature: Float<K>) -> Bool ! Error {
+    if coldTemperature <= 0.0K or hotTemperature <= coldTemperature {
+        return error("Carnot relation requires hot temperature > cold temperature > 0 K")
+    }
+    return true
+}

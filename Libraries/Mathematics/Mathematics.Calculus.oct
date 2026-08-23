@@ -1,10 +1,14 @@
 package Mathematics
 
+import Numerics
+
+/// Compatibility textbook name for Numerics.CentralDiff.
 fn DifferentiateCentral(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error {
     let ok = ValidateDerivativeStep(h)?
-    return (f(x + h) - f(x - h)) / (2.0 * h)
+    return Numerics.CentralDiff(f, x, h)?
 }
 
+/// Compatibility wrapper for Numerics.Trapezoid that preserves zero-width and reversed intervals.
 fn IntegrateTrapezoidal(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error {
     let ok = ValidateIntegrationSegments(n)?
 
@@ -12,19 +16,13 @@ fn IntegrateTrapezoidal(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Fl
         return 0.0
     }
 
-    let dx = (b - a) / n
-    var sum = (f(a) + f(b)) / 2.0
-    var i = 1
-
-    while i < n {
-        let x = a + dx * i
-        sum = sum + f(x)
-        i = i + 1
+    if a < b {
+        return Numerics.Trapezoid(f, a, b, n)?
     }
-
-    return dx * sum
+    return 0.0 - Numerics.Trapezoid(f, b, a, n)?
 }
 
+/// Compatibility wrapper for Numerics.Simpson that preserves zero-width and reversed intervals.
 fn IntegrateSimpson(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error {
     let ok = ValidateSimpsonSegments(n)?
 
@@ -32,22 +30,10 @@ fn IntegrateSimpson(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float 
         return 0.0
     }
 
-    let dx = (b - a) / n
-    var oddSum = 0.0
-    var evenSum = 0.0
-    var i = 1
-
-    while i < n {
-        let x = a + dx * i
-        if IsEven(i) {
-            evenSum = evenSum + f(x)
-        } else {
-            oddSum = oddSum + f(x)
-        }
-        i = i + 1
+    if a < b {
+        return Numerics.Simpson(f, a, b, n)?
     }
-
-    return (dx / 3.0) * (f(a) + f(b) + 4.0 * oddSum + 2.0 * evenSum)
+    return 0.0 - Numerics.Simpson(f, b, a, n)?
 }
 
 fn ValidateDerivativeStep(h: Float) -> Bool ! Error {

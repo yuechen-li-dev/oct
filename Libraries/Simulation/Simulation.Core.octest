@@ -58,6 +58,15 @@ fn AppendStepRejectsMismatchedTraceShape() -> Void {
     Assert.Error(AppendStep(bad, stepResult), "mismatched trace arrays must fail")
 }
 
+[Fact]
+fn RuntimeConfigConstructorAdmitsDynamicValuesOnce() -> Void {
+    let config = NewFixedStepConfig(2.0, 0.25, 4)!
+    Assert.Near(2.0, config.InitialTime, 0.000000001, "initial time")
+    Assert.Near(0.25, config.Dt - 0.0, 0.000000001, "admitted positive step")
+    Assert.Equal(4, config.Steps - 0, "admitted positive count")
+    Assert.Error(NewFixedStepConfig(0.0, 0.0, 1), "zero step rejected")
+}
+
 fn DecayEulerTransition(t: Float, state: Float, dt: Float) -> Float {
     return state - dt * state
 }

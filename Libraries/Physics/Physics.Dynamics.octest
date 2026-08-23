@@ -1,0 +1,42 @@
+package Physics
+
+[Fact]
+fn ConstantAccelerationKinematicsMatchesAnalyticCase() -> Void {
+    let x = KinematicPosition(0.0m, 10.0m/s, -9.8m/s^2, 2.0s)!
+    let v = KinematicVelocity(10.0m/s, -9.8m/s^2, 2.0s)!
+    Assert.Near(0.4, x / 1.0m, 0.000000001, "projectile position after two seconds")
+    Assert.Near(-9.6, v / (1.0m/s), 0.000000001, "projectile velocity after two seconds")
+}
+
+[Fact]
+fn ImpulseChangesMomentumWithCorrectUnits() -> Void {
+    let impulse = Impulse(12.0kg*m/s^2, 0.5s)!
+    Assert.Near(6.0, impulse / (1.0kg*m/s), 0.000000001, "12 N for 0.5 s gives 6 N*s")
+}
+
+[Fact]
+fn CircularMotionRelationsAreReadable() -> Void {
+    let acceleration = CentripetalAcceleration(10.0m/s, 5.0m)!
+    let angularMomentum = AngularMomentumParticle(2.0kg, 3.0m, 4.0m/s)!
+    Assert.Near(20.0, acceleration / (1.0m/s^2), 0.000000001, "v squared over r")
+    Assert.Near(24.0, angularMomentum / (1.0kg*m^2/s), 0.000000001, "point-mass angular momentum")
+}
+
+[Fact]
+fn RotationalEnergyAndMechanicalPowerUseDerivedSI() -> Void {
+    let energy = RotationalKineticEnergy(2.0kg*m^2, 3.0s^-1)!
+    let power = MechanicalPower(5.0kg*m/s^2, 4.0m/s)
+    Assert.Near(9.0, energy / (1.0kg*m^2/s^2), 0.000000001, "rotational energy")
+    Assert.Near(20.0, power / (1.0kg*m^2/s^3), 0.000000001, "collinear mechanical power")
+}
+
+[Fact]
+fn TwoMassCenterOfMassWeightsPosition() -> Void {
+    let center = CenterOfMass2(1.0kg, 0.0m, 3.0kg, 4.0m)!
+    Assert.Near(3.0, center / 1.0m, 0.000000001, "heavier mass pulls center toward x=4")
+}
+
+[Fact]
+fn DynamicsRejectsNegativeInertiaAtRuntime() -> Void {
+    Assert.Error(RotationalKineticEnergy(-1.0kg*m^2, 2.0s^-1), "negative inertia is outside the model")
+}

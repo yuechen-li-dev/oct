@@ -1,0 +1,80 @@
+package Quantum
+
+import Physics
+
+[Fact]
+fn PhotonEnergyFrequencyRoundTrip() -> Void {
+    let energy = PhotonEnergy(500000000000000.0Hz)!
+    let frequency = EnergyFrequency(energy)!
+    Assert.Near(500000000000000.0, frequency / 1.0Hz, 0.1, "E=hf inverse")
+}
+
+[Fact]
+fn VisiblePhotonEnergyHasElectronVoltScale() -> Void {
+    let energy = PhotonEnergy(600000000000000.0Hz)!
+    let electronVolts = energy / (Physics.ElementaryChargeSI() * 1.0kg*m^2/A/s^3)
+    Assert.True(electronVolts > 2.0 and electronVolts < 3.0, "visible photon is a few eV")
+}
+
+[Fact]
+fn ElectronMatterWaveHasNanometreScale() -> Void {
+    let wavelength = DeBroglieWavelength(Physics.ElectronMass(), 1000000.0m/s)!
+    Assert.True(wavelength > 0.0000000007m and wavelength < 0.0000000008m, "non-relativistic electron de Broglie wavelength")
+}
+
+[Fact]
+fn ParticleInBoxLevelsScaleAsNSquared() -> Void {
+    let ground = ParticleInBoxEnergy(1, Physics.ElectronMass(), 0.000000001m)!
+    let second = ParticleInBoxEnergy(2, Physics.ElectronMass(), 0.000000001m)!
+    Assert.Near(4.0, second / ground, 0.000000001, "infinite-box second level is four times ground")
+}
+
+[Fact]
+fn HydrogenLevelsApproachZeroFromBelow() -> Void {
+    let ground = HydrogenEnergyLevel(1)
+    let second = HydrogenEnergyLevel(2)
+    Assert.True(ground < second and second < 0.0kg*m^2/s^2, "bound energies are negative and rise toward zero")
+    Assert.Near(0.25, second / ground, 0.000000001, "hydrogen energy scales as inverse n squared")
+}
+
+[Fact]
+fn QuantumLevelConceptRejectsZeroAtRuntime() -> Void {
+    Assert.Error(AdmitQuantumLevel(0), "level zero is not admitted")
+    Assert.Equal(3, AdmitQuantumLevel(3)! - 0, "positive level admission")
+}
+
+[Fact]
+fn HeisenbergHelperExposesActionScale() -> Void {
+    let product = UncertaintyProduct(0.000000001m, 0.0000000000000000000000001kg*m/s)!
+    let minimum = HeisenbergMinimumProduct()
+    Assert.True(product > minimum, "representative uncertainty product exceeds hbar over two")
+}
+
+[Fact]
+fn EqualTwoStateAmplitudesNormalizeToHalfEach() -> Void {
+    let state = NormalizeDiscreteState([Complex(1.0, 0.0), Complex(1.0, 0.0)])!
+    Assert.Near(2.0, state.NormBeforeNormalization, 0.000000001, "input norm")
+    Assert.Near(0.5, state.Probabilities[0], 0.000000001, "first probability")
+    Assert.Near(0.5, state.Probabilities[1], 0.000000001, "second probability")
+}
+
+[Fact]
+fn ComplexPhaseDoesNotChangeBornWeight() -> Void {
+    let real = BornProbabilityWeight(Complex(1.0, 0.0))
+    let imaginary = BornProbabilityWeight(Complex(0.0, 1.0))
+    Assert.Near(real, imaginary, 0.000000001, "unit amplitudes have equal probability")
+}
+
+[Fact]
+fn DiagonalExpectationWeightsEigenvalues() -> Void {
+    let expected = DiagonalExpectation([0.25, 0.75], [-1.0, 1.0])!
+    Assert.Near(0.5, expected, 0.000000001, "two-state diagonal expectation")
+}
+
+[Fact]
+fn QuantumFunctionsRejectUndefinedStates() -> Void {
+    Assert.Error(DeBroglieWavelength(1.0kg, 0.0m/s), "zero momentum")
+    Assert.Error(NormalizeDiscreteState([]), "empty state")
+    Assert.Error(NormalizeDiscreteState([Complex(0.0, 0.0)]), "zero-norm state")
+    Assert.Error(DiagonalExpectation([0.2, 0.2], [1.0, 2.0]), "unnormalized probabilities")
+}

@@ -1,0 +1,146 @@
+package Chemistry
+
+import Physics
+
+/// Amount, volume, and molar concentration as one solution-state Concept.
+concept SolutionState {
+    Amount: Float<mol>
+    Volume: Float<m^3>
+    Concentration: Float<mol/m^3>
+}
+
+/// Inspectable first-order reaction progress.
+concept ReactionProgress {
+    InitialAmount: Float<mol>
+    RemainingAmount: Float<mol>
+    ConvertedFraction: Float
+}
+
+/// Molar concentration c = n/V.
+fn Molarity(amount: Float<mol>, volume: Float<m^3>) -> Float<mol/m^3> ! Error {
+    if amount < 0.0mol or volume <= 0.0m^3 {
+        return error("molarity requires amount >= 0 and volume > 0")
+    }
+    return amount / volume
+}
+
+fn NewSolution(amount: Float<mol>, volume: Float<m^3>) -> SolutionState ! Error {
+    return SolutionState { Amount: amount Volume: volume Concentration: Molarity(amount, volume)? }
+}
+
+/// Dilution with conserved solute: c2 = c1*V1/V2.
+fn DilutedConcentration(
+    initialConcentration: Float<mol/m^3>,
+    initialVolume: Float<m^3>,
+    finalVolume: Float<m^3>
+) -> Float<mol/m^3> ! Error {
+    if initialConcentration < 0.0mol/m^3 or initialVolume < 0.0m^3 or finalVolume <= 0.0m^3 or finalVolume < initialVolume {
+        return error("dilution requires c1 >= 0 and final volume >= initial volume >= 0 with final volume > 0")
+    }
+    return initialConcentration * initialVolume / finalVolume
+}
+
+/// Ideal pH from hydrogen-ion concentration relative to 1 mol/L standard concentration.
+/// Activity coefficients are neglected; concentration must be positive.
+fn PHFromHydrogenConcentration(concentration: Float<mol/m^3>) -> Float ! Error {
+    if concentration <= 0.0mol/m^3 {
+        return error("pH requires positive hydrogen-ion concentration")
+    }
+    return 0.0 - Log10(concentration / (1000.0mol/m^3))
+}
+
+/// Ideal hydrogen-ion concentration from pH, in mol/m^3.
+fn HydrogenConcentrationFromPH(ph: Float) -> Float<mol/m^3> {
+    return Pow(10.0, 0.0 - ph) * 1000.0mol/m^3
+}
+
+/// Henderson-Hasselbalch pH = pKa + log10([base]/[acid]).
+/// Uses the ideal concentration-ratio approximation.
+fn HendersonHasselbalch(
+    pKa: Float,
+    conjugateBaseConcentration: Float<mol/m^3>,
+    acidConcentration: Float<mol/m^3>
+) -> Float ! Error {
+    if conjugateBaseConcentration <= 0.0mol/m^3 or acidConcentration <= 0.0mol/m^3 {
+        return error("Henderson-Hasselbalch requires positive acid and conjugate-base concentrations")
+    }
+    return pKa + Log10(conjugateBaseConcentration / acidConcentration)
+}
+
+/// Beer-Lambert absorbance A = epsilon*c*l.
+/// Assumes a homogeneous non-scattering sample and linear response.
+fn BeerLambertAbsorbance(
+    molarAbsorptivity: Float<m^2/mol>,
+    concentration: Float<mol/m^3>,
+    pathLength: Float<m>
+) -> Float ! Error {
+    if molarAbsorptivity < 0.0m^2/mol or concentration < 0.0mol/m^3 or pathLength < 0.0m {
+        return error("Beer-Lambert requires non-negative absorptivity, concentration, and path length")
+    }
+    return molarAbsorptivity * concentration * pathLength
+}
+
+/// First-order remaining amount n(t) = n0*exp(-k*t).
+fn FirstOrderReaction(
+    initialAmount: Float<mol>,
+    rateConstant: Float<Hz>,
+    elapsed: Float<s>
+) -> ReactionProgress ! Error {
+    if initialAmount < 0.0mol or rateConstant < 0.0Hz or elapsed < 0.0s {
+        return error("first-order reaction requires non-negative amount, rate constant, and time")
+    }
+    let remaining = initialAmount * Exp(0.0 - rateConstant * elapsed)
+    let converted = if initialAmount == 0.0mol { 0.0 } else { 1.0 - remaining / initialAmount }
+    return ReactionProgress {
+        InitialAmount: initialAmount
+        RemainingAmount: remaining
+        ConvertedFraction: converted
+    }
+}
+
+/// First-order half-life t_1/2 = ln(2)/k.
+fn FirstOrderHalfLife(rateConstant: Float<Hz>) -> Float<s> ! Error {
+    if rateConstant <= 0.0Hz {
+        return error("first-order half-life requires positive rate constant")
+    }
+    return Ln(2.0) / rateConstant
+}
+
+/// Arrhenius rate k = A*exp(-Ea/(R*T)).
+/// Assumes constant activation energy and pre-exponential factor over the temperature range.
+fn ArrheniusRate(
+    preExponentialFactor: Float<Hz>,
+    activationEnergy: Float<kg*m^2/s^2/mol>,
+    temperature: Float<K>
+) -> Float<Hz> ! Error {
+    if preExponentialFactor < 0.0Hz or activationEnergy < 0.0kg*m^2/s^2/mol or temperature <= 0.0K {
+        return error("Arrhenius rate requires A >= 0, Ea >= 0, and T > 0")
+    }
+    return preExponentialFactor * Exp(0.0 - activationEnergy / (Physics.GasConstantSI() * temperature))
+}
+
+/// Michaelis-Menten rate v = Vmax*S/(Km+S).
+/// Standard single-substrate quasi-steady model without inhibition or cooperativity.
+fn MichaelisMentenRate(
+    maxRate: Float<mol/m^3/s>,
+    substrateConcentration: Float<mol/m^3>,
+    michaelisConstant: Float<mol/m^3>
+) -> Float<mol/m^3/s> ! Error {
+    if maxRate < 0.0mol/m^3/s or substrateConcentration < 0.0mol/m^3 or michaelisConstant <= 0.0mol/m^3 {
+        return error("Michaelis-Menten requires Vmax >= 0, substrate >= 0, and Km > 0")
+    }
+    return maxRate * substrateConcentration / (michaelisConstant + substrateConcentration)
+}
+
+/// Hill occupancy theta = L^n/(Kd^n+L^n), with dimensionless concentration ratio.
+fn HillOccupancy(
+    ligandConcentration: Float<mol/m^3>,
+    dissociationConcentration: Float<mol/m^3>,
+    hillCoefficient: Float
+) -> Float ! Error {
+    if ligandConcentration < 0.0mol/m^3 or dissociationConcentration <= 0.0mol/m^3 or hillCoefficient <= 0.0 {
+        return error("Hill occupancy requires ligand >= 0, dissociation concentration > 0, and coefficient > 0")
+    }
+    let ratioPower = Pow(ligandConcentration / dissociationConcentration, hillCoefficient)
+    return ratioPower / (1.0 + ratioPower)
+}

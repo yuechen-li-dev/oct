@@ -19,8 +19,11 @@ fn Manifest() -> PackageManifest {
         Name: "Mathematics"
         Version: "0.1.0"
         Authors: ["Codex"]
-        Date: "2026-06-15"
-        Description: "Foundational numerical helpers"
-        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+        Date: "2026-08-23"
+        Description: "Foundational mathematics plus compatibility textbook calculus names backed by Numerics"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Numerics" VersionRequirement: "0.1.0" }
+        ]
     }
 }

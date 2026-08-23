@@ -1,0 +1,34 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "ComputationalScience"
+        Version: "0.1.0"
+        Authors: ["Codex"]
+        Date: "2026-08-23"
+        Description: "Cross-discipline executable examples linking science relations to deterministic simulation"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Simulation" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Thermofluids" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Electromagnetism" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Astrophysics" VersionRequirement: "0.1.0" },
+            Dependency { Name: "ComputationalBiology" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Units" VersionRequirement: "0.1.0" }
+        ]
+    }
+}

@@ -1,0 +1,70 @@
+package Cooking
+
+import Units
+
+[Fact]
+fn TypedMassPresentationUsesExactInternationalPound() -> Void {
+    let pounds = KilogramsToPounds(1.0kg)!
+    let kilograms = Units.ToKilogram(pounds)
+    Assert.Near(2.2046226218, pounds.Value, 0.000000001, "one kilogram in pounds")
+    Assert.Near(1.0, kilograms / 1.0kg, 0.000000001, "round trip to SI")
+}
+
+[Fact]
+fn TypedCulinaryVolumesPreserveSpoonRelationships() -> Void {
+    let tablespoon = Units.TablespoonToCubicMeter(Units.Tablespoon { Value: 1.0 })
+    let teaspoons = CubicMetersToTeaspoons(tablespoon)!
+    Assert.Near(3.0, teaspoons.Value, 0.000000001, "one US tablespoon is three teaspoons")
+}
+
+[Fact]
+fn TypedTemperatureRoundTripsFahrenheitAndKelvin() -> Void {
+    let fahrenheit = KelvinToFahrenheit(0C)!
+    let kelvin = Units.ToKelvin(fahrenheit)
+    Assert.Near(32.0, fahrenheit.Value, 0.000000001, "freezing point presentation")
+    Assert.Near(273.15, kelvin / 1.0K, 0.000000001, "Fahrenheit round trip")
+}
+
+[Fact]
+fn TypedBakersPercentageUsesMassDimensions() -> Void {
+    let hydration = BakersPercentageMass(0.65kg, 1.0kg)!
+    let water = IngredientMassFromBakersPercentage(hydration, 1.0kg)!
+    Assert.Near(65.0, hydration, 0.000000001, "65 percent hydration")
+    Assert.Near(0.65, water / 1.0kg, 0.000000001, "inverse baker's percentage")
+}
+
+[Fact]
+fn DensityConnectsCulinaryVolumeAndMass() -> Void {
+    let fromVolume = IngredientFromVolume(0.00025m^3, 800.0kg/m^3)!
+    let fromMass = IngredientFromMass(fromVolume.Mass, 800.0kg/m^3)!
+    Assert.Near(0.2, fromVolume.Mass / 1.0kg, 0.000000001, "250 mL at 800 kg per cubic metre")
+    Assert.Near(fromVolume.Volume / 1.0m^3, fromMass.Volume / 1.0m^3, 0.000000001, "density conversion inverse")
+}
+
+[Fact]
+fn TypedTrimAndBrineUseFractionsNotUnitlessMassNames() -> Void {
+    let net = NetMassAfterTrim(0.5kg, 0.4)!
+    let brine = BrineByMass(0.05kg, 0.95kg)!
+    Assert.Near(0.3, net / 1.0kg, 0.000000001, "40 percent trim loss")
+    Assert.Near(0.05, brine.SaltMassFraction, 0.000000001, "five percent salt by total mass")
+}
+
+[Fact]
+fn DoughMixTemperatureIsMassWeightedEstimate() -> Void {
+    let temperature = DoughMixTemperatureEstimate(1.0kg, 293.15K, 1.0kg, 313.15K)!
+    Assert.Near(303.15, temperature / 1.0K, 0.000000001, "equal masses average temperatures under equal-cp assumption")
+}
+
+[Fact]
+fn CoolingRestReusesThermofluidsExponentialModel() -> Void {
+    let temperature = CoolingRestTemperature(373.15K, 293.15K, 10.0s, 10.0s)!
+    Assert.Near(293.15 + 80.0 / E(), temperature / 1.0K, 0.000000001, "one time constant of cooling")
+}
+
+[Fact]
+fn TypedCookingRejectsInvalidDomains() -> Void {
+    Assert.Error(KilogramsToOunces(-1.0kg), "negative mass")
+    Assert.Error(IngredientFromVolume(1.0m^3, 0.0kg/m^3), "zero density")
+    Assert.Error(NetMassAfterTrim(1.0kg, 1.0), "complete trim loss singularity")
+    Assert.Error(DoughMixTemperatureEstimate(0.0kg, 300.0K, 0.0kg, 300.0K), "zero total mass")
+}

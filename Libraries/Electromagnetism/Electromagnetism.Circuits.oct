@@ -1,0 +1,77 @@
+package Electromagnetism
+
+/// Ohm law V = I*R.
+fn OhmVoltage(
+    current: Float<A>,
+    resistance: Float<kg*m^2/s^3/A^2>
+) -> Float<kg*m^2/s^3/A> {
+    return current * resistance
+}
+
+/// Ohm law I = V/R.
+fn OhmCurrent(
+    voltage: Float<kg*m^2/s^3/A>,
+    resistance: Float<kg*m^2/s^3/A^2>
+) -> Float<A> ! Error {
+    if resistance <= 0.0kg*m^2/s^3/A^2 {
+        return error("Ohm current requires positive resistance")
+    }
+    return voltage / resistance
+}
+
+/// Electrical power P = V*I.
+fn ElectricalPower(
+    voltage: Float<kg*m^2/s^3/A>,
+    current: Float<A>
+) -> Float<kg*m^2/s^3> {
+    return voltage * current
+}
+
+/// Equivalent resistance of series elements.
+fn SeriesResistance(resistances: Float<kg*m^2/s^3/A^2>[]) -> Float<kg*m^2/s^3/A^2> ! Error {
+    if Len(resistances) == 0 {
+        return error("series resistance requires at least one element")
+    }
+    var total = 0.0kg*m^2/s^3/A^2
+    for i in 0..Len(resistances) {
+        if resistances[i] < 0.0kg*m^2/s^3/A^2 {
+            return error("resistance cannot be negative")
+        }
+        total = total + resistances[i]
+    }
+    return total
+}
+
+/// Equivalent resistance of two positive parallel resistors: R = R1*R2/(R1+R2).
+fn ParallelResistance2(
+    resistance1: Float<kg*m^2/s^3/A^2>,
+    resistance2: Float<kg*m^2/s^3/A^2>
+) -> Float<kg*m^2/s^3/A^2> ! Error {
+    if resistance1 <= 0.0kg*m^2/s^3/A^2 or resistance2 <= 0.0kg*m^2/s^3/A^2 {
+        return error("parallel resistance requires two positive resistances")
+    }
+    return resistance1 * resistance2 / (resistance1 + resistance2)
+}
+
+/// RC time constant tau = R*C.
+fn RCTimeConstant(
+    resistance: Float<kg*m^2/s^3/A^2>,
+    capacitance: Float<A^2*s^4/kg/m^2>
+) -> Float<s> ! Error {
+    if resistance < 0.0kg*m^2/s^3/A^2 or capacitance < 0.0A^2*s^4/kg/m^2 {
+        return error("RC time constant requires non-negative resistance and capacitance")
+    }
+    return resistance * capacitance
+}
+
+/// Ideal capacitor discharge V(t) = V0*exp(-t/RC).
+fn RCDischargeVoltage(
+    initialVoltage: Float<kg*m^2/s^3/A>,
+    elapsed: Float<s>,
+    timeConstant: Float<s>
+) -> Float<kg*m^2/s^3/A> ! Error {
+    if elapsed < 0.0s or timeConstant <= 0.0s {
+        return error("RC discharge requires elapsed >= 0 and time constant > 0")
+    }
+    return initialVoltage * Exp(0.0 - elapsed / timeConstant)
+}

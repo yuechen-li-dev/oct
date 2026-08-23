@@ -1,0 +1,12 @@
+expect error: "function 'CoulombContract' argument 1 expects Float<s*A>, got Float<kg>"
+
+package Electromagnetism
+
+fn CoulombContract(charge: Float<A*s>, separation: Float<m>) -> Float<kg*m/s^2> {
+    let permittivity = 1.0A^2*s^4/kg/m^3
+    return charge * charge / (permittivity * separation * separation)
+}
+
+fn MassIsNotCharge() -> Float<kg*m/s^2> {
+    return CoulombContract(1.0kg, 1.0m)
+}

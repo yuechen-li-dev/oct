@@ -1,5 +1,11 @@
 # Mathematics M1
 
+## Calculus compatibility and canonical ownership
+
+`Numerics` is the canonical entry point for numerical differentiation and quadrature. `Mathematics.DifferentiateCentral`, `Mathematics.IntegrateTrapezoidal`, and `Mathematics.IntegrateSimpson` remain source-compatible textbook names and now delegate to the corresponding `Numerics` implementations. Their historical zero-width and reversed-interval behavior is preserved.
+
+Use `Mathematics` for elementary helpers and transforms. Use `Numerics` for method choice, convergence controls, diagnostics, roots, differentiation, quadrature, and bounded scalar minimization.
+
 ## Surface
 
 `Libraries/Mathematics` provides a narrow deterministic numerical surface:

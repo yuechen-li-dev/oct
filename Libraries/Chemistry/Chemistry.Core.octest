@@ -1,0 +1,73 @@
+package Chemistry
+
+[Fact]
+fn SolutionStateConnectsAmountVolumeAndConcentration() -> Void {
+    let solution = NewSolution(0.1mol, 0.001m^3)!
+    Assert.Near(100.0, solution.Concentration / (1.0mol/m^3), 0.000000001, "0.1 mol per litre")
+}
+
+[Fact]
+fn DilutionConservesSoluteAmount() -> Void {
+    let initial = 100.0mol/m^3
+    let diluted = DilutedConcentration(initial, 0.001m^3, 0.01m^3)!
+    Assert.Near(10.0, diluted / (1.0mol/m^3), 0.000000001, "tenfold volume gives tenfold dilution")
+}
+
+[Fact]
+fn PHAndHydrogenConcentrationRoundTrip() -> Void {
+    let concentration = HydrogenConcentrationFromPH(7.0)
+    let ph = PHFromHydrogenConcentration(concentration)!
+    Assert.Near(0.0001, concentration / (1.0mol/m^3), 0.0000000001, "pH 7 concentration in SI mol per cubic metre")
+    Assert.Near(7.0, ph, 0.000000001, "ideal pH inverse")
+}
+
+[Fact]
+fn HendersonHasselbalchEqualsPKaAtEqualConcentrations() -> Void {
+    let ph = HendersonHasselbalch(4.76, 100.0mol/m^3, 100.0mol/m^3)!
+    Assert.Near(4.76, ph, 0.000000001, "equal acid/base ratio")
+}
+
+[Fact]
+fn BeerLambertAbsorbanceIsDimensionlessAndLinear() -> Void {
+    let a1: Float = BeerLambertAbsorbance(2.0m^2/mol, 3.0mol/m^3, 0.1m)!
+    let a2: Float = BeerLambertAbsorbance(2.0m^2/mol, 6.0mol/m^3, 0.1m)!
+    Assert.Near(0.6, a1, 0.000000001, "epsilon c l")
+    Assert.Near(2.0, a2 / a1, 0.000000001, "doubling concentration doubles ideal absorbance")
+}
+
+[Fact]
+fn FirstOrderHalfLifeHalvesAmount() -> Void {
+    let rate = 0.2Hz
+    let halfLife = FirstOrderHalfLife(rate)!
+    let progress = FirstOrderReaction(1.0mol, rate, halfLife)!
+    Assert.Near(0.5, progress.RemainingAmount / 1.0mol, 0.000000001, "half remains at half-life")
+    Assert.Near(0.5, progress.ConvertedFraction, 0.000000001, "half converted")
+}
+
+[Fact]
+fn ArrheniusRateIncreasesWithTemperature() -> Void {
+    let cold = ArrheniusRate(10000000000000.0Hz, 50000.0kg*m^2/s^2/mol, 300.0K)!
+    let hot = ArrheniusRate(10000000000000.0Hz, 50000.0kg*m^2/s^2/mol, 350.0K)!
+    Assert.True(hot > cold, "higher temperature increases Arrhenius rate for positive activation energy")
+}
+
+[Fact]
+fn MichaelisMentenReachesHalfVmaxAtKm() -> Void {
+    let vmax = 2.0mol/m^3/s
+    let rate = MichaelisMentenRate(vmax, 5.0mol/m^3, 5.0mol/m^3)!
+    Assert.Near(1.0, rate / (1.0mol/m^3/s), 0.000000001, "S equals Km")
+}
+
+[Fact]
+fn HillOccupancyIsHalfAtDissociationConcentration() -> Void {
+    let occupancy = HillOccupancy(2.0mol/m^3, 2.0mol/m^3, 3.0)!
+    Assert.Near(0.5, occupancy, 0.000000001, "ratio one is half occupied for any positive Hill coefficient")
+}
+
+[Fact]
+fn ChemistryRejectsUnsupportedDomains() -> Void {
+    Assert.Error(Molarity(1.0mol, 0.0m^3), "zero solution volume")
+    Assert.Error(PHFromHydrogenConcentration(0.0mol/m^3), "log of zero concentration")
+    Assert.Error(FirstOrderHalfLife(0.0Hz), "zero rate constant")
+    Assert.Error(MichaelisMentenRate(1.0mol/m^3/s, 1.0mol/m^3, 0.0mol/m^3), "zero Km")
+}

@@ -1,0 +1,45 @@
+package Wireless
+
+[Fact]
+fn TypedBandUsesHzAndWatts() -> Void {
+    let band = Band6GhzSI()
+    Assert.Near(6135000000.0, band.CenterFrequency / 1.0Hz, 1.0, "typed 6-GHz center")
+    Assert.Near(0.25, band.MaxTransmitPower / (1.0kg*m^2/s^3), 0.000000001, "typed transmit power")
+}
+
+[Fact]
+fn TypedFreeSpaceLossMatchesCompatibilityScale() -> Void {
+    let loss = FreeSpacePathLossDbSI(10.0m, 5000000000.0Hz)!
+    Assert.Near(66.4, loss, 1.0, "5 GHz over ten metres")
+}
+
+[Fact]
+fn TypedThermalNoiseUsesKelvinBandwidthAndBoltzmann() -> Void {
+    let noise = ThermalNoiseFloorDbmSI(320000000.0Hz, 290.0K)!
+    Assert.Near(-88.9, noise, 0.5, "room-temperature 320-MHz noise floor")
+}
+
+[Fact]
+fn TypedLinkBudgetAndThroughputCompose() -> Void {
+    let budget = WirelessLinkBudgetSI {
+        TransmitPower: 0.1kg*m^2/s^3
+        TransmitGainDb: 3.0
+        ReceiveGainDb: 3.0
+        Frequency: 6000000000.0Hz
+        Distance: 5.0m
+        NoiseFigureDb: 7.0
+        Bandwidth: 320000000.0Hz
+    }
+    let margin = ComputeLinkMarginSI(budget)!
+    let throughput = EstimateThroughputSI(margin.SnrDb, budget.Bandwidth, 4)!
+    Assert.True(margin.MarginDb > 0.0, "short-range typed budget has positive margin")
+    Assert.True(throughput.Throughput > 1000000000.0Hz, "typed throughput retains per-second dimension")
+}
+
+[Fact]
+fn TypedWirelessRejectsNonphysicalInputs() -> Void {
+    Assert.Error(FreeSpacePathLossDbSI(0.0m, 1.0Hz), "zero distance")
+    Assert.Error(ThermalNoiseFloorDbmSI(1.0Hz, 0.0K), "absolute zero")
+    Assert.Error(WattsToDbmSI(0.0kg*m^2/s^3), "log of zero power")
+    Assert.Error(EstimateThroughputSI(10.0, 1.0Hz, 0), "zero streams")
+}

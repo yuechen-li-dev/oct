@@ -1,0 +1,138 @@
+package Thermofluids
+
+/// Reynolds number Re = rho*v*L/mu: inertia relative to viscous effects.
+fn ReynoldsNumber(
+    density: Float<kg/m^3>,
+    velocity: Float<m/s>,
+    characteristicLength: Float<m>,
+    dynamicViscosity: Float<kg/m/s>
+) -> Float ! Error {
+    if density < 0.0kg/m^3 or characteristicLength < 0.0m or dynamicViscosity <= 0.0kg/m/s {
+        return error("Reynolds number requires density >= 0, length >= 0, and viscosity > 0")
+    }
+    return density * Abs(velocity) * characteristicLength / dynamicViscosity
+}
+
+/// Mach number Ma = |v|/a: flow speed relative to local sound speed.
+fn MachNumber(velocity: Float<m/s>, soundSpeed: Float<m/s>) -> Float ! Error {
+    if soundSpeed <= 0.0m/s {
+        return error("Mach number requires positive sound speed")
+    }
+    return Abs(velocity) / soundSpeed
+}
+
+/// Froude number Fr = |v|/sqrt(g*L): inertia relative to gravity-wave effects.
+fn FroudeNumber(velocity: Float<m/s>, gravity: Float<m/s^2>, length: Float<m>) -> Float ! Error {
+    if gravity <= 0.0m/s^2 or length <= 0.0m {
+        return error("Froude number requires positive gravity and length")
+    }
+    return Abs(velocity) / Sqrt(gravity * length)
+}
+
+/// Euler number Eu = Δp/(rho*v^2): pressure relative to inertial effects.
+fn EulerNumber(pressureDifference: Float<kg/m/s^2>, density: Float<kg/m^3>, velocity: Float<m/s>) -> Float ! Error {
+    if density <= 0.0kg/m^3 or velocity == 0.0m/s {
+        return error("Euler number requires positive density and non-zero velocity")
+    }
+    return pressureDifference / (density * velocity * velocity)
+}
+
+/// Prandtl number Pr = cp*mu/k: momentum diffusivity relative to thermal diffusivity.
+fn PrandtlNumber(
+    specificHeat: Float<m^2/s^2/K>,
+    dynamicViscosity: Float<kg/m/s>,
+    thermalConductivity: Float<kg*m/s^3/K>
+) -> Float ! Error {
+    if specificHeat <= 0.0m^2/s^2/K or dynamicViscosity <= 0.0kg/m/s or thermalConductivity <= 0.0kg*m/s^3/K {
+        return error("Prandtl number requires positive cp, viscosity, and thermal conductivity")
+    }
+    return specificHeat * dynamicViscosity / thermalConductivity
+}
+
+/// Nusselt number Nu = h*L/k: convection relative to conduction across a layer.
+fn NusseltNumber(
+    convectionCoefficient: Float<kg/s^3/K>,
+    characteristicLength: Float<m>,
+    thermalConductivity: Float<kg*m/s^3/K>
+) -> Float ! Error {
+    if convectionCoefficient < 0.0kg/s^3/K or characteristicLength < 0.0m or thermalConductivity <= 0.0kg*m/s^3/K {
+        return error("Nusselt number requires h >= 0, length >= 0, and conductivity > 0")
+    }
+    return convectionCoefficient * characteristicLength / thermalConductivity
+}
+
+/// Grashof number Gr = g*beta*|ΔT|*L^3/nu^2: buoyancy relative to viscosity.
+fn GrashofNumber(
+    gravity: Float<m/s^2>,
+    expansionCoefficient: Float<K^-1>,
+    temperatureDifference: Float<K>,
+    characteristicLength: Float<m>,
+    kinematicViscosity: Float<m^2/s>
+) -> Float ! Error {
+    if gravity <= 0.0m/s^2 or expansionCoefficient < 0.0K^-1 or characteristicLength <= 0.0m or kinematicViscosity <= 0.0m^2/s {
+        return error("Grashof number requires g > 0, beta >= 0, length > 0, and kinematic viscosity > 0")
+    }
+    return gravity * expansionCoefficient * Abs(temperatureDifference) * characteristicLength * characteristicLength * characteristicLength / (kinematicViscosity * kinematicViscosity)
+}
+
+/// Rayleigh number Ra = Gr*Pr for buoyancy-driven heat transfer.
+fn RayleighNumber(grashof: Float, prandtl: Float) -> Float ! Error {
+    if grashof < 0.0 or prandtl <= 0.0 {
+        return error("Rayleigh number requires Gr >= 0 and Pr > 0")
+    }
+    return grashof * prandtl
+}
+
+/// Biot number Bi = h*Lc/k_s: internal conduction resistance relative to surface convection.
+fn BiotNumber(
+    convectionCoefficient: Float<kg/s^3/K>,
+    characteristicLength: Float<m>,
+    solidConductivity: Float<kg*m/s^3/K>
+) -> Float ! Error {
+    return NusseltNumber(convectionCoefficient, characteristicLength, solidConductivity)?
+}
+
+/// Fourier number Fo = alpha*t/L^2: dimensionless diffusion time.
+fn FourierNumber(thermalDiffusivity: Float<m^2/s>, elapsed: Float<s>, length: Float<m>) -> Float ! Error {
+    if thermalDiffusivity < 0.0m^2/s or elapsed < 0.0s or length <= 0.0m {
+        return error("Fourier number requires diffusivity >= 0, time >= 0, and length > 0")
+    }
+    return thermalDiffusivity * elapsed / (length * length)
+}
+
+/// Peclet number Pe = |v|*L/alpha: advection relative to diffusion.
+fn PecletNumber(velocity: Float<m/s>, length: Float<m>, diffusivity: Float<m^2/s>) -> Float ! Error {
+    if length < 0.0m or diffusivity <= 0.0m^2/s {
+        return error("Peclet number requires length >= 0 and diffusivity > 0")
+    }
+    return Abs(velocity) * length / diffusivity
+}
+
+/// Weber number We = rho*v^2*L/sigma_s: inertia relative to surface tension.
+fn WeberNumber(
+    density: Float<kg/m^3>,
+    velocity: Float<m/s>,
+    length: Float<m>,
+    surfaceTension: Float<kg/s^2>
+) -> Float ! Error {
+    if density < 0.0kg/m^3 or length < 0.0m or surfaceTension <= 0.0kg/s^2 {
+        return error("Weber number requires density >= 0, length >= 0, and surface tension > 0")
+    }
+    return density * velocity * velocity * length / surfaceTension
+}
+
+/// Schmidt number Sc = nu/D: momentum diffusivity relative to mass diffusivity.
+fn SchmidtNumber(kinematicViscosity: Float<m^2/s>, massDiffusivity: Float<m^2/s>) -> Float ! Error {
+    if kinematicViscosity < 0.0m^2/s or massDiffusivity <= 0.0m^2/s {
+        return error("Schmidt number requires kinematic viscosity >= 0 and mass diffusivity > 0")
+    }
+    return kinematicViscosity / massDiffusivity
+}
+
+/// Sherwood number Sh = hm*L/D: convective mass transfer relative to diffusion.
+fn SherwoodNumber(massTransferCoefficient: Float<m/s>, length: Float<m>, massDiffusivity: Float<m^2/s>) -> Float ! Error {
+    if massTransferCoefficient < 0.0m/s or length < 0.0m or massDiffusivity <= 0.0m^2/s {
+        return error("Sherwood number requires hm >= 0, length >= 0, and diffusivity > 0")
+    }
+    return massTransferCoefficient * length / massDiffusivity
+}

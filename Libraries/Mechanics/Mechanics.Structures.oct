@@ -1,0 +1,196 @@
+package Mechanics
+
+/// Plane-stress Mohr-circle domain result kept together for inspection and teaching.
+concept MohrCirclePlaneStress {
+    Center: Float<kg/m/s^2>
+    Radius: Float<kg/m/s^2>
+    SigmaMax: Float<kg/m/s^2>
+    SigmaMin: Float<kg/m/s^2>
+    MaxInPlaneShear: Float<kg/m/s^2>
+}
+
+/// Rectangle area A = b*h.
+fn RectangleArea(width: Float<m>, height: Float<m>) -> Float<m^2> ! Error {
+    if width <= 0.0m or height <= 0.0m {
+        return error("rectangle area requires positive width and height")
+    }
+    return width * height
+}
+
+/// Centroidal second moment for rectangle bending about the width axis: I = b*h^3/12.
+fn RectangleSecondMoment(width: Float<m>, height: Float<m>) -> Float<m^4> ! Error {
+    if width <= 0.0m or height <= 0.0m {
+        return error("rectangle second moment requires positive width and height")
+    }
+    return width * height * height * height / 12.0
+}
+
+/// Engineering axial strain, epsilon = deltaL/L0.
+fn AxialStrain(changeInLength: Float<m>, originalLength: Float<m>) -> Float ! Error {
+    if originalLength <= 0.0m {
+        return error("axial strain requires positive original length")
+    }
+    return changeInLength / originalLength
+}
+
+/// One-dimensional Hooke law, sigma = E*epsilon.
+/// Assumes small strain and linear elastic behavior.
+fn HookeStress(youngModulus: Float<kg/m/s^2>, strain: Float) -> Float<kg/m/s^2> ! Error {
+    if youngModulus <= 0.0kg/m/s^2 {
+        return error("Hooke stress requires positive Young modulus")
+    }
+    return youngModulus * strain
+}
+
+/// Free thermal strain, epsilon_th = alpha*deltaT.
+/// Assumes a constant isotropic linear expansion coefficient over the interval.
+fn ThermalStrain(expansionCoefficient: Float<K^-1>, temperatureChange: Float<K>) -> Float {
+    return expansionCoefficient * temperatureChange
+}
+
+/// Free linear thermal expansion, deltaL = alpha*L*deltaT.
+fn LinearThermalExpansion(
+    originalLength: Float<m>,
+    expansionCoefficient: Float<K^-1>,
+    temperatureChange: Float<K>
+) -> Float<m> ! Error {
+    if originalLength < 0.0m {
+        return error("linear thermal expansion requires non-negative original length")
+    }
+    return originalLength * expansionCoefficient * temperatureChange
+}
+
+/// Axial deformation of a uniform prismatic bar, delta = F*L/(A*E).
+/// Assumes small deformation, axial loading, and linear elasticity.
+fn ElasticAxialDeformation(
+    force: Float<kg*m/s^2>,
+    length: Float<m>,
+    area: Float<m^2>,
+    youngModulus: Float<kg/m/s^2>
+) -> Float<m> ! Error {
+    if length < 0.0m or area <= 0.0m^2 or youngModulus <= 0.0kg/m/s^2 {
+        return error("axial deformation requires length >= 0, area > 0, and Young modulus > 0")
+    }
+    return force * length / (area * youngModulus)
+}
+
+/// Maximum bending moment for a simply supported beam with a centered point load: Mmax = P*L/4.
+fn SimplySupportedCenterLoadMaxMoment(load: Float<kg*m/s^2>, span: Float<m>) -> Float<kg*m^2/s^2> ! Error {
+    if span <= 0.0m {
+        return error("simply supported beam requires positive span")
+    }
+    return load * span / 4.0
+}
+
+/// Midspan deflection for a simply supported Euler-Bernoulli beam with centered point load.
+/// delta = P*L^3/(48*E*I); assumes small deflection and constant E*I.
+fn SimplySupportedCenterLoadDeflection(
+    load: Float<kg*m/s^2>,
+    span: Float<m>,
+    youngModulus: Float<kg/m/s^2>,
+    secondMoment: Float<m^4>
+) -> Float<m> ! Error {
+    let ok = ValidateBeamRigidity(span, youngModulus, secondMoment)?
+    return load * span * span * span / (48.0 * youngModulus * secondMoment)
+}
+
+/// Fixed-end moment magnitude for a cantilever with an end point load: M = P*L.
+fn CantileverEndLoadMoment(load: Float<kg*m/s^2>, length: Float<m>) -> Float<kg*m^2/s^2> ! Error {
+    if length <= 0.0m {
+        return error("cantilever requires positive length")
+    }
+    return load * length
+}
+
+/// End deflection for an Euler-Bernoulli cantilever with end point load: delta = P*L^3/(3*E*I).
+fn CantileverEndLoadDeflection(
+    load: Float<kg*m/s^2>,
+    length: Float<m>,
+    youngModulus: Float<kg/m/s^2>,
+    secondMoment: Float<m^4>
+) -> Float<m> ! Error {
+    let ok = ValidateBeamRigidity(length, youngModulus, secondMoment)?
+    return load * length * length * length / (3.0 * youngModulus * secondMoment)
+}
+
+/// Euler elastic buckling load Pcr = pi^2*E*I/(K*L)^2.
+/// Applies to ideal slender columns; real-column imperfections reduce capacity.
+fn EulerBucklingLoad(
+    youngModulus: Float<kg/m/s^2>,
+    secondMoment: Float<m^4>,
+    length: Float<m>,
+    effectiveLengthFactor: Float
+) -> Float<kg*m/s^2> ! Error {
+    if youngModulus <= 0.0kg/m/s^2 or secondMoment <= 0.0m^4 or length <= 0.0m or effectiveLengthFactor <= 0.0 {
+        return error("Euler buckling requires positive E, I, length, and effective-length factor")
+    }
+    let effectiveLength = effectiveLengthFactor * length
+    return Pi() * Pi() * youngModulus * secondMoment / (effectiveLength * effectiveLength)
+}
+
+/// Hoop stress in a thin-walled closed cylindrical pressure vessel: sigma_h = p*r/t.
+/// Thin-wall membrane approximation; use only when wall thickness is small relative to radius.
+fn ThinWallCylinderHoopStress(
+    internalPressure: Float<kg/m/s^2>,
+    meanRadius: Float<m>,
+    wallThickness: Float<m>
+) -> Float<kg/m/s^2> ! Error {
+    let ok = ValidateThinWallInputs(internalPressure, meanRadius, wallThickness)?
+    return internalPressure * meanRadius / wallThickness
+}
+
+/// Longitudinal stress in a thin-walled closed cylinder: sigma_l = p*r/(2t).
+fn ThinWallCylinderLongitudinalStress(
+    internalPressure: Float<kg/m/s^2>,
+    meanRadius: Float<m>,
+    wallThickness: Float<m>
+) -> Float<kg/m/s^2> ! Error {
+    let ok = ValidateThinWallInputs(internalPressure, meanRadius, wallThickness)?
+    return internalPressure * meanRadius / (2.0 * wallThickness)
+}
+
+/// Elastic angle of twist for a prismatic shaft: theta = T*L/(G*J).
+/// Radians are dimensionless; assumes Saint-Venant torsion and constant G*J.
+fn ShaftAngleOfTwist(
+    torque: Float<kg*m^2/s^2>,
+    length: Float<m>,
+    shearModulus: Float<kg/m/s^2>,
+    polarMoment: Float<m^4>
+) -> Float ! Error {
+    if length < 0.0m or shearModulus <= 0.0kg/m/s^2 or polarMoment <= 0.0m^4 {
+        return error("shaft twist requires length >= 0, shear modulus > 0, and polar moment > 0")
+    }
+    return torque * length / (shearModulus * polarMoment)
+}
+
+/// Mohr-circle center/radius and principal stresses for a plane-stress state.
+fn PlaneStressMohrCircle(
+    normalX: Float<kg/m/s^2>,
+    normalY: Float<kg/m/s^2>,
+    shearXY: Float<kg/m/s^2>
+) -> MohrCirclePlaneStress {
+    let center = (normalX + normalY) / 2.0
+    let halfDifference = (normalX - normalY) / 2.0
+    let radius = Sqrt(halfDifference * halfDifference + shearXY * shearXY)
+    return MohrCirclePlaneStress {
+        Center: center
+        Radius: radius
+        SigmaMax: center + radius
+        SigmaMin: center - radius
+        MaxInPlaneShear: radius
+    }
+}
+
+fn ValidateBeamRigidity(span: Float<m>, youngModulus: Float<kg/m/s^2>, secondMoment: Float<m^4>) -> Bool ! Error {
+    if span <= 0.0m or youngModulus <= 0.0kg/m/s^2 or secondMoment <= 0.0m^4 {
+        return error("beam relation requires positive span, Young modulus, and second moment")
+    }
+    return true
+}
+
+fn ValidateThinWallInputs(pressure: Float<kg/m/s^2>, radius: Float<m>, thickness: Float<m>) -> Bool ! Error {
+    if pressure < 0.0kg/m/s^2 or radius <= 0.0m or thickness <= 0.0m {
+        return error("thin-wall vessel requires pressure >= 0, radius > 0, and thickness > 0")
+    }
+    return true
+}

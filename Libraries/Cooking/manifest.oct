@@ -19,8 +19,12 @@ fn Manifest() -> PackageManifest {
         Name: "Cooking"
         Version: "0.1.0"
         Authors: ["Claude", "Codex"]
-        Date: "2026-06-15"
-        Description: "Do you smell what the Claude is Cookin'?"
-        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+        Date: "2026-08-23"
+        Description: "Typed practical cooking units, recipe scaling, baker's math, yield, brine, density, and cooling models"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Units" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Thermofluids" VersionRequirement: "0.1.0" }
+        ]
     }
 }

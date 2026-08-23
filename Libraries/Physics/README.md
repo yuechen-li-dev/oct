@@ -1,12 +1,17 @@
-# Physics M0
+# Physics
 
 ## Purpose
 
-`Libraries/Physics` provides reusable physical constants and a small set of unit-checked textbook mechanics equations.
+`Libraries/Physics` owns foundational physical laws and constants. Engineering analysis models—beams, fatigue, pressure vessels, and related design relations—remain in `Mechanics`.
 
-## M0 scope
+## Chapters
 
-The mechanics surface includes force, momentum, kinetic and gravitational potential energy, work, average power, and linear-spring energy. `PositiveMass` and `PositiveDuration` make true domain preconditions explicit.
+- constants: exact SI-defined constants, measured constants, and compatibility wrappers
+- mechanics: force, momentum, energy, work, power, and ideal springs
+- dynamics: constant-acceleration kinematics, impulse, circular motion, angular momentum, rotational energy, and two-body center of mass
+- waves: wavelength/frequency/speed, angular frequency, wave number, beats, and ideal string/pipe standing modes
+
+Refined Concepts such as `PositiveMass`, `PositiveDuration`, and `PositiveLength` express actual domain preconditions. Runtime values cross those boundaries through explicit fallible admission rather than unchecked construction.
 
 ## Naming/style
 
@@ -14,8 +19,7 @@ Constants are exposed as functions (for example `SpeedOfLight()`, `BoltzmannCons
 
 ## Unit philosophy
 
-Units are part of the returned values whenever directly representable in the current Oct unit system.
-Constants that depend on currently unavailable base dimensions (for example electric current, amount of substance, or thermodynamic temperature) are documented and exposed with the closest explicit representation available today.
+Units are part of the returned values. The current language supports the seven SI base dimensions, so the canonical constants use `K`, `A`, and `mol` directly: prefer `BoltzmannConstantSI`, `ElementaryChargeSI`, `AvogadroConstantSI`, `GasConstantSI`, `StefanBoltzmannConstantSI`, `VacuumPermittivitySI`, and `VacuumPermeabilitySI`. Earlier scalar or partially dimensional functions remain as compatibility wrappers.
 
 The mechanics equations use dimensions that Oct can fully represent:
 
@@ -29,6 +33,8 @@ let power: Float<kg*m^2/s^3> = AveragePower(energy, 3.0s)!
 
 `Physics.Mechanics.InvalidDimensions.octfail` proves that passing time as velocity is rejected by the typechecker.
 
-## Non-goals
+## Constants and model honesty
 
-Physics M0 is not a formula catalog, simulator, electromagnetism model, or constants database.
+Comments distinguish exact SI-defined values from post-2019 measured/derived values and conventional rounded values. Kinematics assumes constant acceleration; standing-wave relations assume ideal boundaries; point-particle rotation helpers do not replace rigid-body dynamics.
+
+Physics is not an indiscriminate formula catalog, simulator, electromagnetic field solver, or metrology database.

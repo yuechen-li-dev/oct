@@ -1,0 +1,70 @@
+package Electromagnetism
+
+import Physics
+
+/// Coulomb force magnitude |q1*q2|/(4*pi*epsilon0*r^2) in vacuum.
+/// Point charges and electrostatic vacuum conditions are assumed.
+fn CoulombForceMagnitude(
+    charge1: Float<A*s>,
+    charge2: Float<A*s>,
+    separation: Float<m>
+) -> Float<kg*m/s^2> ! Error {
+    if separation <= 0.0m {
+        return error("Coulomb force requires positive separation")
+    }
+    return Abs(charge1 * charge2) / (4.0 * Pi() * Physics.VacuumPermittivitySI() * separation * separation)
+}
+
+/// Electric-field magnitude of a point charge in vacuum: E = |q|/(4*pi*epsilon0*r^2).
+fn PointChargeElectricFieldMagnitude(
+    sourceCharge: Float<A*s>,
+    separation: Float<m>
+) -> Float<kg*m/A/s^3> ! Error {
+    if separation <= 0.0m {
+        return error("point-charge electric field requires positive separation")
+    }
+    return Abs(sourceCharge) / (4.0 * Pi() * Physics.VacuumPermittivitySI() * separation * separation)
+}
+
+/// Electric potential of a point charge relative to infinity: V = q/(4*pi*epsilon0*r).
+fn PointChargeElectricPotential(
+    sourceCharge: Float<A*s>,
+    separation: Float<m>
+) -> Float<kg*m^2/A/s^3> ! Error {
+    if separation <= 0.0m {
+        return error("point-charge potential requires positive separation")
+    }
+    return sourceCharge / (4.0 * Pi() * Physics.VacuumPermittivitySI() * separation)
+}
+
+/// Electric potential energy U = q*V.
+fn ElectricPotentialEnergy(
+    charge: Float<A*s>,
+    potential: Float<kg*m^2/A/s^3>
+) -> Float<kg*m^2/s^2> {
+    return charge * potential
+}
+
+/// Ideal parallel-plate capacitance C = epsilon*A/d.
+/// Neglects fringing and assumes a uniform linear dielectric supplied by permittivity.
+fn ParallelPlateCapacitance(
+    permittivity: Float<A^2*s^4/kg/m^3>,
+    plateArea: Float<m^2>,
+    separation: Float<m>
+) -> Float<A^2*s^4/kg/m^2> ! Error {
+    if permittivity <= 0.0A^2*s^4/kg/m^3 or plateArea < 0.0m^2 or separation <= 0.0m {
+        return error("parallel-plate capacitance requires epsilon > 0, area >= 0, and separation > 0")
+    }
+    return permittivity * plateArea / separation
+}
+
+/// Energy stored in a capacitor: U = C*V^2/2.
+fn CapacitorStoredEnergy(
+    capacitance: Float<A^2*s^4/kg/m^2>,
+    voltage: Float<kg*m^2/A/s^3>
+) -> Float<kg*m^2/s^2> ! Error {
+    if capacitance < 0.0A^2*s^4/kg/m^2 {
+        return error("capacitor energy requires non-negative capacitance")
+    }
+    return 0.5 * capacitance * voltage * voltage
+}

@@ -1,0 +1,11 @@
+expect error: "array element 0 expects String, got Float"
+
+package ComputationalBiology
+
+fn DNAContract(sequence: String[]) -> Int {
+    return Len(sequence)
+}
+
+fn NumericSamplesAreNotDNA() -> Int {
+    return DNAContract([1.0, 2.0])
+}

@@ -1,0 +1,173 @@
+package Astrophysics
+
+import Physics
+import Units
+
+/// Connected properties of a Newtonian circular orbit.
+concept CircularOrbit {
+    Radius: Float<m>
+    Speed: Float<m/s>
+    Period: Float<s>
+    SpecificEnergy: Float<m^2/s^2>
+}
+
+/// Distance-modulus inputs/outputs kept together for teaching and reporting.
+concept DistanceObservation {
+    Distance: Units.Parsec
+    DistanceModulus: Float
+}
+
+/// Standard gravitational parameter mu = G*M.
+fn GravitationalParameter(centralMass: Float<kg>) -> Float<m^3/s^2> ! Error {
+    if centralMass <= 0.0kg {
+        return error("gravitational parameter requires positive central mass")
+    }
+    return Physics.GravitationalConstant() * centralMass
+}
+
+/// Newtonian gravitational force magnitude F = G*m1*m2/r^2.
+fn GravitationalForceMagnitude(
+    mass1: Float<kg>,
+    mass2: Float<kg>,
+    separation: Float<m>
+) -> Float<kg*m/s^2> ! Error {
+    if mass1 < 0.0kg or mass2 < 0.0kg or separation <= 0.0m {
+        return error("Newtonian gravity requires non-negative masses and positive separation")
+    }
+    return Physics.GravitationalConstant() * mass1 * mass2 / (separation * separation)
+}
+
+/// Circular orbital speed v = sqrt(mu/r), where radius is measured from the central body's center.
+fn CircularOrbitalVelocity(centralMass: Float<kg>, radius: Float<m>) -> Float<m/s> ! Error {
+    if radius <= 0.0m {
+        return error("circular orbit requires positive radius")
+    }
+    let mu = GravitationalParameter(centralMass)?
+    return Sqrt(mu / radius)
+}
+
+/// Kepler/Newton circular orbital period T = 2*pi*sqrt(r^3/mu).
+fn CircularOrbitalPeriod(centralMass: Float<kg>, radius: Float<m>) -> Float<s> ! Error {
+    if radius <= 0.0m {
+        return error("orbital period requires positive radius")
+    }
+    let mu = GravitationalParameter(centralMass)?
+    return 2.0 * Pi() * Sqrt(radius * radius * radius / mu)
+}
+
+/// Escape speed v_e = sqrt(2*mu/r) in the Newtonian point-mass model.
+fn EscapeVelocity(centralMass: Float<kg>, radius: Float<m>) -> Float<m/s> ! Error {
+    if radius <= 0.0m {
+        return error("escape velocity requires positive radius")
+    }
+    let mu = GravitationalParameter(centralMass)?
+    return Sqrt(2.0 * mu / radius)
+}
+
+/// Specific orbital energy epsilon = v^2/2 - mu/r, in J/kg rather than total orbital energy.
+fn SpecificOrbitalEnergy(
+    centralMass: Float<kg>,
+    radius: Float<m>,
+    speed: Float<m/s>
+) -> Float<m^2/s^2> ! Error {
+    if radius <= 0.0m {
+        return error("specific orbital energy requires positive radius")
+    }
+    let mu = GravitationalParameter(centralMass)?
+    return 0.5 * speed * speed - mu / radius
+}
+
+/// Vis-viva speed v = sqrt(mu*(2/r - 1/a)) for a bound Kepler orbit.
+fn VisVivaVelocity(
+    centralMass: Float<kg>,
+    radius: Float<m>,
+    semimajorAxis: Float<m>
+) -> Float<m/s> ! Error {
+    if radius <= 0.0m or semimajorAxis <= 0.0m {
+        return error("vis-viva requires positive radius and semimajor axis")
+    }
+    let mu = GravitationalParameter(centralMass)?
+    let speedSquared = mu * (2.0 / radius - 1.0 / semimajorAxis)
+    if speedSquared < 0.0m^2/s^2 {
+        return error("vis-viva inputs produce negative speed squared")
+    }
+    return Sqrt(speedSquared)
+}
+
+/// Builds the connected circular-orbit lesson in one domain Concept.
+fn CircularOrbitAt(centralMass: Float<kg>, radius: Float<m>) -> CircularOrbit ! Error {
+    let speed = CircularOrbitalVelocity(centralMass, radius)?
+    let period = CircularOrbitalPeriod(centralMass, radius)?
+    let energy = SpecificOrbitalEnergy(centralMass, radius, speed)?
+    return CircularOrbit { Radius: radius Speed: speed Period: period SpecificEnergy: energy }
+}
+
+/// Hill radius approximation r_H = a*(m/(3M))^(1/3) for a small body on a circular orbit.
+fn HillRadius(
+    orbitalRadius: Float<m>,
+    bodyMass: Float<kg>,
+    primaryMass: Float<kg>
+) -> Float<m> ! Error {
+    if orbitalRadius <= 0.0m or bodyMass <= 0.0kg or primaryMass <= 0.0kg or bodyMass >= primaryMass {
+        return error("Hill approximation requires radius > 0 and 0 < body mass < primary mass")
+    }
+    return orbitalRadius * Pow(bodyMass / (3.0 * primaryMass), 1.0 / 3.0)
+}
+
+/// Blackbody stellar luminosity L = 4*pi*R^2*sigma*T^4.
+/// Assumes a spherical blackbody photosphere with uniform effective temperature.
+fn BlackbodyLuminosity(radius: Float<m>, effectiveTemperature: Float<K>) -> Float<kg*m^2/s^3> ! Error {
+    if radius < 0.0m or effectiveTemperature < 0.0K {
+        return error("blackbody luminosity requires non-negative radius and absolute temperature")
+    }
+    let fourth = effectiveTemperature * effectiveTemperature * effectiveTemperature * effectiveTemperature
+    return 4.0 * Pi() * radius * radius * Physics.StefanBoltzmannConstantSI() * fourth
+}
+
+/// Isotropic radiant flux F = L/(4*pi*d^2).
+fn RadiantFluxAtDistance(luminosity: Float<kg*m^2/s^3>, distance: Float<m>) -> Float<kg/s^3> ! Error {
+    if luminosity < 0.0kg*m^2/s^3 or distance <= 0.0m {
+        return error("radiant flux requires non-negative luminosity and positive distance")
+    }
+    return luminosity / (4.0 * Pi() * distance * distance)
+}
+
+/// Wien wavelength peak lambda_max = b/T for a blackbody spectrum.
+fn BlackbodyPeakWavelength(temperature: Float<K>) -> Float<m> ! Error {
+    if temperature <= 0.0K {
+        return error("Wien displacement requires positive absolute temperature")
+    }
+    return Physics.WienDisplacementConstant() / temperature
+}
+
+/// Distance modulus m-M = 5*log10(d_pc/10).
+fn DistanceModulus(distance: Units.Parsec) -> Float ! Error {
+    if distance.Value <= 0.0 {
+        return error("distance modulus requires positive parsec distance")
+    }
+    return 5.0 * Log10(distance.Value / 10.0)
+}
+
+/// Keeps a positive parsec distance and its distance modulus together.
+fn DistanceObservationAt(distance: Units.Parsec) -> DistanceObservation ! Error {
+    return DistanceObservation {
+        Distance: distance
+        DistanceModulus: DistanceModulus(distance)?
+    }
+}
+
+/// Parallax distance d_pc = 1/p_arcsec under the small-angle parsec definition.
+fn ParallaxDistance(parallaxArcseconds: Float) -> Units.Parsec ! Error {
+    if parallaxArcseconds <= 0.0 {
+        return error("parallax distance requires positive parallax in arcseconds")
+    }
+    return Units.Parsec { Value: 1.0 / parallaxArcseconds }
+}
+
+/// Redshifted wavelength lambda_observed = lambda_rest*(1+z).
+fn RedshiftedWavelength(restWavelength: Float<m>, redshift: Float) -> Float<m> ! Error {
+    if restWavelength <= 0.0m or redshift <= -1.0 {
+        return error("redshift relation requires wavelength > 0 and z > -1")
+    }
+    return restWavelength * (1.0 + redshift)
+}

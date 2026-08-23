@@ -1,0 +1,32 @@
+package Physics
+
+[Fact]
+fn WaveRelationConnectsFrequencyWavelengthAndSpeed() -> Void {
+    let speed = WaveSpeed(440.0Hz, 0.78m)!
+    let recovered = WaveFrequency(speed, 0.78m)!
+    Assert.Near(343.2, speed / (1.0m/s), 0.000000001, "concert A wavelength in air")
+    Assert.Near(440.0, recovered / 1.0Hz, 0.000000001, "inverse wave relation")
+}
+
+[Fact]
+fn AngularFrequencyAndWaveNumberUseDimensionlessRadians() -> Void {
+    let omega = AngularFrequency(2.0Hz)!
+    let k = WaveNumber(4.0m)!
+    Assert.Near(4.0 * Pi(), omega / 1.0Hz, 0.000000001, "omega equals 2 pi f")
+    Assert.Near(Pi() / 2.0, k / 1.0m^-1, 0.000000001, "k equals 2 pi over wavelength")
+}
+
+[Fact]
+fn BeatAndStandingWaveExamplesMatchTextbookValues() -> Void {
+    let beat = BeatFrequency(442.0Hz, 440.0Hz)
+    let fundamental = FixedStringFrequency(1, 100.0m/s, 0.5m)!
+    let third = FixedStringFrequency(3, 100.0m/s, 0.5m)!
+    Assert.Near(2.0, beat / 1.0Hz, 0.000000001, "two-Hz beat")
+    Assert.Near(100.0, fundamental / 1.0Hz, 0.000000001, "fixed string fundamental")
+    Assert.Near(300.0, third / 1.0Hz, 0.000000001, "third harmonic")
+}
+
+[Fact]
+fn StandingWaveRejectsInvalidHarmonic() -> Void {
+    Assert.Error(FixedStringFrequency(0, 100.0m/s, 1.0m), "harmonic zero is undefined")
+}

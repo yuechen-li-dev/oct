@@ -1,0 +1,129 @@
+package Quantum
+
+import Physics
+import Units
+
+/// Positive principal/box quantum number.
+concept QuantumLevel = Int {
+    Require(Self > 0, "quantum level must be a positive integer")
+}
+
+/// Normalized discrete probabilities derived from amplitudes.
+concept DiscreteProbabilityState {
+    Probabilities: Float[]
+    NormBeforeNormalization: Float
+}
+
+/// Runtime admission helper for a computed quantum level.
+fn AdmitQuantumLevel(raw: Int) -> QuantumLevel ! Error {
+    return QuantumLevel(raw)?
+}
+
+/// Photon energy E = h*f.
+fn PhotonEnergy(frequency: Float<Hz>) -> Float<kg*m^2/s^2> ! Error {
+    if frequency < 0.0Hz {
+        return error("photon energy requires non-negative frequency")
+    }
+    return Physics.PlanckConstant() * frequency
+}
+
+/// Frequency associated with positive energy: f = E/h.
+fn EnergyFrequency(energy: Float<kg*m^2/s^2>) -> Float<Hz> ! Error {
+    if energy < 0.0kg*m^2/s^2 {
+        return error("energy-frequency relation requires non-negative energy")
+    }
+    return energy / Physics.PlanckConstant()
+}
+
+/// de Broglie wavelength lambda = h/(m*v) for non-relativistic momentum m*v.
+fn DeBroglieWavelength(mass: Float<kg>, speed: Float<m/s>) -> Float<m> ! Error {
+    if mass <= 0.0kg or speed <= 0.0m/s {
+        return error("de Broglie wavelength requires positive mass and speed")
+    }
+    return Physics.PlanckConstant() / (mass * speed)
+}
+
+/// Infinite one-dimensional box level E_n = n^2*h^2/(8*m*L^2).
+/// This is the ideal infinite-well model, not a finite material quantum well.
+fn ParticleInBoxEnergy(
+    level: QuantumLevel,
+    mass: Float<kg>,
+    boxLength: Float<m>
+) -> Float<kg*m^2/s^2> ! Error {
+    if mass <= 0.0kg or boxLength <= 0.0m {
+        return error("particle-in-box energy requires positive mass and box length")
+    }
+    let n = Float(level - 0)
+    let h = Physics.PlanckConstant()
+    return n * n * h * h / (8.0 * mass * boxLength * boxLength)
+}
+
+/// Hydrogenic level reference E_n = -13.6 eV/n^2 for Z=1 and infinite nuclear mass approximation.
+fn HydrogenEnergyLevel(level: QuantumLevel) -> Float<kg*m^2/s^2> {
+    let ground = Units.ElectronVoltToJoule(Units.ElectronVolt { Value: -13.6 })
+    let n = Float(level - 0)
+    return ground / (n * n)
+}
+
+/// Product Δx*Δp, with the same dimensions as action.
+fn UncertaintyProduct(
+    positionUncertainty: Float<m>,
+    momentumUncertainty: Float<kg*m/s>
+) -> Float<kg*m^2/s> ! Error {
+    if positionUncertainty < 0.0m or momentumUncertainty < 0.0kg*m/s {
+        return error("uncertainties must be non-negative")
+    }
+    return positionUncertainty * momentumUncertainty
+}
+
+/// Heisenberg lower bound hbar/2 for a canonical position-momentum pair.
+fn HeisenbergMinimumProduct() -> Float<kg*m^2/s> {
+    return Physics.ReducedPlanckConstant() / 2.0
+}
+
+/// Born probability weight |amplitude|^2 for one complex discrete amplitude.
+fn BornProbabilityWeight(amplitude: Complex) -> Float {
+    let magnitude = Abs(amplitude)
+    return magnitude * magnitude
+}
+
+/// Normalizes a finite non-zero discrete state and records its input norm.
+/// Complexity: O(n) time and O(n) output storage.
+fn NormalizeDiscreteState(amplitudes: Complex[]) -> DiscreteProbabilityState ! Error {
+    if Len(amplitudes) == 0 {
+        return error("discrete state normalization requires at least one amplitude")
+    }
+    var norm = 0.0
+    for i in 0..Len(amplitudes) {
+        norm = norm + BornProbabilityWeight(amplitudes[i])
+    }
+    if norm <= 0.0 {
+        return error("discrete state cannot normalize an all-zero amplitude vector")
+    }
+    var probabilities = [BornProbabilityWeight(amplitudes[0]) / norm]
+    for i in 1..Len(amplitudes) {
+        probabilities = Append(probabilities, BornProbabilityWeight(amplitudes[i]) / norm)
+    }
+    return DiscreteProbabilityState { Probabilities: probabilities NormBeforeNormalization: norm }
+}
+
+/// Expectation of a diagonal dimensionless observable sum p_i*a_i.
+/// Probabilities must be normalized within 1e-9 and arrays must align.
+fn DiagonalExpectation(probabilities: Float[], eigenvalues: Float[]) -> Float ! Error {
+    if Len(probabilities) == 0 or Len(probabilities) != Len(eigenvalues) {
+        return error("diagonal expectation requires equal non-empty arrays")
+    }
+    var totalProbability = 0.0
+    var expectation = 0.0
+    for i in 0..Len(probabilities) {
+        if probabilities[i] < 0.0 or probabilities[i] > 1.0 {
+            return error("diagonal expectation probabilities must be in [0,1]")
+        }
+        totalProbability = totalProbability + probabilities[i]
+        expectation = expectation + probabilities[i] * eigenvalues[i]
+    }
+    if Abs(totalProbability - 1.0) > 0.000000001 {
+        return error("diagonal expectation probabilities must sum to one")
+    }
+    return expectation
+}

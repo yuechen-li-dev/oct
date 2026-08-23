@@ -6,11 +6,15 @@ fn SpeedOfLight() -> Float<m/s> {
     return 299792458m/s
 }
 
-/// Boltzmann constant, k_B.
-/// SI value is in J/K; temperature base unit is currently scalar in Oct,
-/// so this is represented as Joules in base SI units.
+/// Compatibility magnitude for the Boltzmann constant.
+/// Prefer BoltzmannConstantSI, whose K^-1 dimension is compiler checked.
 fn BoltzmannConstant() -> Float<kg*m^2/s^2> {
-    return 0.00000000000000000000001380649kg*m^2/s^2
+    return BoltzmannConstantSI() * 1.0K
+}
+
+/// Boltzmann constant, k_B = 1.380649e-23 J/K (exact in the SI).
+fn BoltzmannConstantSI() -> Float<kg*m^2/s^2/K> {
+    return 0.00000000000000000000001380649kg*m^2/s^2/K
 }
 
 /// Planck constant, h.
@@ -24,43 +28,85 @@ fn ReducedPlanckConstant() -> Float<kg*m^2/s> {
     return PlanckConstant() / (2.0 * Pi())
 }
 
-/// Elementary charge, e.
-/// SI value is in Coulombs (A*s); electric-current base unit is currently scalar in Oct,
-/// so this is represented as scalar seconds-equivalent magnitude.
+/// Compatibility scalar magnitude for elementary charge.
+/// Prefer ElementaryChargeSI for dimensionally checked electrical work.
 fn ElementaryCharge() -> Float {
-    return 0.0000000000000000001602176634
+    return BaseUnit(ElementaryChargeSI())
 }
 
-/// Avogadro constant, N_A.
-/// SI value is in 1/mol; amount base unit is currently scalar in Oct.
+/// Elementary charge, e = 1.602176634e-19 A*s (exact in the SI).
+fn ElementaryChargeSI() -> Float<A*s> {
+    return 0.0000000000000000001602176634A*s
+}
+
+/// Compatibility scalar magnitude for the Avogadro constant.
+/// Prefer AvogadroConstantSI for amount-of-substance calculations.
 fn AvogadroConstant() -> Float {
-    return 602214076000000000000000.0
+    return BaseUnit(AvogadroConstantSI())
 }
 
-/// Universal gas constant, R.
-/// SI value is in J/(mol*K); amount and temperature base units are currently scalar in Oct,
-/// so this is represented as Joules in base SI units.
+/// Avogadro constant, N_A = 6.02214076e23 mol^-1 (exact in the SI).
+fn AvogadroConstantSI() -> Float<mol^-1> {
+    return 602214076000000000000000.0mol^-1
+}
+
+/// Compatibility energy-shaped magnitude for the universal gas constant.
+/// Prefer GasConstantSI for thermodynamic equations.
 fn GasConstant() -> Float<kg*m^2/s^2> {
-    return 8.314462618kg*m^2/s^2
+    return GasConstantSI() * 1.0mol * 1.0K
 }
 
-/// Stefan-Boltzmann constant, σ.
-/// SI value is in W/(m^2*K^4) which reduces to kg/(s^3*K^4);
-/// temperature base unit is currently scalar in Oct, so this is represented as kg/s^3.
+/// Universal gas constant, R = 8.314462618... J/(mol*K) (exact from SI constants).
+fn GasConstantSI() -> Float<kg*m^2/s^2/mol/K> {
+    return 8.31446261815324kg*m^2/s^2/mol/K
+}
+
+/// Compatibility power-density magnitude for the Stefan-Boltzmann constant.
+/// Prefer StefanBoltzmannConstantSI for radiation calculations.
 fn StefanBoltzmannConstant() -> Float<kg/s^3> {
-    return 0.00000005670374419kg/s^3
+    return StefanBoltzmannConstantSI() * 1.0K * 1.0K * 1.0K * 1.0K
 }
 
-/// Vacuum permittivity, ε0.
-/// SI base dimensions involve electric current; represented as scalar until A is available.
+/// Stefan-Boltzmann constant, σ, in W/(m^2*K^4).
+/// CODATA 2018 conventional rounded value; it is derived, not SI-defined exact.
+fn StefanBoltzmannConstantSI() -> Float<kg/s^3/K^4> {
+    return 0.00000005670374419kg/s^3/K^4
+}
+
+/// Compatibility scalar magnitude for vacuum permittivity.
+/// Prefer VacuumPermittivitySI for electrostatics.
 fn VacuumPermittivity() -> Float {
-    return 0.0000000000088541878128
+    return BaseUnit(VacuumPermittivitySI())
 }
 
-/// Vacuum permeability, μ0.
-/// SI base dimensions involve electric current; represented as scalar until A is available.
+/// Vacuum electric permittivity, ε0, in A^2*s^4/(kg*m^3).
+/// Measured/derived CODATA value in the post-2019 SI.
+fn VacuumPermittivitySI() -> Float<A^2*s^4/kg/m^3> {
+    return 0.0000000000088541878128A^2*s^4/kg/m^3
+}
+
+/// Compatibility scalar magnitude for vacuum permeability.
+/// Prefer VacuumPermeabilitySI for magnetism.
 fn VacuumPermeability() -> Float {
-    return 0.00000125663706212
+    return BaseUnit(VacuumPermeabilitySI())
+}
+
+/// Vacuum magnetic permeability, μ0, in kg*m/(s^2*A^2).
+/// Measured/derived CODATA value in the post-2019 SI.
+fn VacuumPermeabilitySI() -> Float<kg*m/s^2/A^2> {
+    return 0.00000125663706212kg*m/s^2/A^2
+}
+
+/// Newtonian gravitational constant, G.
+/// CODATA 2018 measured value; unlike c, h, e, k_B, and N_A, G is not exact.
+fn GravitationalConstant() -> Float<m^3/kg/s^2> {
+    return 0.0000000000667430m^3/kg/s^2
+}
+
+/// Wien displacement constant b for wavelength-form blackbody peaks.
+/// CODATA 2018 measured/derived value in m*K.
+fn WienDisplacementConstant() -> Float<m*K> {
+    return 0.002897771955m*K
 }
 
 /// Standard gravity, g0.

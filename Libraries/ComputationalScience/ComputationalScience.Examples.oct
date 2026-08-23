@@ -1,0 +1,62 @@
+package ComputationalScience
+
+import Simulation
+import Thermofluids
+import Electromagnetism
+import Astrophysics
+import ComputationalBiology
+import Units
+
+/// One normalized decay trace used to teach fixed-step convergence across disciplines.
+concept DecayExperiment {
+    Trace: Simulation.SimulationTrace
+    ExactFinalFraction: Float
+    EulerFinalFraction: Float
+    AbsoluteError: Float
+}
+
+fn IdentityObservation(time: Float, state: Float) -> Float {
+    return state
+}
+
+/// Euler step for dx/dt = -x with dimensionless time normalized by one time constant.
+fn UnitDecayTransition(time: Float, state: Float, dt: Float) -> Float {
+    return state - dt * state
+}
+
+/// Runs a normalized first-order decay over one time constant.
+/// The same normalized equation describes lumped cooling and ideal RC discharge.
+fn RunUnitDecay(step: Float, steps: Int) -> DecayExperiment ! Error {
+    let config = Simulation.NewFixedStepConfig(0.0, step, steps)?
+    let trace = Simulation.RunFixedStep(UnitDecayTransition, IdentityObservation, 1.0, config)?
+    let final = Simulation.FinalStep(trace)?
+    let exact = Exp(0.0 - final.Time)
+    return DecayExperiment {
+        Trace: trace
+        ExactFinalFraction: exact
+        EulerFinalFraction: final.State
+        AbsoluteError: Abs(final.State - exact)
+    }
+}
+
+/// Typed cooling reference at one time constant.
+fn CoolingAtOneTimeConstant(initial: Float<K>, ambient: Float<K>) -> Float<K> ! Error {
+    return Thermofluids.LumpedTemperature(initial, ambient, 10.0s, 10.0s)?
+}
+
+/// Typed RC discharge reference at one time constant.
+fn RCAtOneTimeConstant(initialVoltage: Float<kg*m^2/s^3/A>) -> Float<kg*m^2/s^3/A> ! Error {
+    return Electromagnetism.RCDischargeVoltage(initialVoltage, 0.001s, 0.001s)?
+}
+
+/// Population growth example delegates to the biology model rather than duplicating it.
+fn PopulationAfterTwoSeconds() -> Float ! Error {
+    return ComputationalBiology.LogisticPopulation(10.0, 100.0, 0.5Hz, 2.0s)?
+}
+
+/// One-AU orbit period example using canonical astronomical units.
+fn EarthYearFromSolarMass() -> Float<s> ! Error {
+    let solarMass = Units.SolarMassToKilogram(Units.SolarMass { Value: 1.0 })
+    let radius = Units.AstronomicalUnitToMeter(Units.AstronomicalUnit { Value: 1.0 })
+    return Astrophysics.CircularOrbitalPeriod(solarMass, radius)?
+}

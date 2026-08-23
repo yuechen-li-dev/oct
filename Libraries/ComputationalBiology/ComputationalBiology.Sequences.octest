@@ -1,0 +1,134 @@
+package ComputationalBiology
+
+fn AssertSequenceEqual(expected: String[], actual: String[], message: String) -> Void {
+    Assert.Equal(Len(expected), Len(actual), message + " length")
+    for i in 0..Len(expected) {
+        Assert.Equal(expected[i], actual[i], message)
+    }
+}
+
+[Fact]
+fn DNAValidationAcceptsCanonicalBasesAndRejectsOthers() -> Void {
+    Assert.True(ValidateDNA(["A", "C", "G", "T"])!, "canonical DNA")
+    Assert.Error(ValidateDNA(["A", "U"]), "uracil belongs to RNA")
+    Assert.True(ValidateRNA(["A", "C", "G", "U"])!, "canonical RNA")
+}
+
+[Fact]
+fn TypedBaseEnumsRoundTripAndMatchExhaustively() -> Void {
+    let typed = ParseDNA(["A", "C", "G", "T"])!
+    let symbols = RenderDNA(typed)!
+    AssertSequenceEqual(["A", "C", "G", "T"], symbols, "enum-symbol round trip")
+    Assert.Equal(DNABase.Thymine, ComplementDNABase(DNABase.Adenine), "exhaustive complement match")
+    Assert.Equal("U", RNABaseSymbol(TranscribeDNABase(DNABase.Thymine)), "typed transcription match")
+}
+
+[Fact]
+fn ConsensusUtilityUsesStableAlphabeticTieBreak() -> Void {
+    let consensus = DNAConsensus([["A"], ["C"]])!
+    Assert.Equal("A", consensus[0], "equal scores keep earliest A candidate")
+}
+
+[Fact]
+fn BaseCompositionAndGCContentTellSameStory() -> Void {
+    let sequence = ["A", "C", "G", "G", "T"]
+    let counts = DNAComposition(sequence)!
+    let gc = GCContent(sequence)!
+    Assert.Equal(1, counts.Adenine, "A count")
+    Assert.Equal(3, counts.Cytosine + counts.Guanine, "GC count")
+    Assert.Near(0.6, gc, 0.000000001, "GC fraction")
+}
+
+[Fact]
+fn ReverseComplementIsInvolution() -> Void {
+    let sequence = ["A", "T", "G", "C", "C"]
+    let reverse = ReverseComplement(sequence)!
+    let restored = ReverseComplement(reverse)!
+    AssertSequenceEqual(sequence, restored, "reverse complement twice restores DNA")
+}
+
+[Fact]
+fn TranscriptionReplacesThymineWithUracil() -> Void {
+    let rna = TranscribeDNA(["A", "T", "G", "T"])!
+    AssertSequenceEqual(["A", "U", "G", "U"], rna, "DNA to RNA transcription")
+}
+
+[Fact]
+fn HammingDistanceAndIdentityAreComplements() -> Void {
+    let first = ["A", "A", "C", "G"]
+    let second = ["A", "T", "C", "A"]
+    let distance = DNAHammingDistance(first, second)!
+    let identity = DNASequenceIdentity(first, second)!
+    Assert.Equal(2, distance, "two substitutions")
+    Assert.Near(0.5, identity, 0.000000001, "half the sites match")
+}
+
+[Fact]
+fn ConsensusUsesDeterministicBaseCounts() -> Void {
+    let consensus = DNAConsensus([
+        ["A", "C", "G"],
+        ["A", "T", "G"],
+        ["G", "C", "G"]
+    ])!
+    AssertSequenceEqual(["A", "C", "G"], consensus, "majority base at each column")
+}
+
+[Fact]
+fn OverlappingKmersAreCounted() -> Void {
+    let count = KmerOccurrences(["A", "A", "A", "A"], ["A", "A"])!
+    Assert.Equal(3, count, "AA occurs at offsets zero, one, and two")
+}
+
+[Fact]
+fn StandardGeneticCodeIncludesStartAndStops() -> Void {
+    Assert.Equal("M", TranslateCodon(["A", "T", "G"])!, "ATG methionine/start")
+    Assert.Equal("Stop", TranslateCodon(["T", "A", "A"])!, "TAA stop")
+    Assert.Equal("W", TranslateCodon(["T", "G", "G"])!, "TGG tryptophan")
+}
+
+[Fact]
+fn DNATranslationPreservesCodonProgression() -> Void {
+    let protein = TranslateDNA(["A", "T", "G", "G", "C", "T", "T", "A", "A"])!
+    let typed = ParseDNA(["A", "T", "G", "G", "C", "T", "T", "A", "A"])!
+    let typedProtein = TranslateTypedDNA(typed)!
+    AssertSequenceEqual(["M", "A", "Stop"], protein, "start, alanine, stop mini-gene")
+    AssertSequenceEqual(protein, typedProtein, "typed translation preserves codon progression")
+}
+
+[Fact]
+fn HardyWeinbergFrequenciesSumToOne() -> Void {
+    let frequencies = HardyWeinberg(0.7)!
+    let total = frequencies.HomozygousFirst + frequencies.Heterozygous + frequencies.HomozygousSecond
+    Assert.Near(1.0, total, 0.000000001, "p squared plus 2pq plus q squared")
+    Assert.Near(0.42, frequencies.Heterozygous, 0.000000001, "heterozygote frequency")
+}
+
+[Fact]
+fn ExponentialPopulationMatchesDoublingRate() -> Void {
+    let rate = Ln(2.0) * 1.0Hz
+    let population = ExponentialPopulation(100.0, rate, 1.0s)!
+    Assert.Near(200.0, population, 0.000000001, "one doubling time")
+}
+
+[Fact]
+fn LogisticPopulationApproachesCapacityWithoutOvershoot() -> Void {
+    let early = LogisticPopulation(10.0, 100.0, 0.5Hz, 1.0s)!
+    let late = LogisticPopulation(10.0, 100.0, 0.5Hz, 20.0s)!
+    Assert.True(early > 10.0 and early < 100.0, "population grows within carrying capacity")
+    Assert.True(late > 99.0 and late < 100.0, "late population approaches capacity")
+}
+
+[Fact]
+fn SequenceAlgorithmsRejectMalformedInputs() -> Void {
+    Assert.Error(ValidateDNA([]), "empty DNA")
+    Assert.Error(DNAHammingDistance(["A"], ["A", "T"]), "unequal lengths")
+    Assert.Error(DNAConsensus([["A"], ["A", "T"]]), "ragged alignment")
+    Assert.Error(TranslateDNA(["A", "T"]), "partial codon")
+}
+
+[Fact]
+fn PopulationModelsRejectInvalidDomains() -> Void {
+    Assert.Error(HardyWeinberg(1.1), "allele frequency above one")
+    Assert.Error(ExponentialPopulation(-1.0, 1.0Hz, 1.0s), "negative initial population")
+    Assert.Error(LogisticPopulation(101.0, 100.0, 1.0Hz, 1.0s), "initial population above capacity")
+}

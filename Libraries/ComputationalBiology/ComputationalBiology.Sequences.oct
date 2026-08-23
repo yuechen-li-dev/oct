@@ -1,0 +1,385 @@
+package ComputationalBiology
+
+import String
+
+/// Canonical typed DNA alphabet.
+enum DNABase {
+    Adenine
+    Cytosine
+    Guanine
+    Thymine
+}
+
+/// Canonical typed RNA alphabet.
+enum RNABase {
+    Adenine
+    Cytosine
+    Guanine
+    Uracil
+}
+
+/// Counted DNA base composition.
+concept BaseComposition {
+    Adenine: Int
+    Cytosine: Int
+    Guanine: Int
+    Thymine: Int
+    Total: Int
+}
+
+/// Hardy-Weinberg genotype frequencies for two alleles.
+concept GenotypeFrequencies {
+    HomozygousFirst: Float
+    Heterozygous: Float
+    HomozygousSecond: Float
+}
+
+/// Parses one external DNA symbol into the canonical enum.
+fn ParseDNABase(symbol: String) -> DNABase ! Error {
+    if symbol == "A" { return DNABase.Adenine }
+    if symbol == "C" { return DNABase.Cytosine }
+    if symbol == "G" { return DNABase.Guanine }
+    if symbol == "T" { return DNABase.Thymine }
+    return error("DNA sequence supports uppercase A, C, G, and T")
+}
+
+/// Exhaustive enum-to-symbol bridge.
+fn DNABaseSymbol(base: DNABase) -> String {
+    return match base {
+        case DNABase.Adenine => "A"
+        case DNABase.Cytosine => "C"
+        case DNABase.Guanine => "G"
+        case DNABase.Thymine => "T"
+    }
+}
+
+fn RNABaseSymbol(base: RNABase) -> String {
+    return match base {
+        case RNABase.Adenine => "A"
+        case RNABase.Cytosine => "C"
+        case RNABase.Guanine => "G"
+        case RNABase.Uracil => "U"
+    }
+}
+
+/// Exhaustive typed complement; adding a future enum variant forces this lesson to be updated.
+fn ComplementDNABase(base: DNABase) -> DNABase {
+    return match base {
+        case DNABase.Adenine => DNABase.Thymine
+        case DNABase.Cytosine => DNABase.Guanine
+        case DNABase.Guanine => DNABase.Cytosine
+        case DNABase.Thymine => DNABase.Adenine
+    }
+}
+
+fn TranscribeDNABase(base: DNABase) -> RNABase {
+    return match base {
+        case DNABase.Adenine => RNABase.Adenine
+        case DNABase.Cytosine => RNABase.Cytosine
+        case DNABase.Guanine => RNABase.Guanine
+        case DNABase.Thymine => RNABase.Uracil
+    }
+}
+
+/// Parses a non-empty string-symbol sequence into typed DNA.
+fn ParseDNA(sequence: String[]) -> DNABase[] ! Error {
+    if Len(sequence) == 0 {
+        return error("DNA sequence must be non-empty")
+    }
+    var typed = [ParseDNABase(sequence[0])?]
+    for i in 1..Len(sequence) {
+        typed = Append(typed, ParseDNABase(sequence[i])?)
+    }
+    return typed
+}
+
+fn RenderDNA(sequence: DNABase[]) -> String[] ! Error {
+    if Len(sequence) == 0 {
+        return error("typed DNA sequence must be non-empty")
+    }
+    var symbols = [DNABaseSymbol(sequence[0])]
+    for i in 1..Len(sequence) {
+        symbols = Append(symbols, DNABaseSymbol(sequence[i]))
+    }
+    return symbols
+}
+
+fn RenderRNA(sequence: RNABase[]) -> String[] ! Error {
+    if Len(sequence) == 0 {
+        return error("typed RNA sequence must be non-empty")
+    }
+    var symbols = [RNABaseSymbol(sequence[0])]
+    for i in 1..Len(sequence) {
+        symbols = Append(symbols, RNABaseSymbol(sequence[i]))
+    }
+    return symbols
+}
+
+fn ReverseComplementDNA(sequence: DNABase[]) -> DNABase[] ! Error {
+    if Len(sequence) == 0 {
+        return error("reverse complement requires non-empty typed DNA")
+    }
+    var result = [ComplementDNABase(sequence[Len(sequence) - 1])]
+    for i in (Len(sequence) - 2)..-1 descend 1 {
+        result = Append(result, ComplementDNABase(sequence[i]))
+    }
+    return result
+}
+
+/// Transcribes a 5'-to-3' coding-strand sequence by replacing T with U.
+/// A template strand must first be oriented/complemented by the caller.
+fn TranscribeTypedDNA(sequence: DNABase[]) -> RNABase[] ! Error {
+    if Len(sequence) == 0 {
+        return error("transcription requires non-empty typed DNA")
+    }
+    var result = [TranscribeDNABase(sequence[0])]
+    for i in 1..Len(sequence) {
+        result = Append(result, TranscribeDNABase(sequence[i]))
+    }
+    return result
+}
+
+/// Validates a non-empty uppercase DNA sequence represented as readable bases.
+/// Complexity: O(n) time, O(1) additional storage.
+fn ValidateDNA(sequence: String[]) -> Bool ! Error {
+    let typed = ParseDNA(sequence)?
+    return true
+}
+
+/// Validates a non-empty uppercase RNA sequence.
+fn ValidateRNA(sequence: String[]) -> Bool ! Error {
+    if Len(sequence) == 0 {
+        return error("RNA sequence must be non-empty")
+    }
+    for i in 0..Len(sequence) {
+        let base = sequence[i]
+        if base != "A" and base != "C" and base != "G" and base != "U" {
+            return error("RNA sequence supports uppercase A, C, G, and U")
+        }
+    }
+    return true
+}
+
+/// Counts A/C/G/T bases after validation.
+fn DNAComposition(sequence: String[]) -> BaseComposition ! Error {
+    let ok = ValidateDNA(sequence)?
+    var adenine = 0
+    var cytosine = 0
+    var guanine = 0
+    var thymine = 0
+    for i in 0..Len(sequence) {
+        let base = sequence[i]
+        if base == "A" { adenine = adenine + 1 }
+        if base == "C" { cytosine = cytosine + 1 }
+        if base == "G" { guanine = guanine + 1 }
+        if base == "T" { thymine = thymine + 1 }
+    }
+    return BaseComposition {
+        Adenine: adenine
+        Cytosine: cytosine
+        Guanine: guanine
+        Thymine: thymine
+        Total: Len(sequence)
+    }
+}
+
+/// GC fraction in [0,1].
+fn GCContent(sequence: String[]) -> Float ! Error {
+    let counts = DNAComposition(sequence)?
+    return Float(counts.Guanine + counts.Cytosine) / Float(counts.Total)
+}
+
+fn ComplementBase(base: String) -> String ! Error {
+    if base == "A" { return "T" }
+    if base == "T" { return "A" }
+    if base == "C" { return "G" }
+    if base == "G" { return "C" }
+    return error("DNA complement requires A, C, G, or T")
+}
+
+/// Reverse complement of DNA.
+/// Complexity: O(n) time and O(n) output storage.
+fn ReverseComplement(sequence: String[]) -> String[] ! Error {
+    let typed = ParseDNA(sequence)?
+    return RenderDNA(ReverseComplementDNA(typed)?)?
+}
+
+/// Transcribes a 5'-to-3' coding-strand DNA sequence by replacing T with U.
+/// This is not direct transcription of a 5'-to-3' template-strand presentation.
+fn TranscribeDNA(sequence: String[]) -> String[] ! Error {
+    let typed = ParseDNA(sequence)?
+    return RenderRNA(TranscribeTypedDNA(typed)?)?
+}
+
+/// Hamming distance for equal-length validated DNA sequences.
+fn DNAHammingDistance(first: String[], second: String[]) -> Int ! Error {
+    let firstOk = ValidateDNA(first)?
+    let secondOk = ValidateDNA(second)?
+    if Len(first) != Len(second) {
+        return error("DNA Hamming distance requires equal lengths")
+    }
+    var distance = 0
+    for i in 0..Len(first) {
+        if first[i] != second[i] {
+            distance = distance + 1
+        }
+    }
+    return distance
+}
+
+/// Fraction of matching positions for equal-length DNA sequences.
+fn DNASequenceIdentity(first: String[], second: String[]) -> Float ! Error {
+    let distance = DNAHammingDistance(first, second)?
+    return 1.0 - Float(distance) / Float(Len(first))
+}
+
+/// Deterministic consensus with tie order A, C, G, T.
+/// Complexity: O(sequenceCount * sequenceLength).
+fn DNAConsensus(sequences: String[][]) -> String[] ! Error {
+    if Len(sequences) == 0 {
+        return error("DNA consensus requires at least one sequence")
+    }
+    let firstOk = ValidateDNA(sequences[0])?
+    let width = Len(sequences[0])
+    for row in 1..Len(sequences) {
+        let rowOk = ValidateDNA(sequences[row])?
+        if Len(sequences[row]) != width {
+            return error("DNA consensus requires equal-length sequences")
+        }
+    }
+    var consensus = [ConsensusBaseAt(sequences, 0)]
+    for column in 1..width {
+        consensus = Append(consensus, ConsensusBaseAt(sequences, column))
+    }
+    return consensus
+}
+
+fn ConsensusBaseAt(sequences: String[][], column: Int) -> String {
+    var a = 0
+    var c = 0
+    var g = 0
+    var t = 0
+    for row in 0..Len(sequences) {
+        let base = sequences[row][column]
+        if base == "A" { a = a + 1 }
+        if base == "C" { c = c + 1 }
+        if base == "G" { g = g + 1 }
+        if base == "T" { t = t + 1 }
+    }
+    let selected = when utility DNABase {
+        case DNABase.Adenine when true score a
+        case DNABase.Cytosine when true score c
+        case DNABase.Guanine when true score g
+        case DNABase.Thymine when true score t
+        else DNABase.Adenine
+    }
+    return DNABaseSymbol(selected)
+}
+
+/// Counts overlapping occurrences of one small k-mer.
+/// Complexity: O(n*k) time and O(1) additional storage.
+fn KmerOccurrences(sequence: String[], kmer: String[]) -> Int ! Error {
+    let sequenceOk = ValidateDNA(sequence)?
+    let kmerOk = ValidateDNA(kmer)?
+    if Len(kmer) > Len(sequence) {
+        return 0
+    }
+    var count = 0
+    for start in 0..(Len(sequence) - Len(kmer) + 1) {
+        var matches = true
+        for offset in 0..Len(kmer) {
+            if sequence[start + offset] != kmer[offset] {
+                matches = false
+            }
+        }
+        if matches { count = count + 1 }
+    }
+    return count
+}
+
+/// Translates one DNA codon using the standard nuclear genetic code.
+/// Returns one-letter amino-acid symbols and "Stop" for termination codons.
+fn TranslateCodon(codon: String[]) -> String ! Error {
+    let ok = ValidateDNA(codon)?
+    if Len(codon) != 3 {
+        return error("codon translation requires exactly three DNA bases")
+    }
+    let key = String.Concat(codon)
+    if key == "TTT" or key == "TTC" { return "F" }
+    if key == "TTA" or key == "TTG" or key == "CTT" or key == "CTC" or key == "CTA" or key == "CTG" { return "L" }
+    if key == "ATT" or key == "ATC" or key == "ATA" { return "I" }
+    if key == "ATG" { return "M" }
+    if key == "GTT" or key == "GTC" or key == "GTA" or key == "GTG" { return "V" }
+    if key == "TCT" or key == "TCC" or key == "TCA" or key == "TCG" or key == "AGT" or key == "AGC" { return "S" }
+    if key == "CCT" or key == "CCC" or key == "CCA" or key == "CCG" { return "P" }
+    if key == "ACT" or key == "ACC" or key == "ACA" or key == "ACG" { return "T" }
+    if key == "GCT" or key == "GCC" or key == "GCA" or key == "GCG" { return "A" }
+    if key == "TAT" or key == "TAC" { return "Y" }
+    if key == "TAA" or key == "TAG" or key == "TGA" { return "Stop" }
+    if key == "CAT" or key == "CAC" { return "H" }
+    if key == "CAA" or key == "CAG" { return "Q" }
+    if key == "AAT" or key == "AAC" { return "N" }
+    if key == "AAA" or key == "AAG" { return "K" }
+    if key == "GAT" or key == "GAC" { return "D" }
+    if key == "GAA" or key == "GAG" { return "E" }
+    if key == "TGT" or key == "TGC" { return "C" }
+    if key == "TGG" { return "W" }
+    if key == "CGT" or key == "CGC" or key == "CGA" or key == "CGG" or key == "AGA" or key == "AGG" { return "R" }
+    if key == "GGT" or key == "GGC" or key == "GGA" or key == "GGG" { return "G" }
+    return error("unreachable validated codon")
+}
+
+/// Translates an in-frame DNA sequence codon-by-codon.
+/// Stop codons are emitted as "Stop" rather than silently truncating the sequence.
+fn TranslateDNA(sequence: String[]) -> String[] ! Error {
+    let ok = ValidateDNA(sequence)?
+    if Len(sequence) % 3 != 0 {
+        return error("DNA translation requires sequence length divisible by three")
+    }
+    var protein = [TranslateCodon(Array.CrossSection(sequence, 0..3))?]
+    for start in 3..Len(sequence) step 3 {
+        protein = Append(protein, TranslateCodon(Array.CrossSection(sequence, start..(start + 3)))?)
+    }
+    return protein
+}
+
+/// Typed bridge for in-frame 5'-to-3' coding-strand DNA translation.
+fn TranslateTypedDNA(sequence: DNABase[]) -> String[] ! Error {
+    return TranslateDNA(RenderDNA(sequence)?)?
+}
+
+/// Hardy-Weinberg genotype frequencies p^2, 2pq, q^2 for two alleles.
+fn HardyWeinberg(firstAlleleFrequency: Float) -> GenotypeFrequencies ! Error {
+    if firstAlleleFrequency < 0.0 or firstAlleleFrequency > 1.0 {
+        return error("Hardy-Weinberg allele frequency must be in [0,1]")
+    }
+    let p = firstAlleleFrequency
+    let q = 1.0 - p
+    return GenotypeFrequencies {
+        HomozygousFirst: p * p
+        Heterozygous: 2.0 * p * q
+        HomozygousSecond: q * q
+    }
+}
+
+/// Exponential population model N(t) = N0*exp(r*t).
+fn ExponentialPopulation(initialPopulation: Float, growthRate: Float<Hz>, elapsed: Float<s>) -> Float ! Error {
+    if initialPopulation < 0.0 or elapsed < 0.0s {
+        return error("exponential population requires initial population >= 0 and elapsed >= 0")
+    }
+    return initialPopulation * Exp(growthRate * elapsed)
+}
+
+/// Logistic population model with constant carrying capacity.
+fn LogisticPopulation(
+    initialPopulation: Float,
+    carryingCapacity: Float,
+    growthRate: Float<Hz>,
+    elapsed: Float<s>
+) -> Float ! Error {
+    if initialPopulation <= 0.0 or carryingCapacity <= 0.0 or initialPopulation > carryingCapacity or growthRate < 0.0Hz or elapsed < 0.0s {
+        return error("logistic model requires 0 < initial <= capacity, growth rate >= 0, and elapsed >= 0")
+    }
+    let ratio = (carryingCapacity - initialPopulation) / initialPopulation
+    return carryingCapacity / (1.0 + ratio * Exp(0.0 - growthRate * elapsed))
+}

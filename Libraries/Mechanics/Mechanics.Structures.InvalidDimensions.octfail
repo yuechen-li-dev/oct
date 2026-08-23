@@ -1,0 +1,21 @@
+expect error: "function 'BeamDeflectionContract' argument 1 expects Float<m*kg/s^2>, got Float<m^2*kg/s^2>"
+
+package Mechanics
+
+fn BeamDeflectionContract(
+    load: Float<kg*m/s^2>,
+    span: Float<m>,
+    youngModulus: Float<kg/m/s^2>,
+    secondMoment: Float<m^4>
+) -> Float<m> {
+    return load * span * span * span / (48.0 * youngModulus * secondMoment)
+}
+
+fn BeamRejectsEnergyWhereForceIsRequired() -> Float<m> ! Error {
+    return BeamDeflectionContract(
+        100.0kg*m^2/s^2,
+        2.0m,
+        200000000000.0kg/m/s^2,
+        0.000001m^4
+    )
+}

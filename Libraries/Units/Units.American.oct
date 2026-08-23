@@ -138,6 +138,20 @@ fn CupToCubicMeter(c: Cup) -> Float<m^3> {
     return c.Value * 0.0002365882365m^3
 }
 
+/// Volume in US tablespoons. 1 tbsp = 1/2 US fluid ounce (exact).
+record Tablespoon { Value: Float }
+
+fn TablespoonToCubicMeter(t: Tablespoon) -> Float<m^3> {
+    return t.Value * 0.00001478676478125m^3
+}
+
+/// Volume in US teaspoons. 1 tsp = 1/6 US fluid ounce (exact).
+record Teaspoon { Value: Float }
+
+fn TeaspoonToCubicMeter(t: Teaspoon) -> Float<m^3> {
+    return t.Value * 0.00000492892159375m^3
+}
+
 /// Volume in US pints. 1 US pint = 16 fl oz.
 /// Note: different from British pint (20 fl oz).
 record Pint { Value: Float }

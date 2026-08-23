@@ -1,5 +1,14 @@
 package Units
 
+[Fact]
+fn CulinarySpoonsPreserveExactUSRelationships() -> Void {
+    let tablespoon = TablespoonToCubicMeter(Tablespoon { Value: 1.0 })
+    let teaspoons = TeaspoonToCubicMeter(Teaspoon { Value: 3.0 })
+    let halfFluidOunce = FluidOunceToCubicMeter(FluidOunce { Value: 0.5 })
+    Assert.Near(tablespoon / 1.0m^3, teaspoons / 1.0m^3, 0.000000000001, "three teaspoons equal one tablespoon")
+    Assert.Near(tablespoon / 1.0m^3, halfFluidOunce / 1.0m^3, 0.000000000001, "one tablespoon is half a US fluid ounce")
+}
+
 // Temperature
 [Fact]
 fn FreezingPointInFahrenheit() -> Void {

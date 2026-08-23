@@ -1,0 +1,36 @@
+package ComputationalScience
+
+[Fact]
+fn SmallerEulerStepsConvergeTowardExactDecay() -> Void {
+    let coarse = RunUnitDecay(0.25, 4)!
+    let fine = RunUnitDecay(0.05, 20)!
+    Assert.True(fine.AbsoluteError < coarse.AbsoluteError, "refining fixed steps improves first-order decay")
+    Assert.Near(1.0 / E(), fine.ExactFinalFraction, 0.000000001, "one normalized time constant")
+}
+
+[Fact]
+fn CoolingAndRCShareNormalizedExponentialPhysics() -> Void {
+    let temperature = CoolingAtOneTimeConstant(400.0K, 300.0K)!
+    let voltage = RCAtOneTimeConstant(5.0kg*m^2/s^3/A)!
+    let coolingFraction = (temperature - 300.0K) / 100.0K
+    let voltageFraction = voltage / (5.0kg*m^2/s^3/A)
+    Assert.Near(coolingFraction, voltageFraction, 0.000000001, "both first-order systems retain one-over-e after one tau")
+}
+
+[Fact]
+fn CrossLibraryPopulationExampleStaysWithinCapacity() -> Void {
+    let population = PopulationAfterTwoSeconds()!
+    Assert.True(population > 10.0 and population < 100.0, "logistic population grows without crossing capacity")
+}
+
+[Fact]
+fn CrossLibraryOrbitExampleRecoversJulianYearScale() -> Void {
+    let period = EarthYearFromSolarMass()!
+    Assert.True(period > 31000000.0s and period < 32000000.0s, "one-AU Newtonian orbit is about one year")
+}
+
+[Fact]
+fn CrossDisciplineExamplesRejectInvalidSimulationConfig() -> Void {
+    Assert.Error(RunUnitDecay(0.0, 4), "zero fixed step")
+    Assert.Error(RunUnitDecay(0.1, 0), "zero step count")
+}

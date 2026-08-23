@@ -1,0 +1,40 @@
+package Electromagnetism
+
+import Physics
+
+[Fact]
+fn TwoElementaryChargesRepelAtExpectedTinyScale() -> Void {
+    let force = CoulombForceMagnitude(Physics.ElementaryChargeSI(), Physics.ElementaryChargeSI(), 0.000000001m)!
+    Assert.True(force > 0.0000000002kg*m/s^2 and force < 0.0000000003kg*m/s^2, "elementary charges one nanometre apart")
+}
+
+[Fact]
+fn PointChargeFieldPotentialAndEnergyCompose() -> Void {
+    let charge = 0.000001A*s
+    let potential = PointChargeElectricPotential(charge, 1.0m)!
+    let field = PointChargeElectricFieldMagnitude(charge, 1.0m)!
+    let energy = ElectricPotentialEnergy(charge, potential)
+    Assert.Near(potential / (1.0kg*m^2/A/s^3), field / (1.0kg*m/A/s^3), 0.001, "at one metre V and E magnitudes share numeric value")
+    Assert.True(energy > 0.0kg*m^2/s^2, "like-sign placement has positive potential energy")
+}
+
+[Fact]
+fn ParallelPlateCapacitanceScalesWithAreaAndInverseGap() -> Void {
+    let c1 = ParallelPlateCapacitance(Physics.VacuumPermittivitySI(), 0.01m^2, 0.001m)!
+    let c2 = ParallelPlateCapacitance(Physics.VacuumPermittivitySI(), 0.02m^2, 0.001m)!
+    let c3 = ParallelPlateCapacitance(Physics.VacuumPermittivitySI(), 0.01m^2, 0.002m)!
+    Assert.Near(2.0, c2 / c1, 0.000000001, "double area doubles capacitance")
+    Assert.Near(0.5, c3 / c1, 0.000000001, "double gap halves capacitance")
+}
+
+[Fact]
+fn CapacitorEnergyHasJouleDimensions() -> Void {
+    let energy = CapacitorStoredEnergy(0.000001A^2*s^4/kg/m^2, 10.0kg*m^2/A/s^3)!
+    Assert.Near(0.00005, energy / (1.0kg*m^2/s^2), 0.000000001, "half C V squared")
+}
+
+[Fact]
+fn ElectrostaticsRejectsCoincidentPointCharges() -> Void {
+    Assert.Error(CoulombForceMagnitude(1.0A*s, 1.0A*s, 0.0m), "zero point-charge separation")
+    Assert.Error(ParallelPlateCapacitance(Physics.VacuumPermittivitySI(), 1.0m^2, 0.0m), "zero plate separation")
+}

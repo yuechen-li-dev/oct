@@ -1,0 +1,65 @@
+package Thermofluids
+
+[Fact]
+fn PipeAirReynoldsNumberIsDimensionlessAndTurbulentScale() -> Void {
+    let reynolds: Float = ReynoldsNumber(1.2kg/m^3, 10.0m/s, 0.1m, 0.000018kg/m/s)!
+    Assert.Near(66666.6667, reynolds, 0.1, "air pipe Reynolds number")
+}
+
+[Fact]
+fn MachAndFroudeExplainDifferentWaveSpeeds() -> Void {
+    let mach: Float = MachNumber(170.0m/s, 340.0m/s)!
+    let froude: Float = FroudeNumber(4.0m/s, 9.81m/s^2, 2.0m)!
+    Assert.Near(0.5, mach, 0.000000001, "half the sound speed")
+    Assert.True(froude > 0.8 and froude < 1.0, "near-critical open-channel scale")
+}
+
+[Fact]
+fn PrandtlAndNusseltAreDimensionless() -> Void {
+    let prandtl: Float = PrandtlNumber(1005.0m^2/s^2/K, 0.000018kg/m/s, 0.026kg*m/s^3/K)!
+    let nusselt: Float = NusseltNumber(26.0kg/s^3/K, 0.01m, 0.026kg*m/s^3/K)!
+    Assert.Near(0.69577, prandtl, 0.001, "air Prandtl number")
+    Assert.Near(10.0, nusselt, 0.000000001, "hL over k")
+}
+
+[Fact]
+fn GrashofAndRayleighCompose() -> Void {
+    let grashof: Float = GrashofNumber(9.81m/s^2, 0.0033K^-1, 10.0K, 0.1m, 0.000015m^2/s)!
+    let rayleigh: Float = RayleighNumber(grashof, 0.71)!
+    Assert.True(grashof > 1000000.0, "buoyancy-to-viscosity scale")
+    Assert.Near(grashof * 0.71, rayleigh, 0.001, "Ra equals Gr times Pr")
+}
+
+[Fact]
+fn BiotAndFourierDescribeLumpedTransient() -> Void {
+    let biot: Float = BiotNumber(10.0kg/s^3/K, 0.01m, 50.0kg*m/s^3/K)!
+    let fourier: Float = FourierNumber(0.00001m^2/s, 100.0s, 0.1m)!
+    Assert.Near(0.002, biot, 0.000000001, "small Biot number")
+    Assert.Near(0.1, fourier, 0.000000001, "diffusion time ratio")
+}
+
+[Fact]
+fn PecletSchmidtAndSherwoodCoverMassTransfer() -> Void {
+    let peclet: Float = PecletNumber(1.0m/s, 0.1m, 0.00001m^2/s)!
+    let schmidt: Float = SchmidtNumber(0.000001m^2/s, 0.000000001m^2/s)!
+    let sherwood: Float = SherwoodNumber(0.001m/s, 0.1m, 0.000000001m^2/s)!
+    Assert.Near(10000.0, peclet, 0.000001, "advection-diffusion ratio")
+    Assert.Near(1000.0, schmidt, 0.000001, "momentum/mass diffusivity ratio")
+    Assert.Near(100000.0, sherwood, 0.001, "mass-transfer analogue of Nusselt")
+}
+
+[Fact]
+fn WeberAndEulerRemainDimensionless() -> Void {
+    let weber: Float = WeberNumber(1000.0kg/m^3, 2.0m/s, 0.01m, 0.072kg/s^2)!
+    let euler: Float = EulerNumber(500.0kg/m/s^2, 1000.0kg/m^3, 2.0m/s)!
+    Assert.Near(555.5556, weber, 0.001, "inertia over surface tension")
+    Assert.Near(0.125, euler, 0.000000001, "pressure over inertia")
+}
+
+[Fact]
+fn DimensionlessGroupsRejectSingularDenominators() -> Void {
+    Assert.Error(ReynoldsNumber(1.0kg/m^3, 1.0m/s, 1.0m, 0.0kg/m/s), "zero viscosity")
+    Assert.Error(MachNumber(1.0m/s, 0.0m/s), "zero sound speed")
+    Assert.Error(FourierNumber(1.0m^2/s, 1.0s, 0.0m), "zero length")
+    Assert.Error(WeberNumber(1.0kg/m^3, 1.0m/s, 1.0m, 0.0kg/s^2), "zero surface tension")
+}

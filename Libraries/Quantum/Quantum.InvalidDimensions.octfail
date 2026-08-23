@@ -1,0 +1,12 @@
+expect error: "function 'PhotonContract' argument 1 expects Float<1/s>, got Float<kg>"
+
+package Quantum
+
+fn PhotonContract(frequency: Float<Hz>) -> Float<kg*m^2/s^2> {
+    let planckLike = 1.0kg*m^2/s
+    return planckLike * frequency
+}
+
+fn MassIsNotFrequency() -> Float<kg*m^2/s^2> {
+    return PhotonContract(1.0kg)
+}

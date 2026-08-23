@@ -1,0 +1,11 @@
+expect error: "function 'FrequencyContract' argument 1 expects Float<1/s>, got Float<m>"
+
+package Wireless
+
+fn FrequencyContract(frequency: Float<Hz>) -> Float<Hz> {
+    return frequency
+}
+
+fn LengthIsNotFrequency() -> Float<Hz> {
+    return FrequencyContract(1.0m)
+}

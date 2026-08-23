@@ -1,0 +1,141 @@
+package Cooking
+
+import Units
+import Thermofluids
+
+/// Density-backed ingredient quantity keeps mass, volume, and density together.
+concept IngredientQuantity {
+    Mass: Float<kg>
+    Volume: Float<m^3>
+    Density: Float<kg/m^3>
+}
+
+/// Typed brine composition by mass.
+concept BrineComposition {
+    SaltMass: Float<kg>
+    WaterMass: Float<kg>
+    SaltMassFraction: Float
+}
+
+/// Typed SI-to-practical mass presentation.
+fn KilogramsToOunces(mass: Float<kg>) -> Units.Ounce ! Error {
+    if mass < 0.0kg {
+        return error("ounce presentation requires non-negative mass")
+    }
+    return Units.Ounce { Value: mass / 0.028349523125kg }
+}
+
+fn KilogramsToPounds(mass: Float<kg>) -> Units.Pound ! Error {
+    if mass < 0.0kg {
+        return error("pound presentation requires non-negative mass")
+    }
+    return Units.Pound { Value: mass / 0.45359237kg }
+}
+
+fn CubicMetersToFluidOunces(volume: Float<m^3>) -> Units.FluidOunce ! Error {
+    if volume < 0.0m^3 {
+        return error("fluid-ounce presentation requires non-negative volume")
+    }
+    return Units.FluidOunce { Value: volume / 0.0000295735295625m^3 }
+}
+
+fn CubicMetersToCups(volume: Float<m^3>) -> Units.Cup ! Error {
+    if volume < 0.0m^3 {
+        return error("cup presentation requires non-negative volume")
+    }
+    return Units.Cup { Value: volume / 0.0002365882365m^3 }
+}
+
+fn CubicMetersToTablespoons(volume: Float<m^3>) -> Units.Tablespoon ! Error {
+    if volume < 0.0m^3 {
+        return error("tablespoon presentation requires non-negative volume")
+    }
+    return Units.Tablespoon { Value: volume / 0.00001478676478125m^3 }
+}
+
+fn CubicMetersToTeaspoons(volume: Float<m^3>) -> Units.Teaspoon ! Error {
+    if volume < 0.0m^3 {
+        return error("teaspoon presentation requires non-negative volume")
+    }
+    return Units.Teaspoon { Value: volume / 0.00000492892159375m^3 }
+}
+
+/// Fahrenheit presentation for a typed absolute temperature.
+fn KelvinToFahrenheit(temperature: Float<K>) -> Units.Fahrenheit ! Error {
+    if temperature < 0.0K {
+        return error("Fahrenheit presentation requires non-negative absolute temperature")
+    }
+    return Units.Fahrenheit { Value: (temperature / 1.0K) * 9.0 / 5.0 - 459.67 }
+}
+
+/// Baker's percentage with typed masses; the result remains a percentage on a 0..100-style scale.
+fn BakersPercentageMass(ingredientMass: Float<kg>, flourMass: Float<kg>) -> Float ! Error {
+    if ingredientMass < 0.0kg or flourMass <= 0.0kg {
+        return error("baker's percentage requires ingredient mass >= 0 and flour mass > 0")
+    }
+    return 100.0 * ingredientMass / flourMass
+}
+
+fn IngredientMassFromBakersPercentage(percent: Float, flourMass: Float<kg>) -> Float<kg> ! Error {
+    if percent < 0.0 or flourMass <= 0.0kg {
+        return error("ingredient mass requires percentage >= 0 and flour mass > 0")
+    }
+    return percent * flourMass / 100.0
+}
+
+/// Builds a density-backed ingredient quantity from volume.
+fn IngredientFromVolume(volume: Float<m^3>, density: Float<kg/m^3>) -> IngredientQuantity ! Error {
+    if volume < 0.0m^3 or density <= 0.0kg/m^3 {
+        return error("ingredient volume conversion requires volume >= 0 and density > 0")
+    }
+    return IngredientQuantity { Mass: volume * density Volume: volume Density: density }
+}
+
+/// Builds a density-backed ingredient quantity from mass.
+fn IngredientFromMass(mass: Float<kg>, density: Float<kg/m^3>) -> IngredientQuantity ! Error {
+    if mass < 0.0kg or density <= 0.0kg/m^3 {
+        return error("ingredient mass conversion requires mass >= 0 and density > 0")
+    }
+    return IngredientQuantity { Mass: mass Volume: mass / density Density: density }
+}
+
+/// Typed net mass after trim loss fraction in [0,1).
+fn NetMassAfterTrim(grossMass: Float<kg>, trimLossFraction: Float) -> Float<kg> ! Error {
+    if grossMass < 0.0kg or trimLossFraction < 0.0 or trimLossFraction >= 1.0 {
+        return error("trim model requires mass >= 0 and loss fraction in [0,1)")
+    }
+    return grossMass * (1.0 - trimLossFraction)
+}
+
+/// Typed brine mass fraction salt/(salt+water).
+fn BrineByMass(saltMass: Float<kg>, waterMass: Float<kg>) -> BrineComposition ! Error {
+    if saltMass < 0.0kg or waterMass <= 0.0kg {
+        return error("brine requires salt mass >= 0 and water mass > 0")
+    }
+    let fraction = saltMass / (saltMass + waterMass)
+    return BrineComposition { SaltMass: saltMass WaterMass: waterMass SaltMassFraction: fraction }
+}
+
+/// Equal-specific-heat dough mixing estimate: mass-weighted component temperatures.
+/// This is a first estimate only; mixer friction, bowl temperature, and unequal heat capacities are omitted.
+fn DoughMixTemperatureEstimate(
+    flourMass: Float<kg>,
+    flourTemperature: Float<K>,
+    waterMass: Float<kg>,
+    waterTemperature: Float<K>
+) -> Float<K> ! Error {
+    if flourMass < 0.0kg or waterMass < 0.0kg or flourMass + waterMass <= 0.0kg or flourTemperature < 0.0K or waterTemperature < 0.0K {
+        return error("dough mixing estimate requires non-negative masses/temperatures and positive total mass")
+    }
+    return (flourMass * flourTemperature + waterMass * waterTemperature) / (flourMass + waterMass)
+}
+
+/// Cooling/resting model reuses the canonical Thermofluids lumped exponential relation.
+fn CoolingRestTemperature(
+    initialTemperature: Float<K>,
+    ambientTemperature: Float<K>,
+    elapsed: Float<s>,
+    timeConstant: Float<s>
+) -> Float<K> ! Error {
+    return Thermofluids.LumpedTemperature(initialTemperature, ambientTemperature, elapsed, timeConstant)?
+}

@@ -1,5 +1,11 @@
 # Numerics M0
 
+## Canonical boundary
+
+`Numerics` owns foundational/reference scalar algorithms: roots, finite differences, quadrature, and bounded one-dimensional minimization. The older `Mathematics.Calculus` names are compatibility textbook wrappers backed by this package.
+
+`Optimization` owns richer solver workflows: multivariate gradient descent, line searches, Nelder-Mead, nonlinear least squares, and their diagnostic records. Its line-search internals are not aliases for bounded scalar minimization, so both packages remain useful without duplicating ownership.
+
 ## Scope
 
 `Libraries/Numerics` provides readable deterministic scalar numerical methods:

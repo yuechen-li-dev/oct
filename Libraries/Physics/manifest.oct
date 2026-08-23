@@ -20,7 +20,7 @@ fn Manifest() -> PackageManifest {
         Version: "0.1.0"
         Authors: ["Codex"]
         Date: "2026-08-23"
-        Description: "Executable physical constants and textbook mechanics with checked SI units"
+        Description: "Typed physical constants, foundational mechanics, dynamics, and wave relations"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

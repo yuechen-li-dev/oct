@@ -1,4 +1,4 @@
-# Simulation M0
+# Simulation
 
 ## Purpose
 
@@ -22,6 +22,7 @@
 
 ## API surface
 
+- `NewFixedStepConfig(initialTime, dt, steps)` for one checked runtime-admission boundary
 - `ValidateFixedStepSetup(dt, steps)`
 - `InitializeTrace(initialTime, initialState, initialOutput)`
 - `AppendStep(trace, stepResult)`

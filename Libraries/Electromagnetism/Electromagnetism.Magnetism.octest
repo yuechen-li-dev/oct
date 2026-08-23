@@ -1,0 +1,46 @@
+package Electromagnetism
+
+[Fact]
+fn MagneticFluxUsesAreaNormalAngle() -> Void {
+    let normal = MagneticFlux(2.0kg/A/s^2, 3.0m^2, 0.0)!
+    let edgeOn = MagneticFlux(2.0kg/A/s^2, 3.0m^2, Pi() / 2.0)!
+    Assert.Near(6.0, normal / (1.0kg*m^2/A/s^2), 0.000000001, "B A at normal incidence")
+    Assert.Near(0.0, edgeOn / (1.0kg*m^2/A/s^2), 0.000000001, "edge-on flux")
+}
+
+[Fact]
+fn MagneticForcesVanishForParallelMotion() -> Void {
+    let parallel = MagneticChargeForceMagnitude(1.0A*s, 2.0m/s, 3.0kg/A/s^2, 0.0)!
+    let perpendicular = MagneticChargeForceMagnitude(1.0A*s, 2.0m/s, 3.0kg/A/s^2, Pi() / 2.0)!
+    Assert.Near(0.0, parallel / (1.0kg*m/s^2), 0.000000001, "parallel velocity has no magnetic force")
+    Assert.Near(6.0, perpendicular / (1.0kg*m/s^2), 0.000000001, "perpendicular Lorentz magnitude")
+}
+
+[Fact]
+fn StraightWireFieldFallsAsInverseRadius() -> Void {
+    let near = LongStraightWireField(10.0A, 0.1m)!
+    let far = LongStraightWireField(10.0A, 0.2m)!
+    Assert.Near(2.0, near / far, 0.000000001, "doubling radius halves ideal field")
+}
+
+[Fact]
+fn FaradaySignOpposesIncreasingFlux() -> Void {
+    let emf = FaradayInducedEMF(0.2kg*m^2/A/s^2, 0.1s)!
+    Assert.Near(-2.0, emf / (1.0kg*m^2/A/s^3), 0.000000001, "Lenz-law sign")
+}
+
+[Fact]
+fn InductorEnergyAndRLTimeUseHenryDimensions() -> Void {
+    let inductance = 2.0kg*m^2/s^2/A^2
+    let energy = InductorStoredEnergy(inductance, 3.0A)!
+    let tau = RLTimeConstant(inductance, 4.0kg*m^2/s^3/A^2)!
+    Assert.Near(9.0, energy / (1.0kg*m^2/s^2), 0.000000001, "half L I squared")
+    Assert.Near(0.5, tau / 1.0s, 0.000000001, "L over R")
+}
+
+[Fact]
+fn MagnetismRejectsUndefinedDomains() -> Void {
+    Assert.Error(LongStraightWireField(1.0A, 0.0m), "field singular on ideal wire axis")
+    Assert.Error(FaradayInducedEMF(1.0kg*m^2/A/s^2, 0.0s), "zero flux-change duration")
+    Assert.Error(MagneticWireForceMagnitude(1.0kg/A/s^2, 1.0A, 1.0m, -0.1), "angle outside magnitude convention")
+}

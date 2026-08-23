@@ -1,0 +1,11 @@
+expect error: "function 'ArrheniusTemperatureContract' argument 1 expects Float<K>, got Float<m^2*kg/s^2>"
+
+package Chemistry
+
+fn ArrheniusTemperatureContract(temperature: Float<K>) -> Float<K> {
+    return temperature
+}
+
+fn EnergyIsNotTemperature() -> Float<K> {
+    return ArrheniusTemperatureContract(1.0kg*m^2/s^2)
+}

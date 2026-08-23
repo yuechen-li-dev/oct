@@ -1,0 +1,11 @@
+expect error: "function 'OrbitRadiusContract' argument 1 expects Float<m>, got Float<s>"
+
+package Astrophysics
+
+fn OrbitRadiusContract(radius: Float<m>) -> Float<m> {
+    return radius
+}
+
+fn DurationIsNotOrbitalRadius() -> Float<m> {
+    return OrbitRadiusContract(1.0s)
+}

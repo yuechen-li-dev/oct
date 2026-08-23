@@ -4,17 +4,24 @@ package Physics
 fn PhysicalConstantsCallableSurface() -> Void {
     let _c = SpeedOfLight()
     let _kb = BoltzmannConstant()
+    let _kbSI = BoltzmannConstantSI()
     let _h = PlanckConstant()
     let _hbar = ReducedPlanckConstant()
     let _e = ElementaryCharge()
+    let _eSI = ElementaryChargeSI()
     let _na = AvogadroConstant()
     let _r = GasConstant()
+    let _rSI = GasConstantSI()
     let _sigma = StefanBoltzmannConstant()
+    let _sigmaSI = StefanBoltzmannConstantSI()
     let _eps0 = VacuumPermittivity()
     let _mu0 = VacuumPermeability()
+    let _g = GravitationalConstant()
     Assert.True(_c > 0.0m/s and _kb > 0.0kg*m^2/s^2 and _h > 0.0kg*m^2/s, "core dimensional constants should be callable and positive")
     Assert.True(_hbar > 0.0kg*m^2/s and _e > 0.0 and _na > 0.0 and _r > 0.0kg*m^2/s^2, "derived and scalar constants should be callable and positive")
     Assert.True(_sigma > 0.0kg/s^3 and _eps0 > 0.0 and _mu0 > 0.0, "remaining constants should be callable and positive")
+    Assert.True(_kbSI > 0.0kg*m^2/s^2/K and _eSI > 0.0A*s and _rSI > 0.0kg*m^2/s^2/mol/K, "modern constants retain K, A, and mol dimensions")
+    Assert.True(_sigmaSI > 0.0kg/s^3/K^4 and _g > 0.0m^3/kg/s^2, "radiation and gravity constants are typed")
 }
 
 [Fact]
@@ -22,10 +29,10 @@ fn UnitSanityForCoreConstants() -> Void {
     let travel = SpeedOfLight() * 2.0s
     Assert.Near(599584916.0, travel / 1m, 0.000001, "c*t should produce length")
 
-    let thermalEnergy = BoltzmannConstant() * 300.0
+    let thermalEnergy = BoltzmannConstantSI() * 300.0K
     Assert.True(thermalEnergy > 0kg*m^2/s^2, "k_B*T should produce energy-like units")
 
-    let gasEnergy = GasConstant() * 300.0
+    let gasEnergy = GasConstantSI() * 1.0mol * 300.0K
     Assert.True(gasEnergy > 0kg*m^2/s^2, "R*T should produce energy-like units")
 
     let photonEnergy = PlanckConstant() * 1000000000.0 / 1s
@@ -51,11 +58,19 @@ fn ReducedPlanckMatchesDerivedRelation() -> Void {
 fn ConstantsComposeInWorkflow() -> Void {
     let frequency = 2.4e9 / 1s
     let photonEnergy = PlanckConstant() * frequency
-    let equivalentTemperature = photonEnergy / BoltzmannConstant()
+    let equivalentTemperature = photonEnergy / BoltzmannConstantSI()
 
     Assert.True(photonEnergy > 0kg*m^2/s^2, "photon energy should be positive")
-    Assert.True(equivalentTemperature > 0.0, "equivalent temperature should be positive")
+    Assert.True(equivalentTemperature > 0.0K, "equivalent temperature should carry kelvin")
 
     let thermalScale = GasConstant() / AvogadroConstant()
     Assert.Near(thermalScale / (1kg*m^2/s^2), BoltzmannConstant() / (1kg*m^2/s^2), 1e-30, "R / N_A should recover k_B magnitude")
+}
+
+[Fact]
+fn CompatibilityConstantWrappersPreserveMagnitudes() -> Void {
+    Assert.Near(BaseUnit(BoltzmannConstantSI()), BoltzmannConstant() / (1.0kg*m^2/s^2), 1e-30, "legacy Boltzmann magnitude")
+    Assert.Near(BaseUnit(ElementaryChargeSI()), ElementaryCharge(), 1e-28, "legacy charge magnitude")
+    Assert.Near(BaseUnit(AvogadroConstantSI()), AvogadroConstant(), 1.0, "legacy Avogadro magnitude")
+    Assert.Near(BaseUnit(VacuumPermittivitySI()), VacuumPermittivity(), 1e-20, "legacy epsilon zero magnitude")
 }

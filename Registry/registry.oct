@@ -39,6 +39,26 @@ fn Registry() -> RegistryIndex {
                 Description: "Thin archive wrappers for practical zip workflows"
             },
             PackageEntry {
+                Name: "Astrophysics"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Astrophysics"
+                Description: "Typed Newtonian orbits, stellar radiation, distance, parallax, and redshift relations"
+            },
+            PackageEntry {
+                Name: "Chemistry"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Chemistry"
+                Description: "Typed solution chemistry, spectroscopy, and bounded reaction and enzyme kinetics"
+            },
+            PackageEntry {
                 Name: "Complex"
                 Version: "0.1.0"
                 Kind: "library"
@@ -59,6 +79,26 @@ fn Registry() -> RegistryIndex {
                 Description: "Thin compression wrappers for practical gzip workflows"
             },
             PackageEntry {
+                Name: "ComputationalBiology"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/ComputationalBiology"
+                Description: "DNA and RNA enums, genetic-code translation, population genetics, and growth models"
+            },
+            PackageEntry {
+                Name: "ComputationalScience"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/ComputationalScience"
+                Description: "Cross-discipline executable examples linking science relations to deterministic simulation"
+            },
+            PackageEntry {
                 Name: "Cooking"
                 Version: "0.1.0"
                 Kind: "library"
@@ -66,7 +106,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Cooking"
-                Description: "Do you smell what the Claude is Cookin'?"
+                Description: "Typed recipe quantities, baker percentages, brines, density conversions, and thermal helpers"
             },
             PackageEntry {
                 Name: "Csv"
@@ -107,6 +147,16 @@ fn Registry() -> RegistryIndex {
                 Ref: ""
                 Path: "Libraries/Distributions"
                 Description: "Deterministic core probability distribution evaluation"
+            },
+            PackageEntry {
+                Name: "Electromagnetism"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Electromagnetism"
+                Description: "Typed electrostatics, circuits, magnetism, and induction reference relations"
             },
             PackageEntry {
                 Name: "Geometry"
@@ -206,7 +256,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Mathematics"
-                Description: "Foundational numerical helpers"
+                Description: "Foundational mathematics with compatibility calculus wrappers over Numerics"
             },
             PackageEntry {
                 Name: "Make"
@@ -226,7 +276,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Mechanics"
-                Description: "Mechanics stress, failure, fatigue, endurance-limit modifiers, notch fatigue concentration, and solid circular shaft critical-section core"
+                Description: "Typed solid mechanics, beam, column, vessel, shaft, stress, failure, and fatigue relations"
             },
             PackageEntry {
                 Name: "Numerics"
@@ -236,7 +286,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Numerics"
-                Description: "Deterministic scalar root-finding core (M0)"
+                Description: "Canonical deterministic differentiation, integration, root finding, and scalar optimization"
             },
             PackageEntry {
                 Name: "Octomata"
@@ -249,6 +299,16 @@ fn Registry() -> RegistryIndex {
                 Description: "Octomata library family for discrete-time control and estimation components"
             },
             PackageEntry {
+                Name: "Optics"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Optics"
+                Description: "Typed refraction, thin-lens, interference, diffraction, and photon relations"
+            },
+            PackageEntry {
                 Name: "Optimization"
                 Version: "0.1.0"
                 Kind: "library"
@@ -256,7 +316,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Optimization"
-                Description: "Deterministic unconstrained optimization core (M0)"
+                Description: "Multivariate and derivative-free optimization beyond canonical scalar Numerics"
             },
             PackageEntry {
                 Name: "Pdf"
@@ -276,7 +336,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Physics"
-                Description: "Reusable physical constants with explicit SI-oriented units"
+                Description: "Typed physical constants plus foundational kinematics, dynamics, energy, momentum, and waves"
             },
             PackageEntry {
                 Name: "Plot"
@@ -297,6 +357,16 @@ fn Registry() -> RegistryIndex {
                 Ref: ""
                 Path: "Libraries/RF"
                 Description: "First-principles RF helpers with fading/shadowing/multipath, deterministic sequence builders, Doppler/coherence reasoning, simple deterministic MIMO helpers, and deterministic 2-port S-parameter operations"
+            },
+            PackageEntry {
+                Name: "Quantum"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Quantum"
+                Description: "Foundational photon, matter-wave, energy-level, uncertainty, and Born-probability relations"
             },
             PackageEntry {
                 Name: "Random"
@@ -326,7 +396,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Simulation"
-                Description: "Deterministic fixed-step simulation helpers built on Octomata flow/state"
+                Description: "Deterministic fixed-step simulation helpers with runtime-checked refined configuration"
             },
             PackageEntry {
                 Name: "Statistics"
@@ -349,6 +419,16 @@ fn Registry() -> RegistryIndex {
                 Description: "Structures package"
             },
             PackageEntry {
+                Name: "Tensor2D"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Tensor2D"
+                Description: "Numerical 2D finite-difference tensor calculus operators"
+            },
+            PackageEntry {
                 Name: "Text"
                 Version: "0.1.0"
                 Kind: "wrapper"
@@ -366,7 +446,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Thermofluids"
-                Description: "Lumped thermal and simple fluid process helpers"
+                Description: "Typed thermodynamics, fluid foundations, dimensionless groups, and heat transfer"
             },
             PackageEntry {
                 Name: "Time"
@@ -387,6 +467,26 @@ fn Registry() -> RegistryIndex {
                 Ref: ""
                 Path: "Libraries/UI"
                 Description: "Tiny declarative UI M0 surface over Go-owned reconciler runtime"
+            },
+            PackageEntry {
+                Name: "Units"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Units"
+                Description: "Explicit non-SI nominal wrappers with typed SI conversion"
+            },
+            PackageEntry {
+                Name: "Wireless"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Wireless"
+                Description: "Compatibility models plus typed Hz and watt link-budget, noise, and throughput APIs"
             }
         ]
     }

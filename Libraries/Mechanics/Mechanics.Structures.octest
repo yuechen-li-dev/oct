@@ -1,0 +1,85 @@
+package Mechanics
+
+[Fact]
+fn RectangleSectionPropertiesMatchAnalyticValues() -> Void {
+    let area = RectangleArea(0.2m, 0.3m)!
+    let inertia = RectangleSecondMoment(0.2m, 0.3m)!
+    Assert.Near(0.06, area / 1.0m^2, 0.000000001, "rectangle area")
+    Assert.Near(0.00045, inertia / 1.0m^4, 0.000000001, "b h cubed over twelve")
+}
+
+[Fact]
+fn StrainAndHookeLawCompose() -> Void {
+    let strain = AxialStrain(0.001m, 1.0m)!
+    let stress = HookeStress(200000000000.0kg/m/s^2, strain)!
+    Assert.Near(0.001, strain, 0.000000001, "one millimetre per metre")
+    Assert.Near(200000000.0, stress / (1.0kg/m/s^2), 0.01, "steel elastic stress")
+}
+
+[Fact]
+fn ThermalExpansionCarriesKelvinThroughDimensionlessStrain() -> Void {
+    let strain = ThermalStrain(0.000012K^-1, 50.0K)
+    let expansion = LinearThermalExpansion(2.0m, 0.000012K^-1, 50.0K)!
+    Assert.Near(0.0006, strain, 0.000000001, "thermal strain is dimensionless")
+    Assert.Near(0.0012, expansion / 1.0m, 0.000000001, "two-metre steel bar expansion")
+}
+
+[Fact]
+fn AxialBarDeformationMatchesHandCalculation() -> Void {
+    let deformation = ElasticAxialDeformation(10000.0kg*m/s^2, 2.0m, 0.001m^2, 200000000000.0kg/m/s^2)!
+    Assert.Near(0.0001, deformation / 1.0m, 0.000000001, "FL over AE")
+}
+
+[Fact]
+fn SimplySupportedBeamRelationsFormOneLesson() -> Void {
+    let moment = SimplySupportedCenterLoadMaxMoment(1000.0kg*m/s^2, 4.0m)!
+    let deflection = SimplySupportedCenterLoadDeflection(1000.0kg*m/s^2, 4.0m, 200000000000.0kg/m/s^2, 0.000001m^4)!
+    Assert.Near(1000.0, moment / (1.0kg*m^2/s^2), 0.000001, "center-load maximum moment")
+    Assert.Near(0.0066666666667, deflection / 1.0m, 0.000000001, "center-load deflection")
+}
+
+[Fact]
+fn CantileverIsMoreFlexibleThanSimplySupportedBeam() -> Void {
+    let cantilever = CantileverEndLoadDeflection(1000.0kg*m/s^2, 2.0m, 200000000000.0kg/m/s^2, 0.000001m^4)!
+    let supported = SimplySupportedCenterLoadDeflection(1000.0kg*m/s^2, 2.0m, 200000000000.0kg/m/s^2, 0.000001m^4)!
+    let moment = CantileverEndLoadMoment(1000.0kg*m/s^2, 2.0m)!
+    Assert.True(cantilever > supported, "cantilever end loading is more flexible for the same span and rigidity")
+    Assert.Near(2000.0, moment / (1.0kg*m^2/s^2), 0.000001, "fixed-end moment")
+}
+
+[Fact]
+fn EulerBucklingShowsEffectiveLengthSensitivity() -> Void {
+    let pinned = EulerBucklingLoad(200000000000.0kg/m/s^2, 0.000001m^4, 2.0m, 1.0)!
+    let fixedFixed = EulerBucklingLoad(200000000000.0kg/m/s^2, 0.000001m^4, 2.0m, 0.5)!
+    Assert.Near(4.0, fixedFixed / pinned, 0.000000001, "halving effective length quadruples ideal buckling load")
+}
+
+[Fact]
+fn ThinWallCylinderHoopStressIsTwiceLongitudinalStress() -> Void {
+    let hoop = ThinWallCylinderHoopStress(2000000.0kg/m/s^2, 0.5m, 0.01m)!
+    let longitudinal = ThinWallCylinderLongitudinalStress(2000000.0kg/m/s^2, 0.5m, 0.01m)!
+    Assert.Near(2.0, hoop / longitudinal, 0.000000001, "closed-cylinder membrane relation")
+}
+
+[Fact]
+fn ShaftTwistIsDimensionlessAngle() -> Void {
+    let theta = ShaftAngleOfTwist(1000.0kg*m^2/s^2, 1.0m, 80000000000.0kg/m/s^2, 0.000001m^4)!
+    Assert.Near(0.0125, theta, 0.000000001, "T L over G J")
+}
+
+[Fact]
+fn MohrCircleMatchesPureShearAndBiaxialCases() -> Void {
+    let pureShear = PlaneStressMohrCircle(0.0kg/m/s^2, 0.0kg/m/s^2, 50.0kg/m/s^2)
+    let biaxial = PlaneStressMohrCircle(100.0kg/m/s^2, 20.0kg/m/s^2, 0.0kg/m/s^2)
+    Assert.Near(50.0, pureShear.Radius / (1.0kg/m/s^2), 0.000000001, "pure shear radius")
+    Assert.Near(100.0, biaxial.SigmaMax / (1.0kg/m/s^2), 0.000000001, "principal max without shear")
+    Assert.Near(20.0, biaxial.SigmaMin / (1.0kg/m/s^2), 0.000000001, "principal min without shear")
+}
+
+[Fact]
+fn StructuralRelationsRejectSingularGeometry() -> Void {
+    Assert.Error(RectangleArea(0.0m, 1.0m), "zero rectangle width")
+    Assert.Error(AxialStrain(0.1m, 0.0m), "zero reference length")
+    Assert.Error(EulerBucklingLoad(1.0kg/m/s^2, 1.0m^4, 1.0m, 0.0), "zero effective length factor")
+    Assert.Error(ThinWallCylinderHoopStress(1.0kg/m/s^2, 1.0m, 0.0m), "zero wall thickness")
+}

@@ -1,0 +1,82 @@
+package Electromagnetism
+
+import Physics
+
+/// Magnetic flux Phi = B*A*cos(theta) for uniform field and planar area.
+fn MagneticFlux(
+    magneticField: Float<kg/A/s^2>,
+    area: Float<m^2>,
+    angleFromNormal: Float
+) -> Float<kg*m^2/A/s^2> ! Error {
+    if area < 0.0m^2 {
+        return error("magnetic flux requires non-negative area")
+    }
+    return magneticField * area * Cos(angleFromNormal)
+}
+
+/// Magnetic Lorentz-force magnitude |q|*|v|*|B|*|sin(theta)|.
+fn MagneticChargeForceMagnitude(
+    charge: Float<A*s>,
+    speed: Float<m/s>,
+    magneticField: Float<kg/A/s^2>,
+    angle: Float
+) -> Float<kg*m/s^2> ! Error {
+    if speed < 0.0m/s or angle < 0.0 or angle > Pi() {
+        return error("magnetic charge force requires speed >= 0 and angle in [0, pi]")
+    }
+    return Abs(charge) * speed * Abs(magneticField) * Abs(Sin(angle))
+}
+
+/// Force magnitude on a straight current-carrying wire: F = B*I*L*|sin(theta)|.
+fn MagneticWireForceMagnitude(
+    magneticField: Float<kg/A/s^2>,
+    current: Float<A>,
+    wireLength: Float<m>,
+    angle: Float
+) -> Float<kg*m/s^2> ! Error {
+    if wireLength < 0.0m or angle < 0.0 or angle > Pi() {
+        return error("magnetic wire force requires length >= 0 and angle in [0, pi]")
+    }
+    return Abs(magneticField * current) * wireLength * Abs(Sin(angle))
+}
+
+/// Ideal long straight wire field B = mu0*|I|/(2*pi*r) in vacuum.
+fn LongStraightWireField(current: Float<A>, radialDistance: Float<m>) -> Float<kg/A/s^2> ! Error {
+    if radialDistance <= 0.0m {
+        return error("straight-wire field requires positive radial distance")
+    }
+    return Physics.VacuumPermeabilitySI() * Abs(current) / (2.0 * Pi() * radialDistance)
+}
+
+/// Faraday law for one turn and supplied flux change: emf = -ΔPhi/Δt.
+fn FaradayInducedEMF(
+    fluxChange: Float<kg*m^2/A/s^2>,
+    duration: Float<s>
+) -> Float<kg*m^2/A/s^3> ! Error {
+    if duration <= 0.0s {
+        return error("Faraday induced EMF requires positive duration")
+    }
+    return (0.0kg*m^2/A/s^2 - fluxChange) / duration
+}
+
+/// Energy stored in an ideal inductor: U = L*I^2/2.
+fn InductorStoredEnergy(
+    inductance: Float<kg*m^2/s^2/A^2>,
+    current: Float<A>
+) -> Float<kg*m^2/s^2> ! Error {
+    if inductance < 0.0kg*m^2/s^2/A^2 {
+        return error("inductor energy requires non-negative inductance")
+    }
+    return 0.5 * inductance * current * current
+}
+
+/// RL time constant tau = L/R.
+fn RLTimeConstant(
+    inductance: Float<kg*m^2/s^2/A^2>,
+    resistance: Float<kg*m^2/s^3/A^2>
+) -> Float<s> ! Error {
+    if inductance < 0.0kg*m^2/s^2/A^2 or resistance <= 0.0kg*m^2/s^3/A^2 {
+        return error("RL time constant requires inductance >= 0 and resistance > 0")
+    }
+    return inductance / resistance
+}

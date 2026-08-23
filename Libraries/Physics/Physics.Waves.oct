@@ -1,0 +1,43 @@
+package Physics
+
+/// Wave speed relation v = f*lambda.
+fn WaveSpeed(frequency: Float<Hz>, wavelength: PositiveLength) -> Float<m/s> ! Error {
+    if frequency < 0.0Hz {
+        return error("wave speed requires non-negative frequency")
+    }
+    return frequency * wavelength
+}
+
+/// Frequency from speed and wavelength: f = v/lambda.
+fn WaveFrequency(speed: Float<m/s>, wavelength: PositiveLength) -> Float<Hz> ! Error {
+    return speed / wavelength
+}
+
+/// Angular frequency omega = 2*pi*f. Radians are dimensionless in Oct.
+fn AngularFrequency(frequency: Float<Hz>) -> Float<Hz> ! Error {
+    if frequency < 0.0Hz {
+        return error("angular frequency requires non-negative frequency")
+    }
+    return 2.0 * Pi() * frequency
+}
+
+/// Wave number k = 2*pi/lambda in reciprocal metres.
+fn WaveNumber(wavelength: PositiveLength) -> Float<m^-1> ! Error {
+    return 2.0 * Pi() / wavelength
+}
+
+/// Beat frequency, |f1-f2|.
+fn BeatFrequency(frequency1: Float<Hz>, frequency2: Float<Hz>) -> Float<Hz> {
+    return Abs(frequency1 - frequency2)
+}
+
+/// Harmonic frequency for a string fixed at both ends: f_n = n*v/(2L).
+fn FixedStringFrequency(harmonic: Int, waveSpeed: Float<m/s>, length: PositiveLength) -> Float<Hz> ! Error {
+    if harmonic <= 0 {
+        return error("standing-wave harmonic must be positive")
+    }
+    if waveSpeed <= 0.0m/s {
+        return error("standing-wave speed must be positive")
+    }
+    return Float(harmonic) * waveSpeed / (2.0 * length)
+}

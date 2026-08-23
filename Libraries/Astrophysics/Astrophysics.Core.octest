@@ -1,0 +1,83 @@
+package Astrophysics
+
+import Units
+
+[Fact]
+fn EarthSurfaceEscapeVelocityHasKnownScale() -> Void {
+    let earthMass = Units.EarthMassToKilogram(Units.EarthMass { Value: 1.0 })
+    let escape = EscapeVelocity(earthMass, 6371000.0m)!
+    Assert.True(escape > 11100.0m/s and escape < 11300.0m/s, "Earth escape velocity is about 11.2 km/s")
+}
+
+[Fact]
+fn LowEarthCircularOrbitFormsConnectedSummary() -> Void {
+    let earthMass = Units.EarthMassToKilogram(Units.EarthMass { Value: 1.0 })
+    let orbit = CircularOrbitAt(earthMass, 6771000.0m)!
+    Assert.True(orbit.Speed > 7600.0m/s and orbit.Speed < 7800.0m/s, "400-km orbit speed")
+    Assert.True(orbit.Period > 5400.0s and orbit.Period < 5700.0s, "roughly 92-minute period")
+    Assert.True(orbit.SpecificEnergy < 0.0m^2/s^2, "bound circular orbit has negative specific energy")
+}
+
+[Fact]
+fn CircularVisVivaMatchesCircularVelocity() -> Void {
+    let mass = 5.0e24kg
+    let circular = CircularOrbitalVelocity(mass, 7000000.0m)!
+    let visViva = VisVivaVelocity(mass, 7000000.0m, 7000000.0m)!
+    Assert.Near(circular / (1.0m/s), visViva / (1.0m/s), 0.000001, "vis-viva reduces to circular speed when r equals a")
+}
+
+[Fact]
+fn EscapeSpeedIsRootTwoTimesCircularSpeed() -> Void {
+    let circular = CircularOrbitalVelocity(5.0e24kg, 7000000.0m)!
+    let escape = EscapeVelocity(5.0e24kg, 7000000.0m)!
+    Assert.Near(Sqrt(2.0), escape / circular, 0.000000001, "same radius and central mass")
+}
+
+[Fact]
+fn EarthHillRadiusHasMillionKilometreScale() -> Void {
+    let earthMass = Units.EarthMassToKilogram(Units.EarthMass { Value: 1.0 })
+    let solarMass = Units.SolarMassToKilogram(Units.SolarMass { Value: 1.0 })
+    let au = Units.AstronomicalUnitToMeter(Units.AstronomicalUnit { Value: 1.0 })
+    let hill = HillRadius(au, earthMass, solarMass)!
+    Assert.True(hill > 1400000000.0m and hill < 1600000000.0m, "Earth Hill radius is about 1.5 million km")
+}
+
+[Fact]
+fn SolarBlackbodyLuminosityAndEarthFluxHaveExpectedScale() -> Void {
+    let radius = Units.SolarRadiusToMeter(Units.SolarRadius { Value: 1.0 })
+    let luminosity = BlackbodyLuminosity(radius, 5772.0K)!
+    let au = Units.AstronomicalUnitToMeter(Units.AstronomicalUnit { Value: 1.0 })
+    let flux = RadiantFluxAtDistance(luminosity, au)!
+    Assert.True(luminosity > 3.7e26kg*m^2/s^3 and luminosity < 3.9e26kg*m^2/s^3, "solar luminosity scale")
+    Assert.True(flux > 1300.0kg/s^3 and flux < 1400.0kg/s^3, "solar constant scale at one AU")
+}
+
+[Fact]
+fn SunLikeBlackbodyWavelengthPeakIsNear500Nanometers() -> Void {
+    let peak = BlackbodyPeakWavelength(5772.0K)!
+    Assert.True(peak > 0.00000049m and peak < 0.00000051m, "solar blackbody wavelength peak near 500 nm")
+}
+
+[Fact]
+fn DistanceModulusAndParallaxRoundTripReferenceDistances() -> Void {
+    let tenParsec = Units.Parsec { Value: 10.0 }
+    let distance = ParallaxDistance(0.1)!
+    let observation = DistanceObservationAt(distance)!
+    Assert.Near(0.0, DistanceModulus(tenParsec)!, 0.000000001, "absolute magnitude is apparent magnitude at ten parsecs")
+    Assert.Near(10.0, distance.Value, 0.000000001, "0.1 arcsecond parallax means ten parsecs")
+    Assert.Near(0.0, observation.DistanceModulus, 0.000000001, "distance observation connects the inputs and result")
+}
+
+[Fact]
+fn RedshiftScalesWavelength() -> Void {
+    let observed = RedshiftedWavelength(0.0000001216m, 2.0)!
+    Assert.Near(3.0, observed / 0.0000001216m, 0.000000001, "z=2 triples wavelength")
+}
+
+[Fact]
+fn AstrophysicsRejectsSingularAndUnsupportedStates() -> Void {
+    Assert.Error(CircularOrbitalVelocity(1.0kg, 0.0m), "zero radius")
+    Assert.Error(HillRadius(1.0m, 2.0kg, 1.0kg), "small-body approximation ordering")
+    Assert.Error(ParallaxDistance(0.0), "zero parallax")
+    Assert.Error(RedshiftedWavelength(1.0m, -1.0), "non-positive observed wavelength")
+}

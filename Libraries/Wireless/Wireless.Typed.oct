@@ -1,0 +1,99 @@
+package Wireless
+
+import Physics
+
+/// Canonical typed wireless band description.
+concept WirelessBandSI {
+    CenterFrequency: Float<Hz>
+    ChannelWidth: Float<Hz>
+    MaxChannelWidth: Float<Hz>
+    MaxTransmitPower: Float<kg*m^2/s^3>
+}
+
+/// Canonical typed free-space link-budget input.
+concept WirelessLinkBudgetSI {
+    TransmitPower: Float<kg*m^2/s^3>
+    TransmitGainDb: Float
+    ReceiveGainDb: Float
+    Frequency: Float<Hz>
+    Distance: Float<m>
+    NoiseFigureDb: Float
+    Bandwidth: Float<Hz>
+}
+
+/// Typed throughput estimate; bit counts are dimensionless, so bit/s has Hz dimension.
+concept WirelessThroughputSI {
+    SpectralEfficiencyBitsPerHz: Float
+    ChannelWidth: Float<Hz>
+    SpatialStreams: Int
+    Efficiency: Float
+    Throughput: Float<Hz>
+}
+
+fn Band6GhzSI() -> WirelessBandSI {
+    return WirelessBandSI {
+        CenterFrequency: 6135000000.0Hz
+        ChannelWidth: 320000000.0Hz
+        MaxChannelWidth: 320000000.0Hz
+        MaxTransmitPower: 0.25kg*m^2/s^3
+    }
+}
+
+/// Free-space path loss in dB using SI metres and hertz.
+/// Applies to unobstructed far-field propagation; antennas/environment are separate terms.
+fn FreeSpacePathLossDbSI(distance: Float<m>, frequency: Float<Hz>) -> Float ! Error {
+    if distance <= 0.0m or frequency <= 0.0Hz {
+        return error("free-space path loss requires positive distance and frequency")
+    }
+    return 20.0 * Log10(distance / 1.0m) + 20.0 * Log10(frequency / 1.0Hz) - 147.55
+}
+
+/// Thermal-noise floor 10*log10(k*T*B/1mW) in dBm.
+fn ThermalNoiseFloorDbmSI(bandwidth: Float<Hz>, temperature: Float<K>) -> Float ! Error {
+    if bandwidth <= 0.0Hz or temperature <= 0.0K {
+        return error("thermal noise requires positive bandwidth and absolute temperature")
+    }
+    let noisePower = Physics.BoltzmannConstantSI() * temperature * bandwidth
+    return 10.0 * Log10(noisePower / (0.001kg*m^2/s^3))
+}
+
+fn WattsToDbmSI(power: Float<kg*m^2/s^3>) -> Float ! Error {
+    if power <= 0.0kg*m^2/s^3 {
+        return error("dBm conversion requires positive power")
+    }
+    return 10.0 * Log10(power / (0.001kg*m^2/s^3))
+}
+
+fn ComputeLinkMarginSI(budget: WirelessLinkBudgetSI) -> LinkMargin ! Error {
+    if budget.TransmitPower <= 0.0kg*m^2/s^3 or budget.Bandwidth <= 0.0Hz {
+        return error("typed link budget requires positive transmit power and bandwidth")
+    }
+    let pathLoss = FreeSpacePathLossDbSI(budget.Distance, budget.Frequency)?
+    let txDbm = WattsToDbmSI(budget.TransmitPower)?
+    let received = txDbm + budget.TransmitGainDb + budget.ReceiveGainDb - pathLoss
+    let noise = ThermalNoiseFloorDbmSI(budget.Bandwidth, 290.0K)? + budget.NoiseFigureDb
+    let snr = received - noise
+    return LinkMargin {
+        PathLossDb: pathLoss
+        ReceivedPowerDbm: received
+        NoiseFloorDbm: noise
+        SnrDb: snr
+        MarginDb: snr - 10.0
+    }
+}
+
+fn EstimateThroughputSI(snrDb: Float, channelWidth: Float<Hz>, spatialStreams: Int) -> WirelessThroughputSI ! Error {
+    if channelWidth <= 0.0Hz or spatialStreams <= 0 {
+        return error("typed throughput requires positive channel width and stream count")
+    }
+    let spectralEfficiency = SpectralEfficiencyFromSnrDb(snrDb)
+    let efficiency = 0.9 * 0.8
+    let throughput = spectralEfficiency * channelWidth * Float(spatialStreams) * efficiency
+    return WirelessThroughputSI {
+        SpectralEfficiencyBitsPerHz: spectralEfficiency
+        ChannelWidth: channelWidth
+        SpatialStreams: spatialStreams
+        Efficiency: efficiency
+        Throughput: throughput
+    }
+}

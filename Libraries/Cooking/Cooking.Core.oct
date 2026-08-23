@@ -1,5 +1,7 @@
 package Cooking
 
+import Units
+
 /// Practical cooking mathematics: recipe scaling, baker's percentages,
 /// unit conversion, temperature stages, and yield after trim loss.
 ///
@@ -12,22 +14,22 @@ package Cooking
 
 /// Grams to ounces.
 fn GramsToOunces(g: Float) -> Float {
-    return g * 0.035274
+    return (g * 0.001kg) / 0.028349523125kg
 }
 
 /// Ounces to grams.
 fn OuncesToGrams(oz: Float) -> Float {
-    return oz * 28.3495
+    return Units.OunceToKilogram(Units.Ounce { Value: oz }) / 0.001kg
 }
 
 /// Grams to pounds.
 fn GramsToPounds(g: Float) -> Float {
-    return g * 0.00220462
+    return (g * 0.001kg) / 0.45359237kg
 }
 
 /// Pounds to grams.
 fn PoundsToGrams(lb: Float) -> Float {
-    return lb * 453.592
+    return Units.ToKilogram(Units.Pound { Value: lb }) / 0.001kg
 }
 
 // ============================================================
@@ -36,42 +38,42 @@ fn PoundsToGrams(lb: Float) -> Float {
 
 /// Millilitres to US fluid ounces.
 fn MlToFlOz(ml: Float) -> Float {
-    return ml * 0.033814
+    return (ml * 0.000001m^3) / 0.0000295735295625m^3
 }
 
 /// US fluid ounces to millilitres.
 fn FlOzToMl(floz: Float) -> Float {
-    return floz * 29.5735
+    return Units.FluidOunceToCubicMeter(Units.FluidOunce { Value: floz }) / 0.000001m^3
 }
 
 /// US cups to millilitres. 1 US cup = 236.588 ml.
 fn CupsToMl(cups: Float) -> Float {
-    return cups * 236.588
+    return Units.CupToCubicMeter(Units.Cup { Value: cups }) / 0.000001m^3
 }
 
 /// Millilitres to US cups.
 fn MlToCups(ml: Float) -> Float {
-    return ml / 236.588
+    return (ml * 0.000001m^3) / 0.0002365882365m^3
 }
 
 /// US tablespoons to millilitres. 1 US tbsp = 14.7868 ml.
 fn TbspToMl(tbsp: Float) -> Float {
-    return tbsp * 14.7868
+    return Units.TablespoonToCubicMeter(Units.Tablespoon { Value: tbsp }) / 0.000001m^3
 }
 
 /// Millilitres to US tablespoons.
 fn MlToTbsp(ml: Float) -> Float {
-    return ml / 14.7868
+    return (ml * 0.000001m^3) / 0.00001478676478125m^3
 }
 
 /// US teaspoons to millilitres. 1 US tsp = 4.92892 ml.
 fn TspToMl(tsp: Float) -> Float {
-    return tsp * 4.92892
+    return Units.TeaspoonToCubicMeter(Units.Teaspoon { Value: tsp }) / 0.000001m^3
 }
 
 /// Millilitres to US teaspoons.
 fn MlToTsp(ml: Float) -> Float {
-    return ml / 4.92892
+    return (ml * 0.000001m^3) / 0.00000492892159375m^3
 }
 
 // ============================================================
@@ -80,12 +82,13 @@ fn MlToTsp(ml: Float) -> Float {
 
 /// Celsius to Fahrenheit.
 fn CelsiusToFahrenheit(c: Float) -> Float {
-    return c * 9.0 / 5.0 + 32.0
+    let temperature = (c + 273.15) * 1.0K
+    return (temperature / 1.0K) * 9.0 / 5.0 - 459.67
 }
 
 /// Fahrenheit to Celsius.
 fn FahrenheitToCelsius(f: Float) -> Float {
-    return (f - 32.0) * 5.0 / 9.0
+    return Units.ToCelsiusOffset(Units.Fahrenheit { Value: f })
 }
 
 /// Celsius to gas mark (UK oven). Returns nearest integer gas mark.

@@ -21,6 +21,12 @@ This library makes the corrections explicit and testable.
 
 ## Components
 
+### Preferred typed M1 surface
+
+New code should use `Cooking.Typed` functions with `Float<kg>`, `Float<m^3>`, `Float<K>`, and `Float<s>` plus `Units` records for ounce, pound, cup, fluid ounce, tablespoon, teaspoon, and Fahrenheit presentation. `IngredientQuantity` and `BrineComposition` are record-shaped Concepts that keep related physical values together.
+
+The original scalar conversion names remain compatibility wrappers and now delegate through typed conversion paths. `CoolingRestTemperature` reuses `Thermofluids.LumpedTemperature` instead of duplicating an exponential solver.
+
 ### Unit conversion — weight
 
 `GramsToOunces`, `OuncesToGrams`, `GramsToPounds`, `PoundsToGrams`
@@ -137,24 +143,26 @@ Standard brines: poultry wet brine 3–6%, deli-style cure 2–3%.
 Scaling a cake from an 8-inch to a 10-inch round pan:
 
 ```oct
-let scaleFactor = PanAreaScaleFactor(8.0, 10.0)!  // 1.5625
+let scaleFactor = PanAreaScaleFactor(8.0, 10.0)  // 1.5625
 
-let flour    = ScaleIngredient(200.0, scaleFactor)!   // 312.5g
-let sugar    = ScaleIngredient(150.0, scaleFactor)!   // 234.4g
-let bakingPw = ScaleLeavening(2.0,   scaleFactor)!    // 3.125 tsp (linear: scale < 3x)
-let salt     = ScaleSalt(1.0,        scaleFactor)!    // 1.5625 tsp (linear: scale < 2x)
-let milk     = ScaleIngredient(120.0, scaleFactor)!   // 187.5ml
+let flour    = ScaleIngredient(200.0, scaleFactor)   // 312.5g
+let sugar    = ScaleIngredient(150.0, scaleFactor)   // 234.4g
+let bakingPw = ScaleLeavening(2.0,   scaleFactor)    // 3.125 tsp (heuristic)
+let salt     = ScaleSalt(1.0,        scaleFactor)    // 1.5625 tsp (heuristic)
+let milk     = ScaleIngredient(120.0, scaleFactor)   // 187.5ml
 ```
 
 Scaling a bread recipe 5× for a commercial batch:
 
 ```oct
-let yeastLinear    = ScaleIngredient(7.0, 5.0)!  // 35g — too much
-let yeastCorrected = ScaleLeavening(7.0, 5.0)!   // 31.5g — correct
+let yeastLinear    = ScaleIngredient(7.0, 5.0)
+let yeastHeuristic = ScaleLeavening(7.0, 5.0)
 ```
+
+`ScaleLeavening` and `ScaleSalt` preserve historical library heuristics for compatibility. They are not universal food-science laws; fermentation, formulation, geometry, process time, and sensory targets can dominate. Treat them as explicit starting assumptions, not authoritative scaling rules.
 
 ## Test coverage
 
-40 contracts covering all functions, round-trip properties, the leavening
+Compatibility and typed contracts cover all functions, round-trip properties, the leavening
 correction behaviour at multiple scale factors, pan area scaling, brine
 concentration inverse properties, and a full end-to-end baking scenario.

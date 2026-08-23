@@ -1,0 +1,153 @@
+package Optics
+
+import Physics
+
+/// A positive optical refractive index.
+concept RefractiveIndex = Float {
+    Require(Self > 0.0, "refractive index must be positive")
+}
+
+/// Structured thin-lens result under the real-is-positive sign convention.
+concept OpticalImage {
+    Distance: Float<m>
+    Magnification: Float
+    Real: Bool
+    Inverted: Bool
+}
+
+/// Runtime admission helper for measured/computed refractive indices.
+fn AdmitRefractiveIndex(raw: Float) -> RefractiveIndex ! Error {
+    return RefractiveIndex(raw)?
+}
+
+/// Index of refraction n = c/v for a medium phase speed.
+fn IndexOfRefraction(speedInMedium: Float<m/s>) -> RefractiveIndex ! Error {
+    if speedInMedium <= 0.0m/s or speedInMedium > Physics.SpeedOfLight() {
+        return error("index of refraction model requires 0 < medium speed <= vacuum speed")
+    }
+    return RefractiveIndex(Physics.SpeedOfLight() / speedInMedium)?
+}
+
+/// Phase speed v = c/n for a supplied refractive index.
+fn SpeedInMedium(index: RefractiveIndex) -> Float<m/s> {
+    return Physics.SpeedOfLight() / index
+}
+
+/// Snell law n1*sin(theta1) = n2*sin(theta2).
+/// Angles are dimensionless radians and incidence is restricted to [0, pi/2].
+fn SnellRefractedAngle(
+    incidentIndex: RefractiveIndex,
+    transmittedIndex: RefractiveIndex,
+    incidentAngle: Float
+) -> Float ! Error {
+    if incidentAngle < 0.0 or incidentAngle > Pi() / 2.0 {
+        return error("Snell relation requires incident angle in [0, pi/2]")
+    }
+    let argument = incidentIndex * Sin(incidentAngle) / transmittedIndex
+    if argument < -1.0 or argument > 1.0 {
+        return error("Snell relation has no transmitted ray; check total internal reflection")
+    }
+    return Asin(argument)
+}
+
+/// Critical angle asin(n2/n1) for propagation from denser n1 to rarer n2.
+fn CriticalAngle(denserIndex: RefractiveIndex, rarerIndex: RefractiveIndex) -> Float ! Error {
+    if denserIndex <= rarerIndex {
+        return error("critical angle requires incident index greater than transmitted index")
+    }
+    return Asin(rarerIndex / denserIndex)
+}
+
+/// Total internal reflection check for a denser-to-rarer interface.
+fn HasTotalInternalReflection(
+    denserIndex: RefractiveIndex,
+    rarerIndex: RefractiveIndex,
+    incidentAngle: Float
+) -> Bool ! Error {
+    if incidentAngle < 0.0 or incidentAngle > Pi() / 2.0 {
+        return error("total-internal-reflection check requires angle in [0, pi/2]")
+    }
+    let critical = CriticalAngle(denserIndex, rarerIndex)?
+    return incidentAngle > critical
+}
+
+/// Thin-lens image solution: 1/f = 1/do + 1/di, m = -di/do.
+/// Uses paraxial thin-lens approximation; positive f is converging and positive di is real.
+fn ThinLensImage(focalLength: Float<m>, objectDistance: Float<m>) -> OpticalImage ! Error {
+    if focalLength == 0.0m or objectDistance <= 0.0m or objectDistance == focalLength {
+        return error("thin lens requires non-zero focal length, positive object distance, and object not at focus")
+    }
+    let imageDistance = focalLength * objectDistance / (objectDistance - focalLength)
+    let magnification = 0.0 - imageDistance / objectDistance
+    return OpticalImage {
+        Distance: imageDistance
+        Magnification: magnification
+        Real: imageDistance > 0.0m
+        Inverted: magnification < 0.0
+    }
+}
+
+/// Lens power P = 1/f in inverse metres (dioptres numerically when f is metres).
+fn LensPower(focalLength: Float<m>) -> Float<m^-1> ! Error {
+    if focalLength == 0.0m {
+        return error("lens power requires non-zero focal length")
+    }
+    return 1.0 / focalLength
+}
+
+/// Two-slit small-angle fringe spacing Δy = lambda*L/d.
+fn TwoSlitFringeSpacing(
+    wavelength: Float<m>,
+    screenDistance: Float<m>,
+    slitSeparation: Float<m>
+) -> Float<m> ! Error {
+    if wavelength <= 0.0m or screenDistance < 0.0m or slitSeparation <= 0.0m {
+        return error("two-slit spacing requires wavelength > 0, screen distance >= 0, and slit separation > 0")
+    }
+    return wavelength * screenDistance / slitSeparation
+}
+
+/// Single-slit minimum angle from a*sin(theta) = order*lambda.
+fn SingleSlitMinimumAngle(wavelength: Float<m>, slitWidth: Float<m>, order: Int) -> Float ! Error {
+    if wavelength <= 0.0m or slitWidth <= 0.0m or order <= 0 {
+        return error("single-slit minimum requires positive wavelength, width, and order")
+    }
+    let argument = Float(order) * wavelength / slitWidth
+    if argument > 1.0 {
+        return error("single-slit minimum does not exist for order*wavelength > width")
+    }
+    return Asin(argument)
+}
+
+/// Diffraction-grating principal maximum from d*sin(theta) = order*lambda.
+fn DiffractionGratingAngle(wavelength: Float<m>, grooveSpacing: Float<m>, order: Int) -> Float ! Error {
+    if wavelength <= 0.0m or grooveSpacing <= 0.0m or order < 0 {
+        return error("grating angle requires positive wavelength/spacing and non-negative order")
+    }
+    let argument = Float(order) * wavelength / grooveSpacing
+    if argument > 1.0 {
+        return error("requested diffraction order does not propagate")
+    }
+    return Asin(argument)
+}
+
+/// Rayleigh angular resolution for a circular aperture: theta = 1.22*lambda/D.
+fn RayleighAngularResolution(wavelength: Float<m>, apertureDiameter: Float<m>) -> Float ! Error {
+    if wavelength <= 0.0m or apertureDiameter <= 0.0m {
+        return error("Rayleigh resolution requires positive wavelength and aperture diameter")
+    }
+    return 1.22 * wavelength / apertureDiameter
+}
+
+/// Photon frequency f = c/lambda.
+fn PhotonFrequency(wavelength: Float<m>) -> Float<Hz> ! Error {
+    if wavelength <= 0.0m {
+        return error("photon frequency requires positive wavelength")
+    }
+    return Physics.SpeedOfLight() / wavelength
+}
+
+/// Photon energy E = h*c/lambda.
+fn PhotonEnergyFromWavelength(wavelength: Float<m>) -> Float<kg*m^2/s^2> ! Error {
+    return Physics.PlanckConstant() * PhotonFrequency(wavelength)?
+}

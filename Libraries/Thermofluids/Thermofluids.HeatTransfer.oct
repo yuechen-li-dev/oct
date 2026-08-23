@@ -1,0 +1,132 @@
+package Thermofluids
+
+import Physics
+
+/// Steady one-dimensional plane-wall conduction rate Qdot = k*A*(Th-Tc)/L.
+/// Assumes constant conductivity, no generation, and uniform boundary temperatures.
+fn PlaneWallConductionRate(
+    thermalConductivity: Float<kg*m/s^3/K>,
+    area: Float<m^2>,
+    hotTemperature: Float<K>,
+    coldTemperature: Float<K>,
+    thickness: Float<m>
+) -> Float<kg*m^2/s^3> ! Error {
+    if thermalConductivity <= 0.0kg*m/s^3/K or area < 0.0m^2 or thickness <= 0.0m {
+        return error("plane-wall conduction requires k > 0, area >= 0, and thickness > 0")
+    }
+    return thermalConductivity * area * (hotTemperature - coldTemperature) / thickness
+}
+
+/// Plane-wall thermal resistance R = L/(k*A), in K/W.
+fn PlaneWallThermalResistance(
+    thickness: Float<m>,
+    thermalConductivity: Float<kg*m/s^3/K>,
+    area: Float<m^2>
+) -> Float<K*s^3/kg/m^2> ! Error {
+    if thickness < 0.0m or thermalConductivity <= 0.0kg*m/s^3/K or area <= 0.0m^2 {
+        return error("wall resistance requires thickness >= 0, conductivity > 0, and area > 0")
+    }
+    return thickness / (thermalConductivity * area)
+}
+
+/// Convective resistance R = 1/(h*A), in K/W.
+fn ConvectiveThermalResistance(
+    convectionCoefficient: Float<kg/s^3/K>,
+    area: Float<m^2>
+) -> Float<K*s^3/kg/m^2> ! Error {
+    if convectionCoefficient <= 0.0kg/s^3/K or area <= 0.0m^2 {
+        return error("convective resistance requires h > 0 and area > 0")
+    }
+    return 1.0 / (convectionCoefficient * area)
+}
+
+/// Sums series thermal resistances. At least one term is required.
+fn SeriesThermalResistance(resistances: Float<K*s^3/kg/m^2>[]) -> Float<K*s^3/kg/m^2> ! Error {
+    if Len(resistances) == 0 {
+        return error("series thermal resistance requires at least one term")
+    }
+    var total = 0.0K*s^3/kg/m^2
+    for i in 0..Len(resistances) {
+        if resistances[i] < 0.0K*s^3/kg/m^2 {
+            return error("series thermal resistances must be non-negative")
+        }
+        total = total + resistances[i]
+    }
+    return total
+}
+
+/// Heat rate from a temperature difference and total resistance: Qdot = ΔT/R.
+fn HeatRateFromResistance(
+    temperatureDifference: Float<K>,
+    resistance: Float<K*s^3/kg/m^2>
+) -> Float<kg*m^2/s^3> ! Error {
+    if resistance <= 0.0K*s^3/kg/m^2 {
+        return error("heat rate requires positive total resistance")
+    }
+    return temperatureDifference / resistance
+}
+
+/// Newton convection law Qdot = h*A*(Ts-Tinf), now with typed kelvin.
+fn ConvectionHeatRate(
+    convectionCoefficient: Float<kg/s^3/K>,
+    area: Float<m^2>,
+    surfaceTemperature: Float<K>,
+    fluidTemperature: Float<K>
+) -> Float<kg*m^2/s^3> ! Error {
+    if convectionCoefficient < 0.0kg/s^3/K or area < 0.0m^2 {
+        return error("convection heat rate requires h >= 0 and area >= 0")
+    }
+    return convectionCoefficient * area * (surfaceTemperature - fluidTemperature)
+}
+
+/// Net diffuse-gray radiation to large surroundings.
+/// Qdot = epsilon*sigma*A*(Ts^4-Tsur^4), temperatures must be absolute.
+fn NetRadiationToSurroundings(
+    emissivity: Float,
+    area: Float<m^2>,
+    surfaceTemperature: Float<K>,
+    surroundingsTemperature: Float<K>
+) -> Float<kg*m^2/s^3> ! Error {
+    if emissivity < 0.0 or emissivity > 1.0 or area < 0.0m^2 or surfaceTemperature < 0.0K or surroundingsTemperature < 0.0K {
+        return error("radiation requires emissivity in [0,1], area >= 0, and non-negative absolute temperatures")
+    }
+    let surfaceFourth = surfaceTemperature * surfaceTemperature * surfaceTemperature * surfaceTemperature
+    let surroundingsFourth = surroundingsTemperature * surroundingsTemperature * surroundingsTemperature * surroundingsTemperature
+    return emissivity * Physics.StefanBoltzmannConstantSI() * area * (surfaceFourth - surroundingsFourth)
+}
+
+/// Lumped-capacitance time constant tau = rho*V*cp/(h*A).
+fn LumpedThermalTimeConstant(
+    density: Float<kg/m^3>,
+    volume: Float<m^3>,
+    specificHeat: Float<m^2/s^2/K>,
+    convectionCoefficient: Float<kg/s^3/K>,
+    area: Float<m^2>
+) -> Float<s> ! Error {
+    if density <= 0.0kg/m^3 or volume <= 0.0m^3 or specificHeat <= 0.0m^2/s^2/K or convectionCoefficient <= 0.0kg/s^3/K or area <= 0.0m^2 {
+        return error("lumped time constant requires positive rho, volume, cp, h, and area")
+    }
+    return density * volume * specificHeat / (convectionCoefficient * area)
+}
+
+/// Exact lumped-capacitance temperature T = Tinf + (Ti-Tinf)*exp(-t/tau).
+/// Use only when internal gradients are negligible, commonly checked with Bi < 0.1.
+fn LumpedTemperature(
+    initialTemperature: Float<K>,
+    ambientTemperature: Float<K>,
+    elapsed: Float<s>,
+    timeConstant: Float<s>
+) -> Float<K> ! Error {
+    if initialTemperature < 0.0K or ambientTemperature < 0.0K or elapsed < 0.0s or timeConstant <= 0.0s {
+        return error("lumped temperature requires non-negative absolute temperatures/time and tau > 0")
+    }
+    return ambientTemperature + (initialTemperature - ambientTemperature) * Exp(0.0 - elapsed / timeConstant)
+}
+
+/// Conventional lumped-capacitance applicability helper: Bi < 0.1.
+fn LumpedCapacitanceLikelyValid(biot: Float) -> Bool ! Error {
+    if biot < 0.0 {
+        return error("Biot number must be non-negative")
+    }
+    return biot < 0.1
+}

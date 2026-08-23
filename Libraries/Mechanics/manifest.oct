@@ -19,8 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "Mechanics"
         Version: "0.6.0"
         Authors: ["Codex", "Claude"]
-        Date: "2026-06-15"
-        Description: "Mechanics stress, failure, fatigue, endurance-limit modifiers, notch fatigue concentration, and solid circular shaft critical-section core"
+        Date: "2026-08-23"
+        Description: "Engineering mechanics: stress, failure, fatigue, shafts, continuum, beams, buckling, torsion, and thin-wall vessels"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }, Dependency { Name: "Tensor2D" VersionRequirement: "0.1.0" }]
     }
 }

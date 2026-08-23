@@ -28,6 +28,15 @@ record FixedStepConfig {
     Steps: PositiveSimulationStepCount
 }
 
+/// Runtime admission constructor for callers outside the Simulation package.
+/// Package-qualified refined constructors are intentionally not part of Oct M1,
+/// so this keeps dynamic configuration usable without weakening the Concepts.
+fn NewFixedStepConfig(initialTime: Float, dt: Float, steps: Int) -> FixedStepConfig ! Error {
+    let admittedStep = PositiveSimulationStep(dt)?
+    let admittedCount = PositiveSimulationStepCount(steps)?
+    return FixedStepConfig { InitialTime: initialTime Dt: admittedStep Steps: admittedCount }
+}
+
 fn ValidateFixedStepSetup(dt: Float, steps: Int) -> Bool ! Error {
     let admittedStep = PositiveSimulationStep(dt)?
     let admittedCount = PositiveSimulationStepCount(steps)?

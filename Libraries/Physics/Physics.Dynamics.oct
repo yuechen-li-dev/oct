@@ -1,0 +1,75 @@
+package Physics
+
+/// A non-negative elapsed duration for kinematics.
+concept NonNegativeDuration = Float<s> {
+    Require(Self >= 0.0s, "elapsed duration must be non-negative")
+}
+
+/// A strictly positive length for radii and wavelengths.
+concept PositiveLength = Float<m> {
+    Require(Self > 0.0m, "length must be positive")
+}
+
+/// Constant-acceleration position: x = x0 + v0*t + a*t^2/2.
+fn KinematicPosition(
+    initialPosition: Float<m>,
+    initialVelocity: Float<m/s>,
+    acceleration: Float<m/s^2>,
+    elapsed: NonNegativeDuration
+) -> Float<m> ! Error {
+    return initialPosition + initialVelocity * elapsed + 0.5 * acceleration * elapsed * elapsed
+}
+
+/// Constant-acceleration velocity: v = v0 + a*t.
+fn KinematicVelocity(
+    initialVelocity: Float<m/s>,
+    acceleration: Float<m/s^2>,
+    elapsed: NonNegativeDuration
+) -> Float<m/s> ! Error {
+    return initialVelocity + acceleration * elapsed
+}
+
+/// Linear impulse from a constant force: J = F*dt.
+fn Impulse(force: Float<kg*m/s^2>, duration: PositiveDuration) -> Float<kg*m/s> ! Error {
+    return force * duration
+}
+
+/// Centripetal acceleration for uniform circular motion: a = v^2/r.
+fn CentripetalAcceleration(speed: Float<m/s>, radius: PositiveLength) -> Float<m/s^2> ! Error {
+    return speed * speed / radius
+}
+
+/// Angular momentum of a point mass moving tangentially: L = m*r*v.
+fn AngularMomentumParticle(
+    mass: PositiveMass,
+    radius: PositiveLength,
+    tangentialSpeed: Float<m/s>
+) -> Float<kg*m^2/s> ! Error {
+    return mass * radius * tangentialSpeed
+}
+
+/// Rotational kinetic energy: E = I*omega^2/2.
+fn RotationalKineticEnergy(
+    momentOfInertia: Float<kg*m^2>,
+    angularSpeed: Float<s^-1>
+) -> Float<kg*m^2/s^2> ! Error {
+    if momentOfInertia < 0.0kg*m^2 {
+        return error("rotational kinetic energy requires non-negative moment of inertia")
+    }
+    return 0.5 * momentOfInertia * angularSpeed * angularSpeed
+}
+
+/// Center of mass of two point masses on one axis.
+fn CenterOfMass2(
+    mass1: PositiveMass,
+    position1: Float<m>,
+    mass2: PositiveMass,
+    position2: Float<m>
+) -> Float<m> ! Error {
+    return (mass1 * position1 + mass2 * position2) / (mass1 + mass2)
+}
+
+/// Mechanical power for collinear force and velocity: P = F*v.
+fn MechanicalPower(force: Float<kg*m/s^2>, velocity: Float<m/s>) -> Float<kg*m^2/s^3> {
+    return force * velocity
+}

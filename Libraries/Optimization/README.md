@@ -1,5 +1,9 @@
 # Optimization
 
+## Relationship to Numerics
+
+`Optimization` is the canonical larger-solver package: multivariate objectives, gradient methods, line search, simplex search, and nonlinear least squares. `Numerics` remains the canonical home for transparent scalar reference methods, including golden-section and Brent bounded one-dimensional minimization. This distinction is compatibility-first; no working API was deleted or renamed.
+
 Mathematical optimization library for Oct. 40 tests, all compiled.
 
 ## Packages

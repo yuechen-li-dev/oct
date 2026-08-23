@@ -1,0 +1,11 @@
+expect error: "function 'LensContract' argument 1 expects Float<m>, got Float<s>"
+
+package Optics
+
+fn LensContract(focalLength: Float<m>) -> Float<m^-1> {
+    return 1.0 / focalLength
+}
+
+fn TimeIsNotFocalLength() -> Float<m^-1> {
+    return LensContract(1.0s)
+}

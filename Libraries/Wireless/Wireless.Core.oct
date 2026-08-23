@@ -1,7 +1,7 @@
 package Wireless
 
 // Legacy API note: frequency/bandwidth values in this file remain dimensionless Float for compatibility.
-// TODO modernization: migrate these Hz-valued quantities to Float<Hz> in the RF/Wireless typed-frequency pass.
+// Preferred typed siblings now live in Wireless.Typed; these names remain compatibility-only.
 // Power values use Float<kg*m^2/s^3*A^2> which is Watts (SI).
 // Distance values use Float<m>.
 // Time values use Float<s>.

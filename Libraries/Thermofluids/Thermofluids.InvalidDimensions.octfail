@@ -1,0 +1,16 @@
+expect error: "function 'ReynoldsContract' argument 4 expects Float<kg/m*s>, got Float<m>"
+
+package Thermofluids
+
+fn ReynoldsContract(
+    density: Float<kg/m^3>,
+    velocity: Float<m/s>,
+    length: Float<m>,
+    viscosity: Float<kg/m/s>
+) -> Float {
+    return density * velocity * length / viscosity
+}
+
+fn LengthCannotStandInForViscosity() -> Float {
+    return ReynoldsContract(1.0kg/m^3, 1.0m/s, 1.0m, 1.0m)
+}

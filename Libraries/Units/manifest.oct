@@ -19,7 +19,7 @@ fn Manifest() -> PackageManifest {
         Name: "Units"
         Version: "0.1.0"
         Authors: ["Claude", "Codex"]
-        Date: "2026-06-15"
+        Date: "2026-08-23"
         Description: "Non-SI unit library for Oct. American customary, British Imperial, spectroscopic, astronomical, and atomic units as nominal record wrappers with explicit SI conversion. SI is the language, non-SI is the library."
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }

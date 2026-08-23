@@ -1,0 +1,63 @@
+package Thermofluids
+
+[Fact]
+fn AirSpecificGasConstantComesFromMolarMass() -> Void {
+    let rAir = SpecificGasConstant(0.0289652kg/mol)!
+    Assert.Near(287.05, rAir / (1.0m^2/s^2/K), 0.1, "dry-air specific gas constant")
+}
+
+[Fact]
+fn IdealGasLawRoundTripsPressureAndVolume() -> Void {
+    let pressure = IdealGasPressure(1.0kg, 287.05m^2/s^2/K, 300.0K, 1.0m^3)!
+    let volume = IdealGasVolume(1.0kg, 287.05m^2/s^2/K, 300.0K, pressure)!
+    Assert.Near(86115.0, pressure / (1.0kg/m/s^2), 0.001, "one kg ideal air in one cubic metre")
+    Assert.Near(1.0, volume / 1.0m^3, 0.000000001, "ideal-gas inverse")
+}
+
+[Fact]
+fn ConstantVolumeAndPressureHeatingUseCvAndCp() -> Void {
+    let deltaU = IdealGasInternalEnergyChange(2.0kg, 718.0m^2/s^2/K, 300.0K, 350.0K)!
+    let deltaH = IdealGasEnthalpyChange(2.0kg, 1005.0m^2/s^2/K, 300.0K, 350.0K)!
+    Assert.Near(71800.0, deltaU / (1.0kg*m^2/s^2), 0.001, "constant-volume ideal-gas energy")
+    Assert.Near(100500.0, deltaH / (1.0kg*m^2/s^2), 0.001, "constant-pressure ideal-gas enthalpy")
+    Assert.True(deltaH > deltaU, "cp exceeds cv for ideal gas")
+}
+
+[Fact]
+fn ClosedSystemFirstLawUsesExplicitSignConvention() -> Void {
+    let heat = ClosedSystemHeatInput(500.0kg*m^2/s^2, 200.0kg*m^2/s^2)
+    Assert.Near(700.0, heat / (1.0kg*m^2/s^2), 0.000000001, "Q in equals delta U plus work out")
+}
+
+[Fact]
+fn HeatCapacityRatioAndIsentropicCompressionCompose() -> Void {
+    let gamma = HeatCapacityRatio(1005.0m^2/s^2/K, 718.0m^2/s^2/K)!
+    let finalTemperature = IsentropicFinalTemperature(300.0K, 10.0, gamma)!
+    Assert.Near(1.39972, gamma, 0.0001, "air gamma from supplied heat capacities")
+    Assert.True(finalTemperature > 570.0K and finalTemperature < 590.0K, "adiabatic compression raises temperature")
+}
+
+[Fact]
+fn CarnotEngineAndRefrigeratorShareReservoirs() -> Void {
+    let efficiency = CarnotEfficiency(600.0K, 300.0K)!
+    let refrigerator = CarnotRefrigeratorCOP(600.0K, 300.0K)!
+    let heatPump = CarnotHeatPumpCOP(600.0K, 300.0K)!
+    Assert.Near(0.5, efficiency, 0.000000001, "Carnot efficiency")
+    Assert.Near(1.0, refrigerator, 0.000000001, "Carnot refrigerator COP")
+    Assert.Near(2.0, heatPump, 0.000000001, "heat-pump COP is refrigerator COP plus one")
+}
+
+[Fact]
+fn PhaseChangeAndSensibleHeatCanBeAdded() -> Void {
+    let sensible = SensibleHeat(1.0kg, 4180.0m^2/s^2/K, 293.0K, 373.0K)!
+    let latent = PhaseChangeEnergy(1.0kg, 2257000.0m^2/s^2)!
+    Assert.True(latent > sensible, "vaporizing water needs more energy than heating it through 80 K")
+}
+
+[Fact]
+fn ThermodynamicsRejectsNonphysicalDomains() -> Void {
+    Assert.Error(IdealGasPressure(1.0kg, 287.0m^2/s^2/K, 0.0K, 1.0m^3), "absolute zero state")
+    Assert.Error(HeatCapacityRatio(700.0m^2/s^2/K, 1000.0m^2/s^2/K), "cp must exceed cv")
+    Assert.Error(CarnotEfficiency(300.0K, 300.0K), "reservoirs need temperature difference")
+    Assert.Error(ThermalEfficiency(120.0kg*m^2/s^2, 100.0kg*m^2/s^2), "efficiency above one")
+}

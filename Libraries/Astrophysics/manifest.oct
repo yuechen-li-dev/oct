@@ -1,0 +1,30 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Astrophysics"
+        Version: "0.1.0"
+        Authors: ["Codex"]
+        Date: "2026-08-23"
+        Description: "Typed Newtonian orbits, stellar radiation, distance, parallax, and redshift relations"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Physics" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Units" VersionRequirement: "0.1.0" }
+        ]
+    }
+}
