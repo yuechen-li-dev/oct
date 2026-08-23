@@ -1,5 +1,9 @@
 package Algorithms
 
+concept SieveLimit = Int {
+    Require(Self >= 2, "a sieve limit must be at least 2")
+}
+
 /// Returns the first value accepted by an exact-typed predicate.
 /// Param values: candidate values in source order.
 /// Param predicate: exact fn(T) -> Bool predicate.
@@ -94,11 +98,7 @@ fn IsPrime(n: Int) -> Bool {
 
 /// Sieve of Eratosthenes returning every prime <= limit.
 /// Complexity is O(n log log n) time and O(n) memory.
-fn PrimesThrough(limit: Int) -> Int[] ! Error {
-    if limit < 2 {
-        return error("PrimesThrough requires limit >= 2")
-    }
-
+fn PrimesThrough(limit: SieveLimit) -> Int[] {
     var prime = [false]
     for i in 1 .. limit + 1 {
         prime = Append(prime, true)

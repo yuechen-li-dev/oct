@@ -33,6 +33,8 @@ Statistics M0 currently targets `Float[]` (dimensionless scalars) only.
 Dimensioned or mixed-dimension arrays are rejected by typing and are covered by invalid tests.
 No function silently drops units.
 
+Shape agreement, non-empty input, individual non-negative weights, and positive total weight remain fallible runtime checks. A refined `Float[]` Concept was evaluated during this pass but is not used because its indexing path does not yet preserve compiled parity.
+
 ## Bounded utility fitting
 
 `Statistics.UtilityFit.oct` adds a 1-to-32-feature weighted linear fit for

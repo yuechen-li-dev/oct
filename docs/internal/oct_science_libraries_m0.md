@@ -28,7 +28,9 @@ The audit covered 50 direct `Libraries/` directories: 154 `.oct` files (includin
 
 ## 4. Modernization strategy
 
-Changes were narrow additions or correctness repairs in established packages. Exact templates removed type duplication only where the algorithm stayed ordinary. Concepts model domain admission. `batch` is used only for independent ordered mapping. `with` configures immutable simulation scenarios. Existing APIs were preserved.
+Changes were narrow additions or correctness repairs in established packages. Exact templates removed type duplication only where the algorithm stayed ordinary. Refined Concepts now own reusable single-value domains; relational and algorithmic failures remain fallible. `batch` is used only for independent ordered mapping. `with` configures immutable simulation scenarios.
+
+A follow-up validation audit found that `StaticAssert` is not a general library-precondition mechanism: it executes only in the compiler-owned artifact/compiled-data static phase. Ordinary `Require(parameter condition)` is also invalid because parameters are outside its bounded proof evaluator. This conflicts with the older `internal/libraries/LIBRARY_MODERNIZATION_M7_RETURN_ERROR_AUDIT.md`, which labels parameter guards as direct `Require` candidates. The current `Language/reference/language/18-concepts.md` is authoritative, so this pass uses refined Concept constructors for reusable scalar domains instead.
 
 ## 5. Algorithms
 
@@ -50,9 +52,9 @@ The existing roots, finite differences, Gauss-Legendre, Simpson/trapezoid, golde
 
 ## 7. Statistics/probability
 
-Statistics gained `WeightedMean` with matching-shape, non-negative-weight, and positive-total-weight errors. Both numerator and denominator use compensated summation to reduce low-order loss.
+Statistics gained `WeightedMean` with non-empty, matching-shape, non-negative-weight, and positive-total-weight errors. Both numerator and denominator use compensated summation to reduce low-order loss. A refined non-empty-array Concept was tested but removed because its generated Go indexing path caused compiled fallback; this parity gap is recorded rather than hidden.
 
-Distributions gained Bernoulli, binomial, and Poisson PMFs plus `LogFactorial`. Binomial coefficients use a symmetric multiplicative form instead of integer factorials; Poisson mass uses a recurrence. Documentation explicitly limits these routines to moderate parameters and points extreme tails toward log-domain algorithms.
+Distributions gained Bernoulli, binomial, and Poisson PMFs plus `LogFactorial`. `Probability`, `PositiveDistributionScale`, and `NonNegativeCount` admit parameters once, making evaluation infallible afterward. Binomial coefficients use a symmetric multiplicative form instead of integer factorials; Poisson mass uses a recurrence. Documentation explicitly limits these routines to moderate parameters and points extreme tails toward log-domain algorithms.
 
 ## 8. Linear algebra
 
@@ -60,7 +62,7 @@ The audit found dot products, norms, matrix products, transpose, trace, LU facto
 
 ## 9. Calculus/ODEs
 
-The scalar ODE progression is now complete for M0: Euler, explicit midpoint/RK2, and classical RK4 each expose step and solve forms. A shared `y' = y` contract proves the expected one-step error ordering `RK4 < midpoint < Euler`. Fixed-step validation and aligned output shapes remain explicit.
+The scalar ODE progression is now complete for M0: Euler, explicit midpoint/RK2, and classical RK4 each expose step and solve forms. `ODEStep` rejects zero while permitting backward integration, and `ODEStepCount` requires at least one step; solver bodies are infallible after admission. A shared `y' = y` contract proves the expected one-step error ordering `RK4 < midpoint < Euler`.
 
 ## 10. Optimization
 
@@ -89,7 +91,7 @@ Geometry polygon coordinates and outputs likewise preserve `m`, `m²`, and `m³`
 | Feature | Library/example | Why it improved clarity/safety |
 | --- | --- | --- |
 | `template` | `Algorithms.CountWhere<T>` alongside `FirstWhere<T>` | One readable algorithm retains exact predicate typing without per-type copies |
-| Concept / `Require` | `Physics.PositiveMass`, `Physics.PositiveDuration`; existing `Geometry.NonNegativeLength` | Scientific domains are named and checked at admission |
+| Concept / `Require` | Algorithms `SieveLimit`; Distributions `Probability`, `PositiveDistributionScale`, `NonNegativeCount`; ODE `ODEStep`/`ODEStepCount`; Simulation positive config fields; Physics and Geometry refinements | Reusable scalar domains are proved statically or checked once at runtime admission |
 | SI units | Physics mechanics and polygon geometry | Dimensional mistakes become type errors and derived units remain visible |
 | `FLOW` | Existing `Numerics.BrentFlow` and Simulation's retained resumable example | State is explicit where iterative control/resumption is genuinely the concept |
 | `batch` | `Statistics.ZScores`, `Simulation.EvaluateParameterSweep` | Independent ordered mapping is stated directly and deterministically |
@@ -97,12 +99,15 @@ Geometry polygon coordinates and outputs likewise preserve `m`, `m²`, and `m³`
 
 No query was introduced: none of the selected bounded algorithms naturally yielded a streaming multi-value continuation, and eager arrays/traces were clearer.
 
+`StaticAssert` was deliberately not used: current Oct restricts it to artifact/compiled-data static evaluation. Cross-argument conditions such as `a < b`, matching array lengths, ordered grids, non-singularity, and convergence cannot be expressed as refined single-value Concepts and remain honest fallible checks.
+
 ## 15. Stub completions
 
 - Simulation's trace-only scaffold became a usable fixed-step runner and trace-analysis library.
 - Algorithms' one-function surface gained a coherent discrete foundation.
 - Physics' constants-only limitation was replaced with a bounded mechanics chapter.
 - Adaptive Simpson's diagnostic fields became truthful rather than placeholder-like.
+- Guard-style sieve, distribution, ODE, and simulation-config domains were replaced by refined Concepts; the algorithms no longer repeat those branches.
 - The unrelated `IO.WriteTable` placeholder remains explicitly documented, satisfying the stub policy without pretending an external transport was in science scope.
 
 ## 16. New discretionary science additions
@@ -125,7 +130,7 @@ No query was introduced: none of the selected bounded algorithms naturally yield
 
 ## 18. Error-model improvements
 
-New fallible paths cover invalid probabilities, negative trial/factorial domains, invalid sieve bounds, malformed interpolation grids, non-positive simulation steps, non-monotonic traces, empty final traces, undefined polygon centroids, and invalid physical Concept admission. Adaptive non-convergence stays an inspectable `Converged = false` result for API compatibility.
+Invalid probabilities/scales/counts, sieve bounds, ODE steps/counts, simulation config values, mass, and duration now fail at refined-Concept admission. Genuine runtime failures remain fallible: malformed or relational grids, mismatched sample shapes, invalid weights, non-monotonic traces, empty final traces, undefined polygon centroids, singular/unsafe numerical states, and non-bracketing roots. Adaptive non-convergence stays an inspectable `Converged = false` result.
 
 ## 19. Test coverage
 
@@ -140,7 +145,7 @@ Repository gates:
 
 ## 20. Interpreter/compiler parity
 
-Each changed package was run individually with `--execution auto`; all positive cases compiled with zero interpreted fallbacks. Each changed package was also run with `--execution interpreted`. The new physics dimension-error contract passed in the invalid corpus. Execution identity was `gooct-cli` throughout.
+Each changed package was run individually with `--execution auto`; all positive cases compiled with zero interpreted fallbacks. Each changed package was also run with `--execution interpreted`. The new physics dimension-error contract passed in the invalid corpus. Execution identity was `gooct-cli` throughout. Two refined-scalar backend boundary gaps (`Pow` and `for` range endpoints) were resolved locally by extracting the admitted base value through ordinary arithmetic. A refined-array attempt produced invalid generated Go and was removed rather than accepted as fallback.
 
 ## 21. LLM readability check
 
@@ -152,7 +157,7 @@ Ambiguities found from isolated files were package import syntax, formal range e
 
 ## 22. API compatibility
 
-All scientific additions are additive. Existing signatures remain. `AppendStep` now rejects non-increasing time, strengthening a trace invariant. Adaptive Simpson preserves its result record but corrects `Iterations` and `Converged` values. No package dependencies or heavyweight external libraries were added. Ordered manifest authors were preserved and touched manifests received current ISO dates.
+Most scientific additions are additive. This follow-up intentionally modernizes several pre-1.0 signatures: `PrimesThrough`, continuous/discrete distribution evaluators, and Euler/midpoint/RK4 now accept refined Concepts and become infallible after admission. Migration is mechanical: remove trailing `!` from statically valid literal calls; for runtime data, construct `SieveLimit(raw)?`, `Probability(raw)?`, `PositiveDistributionScale(raw)?`, `NonNegativeCount(raw)?`, `ODEStep(raw)?`, or `ODEStepCount(raw)?` once before calling. Uniform's relational bounds remain fallible. `AppendStep` now rejects non-increasing time, and Adaptive Simpson corrects diagnostic values without changing its record. No dependencies were added.
 
 ## 23. What was deliberately NOT added
 
@@ -166,6 +171,7 @@ No symbolic algebra, automatic differentiation, sparse/BLAS framework, industria
 - Simulation is scalar and fixed-step; vector state should wait for a separate contract rather than ad-hoc nested arrays.
 - Extreme-tail probability and high-degree interpolation need more stable specialized algorithms if real use cases arise.
 - `IO.WriteTable` remains an explicit transport placeholder.
+- Refined array Concepts with indexing currently fail generated-Go parity even though the reference describes them as supported; non-empty sample/grid refinements should wait for that compiler gap to close.
 
 ## 25. Exactly one next recommendation
 

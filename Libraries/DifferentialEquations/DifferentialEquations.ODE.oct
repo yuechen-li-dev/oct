@@ -1,5 +1,13 @@
 package DifferentialEquations
 
+concept ODEStep = Float {
+    Require(Self != 0.0, "an ODE step must be non-zero")
+}
+
+concept ODEStepCount = Int {
+    Require(Self > 0, "an ODE solve must take at least one step")
+}
+
 record ODESolution {
     Times: Float[]
     Values: Float[]
@@ -9,14 +17,11 @@ fn f(t: Float, y: Float) -> Float {
     return y
 }
 
-fn EulerStep(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: Float) -> Float ! Error {
-    let ok = ValidateStepInputs(dt)?
+fn EulerStep(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: ODEStep) -> Float {
     return y + dt * f(t, y)
 }
 
-fn EulerSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, steps: Int) -> ODESolution ! Error {
-    let ok = ValidateSolveInputs(dt, steps)?
-
+fn EulerSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: ODEStep, steps: ODEStepCount) -> ODESolution {
     var times = [t0]
     var values = [y0]
     var t = t0
@@ -24,7 +29,7 @@ fn EulerSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, ste
     var i = 0
 
     while i < steps {
-        y = EulerStep(f, t, y, dt)?
+        y = EulerStep(f, t, y, dt)
         t = t + dt
         times = Append(times, t)
         values = Append(values, y)
@@ -39,23 +44,21 @@ fn EulerSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, ste
 
 /// Explicit midpoint (RK2) step.
 /// Sampling the slope at the estimated half-step cancels Euler's leading error term.
-fn MidpointStep(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: Float) -> Float ! Error {
-    let ok = ValidateStepInputs(dt)?
+fn MidpointStep(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: ODEStep) -> Float {
     let halfDt = dt / 2.0
     let midpointY = y + halfDt * f(t, y)
     return y + dt * f(t + halfDt, midpointY)
 }
 
 /// Fixed-step midpoint/RK2 solve for the scalar initial-value problem y' = f(t, y).
-fn MidpointSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, steps: Int) -> ODESolution ! Error {
-    let ok = ValidateSolveInputs(dt, steps)?
-
+fn MidpointSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: ODEStep, steps: ODEStepCount) -> ODESolution {
     var times = [t0]
     var values = [y0]
     var t = t0
     var y = y0
-    for i in 0 .. steps {
-        y = MidpointStep(f, t, y, dt)?
+    let stepCount = steps + 0
+    for i in 0 .. stepCount {
+        y = MidpointStep(f, t, y, dt)
         t = t + dt
         times = Append(times, t)
         values = Append(values, y)
@@ -67,9 +70,7 @@ fn MidpointSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, 
     }
 }
 
-fn RK4Step(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: Float) -> Float ! Error {
-    let ok = ValidateStepInputs(dt)?
-
+fn RK4Step(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: ODEStep) -> Float {
     let halfDt = dt / 2.0
     let k1 = f(t, y)
     let k2 = f(t + halfDt, y + halfDt * k1)
@@ -79,9 +80,7 @@ fn RK4Step(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: Float) -> Float
     return y + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 }
 
-fn RK4Solve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, steps: Int) -> ODESolution ! Error {
-    let ok = ValidateSolveInputs(dt, steps)?
-
+fn RK4Solve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: ODEStep, steps: ODEStepCount) -> ODESolution {
     var times = [t0]
     var values = [y0]
     var t = t0
@@ -89,7 +88,7 @@ fn RK4Solve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, steps
     var i = 0
 
     while i < steps {
-        y = RK4Step(f, t, y, dt)?
+        y = RK4Step(f, t, y, dt)
         t = t + dt
         times = Append(times, t)
         values = Append(values, y)
@@ -103,19 +102,12 @@ fn RK4Solve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, steps
 }
 
 fn ValidateStepInputs(dt: Float) -> Bool ! Error {
-    if dt == 0.0 {
-        return error("ode step requires dt != 0")
-    }
-
+    let admitted = ODEStep(dt)?
     return true
 }
 
 fn ValidateSolveInputs(dt: Float, steps: Int) -> Bool ! Error {
-    let ok = ValidateStepInputs(dt)?
-
-    if steps <= 0 {
-        return error("ode solve requires steps > 0")
-    }
-
+    let admittedStep = ODEStep(dt)?
+    let admittedCount = ODEStepCount(steps)?
     return true
 }

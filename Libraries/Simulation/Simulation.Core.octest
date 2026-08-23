@@ -1,5 +1,8 @@
 package Simulation
 
+fn InvalidRuntimeSimulationStep() -> Float { return 0.0 }
+fn InvalidRuntimeSimulationStepCount() -> Int { return 0 }
+
 [Fact]
 fn InitializeTraceCreatesSingleSample() -> Void {
     let trace = InitializeTrace(0.0, 4.0, 2.0)
@@ -119,8 +122,8 @@ fn ParameterSweepUsesOrderedDeterministicBatchMapping() -> Void {
 
 [Fact]
 fn RunFixedStepAndAppendRejectInvalidProgression() -> Void {
-    let invalid = FixedStepConfig { InitialTime: 0.0 Dt: 0.0 Steps: 2 }
-    Assert.Error(RunFixedStep(DecayEulerTransition, IdentityObservation, 1.0, invalid), "zero dt must fail")
+    Assert.Error(PositiveSimulationStep(InvalidRuntimeSimulationStep()), "zero dt must fail at config admission")
+    Assert.Error(PositiveSimulationStepCount(InvalidRuntimeSimulationStepCount()), "zero step count must fail at config admission")
 
     let trace = InitializeTrace(1.0, 2.0, 2.0)
     let repeated = SimulationStepResult { Time: 1.0 State: 1.0 Output: 1.0 }

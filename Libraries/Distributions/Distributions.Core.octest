@@ -1,37 +1,39 @@
 package Distributions
 
+fn InvalidRuntimeProbability() -> Float { return 1.1 }
+fn InvalidRuntimeScale() -> Float { return 0.0 }
+fn InvalidRuntimeCount() -> Int { return -1 }
+
 [Fact]
 fn NormalPdfAtMeanAndSymmetry() -> Void {
     let sigma = 2.0
     let mean = 3.0
 
     let expectedAtMean = 1.0 / (sigma * Sqrt(2.0 * Pi()))
-    Assert.Near(expectedAtMean, NormalPdf(mean, mean, sigma)!, 0.000001, "normal pdf at mean")
+    Assert.Near(expectedAtMean, NormalPdf(mean, mean, sigma), 0.000001, "normal pdf at mean")
 
-    let left = NormalPdf(mean - 1.5, mean, sigma)!
-    let right = NormalPdf(mean + 1.5, mean, sigma)!
+    let left = NormalPdf(mean - 1.5, mean, sigma)
+    let right = NormalPdf(mean + 1.5, mean, sigma)
     Assert.Near(left, right, 0.000001, "normal pdf symmetry around mean")
 }
 
 [Fact]
 fn NormalPdfAndCdfRejectInvalidSigma() -> Void {
-    Assert.Error(NormalPdf(0.0, 0.0, 0.0), "normal pdf sigma <= 0 must fail")
-
-    Assert.Error(NormalCdf(0.0, 0.0, 0.0 - 1.0), "normal cdf sigma <= 0 must fail")
+    Assert.Error(PositiveDistributionScale(InvalidRuntimeScale()), "normal scale must be positive")
 }
 
 [Fact]
 fn NormalCdfCenterMonotonicAndTailSanity() -> Void {
-    let center = NormalCdf(0.0, 0.0, 1.0)!
+    let center = NormalCdf(0.0, 0.0, 1.0)
     Assert.Near(0.5, center, 0.000001, "normal cdf at mean should be 0.5")
 
-    let low = NormalCdf(0.0 - 1.0, 0.0, 1.0)!
-    let high = NormalCdf(1.0, 0.0, 1.0)!
+    let low = NormalCdf(0.0 - 1.0, 0.0, 1.0)
+    let high = NormalCdf(1.0, 0.0, 1.0)
     Assert.True(low < center, "normal cdf should be monotonic (left < center)")
     Assert.True(center < high, "normal cdf should be monotonic (center < right)")
 
-    let farLeft = NormalCdf(0.0 - 6.0, 0.0, 1.0)!
-    let farRight = NormalCdf(6.0, 0.0, 1.0)!
+    let farLeft = NormalCdf(0.0 - 6.0, 0.0, 1.0)
+    let farRight = NormalCdf(6.0, 0.0, 1.0)
     Assert.True(farLeft < 0.000001, "left tail should be near zero")
     Assert.True(farRight > 0.999999, "right tail should be near one")
 }
@@ -61,55 +63,51 @@ fn UniformCdfCoversDomainAndInvalidRange() -> Void {
 
 [Fact]
 fn ExponentialFunctionsHandleSupportAndInvalidLambda() -> Void {
-    Assert.Near(2.0, ExponentialPdf(0.0, 2.0)!, 0.000001, "exponential pdf at x=0")
-    Assert.Near(2.0 * Exp(0.0 - 2.0), ExponentialPdf(1.0, 2.0)!, 0.000001, "exponential pdf for x>0")
-    Assert.Near(0.0, ExponentialPdf(0.0 - 0.1, 2.0)!, 0.000001, "exponential pdf for x<0 should be zero")
+    Assert.Near(2.0, ExponentialPdf(0.0, 2.0), 0.000001, "exponential pdf at x=0")
+    Assert.Near(2.0 * Exp(0.0 - 2.0), ExponentialPdf(1.0, 2.0), 0.000001, "exponential pdf for x>0")
+    Assert.Near(0.0, ExponentialPdf(0.0 - 0.1, 2.0), 0.000001, "exponential pdf for x<0 should be zero")
 
-    Assert.Near(0.0, ExponentialCdf(0.0 - 0.1, 2.0)!, 0.000001, "exponential cdf for x<0 should be zero")
-    Assert.Near(0.0, ExponentialCdf(0.0, 2.0)!, 0.000001, "exponential cdf at x=0")
-    Assert.Near(1.0 - Exp(0.0 - 2.0), ExponentialCdf(1.0, 2.0)!, 0.000001, "exponential cdf for x>0")
-
-    Assert.Error(ExponentialPdf(1.0, 0.0), "exponential pdf lambda <= 0 must fail")
-
-    Assert.Error(ExponentialCdf(1.0, 0.0 - 1.0), "exponential cdf lambda <= 0 must fail")
+    Assert.Near(0.0, ExponentialCdf(0.0 - 0.1, 2.0), 0.000001, "exponential cdf for x<0 should be zero")
+    Assert.Near(0.0, ExponentialCdf(0.0, 2.0), 0.000001, "exponential cdf at x=0")
+    Assert.Near(1.0 - Exp(0.0 - 2.0), ExponentialCdf(1.0, 2.0), 0.000001, "exponential cdf for x>0")
 }
 
 [Fact]
 fn DistributionWorkflowComposesInExpressionChain() -> Void {
-    let centered = NormalPdf(0.75, 0.0, 1.0)!
+    let centered = NormalPdf(0.75, 0.0, 1.0)
     let gate = UniformCdf(0.75, 0.0, 1.0)!
-    let weighted = centered * gate + ExponentialCdf(0.75, 1.5)!
+    let weighted = centered * gate + ExponentialCdf(0.75, 1.5)
 
     Assert.True(weighted > 0.0, "distribution evaluations should compose deterministically")
 }
 
 [Fact]
 fn BernoulliPmfCoversSupportAndProbabilityContract() -> Void {
-    Assert.Near(0.7, BernoulliPmf(0, 0.3)!, 0.0000001, "zero outcome has probability 1-p")
-    Assert.Near(0.3, BernoulliPmf(1, 0.3)!, 0.0000001, "one outcome has probability p")
-    Assert.Near(0.0, BernoulliPmf(2, 0.3)!, 0.0000001, "outside support has zero mass")
-    Assert.Error(BernoulliPmf(1, 1.1), "probability above one must fail")
+    Assert.Near(0.7, BernoulliPmf(0, 0.3), 0.0000001, "zero outcome has probability 1-p")
+    Assert.Near(0.3, BernoulliPmf(1, 0.3), 0.0000001, "one outcome has probability p")
+    Assert.Near(0.0, BernoulliPmf(2, 0.3), 0.0000001, "outside support has zero mass")
+    Assert.Error(Probability(InvalidRuntimeProbability()), "probability above one must fail at admission")
 }
 
 [Fact]
 fn BinomialPmfMatchesExactTextbookCases() -> Void {
-    Assert.Near(0.3125, BinomialPmf(2, 5, 0.5)!, 0.0000001, "five fair trials have C(5,2)/32 mass")
-    Assert.Near(1.0, BinomialPmf(0, 0, 0.4)!, 0.0000001, "zero trials produce zero successes")
-    Assert.Near(0.0, BinomialPmf(6, 5, 0.5)!, 0.0000001, "outside support has zero mass")
-    Assert.Error(BinomialPmf(0, -1, 0.5), "negative trial count must fail")
+    Assert.Near(0.3125, BinomialPmf(2, 5, 0.5), 0.0000001, "five fair trials have C(5,2)/32 mass")
+    Assert.Near(1.0, BinomialPmf(0, 0, 0.4), 0.0000001, "zero trials produce zero successes")
+    Assert.Near(0.0, BinomialPmf(6, 5, 0.5), 0.0000001, "outside support has zero mass")
+    Assert.Error(NonNegativeCount(InvalidRuntimeCount()), "negative trial count must fail at admission")
 
     var total = 0.0
     for k in 0 .. 7 {
-        total = total + BinomialPmf(k, 6, 0.25)!
+        total = total + BinomialPmf(k, 6, 0.25)
     }
     Assert.Near(1.0, total, 0.0000001, "finite binomial support should sum to one")
 }
 
 [Fact]
 fn PoissonPmfAndLogFactorialMatchAnalyticCases() -> Void {
-    Assert.Near(Exp(-2.0) * 2.0, PoissonPmf(1, 2.0)!, 0.0000001, "P(X=1) should equal e^-lambda lambda")
-    Assert.Near(Ln(120.0), LogFactorial(5)!, 0.0000001, "log(5!) should equal log(120)")
-    Assert.Near(0.0, PoissonPmf(-1, 2.0)!, 0.0000001, "negative count is outside support")
-    Assert.Error(PoissonPmf(1, 0.0), "lambda must be positive")
-    Assert.Error(LogFactorial(-1), "negative factorial domain must fail")
+    Assert.Near(Exp(-2.0) * 2.0, PoissonPmf(1, 2.0), 0.0000001, "P(X=1) should equal e^-lambda lambda")
+    Assert.Near(Ln(120.0), LogFactorial(5), 0.0000001, "log(5!) should equal log(120)")
+    Assert.Near(0.0, PoissonPmf(-1, 2.0), 0.0000001, "negative count is outside support")
+    Assert.Error(PositiveDistributionScale(InvalidRuntimeScale()), "lambda must be positive at admission")
+    Assert.Error(NonNegativeCount(InvalidRuntimeCount()), "negative factorial domain must fail at admission")
 }

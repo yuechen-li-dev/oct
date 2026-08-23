@@ -1,19 +1,26 @@
 package Distributions
 
-fn NormalPdf(x: Float, mean: Float, sigma: Float) -> Float ! Error {
-    if sigma <= 0.0 {
-        return error("normal pdf requires sigma > 0")
-    }
+concept Probability = Float {
+    Require(Self >= 0.0, "probability must be at least 0")
+    Require(Self <= 1.0, "probability must be at most 1")
+}
+
+concept PositiveDistributionScale = Float {
+    Require(Self > 0.0, "distribution scale must be positive")
+}
+
+concept NonNegativeCount = Int {
+    Require(Self >= 0, "count must be non-negative")
+}
+
+fn NormalPdf(x: Float, mean: Float, sigma: PositiveDistributionScale) -> Float {
 
     let z = (x - mean) / sigma
     let norm = sigma * Sqrt(2.0 * Pi())
     return Exp((0.0 - 0.5) * z * z) / norm
 }
 
-fn NormalCdf(x: Float, mean: Float, sigma: Float) -> Float ! Error {
-    if sigma <= 0.0 {
-        return error("normal cdf requires sigma > 0")
-    }
+fn NormalCdf(x: Float, mean: Float, sigma: PositiveDistributionScale) -> Float {
 
     let z = (x - mean) / sigma
     let scaled = z / Sqrt(2.0)
@@ -48,11 +55,7 @@ fn UniformCdf(x: Float, a: Float, b: Float) -> Float ! Error {
     return (x - a) / (b - a)
 }
 
-fn ExponentialPdf(x: Float, lambda: Float) -> Float ! Error {
-    if lambda <= 0.0 {
-        return error("exponential pdf requires lambda > 0")
-    }
-
+fn ExponentialPdf(x: Float, lambda: PositiveDistributionScale) -> Float {
     if x < 0.0 {
         return 0.0
     }
@@ -60,11 +63,7 @@ fn ExponentialPdf(x: Float, lambda: Float) -> Float ! Error {
     return lambda * Exp(0.0 - lambda * x)
 }
 
-fn ExponentialCdf(x: Float, lambda: Float) -> Float ! Error {
-    if lambda <= 0.0 {
-        return error("exponential cdf requires lambda > 0")
-    }
-
+fn ExponentialCdf(x: Float, lambda: PositiveDistributionScale) -> Float {
     if x < 0.0 {
         return 0.0
     }
@@ -73,8 +72,7 @@ fn ExponentialCdf(x: Float, lambda: Float) -> Float ! Error {
 }
 
 /// Bernoulli probability mass function for k in {0, 1}.
-fn BernoulliPmf(k: Int, probability: Float) -> Float ! Error {
-    let ok = ValidateProbability(probability)?
+fn BernoulliPmf(k: Int, probability: Probability) -> Float {
     if k == 0 {
         return 1.0 - probability
     }
@@ -87,35 +85,30 @@ fn BernoulliPmf(k: Int, probability: Float) -> Float ! Error {
 /// Binomial probability mass for k successes in n independent trials.
 /// The multiplicative coefficient avoids constructing factorials explicitly.
 /// Suitable for moderate n; extreme-tail work should use a log-domain implementation.
-fn BinomialPmf(k: Int, n: Int, probability: Float) -> Float ! Error {
-    let ok = ValidateProbability(probability)?
-    if n < 0 {
-        return error("binomial pmf requires n >= 0")
-    }
-    if k < 0 or k > n {
+fn BinomialPmf(k: Int, n: NonNegativeCount, probability: Probability) -> Float {
+    let p = probability + 0.0
+    let trials = n + 0
+    if k < 0 or k > trials {
         return 0.0
     }
-    if probability == 0.0 {
+    if p == 0.0 {
         return if k == 0 { 1.0 } else { 0.0 }
     }
-    if probability == 1.0 {
-        return if k == n { 1.0 } else { 0.0 }
+    if p == 1.0 {
+        return if k == trials { 1.0 } else { 0.0 }
     }
 
-    let symmetricK = if k < n - k { k } else { n - k }
+    let symmetricK = if k < trials - k { k } else { trials - k }
     var coefficient = 1.0
     for i in 1 .. symmetricK + 1 {
-        coefficient = coefficient * Float(n - symmetricK + i) / Float(i)
+        coefficient = coefficient * Float(trials - symmetricK + i) / Float(i)
     }
-    return coefficient * Pow(probability, Float(k)) * Pow(1.0 - probability, Float(n - k))
+    return coefficient * Pow(p, Float(k)) * Pow(1.0 - p, Float(trials - k))
 }
 
 /// Poisson probability mass for k events at positive expected count lambda.
 /// The recurrence exp(-lambda) * product(lambda/i) avoids factorial overflow.
-fn PoissonPmf(k: Int, lambda: Float) -> Float ! Error {
-    if lambda <= 0.0 {
-        return error("poisson pmf requires lambda > 0")
-    }
+fn PoissonPmf(k: Int, lambda: PositiveDistributionScale) -> Float {
     if k < 0 {
         return 0.0
     }
@@ -128,22 +121,12 @@ fn PoissonPmf(k: Int, lambda: Float) -> Float ! Error {
 }
 
 /// log(n!) computed as a sum of logarithms, avoiding factorial overflow.
-fn LogFactorial(n: Int) -> Float ! Error {
-    if n < 0 {
-        return error("log factorial requires n >= 0")
-    }
+fn LogFactorial(n: NonNegativeCount) -> Float {
     var result = 0.0
     for i in 2 .. n + 1 {
         result = result + Ln(Float(i))
     }
     return result
-}
-
-fn ValidateProbability(probability: Float) -> Bool ! Error {
-    if probability < 0.0 or probability > 1.0 {
-        return error("probability must be in [0, 1]")
-    }
-    return true
 }
 
 fn ErfApprox(value: Float) -> Float {

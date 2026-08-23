@@ -1,5 +1,13 @@
 package Simulation
 
+concept PositiveSimulationStep = Float {
+    Require(Self > 0.0, "a simulation step must be positive")
+}
+
+concept PositiveSimulationStepCount = Int {
+    Require(Self > 0, "a simulation must take at least one step")
+}
+
 record SimulationStepResult {
     Time: Float
     State: Float
@@ -16,19 +24,13 @@ record SimulationTrace {
 /// Keeping configuration as data makes parameter sweeps inspectable and `with`-friendly.
 record FixedStepConfig {
     InitialTime: Float
-    Dt: Float
-    Steps: Int
+    Dt: PositiveSimulationStep
+    Steps: PositiveSimulationStepCount
 }
 
 fn ValidateFixedStepSetup(dt: Float, steps: Int) -> Bool ! Error {
-    if dt <= 0.0 {
-        return error("simulation requires dt > 0")
-    }
-
-    if steps <= 0 {
-        return error("simulation requires steps > 0")
-    }
-
+    let admittedStep = PositiveSimulationStep(dt)?
+    let admittedCount = PositiveSimulationStepCount(steps)?
     return true
 }
 
@@ -63,12 +65,11 @@ fn RunFixedStep(
     initialState: Float,
     config: FixedStepConfig
 ) -> SimulationTrace ! Error {
-    let valid = ValidateFixedStepSetup(config.Dt, config.Steps)?
-
     var time = config.InitialTime
     var state = initialState
     var trace = InitializeTrace(time, state, observe(time, state))
-    for i in 0 .. config.Steps {
+    let stepCount = config.Steps + 0
+    for i in 0 .. stepCount {
         let nextState = transition(time, state, config.Dt)
         time = time + config.Dt
         state = nextState

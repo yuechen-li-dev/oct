@@ -6,12 +6,12 @@
 
 ## Solver surface
 
-- `EulerStep(f, t, y, dt) -> Float ! Error`
-- `EulerSolve(f, t0, y0, dt, steps) -> ODESolution ! Error`
-- `MidpointStep(f, t, y, dt) -> Float ! Error`
-- `MidpointSolve(f, t0, y0, dt, steps) -> ODESolution ! Error`
-- `RK4Step(f, t, y, dt) -> Float ! Error`
-- `RK4Solve(f, t0, y0, dt, steps) -> ODESolution ! Error`
+- `EulerStep(f, t, y, dt: ODEStep) -> Float`
+- `EulerSolve(f, t0, y0, dt: ODEStep, steps: ODEStepCount) -> ODESolution`
+- `MidpointStep(f, t, y, dt: ODEStep) -> Float`
+- `MidpointSolve(f, t0, y0, dt: ODEStep, steps: ODEStepCount) -> ODESolution`
+- `RK4Step(f, t, y, dt: ODEStep) -> Float`
+- `RK4Solve(f, t0, y0, dt: ODEStep, steps: ODEStepCount) -> ODESolution`
 
 ## State/time scope
 
@@ -41,13 +41,15 @@ For `y' = y`, `y(0) = 1`, one step of size `0.2` demonstrates the expected accur
 ```oct
 fn Growth(t: Float, y: Float) -> Float { return y }
 
-let euler = EulerStep(Growth, 0.0, 1.0, 0.2)!
-let midpoint = MidpointStep(Growth, 0.0, 1.0, 0.2)!
-let rk4 = RK4Step(Growth, 0.0, 1.0, 0.2)!
+let euler = EulerStep(Growth, 0.0, 1.0, 0.2)
+let midpoint = MidpointStep(Growth, 0.0, 1.0, 0.2)
+let rk4 = RK4Step(Growth, 0.0, 1.0, 0.2)
 // |rk4-exp(0.2)| < |midpoint-exp(0.2)| < |euler-exp(0.2)|
 ```
 
 Euler is first order, explicit midpoint/RK2 is second order, and classical RK4 is fourth order. These are fixed-step teaching solvers, not stiff or adaptive production solvers.
+
+`ODEStep` permits forward or backward integration but rejects zero. `ODEStepCount` requires at least one step. Literal arguments are statically proved; unknown runtime values use their checked Concept constructors. Solver bodies are therefore infallible after domain admission.
 
 ## Non-goals (M0)
 

@@ -14,6 +14,10 @@ fn IsEvenValue(value: Int) -> Bool {
     return value % 2 == 0
 }
 
+fn InvalidRuntimeSieveLimit() -> Int {
+    return 1
+}
+
 [Fact]
 fn CountWhereSpecializesForExactPredicateType() -> Void {
     Assert.Equal(3, CountWhere<Int>([1, 2, 4, 7, 8], IsEvenValue), "three inputs should be even")
@@ -44,9 +48,9 @@ fn PrimeAlgorithmsMatchSmallExactCases() -> Void {
     Assert.False(IsPrime(49), "square composite should be rejected")
     Assert.True(IsPrime(97), "97 is prime")
 
-    let primes = PrimesThrough(20)!
+    let primes = PrimesThrough(20)
     Assert.Equal(8, Len(primes), "there are eight primes through twenty")
     Assert.Equal(2, primes[0], "sieve should start at two")
     Assert.Equal(19, primes[7], "sieve should include upper-range prime")
-    Assert.Error(PrimesThrough(1), "sieve requires a meaningful inclusive limit")
+    Assert.Error(SieveLimit(InvalidRuntimeSieveLimit()), "sieve requires a meaningful inclusive limit")
 }

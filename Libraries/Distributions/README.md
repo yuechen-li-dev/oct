@@ -7,21 +7,21 @@ It does **not** provide sampling, inference, fitting, significance tests, or any
 
 ## Function surface
 
-- `NormalPdf(x: Float, mean: Float, sigma: Float) -> Float ! Error`
-- `NormalCdf(x: Float, mean: Float, sigma: Float) -> Float ! Error`
+- `NormalPdf(x: Float, mean: Float, sigma: PositiveDistributionScale) -> Float`
+- `NormalCdf(x: Float, mean: Float, sigma: PositiveDistributionScale) -> Float`
 - `UniformPdf(x: Float, a: Float, b: Float) -> Float ! Error`
 - `UniformCdf(x: Float, a: Float, b: Float) -> Float ! Error`
-- `ExponentialPdf(x: Float, lambda: Float) -> Float ! Error`
-- `ExponentialCdf(x: Float, lambda: Float) -> Float ! Error`
-- `BernoulliPmf(k: Int, probability: Float) -> Float ! Error`
-- `BinomialPmf(k: Int, n: Int, probability: Float) -> Float ! Error`
-- `PoissonPmf(k: Int, lambda: Float) -> Float ! Error`
-- `LogFactorial(n: Int) -> Float ! Error`
+- `ExponentialPdf(x: Float, lambda: PositiveDistributionScale) -> Float`
+- `ExponentialCdf(x: Float, lambda: PositiveDistributionScale) -> Float`
+- `BernoulliPmf(k: Int, probability: Probability) -> Float`
+- `BinomialPmf(k: Int, n: NonNegativeCount, probability: Probability) -> Float`
+- `PoissonPmf(k: Int, lambda: PositiveDistributionScale) -> Float`
+- `LogFactorial(n: NonNegativeCount) -> Float`
 
 ## Parameter and domain policy
 
 - M0 is **dimensionless `Float` inputs only**.
-- Invalid distribution parameters reject with `Error`:
+- Invalid distribution parameters reject during refined-Concept admission (statically when known, fallibly when constructed from runtime data):
   - `sigma <= 0` for Normal
   - `a >= b` for Uniform
   - `lambda <= 0` for Exponential
@@ -49,7 +49,9 @@ For five fair independent trials, exactly two successes have probability
 `C(5,2) / 2^5 = 0.3125`:
 
 ```oct
-let mass = BinomialPmf(2, 5, 0.5)!
+let mass = BinomialPmf(2, 5, 0.5)
 ```
 
 Binomial coefficients are accumulated multiplicatively rather than through integer factorials. `PoissonPmf` uses the recurrence `exp(-lambda) * product(lambda/i)`. Both are reference-quality routines for moderate parameters; extreme tails need log-domain distribution algorithms.
+
+`Probability`, `PositiveDistributionScale`, and `NonNegativeCount` are refined Concepts. Literal arguments are proved at compile time; unknown runtime values use explicit checked admission such as `Probability(raw)?`. Distribution evaluation is infallible once its parameters have been admitted. Relational bounds such as Uniform's `a < b` remain fallible because they relate two independent values rather than defining either value alone.

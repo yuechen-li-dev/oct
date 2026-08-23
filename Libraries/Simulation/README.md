@@ -18,7 +18,7 @@
 
 - `SimulationStepResult { Time, State, Output }`
 - `SimulationTrace { Times, States, Outputs }`
-- `FixedStepConfig { InitialTime, Dt, Steps }`
+- `FixedStepConfig { InitialTime, Dt: PositiveSimulationStep, Steps: PositiveSimulationStepCount }`
 
 ## API surface
 
@@ -46,6 +46,8 @@ let trace = RunFixedStep(Decay, Observe, 1.0, refined)!
 ```
 
 Ordinary bounded fixed-step models should use `RunFixedStep`: the transition equation stays visible and the trace is deterministic. Use `flow` only when resumability, turns, or explicit state-machine progression is itself part of the scientific model. This separates numerical stepping from behavioral orchestration.
+
+The config's refined Concepts reject non-positive time steps and step counts at compile time when known, or at one explicit checked-construction boundary when values arrive at runtime. Trace shape, monotonic recorded times, and non-empty final/integral operations remain fallible because they are relational runtime invariants.
 
 ## Non-goals
 

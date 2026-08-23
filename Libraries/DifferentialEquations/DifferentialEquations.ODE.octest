@@ -1,12 +1,15 @@
 package DifferentialEquations
 
+fn InvalidRuntimeODEStep() -> Float { return 0.0 }
+fn InvalidRuntimeODEStepCount() -> Int { return 0 }
+
 fn DerivativeIdentity(t: Float, y: Float) -> Float {
     return y
 }
 
 [Fact]
 fn EulerStepMatchesExplicitFormula() -> Void {
-    let next = EulerStep(DerivativeIdentity, 0.0, 4.0, 0.25)!
+    let next = EulerStep(DerivativeIdentity, 0.0, 4.0, 0.25)
     Assert.Near(5.0, next, 0.000001, "euler step should compute y + dt * f(t,y)")
 }
 
@@ -15,8 +18,8 @@ fn RK4StepImprovesAccuracyOnExponentialGrowth() -> Void {
     let dt = 0.1
     let exact = Exp(dt)
 
-    let euler = EulerStep(DerivativeIdentity, 0.0, 1.0, dt)!
-    let rk4 = RK4Step(DerivativeIdentity, 0.0, 1.0, dt)!
+    let euler = EulerStep(DerivativeIdentity, 0.0, 1.0, dt)
+    let rk4 = RK4Step(DerivativeIdentity, 0.0, 1.0, dt)
 
     let eulerError = Abs(exact - euler)
     let rk4Error = Abs(exact - rk4)
@@ -28,9 +31,9 @@ fn RK4StepImprovesAccuracyOnExponentialGrowth() -> Void {
 fn EulerMidpointAndRK4FormAccuracyProgression() -> Void {
     let dt = 0.2
     let exact = Exp(dt)
-    let euler = EulerStep(DerivativeIdentity, 0.0, 1.0, dt)!
-    let midpoint = MidpointStep(DerivativeIdentity, 0.0, 1.0, dt)!
-    let rk4 = RK4Step(DerivativeIdentity, 0.0, 1.0, dt)!
+    let euler = EulerStep(DerivativeIdentity, 0.0, 1.0, dt)
+    let midpoint = MidpointStep(DerivativeIdentity, 0.0, 1.0, dt)
+    let rk4 = RK4Step(DerivativeIdentity, 0.0, 1.0, dt)
 
     Assert.True(Abs(exact - midpoint) < Abs(exact - euler), "midpoint should improve on Euler for y'=y")
     Assert.True(Abs(exact - rk4) < Abs(exact - midpoint), "RK4 should improve on midpoint for y'=y")
@@ -38,13 +41,13 @@ fn EulerMidpointAndRK4FormAccuracyProgression() -> Void {
 
 [Fact]
 fn MidpointSolveReturnsExpectedGridAndRejectsInvalidSetup() -> Void {
-    let solution = MidpointSolve(DerivativeIdentity, 1.0, 2.0, 0.25, 4)!
+    let solution = MidpointSolve(DerivativeIdentity, 1.0, 2.0, 0.25, 4)
     Assert.Equal(5, Len(solution.Times), "solution should include initial state")
     Assert.Equal(5, Len(solution.Values), "solution values should align with times")
     Assert.Near(2.0, solution.Times[4], 0.000001, "four steps should reach t=2")
     Assert.True(solution.Values[4] > solution.Values[0], "positive exponential slope should grow")
-    Assert.Error(MidpointStep(DerivativeIdentity, 0.0, 1.0, 0.0), "zero step must fail")
-    Assert.Error(MidpointSolve(DerivativeIdentity, 0.0, 1.0, 0.1, 0), "non-positive step count must fail")
+    Assert.Error(ODEStep(InvalidRuntimeODEStep()), "zero step must fail at admission")
+    Assert.Error(ODEStepCount(InvalidRuntimeODEStepCount()), "non-positive step count must fail at admission")
 }
 
 [Fact]
@@ -54,8 +57,8 @@ fn EulerAndRK4SolveReturnExpectedShapeAndBoundaries() -> Void {
     let t0 = 1.5
     let y0 = 3.0
 
-    let euler = EulerSolve(DerivativeIdentity, t0, y0, dt, steps)!
-    let rk4 = RK4Solve(DerivativeIdentity, t0, y0, dt, steps)!
+    let euler = EulerSolve(DerivativeIdentity, t0, y0, dt, steps)
+    let rk4 = RK4Solve(DerivativeIdentity, t0, y0, dt, steps)
 
     Assert.Equal(steps + 1, Len(euler.Times), "euler times length should include initial condition")
     Assert.Equal(steps + 1, Len(euler.Values), "euler values length should include initial condition")
@@ -85,8 +88,8 @@ fn RK4SolveBeatsEulerOnSameGridForYPrimeEqualsY() -> Void {
     let steps = 10
     let exact = Exp(dt * steps)
 
-    let euler = EulerSolve(DerivativeIdentity, 0.0, 1.0, dt, steps)!
-    let rk4 = RK4Solve(DerivativeIdentity, 0.0, 1.0, dt, steps)!
+    let euler = EulerSolve(DerivativeIdentity, 0.0, 1.0, dt, steps)
+    let rk4 = RK4Solve(DerivativeIdentity, 0.0, 1.0, dt, steps)
 
     let eulerLast = euler.Values[steps]
     let rk4Last = rk4.Values[steps]
@@ -100,18 +103,13 @@ fn RK4SolveBeatsEulerOnSameGridForYPrimeEqualsY() -> Void {
 
 [Fact]
 fn StepAndSolveRejectInvalidDtAndSteps() -> Void {
-    Assert.Error(EulerStep(DerivativeIdentity, 0.0, 1.0, 0.0), "euler step with dt=0 must fail")
-
-    Assert.Error(RK4Step(DerivativeIdentity, 0.0, 1.0, 0.0), "rk4 step with dt=0 must fail")
-
-    Assert.Error(EulerSolve(DerivativeIdentity, 0.0, 1.0, 0.0, 1), "euler solve with dt=0 must fail")
-
-    Assert.Error(RK4Solve(DerivativeIdentity, 0.0, 1.0, 0.1, 0), "rk4 solve with steps<=0 must fail")
+    Assert.Error(ValidateStepInputs(InvalidRuntimeODEStep()), "shared ODE step Concept rejects zero")
+    Assert.Error(ValidateSolveInputs(0.1, InvalidRuntimeODEStepCount()), "shared ODE step-count Concept rejects zero")
 }
 
 [Fact]
 fn SolverOutputComposesInExpressionChain() -> Void {
-    let solution = RK4Solve(DerivativeIdentity, 0.0, 1.0, 0.25, 4)!
+    let solution = RK4Solve(DerivativeIdentity, 0.0, 1.0, 0.25, 4)
     let finalValue = solution.Values[Len(solution.Values) - 1]
     let normalized = finalValue / solution.Times[Len(solution.Times) - 1]
 

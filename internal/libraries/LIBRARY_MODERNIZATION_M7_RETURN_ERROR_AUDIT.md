@@ -1,5 +1,14 @@
 # Library Modernization M7 Audit — `return error(...)` vs `Require(...)`
 
+> **Historical audit warning (2026-08-23):** the current authority is
+> `Language/reference/language/18-concepts.md`. Ordinary `Require` cannot inspect
+> function parameters and has no runtime fallback, so the table's direct
+> “migrate to Require” recommendations are not mechanically valid. Use refined
+> Concepts for reusable single-value scalar domains; keep cross-argument,
+> collection-content, convergence, singularity, lookup, and external/runtime
+> failures fallible. `StaticAssert` is restricted to the compiler-owned
+> artifact/compiled-data static phase and is not a general library precondition.
+
 ## 1. Executive summary
 
 - Total `return error(...)` sites found: **251**.
