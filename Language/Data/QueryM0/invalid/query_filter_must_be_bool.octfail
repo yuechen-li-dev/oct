@@ -1,0 +1,11 @@
+expect error: "if condition must be Bool"
+
+package QueryM0Invalid
+
+fn NotAPredicate(value: Int) -> Int { return value }
+
+query BadFilter(values: Int[]) yields Int {
+    filter NotAPredicate
+}
+
+fn Main() -> Void {}

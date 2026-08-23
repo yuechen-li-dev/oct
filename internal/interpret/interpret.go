@@ -3073,6 +3073,52 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return i.evalArrayWhereBuiltinCallExpr(env, pkgName, argumentExprs)
 	}
+	if callee == "Query.First" || callee == "Query.Any" || callee == "Query.Count" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
+		}
+		if len(argumentExprs) != 1 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects one yielding flow", callee)
+		}
+		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if argument.hasError {
+			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
+		}
+		if argument.value.Kind != ValueFlow || argument.value.Flow == nil || argument.value.Flow.Decl.YieldType == nil || argument.value.Flow.Decl.TurnInput != nil {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: %s requires a no-input yielding flow", callee)
+		}
+		count := int64(0)
+		for !argument.value.Flow.Completed {
+			if err := i.checkCancelled(); err != nil {
+				return evalResult{}, err
+			}
+			if err := i.stepFlow(argument.value.Flow, nil); err != nil {
+				return evalResult{}, err
+			}
+			if !argument.value.Flow.HasYield {
+				continue
+			}
+			switch callee {
+			case "Query.First":
+				return evalResult{value: cloneValue(argument.value.Flow.LastYield)}, nil
+			case "Query.Any":
+				return evalResult{value: Value{Kind: ValueBool, Bool: true}}, nil
+			default:
+				count++
+			}
+		}
+		switch callee {
+		case "Query.First":
+			return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: "Query.First found no value"}}}, nil
+		case "Query.Any":
+			return evalResult{value: Value{Kind: ValueBool, Bool: false}}, nil
+		default:
+			return evalResult{value: Value{Kind: ValueInt, Int: count}}, nil
+		}
+	}
 	if callee == "Step" {
 		if len(typeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Step does not accept type arguments")

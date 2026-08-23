@@ -1,0 +1,13 @@
+expect error: "query filter must appear at most once and before map/take"
+
+package QueryM0Invalid
+
+fn Identity(value: Int) -> Int { return value }
+fn Positive(value: Int) -> Bool { return value > 0 }
+
+query BadOrder(values: Int[]) yields Int {
+    map Identity
+    filter Positive
+}
+
+fn Main() -> Void {}

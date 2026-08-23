@@ -733,7 +733,7 @@ func TestBuildFileParsesNestedIndexAssignmentTarget(t *testing.T) {
 }
 
 func TestBuildFileRejectsInvalidTopLevelContent(t *testing.T) {
-	assertParseErrorContains(t, "let x = 1", "expected 'concept', 'record', 'enum', 'fn', or 'flow' at top level")
+	assertParseErrorContains(t, "let x = 1", "expected 'concept', 'record', 'enum', 'fn', 'flow', or 'query' at top level")
 }
 
 func TestBuildFileRejectsUnterminatedBlock(t *testing.T) {

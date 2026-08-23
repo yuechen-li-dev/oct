@@ -90,6 +90,9 @@ fn UseCounter() -> Void {
 
 An iterator/generator is a yielding flow consumed repeatedly. This model has no
 hidden lazy-list semantics and does not require a parallel generator runtime.
+The bounded `query` authoring form is specified separately in
+[FLOW-backed queries](./24-query.md). It lowers to exactly this yielding FLOW
+model and does not redefine behavioral FLOW semantics.
 
 ### Logical checkpoints and generated Go host facade (FLOW-TURN-M1)
 

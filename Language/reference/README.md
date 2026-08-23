@@ -7,7 +7,7 @@ Start with [00-overview.md](./00-overview.md).
 ## Sections
 
 - Language: syntax, types, expressions, control flow, functions, data forms, and global rules.
-- Runtime: Octomata and batch execution contracts.
+- Runtime: Octomata, FLOW-backed query, and batch execution contracts.
 - Tooling: testing, formatting, package workflows, and octagon artifacts.
 
 ## Language
@@ -37,6 +37,7 @@ Start with [00-overview.md](./00-overview.md).
 - [21 Octomata](./runtime/21-octomata.md)
 - [22 Batch](./runtime/22-batch.md)
 - [23 Prometheus (Experimental)](./runtime/23-prometheus.md)
+- [24 FLOW-backed queries](./runtime/24-query.md)
 - [UIBridge v0](./runtime/uibridge.md)
 
 ## Tooling

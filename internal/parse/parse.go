@@ -195,6 +195,20 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		}
 		switch p.current().Kind {
 		case lex.Identifier:
+			if p.current().Lexeme == "query" {
+				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
+					return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
+				}
+				if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+					return ast.File{}, p.errorAtCurrent("test attributes cannot apply to a query declaration")
+				}
+				flow, err := p.parseQueryDecl()
+				if err != nil {
+					return ast.File{}, err
+				}
+				file.Flows = append(file.Flows, flow)
+				continue
+			}
 			if p.current().Lexeme != "go" {
 				return ast.File{}, p.errorAtCurrent("expected top-level declaration")
 			}
@@ -374,7 +388,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Flows = append(file.Flows, flow)
 		default:
-			return ast.File{}, p.errorAtCurrent("expected 'concept', 'record', 'enum', 'fn', or 'flow' at top level")
+			return ast.File{}, p.errorAtCurrent("expected 'concept', 'record', 'enum', 'fn', 'flow', or 'query' at top level")
 		}
 	}
 	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
@@ -384,6 +398,193 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 	}
 	return file, nil
+}
+
+// parseQueryDecl recognizes the deliberately bounded QUERY-M0 authoring form
+// and immediately lowers it to an ordinary yielding flow. Query therefore adds
+// no AST node, MIR node, or runtime object of its own.
+//
+//	query ReadyJobs(jobs: Job[], limit: Int) yields Job {
+//	    filter IsReady
+//	    map KeepJob
+//	    take limit
+//	}
+//
+// The first construction parameter is always the explicit source. Filter and
+// map accept named top-level functions; take is optional and must be last.
+func (p *parser) parseQueryDecl() (ast.FlowDecl, error) {
+	queryToken, err := p.expect(lex.Identifier, "expected 'query' at top level")
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if queryToken.Lexeme != "query" {
+		return ast.FlowDecl{}, p.errorAtToken(queryToken, "expected 'query' at top level")
+	}
+	name, err := p.expect(lex.Identifier, "expected query name")
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if _, err := p.expect(lex.LeftParen, "expected '(' after query name"); err != nil {
+		return ast.FlowDecl{}, err
+	}
+	parameters, err := p.parseParameters()
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if _, err := p.expect(lex.RightParen, "expected ')' after query parameter list"); err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if len(parameters) == 0 {
+		return ast.FlowDecl{}, p.errorAtToken(name, "query requires an explicit source as its first parameter")
+	}
+	for _, parameter := range parameters {
+		if parameter.Name == "board" || parameter.Name == "item" {
+			return ast.FlowDecl{}, p.errorAtToken(name, fmt.Sprintf("query parameter name '%s' is reserved", parameter.Name))
+		}
+	}
+	if p.current().Kind != lex.Identifier || p.current().Lexeme != "yields" {
+		return ast.FlowDecl{}, p.errorAtCurrent("expected 'yields' and the query output type")
+	}
+	p.advance()
+	yieldType, err := p.parseTypeRef()
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '{' after query signature"); err != nil {
+		return ast.FlowDecl{}, err
+	}
+
+	var filterExpr ast.Expr
+	var mapExpr ast.Expr
+	var takeExpr ast.Expr
+	stage := 0
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return ast.FlowDecl{}, p.errorAtCurrent("expected '}' to close query declaration")
+		}
+		clause, err := p.expect(lex.Identifier, "expected query clause 'filter', 'map', or 'take'")
+		if err != nil {
+			return ast.FlowDecl{}, err
+		}
+		switch clause.Lexeme {
+		case "filter":
+			if stage > 0 || filterExpr != nil {
+				return ast.FlowDecl{}, p.errorAtToken(clause, "query filter must appear at most once and before map/take")
+			}
+			if p.match(lex.LeftBrace) {
+				filterExpr, err = p.parseExpression()
+				if err != nil {
+					return ast.FlowDecl{}, err
+				}
+				if _, err := p.expect(lex.RightBrace, "expected '}' after query filter expression"); err != nil {
+					return ast.FlowDecl{}, err
+				}
+			} else {
+				predicate, err := p.expect(lex.Identifier, "query filter requires a named predicate or '{ expression }'")
+				if err != nil {
+					return ast.FlowDecl{}, err
+				}
+				filterExpr = ast.CallExpr{Callee: ast.IdentifierExpr{Name: predicate.Lexeme}, Arguments: []ast.Expr{ast.IdentifierExpr{Name: "item"}}}
+			}
+			stage = 1
+		case "map":
+			if stage > 1 || mapExpr != nil {
+				return ast.FlowDecl{}, p.errorAtToken(clause, "query map must appear at most once and before take")
+			}
+			if p.match(lex.LeftBrace) {
+				mapExpr, err = p.parseExpression()
+				if err != nil {
+					return ast.FlowDecl{}, err
+				}
+				if _, err := p.expect(lex.RightBrace, "expected '}' after query map expression"); err != nil {
+					return ast.FlowDecl{}, err
+				}
+			} else {
+				projection, err := p.expect(lex.Identifier, "query map requires a named projection or '{ expression }'")
+				if err != nil {
+					return ast.FlowDecl{}, err
+				}
+				mapExpr = ast.CallExpr{Callee: ast.IdentifierExpr{Name: projection.Lexeme}, Arguments: []ast.Expr{ast.IdentifierExpr{Name: "item"}}}
+			}
+			stage = 2
+		case "take":
+			if takeExpr != nil {
+				return ast.FlowDecl{}, p.errorAtToken(clause, "query take may appear at most once")
+			}
+			takeExpr, err = p.parseExpression()
+			if err != nil {
+				return ast.FlowDecl{}, err
+			}
+			stage = 3
+			if p.current().Kind != lex.RightBrace {
+				return ast.FlowDecl{}, p.errorAtCurrent("query take must be the final clause")
+			}
+		default:
+			return ast.FlowDecl{}, p.errorAtToken(clause, fmt.Sprintf("unsupported query clause '%s'; QUERY-M0 supports filter, map, and take", clause.Lexeme))
+		}
+	}
+	p.advance()
+
+	sourceName := parameters[0].Name
+	board := ast.IdentifierExpr{Name: "board"}
+	cursor := ast.FieldAccessExpr{Target: board, Field: "Cursor"}
+	emitted := ast.FieldAccessExpr{Target: board, Field: "Emitted"}
+	statements := make([]ast.Stmt, 0, 7)
+	if takeExpr != nil {
+		statements = append(statements, ast.IfStmt{
+			Condition: ast.BinaryExpr{Left: emitted, Operator: ">=", Right: takeExpr},
+			ThenBody:  ast.Block{Statements: []ast.Stmt{ast.ReturnStmt{}}},
+		})
+	}
+	statements = append(statements,
+		ast.IfStmt{
+			Condition: ast.BinaryExpr{
+				Left: cursor, Operator: ">=",
+				Right: ast.CallExpr{Callee: ast.IdentifierExpr{Name: "Len"}, Arguments: []ast.Expr{ast.IdentifierExpr{Name: sourceName}}},
+			},
+			ThenBody: ast.Block{Statements: []ast.Stmt{ast.ReturnStmt{}}},
+		},
+		ast.LetStmt{
+			Name:  "item",
+			Value: ast.IndexExpr{Target: ast.IdentifierExpr{Name: sourceName}, Indices: []ast.Expr{cursor}},
+		},
+		ast.FieldAssignStmt{
+			Target: "board", Field: "Cursor",
+			Value: ast.BinaryExpr{Left: cursor, Operator: "+", Right: ast.IntegerLiteral{Value: "1"}},
+		},
+	)
+
+	condition := ast.Expr(ast.BoolLiteral{Value: true})
+	if filterExpr != nil {
+		condition = filterExpr
+	}
+	projection := ast.Expr(ast.IdentifierExpr{Name: "item"})
+	if mapExpr != nil {
+		projection = mapExpr
+	}
+	statements = append(statements,
+		ast.IfStmt{
+			Condition: condition,
+			ThenBody: ast.Block{Statements: []ast.Stmt{
+				ast.FieldAssignStmt{Target: "board", Field: "Emitted", Value: ast.BinaryExpr{Left: emitted, Operator: "+", Right: ast.IntegerLiteral{Value: "1"}}},
+				ast.YieldStmt{Value: projection},
+			}},
+		},
+		ast.GotoStmt{Target: "Scan"},
+	)
+
+	return ast.FlowDecl{
+		Name:       name.Lexeme,
+		Parameters: parameters,
+		YieldType:  &yieldType,
+		ReturnType: ast.TypeRef{Name: "Void"},
+		Board: []ast.BoardField{
+			{Name: "Cursor", Type: ast.TypeRef{Name: "Int"}},
+			{Name: "Emitted", Type: ast.TypeRef{Name: "Int"}},
+		},
+		States:     []ast.StateDecl{{Name: "Scan", Body: ast.Block{Statements: statements}}},
+		EntryState: "Scan",
+	}, nil
 }
 
 func (p *parser) parseConceptDecl() (*ast.ConceptDecl, *ast.RecordDecl, error) {

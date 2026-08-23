@@ -1,0 +1,9 @@
+expect error: "query requires an explicit source as its first parameter"
+
+package QueryM0Invalid
+
+query MissingSource() yields Int {
+    take 1
+}
+
+fn Main() -> Void {}

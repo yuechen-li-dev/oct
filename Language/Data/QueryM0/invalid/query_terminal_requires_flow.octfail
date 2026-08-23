@@ -1,0 +1,8 @@
+expect error: "function 'Query.Count' requires a yielding flow"
+
+package QueryM0Invalid
+
+fn Main() -> Void {
+    let count = Query.Count(3)
+    Print(count)
+}

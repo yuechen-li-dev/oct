@@ -3882,6 +3882,35 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: *flowType.ValueType.FlowYield, Fallible: true}, nil
 	}
+	if callee == "Query.First" || callee == "Query.Any" || callee == "Query.Count" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		if len(arguments) != 1 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 1 yielding flow argument, got %d", callee, len(arguments))
+		}
+		flowType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if flowType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly before query terminal consumption")
+		}
+		if !flowType.ValueType.IsFlowInstance || flowType.ValueType.FlowYield == nil {
+			return ExprType{}, fmt.Errorf("function '%s' requires a yielding flow", callee)
+		}
+		if flowType.ValueType.FlowInput != nil {
+			return ExprType{}, fmt.Errorf("function '%s' requires a no-input query/generator flow", callee)
+		}
+		switch callee {
+		case "Query.First":
+			return ExprType{ValueType: *flowType.ValueType.FlowYield, Fallible: true}, nil
+		case "Query.Any":
+			return ExprType{ValueType: Type{Base: BaseTypeBool}}, nil
+		default:
+			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+		}
+	}
 	if callee == "Active" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Active' does not accept type arguments")

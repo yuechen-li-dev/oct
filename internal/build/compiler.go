@@ -242,8 +242,9 @@ type MIRFlowIdentifierExpr struct {
 func (MIRFlowIdentifierExpr) mirFlowExpr() {}
 
 type MIRFlowFieldExpr struct {
-	Target string
-	Field  string
+	Target  string
+	Field   string
+	IsLocal bool
 }
 
 func (MIRFlowFieldExpr) mirFlowExpr() {}
@@ -266,6 +267,7 @@ func (MIRFlowUnaryExpr) mirFlowExpr() {}
 type MIRFlowCallExpr struct {
 	Callee             string
 	Args               []MIRFlowExpr
+	ArgTypes           []string
 	Builtin            bool
 	FunctionValue      bool
 	FunctionValueLocal bool
@@ -276,9 +278,10 @@ type MIRFlowCallExpr struct {
 func (MIRFlowCallExpr) mirFlowExpr() {}
 
 type MIRFlowIndexExpr struct {
-	Target     MIRFlowExpr
-	Index      MIRFlowExpr
-	ResultType string
+	Target      MIRFlowExpr
+	Index       MIRFlowExpr
+	ResultType  string
+	TableFields []string
 }
 
 func (MIRFlowIndexExpr) mirFlowExpr() {}
@@ -842,6 +845,16 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 				return MIRModule{}, fmt.Errorf("flow %s.%s: %w", pkgName, flow.Name, err)
 			}
 			module.Flows = append(module.Flows, mirFlow)
+			if options.selectedReachableOnly {
+				for _, call := range collectFlowUserCalls(mirFlow) {
+					targetPkg := pkgName
+					targetFn := call
+					if dot := strings.Index(call, "."); dot >= 0 {
+						targetPkg, targetFn = call[:dot], call[dot+1:]
+					}
+					enqueueReachable(targetPkg, targetFn)
+				}
+			}
 		}
 		for _, fn := range pkg.Functions {
 			if fn.IsGoImport {
@@ -2983,6 +2996,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if builtin && (callee == "Append" || callee == "ArrayCrossSection" || callee == "Array.CrossSection" || callee == "ArrayWhere" || callee == "Array.Where") && len(argTypes) > 0 {
 			ret = argTypes[0]
 		}
+		if builtin && callee == "Query.First" && len(argTypes) == 1 {
+			_, inputType, yieldType, ok := parseFlowInstanceDetails(argTypes[0])
+			if !ok || inputType != "" || yieldType == "" {
+				return "", "", false, fmt.Errorf("Query.First requires a no-input yielding flow")
+			}
+			ret = yieldType
+		}
 		if builtin && isMarkdownCompiledBuiltin(callee) {
 			checkedRet, err := compiledBuiltinReturnType(callee, argTypes)
 			if err != nil {
@@ -4218,6 +4238,12 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return canonical, compiledMarkdownBuiltinReturnType(canonical), true, false, nil
 			}
 			switch builtinName {
+			case "Query.First":
+				return builtinName, "", true, true, nil
+			case "Query.Any":
+				return builtinName, "Bool", true, false, nil
+			case "Query.Count":
+				return builtinName, "Int", true, false, nil
 			case "Random.RngSeed":
 				return builtinName, "Random.Rng", true, false, nil
 			case "Random.RandInt":
@@ -5604,14 +5630,20 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			return nil, fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
 		}
 		args := make([]MIRFlowExpr, 0, len(e.Arguments))
+		argTypes := make([]string, 0, len(e.Arguments))
 		for _, arg := range e.Arguments {
+			argType, err := inferFlowExprType(arg, env, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
 			v, err := lowerFlowExpr(arg, env, locals, pkg, boardFieldTypes)
 			if err != nil {
 				return nil, err
 			}
 			args = append(args, v)
+			argTypes = append(argTypes, argType)
 		}
-		return MIRFlowCallExpr{Callee: callee, Args: args, Builtin: builtin, FunctionValue: functionValue, FunctionValueLocal: functionValueLocal, RetType: ret, Fallible: fallible}, nil
+		return MIRFlowCallExpr{Callee: callee, Args: args, ArgTypes: argTypes, Builtin: builtin, FunctionValue: functionValue, FunctionValueLocal: functionValueLocal, RetType: ret, Fallible: fallible}, nil
 	case ast.ArrayLiteralExpr:
 		elemType := "Int"
 		if len(e.Elements) > 0 {
@@ -5642,7 +5674,8 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 		if err != nil {
 			return nil, err
 		}
-		if !strings.HasSuffix(targetType, "[]") {
+		table, tablePkg, isTable := lookupFlowRecordTable(targetType, pkg)
+		if !isTable && !strings.HasSuffix(targetType, "[]") {
 			return nil, unsupported(fmt.Sprintf("compiled flow expression indexing target type %q", targetType))
 		}
 		idxType, err := inferFlowExprType(e.Indices[0], env, pkg, boardFieldTypes)
@@ -5660,10 +5693,19 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 		if err != nil {
 			return nil, err
 		}
+		resultType := strings.TrimSuffix(targetType, "[]")
+		var tableFields []string
+		if isTable {
+			resultType = tablePkg + ".__oct_table_row_" + table.Name
+			for _, field := range table.Fields {
+				tableFields = append(tableFields, field.Name)
+			}
+		}
 		return MIRFlowIndexExpr{
-			Target:     target,
-			Index:      idx,
-			ResultType: strings.TrimSuffix(targetType, "[]"),
+			Target:      target,
+			Index:       idx,
+			ResultType:  resultType,
+			TableFields: tableFields,
 		}, nil
 	case ast.RecordLiteralExpr:
 		typeName := e.TypeName
@@ -5837,7 +5879,7 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 				return MIRFlowLiteralExpr{Value: enumExpr}, nil
 			}
 		}
-		return MIRFlowFieldExpr{Target: targetIdent.Name, Field: e.Field}, nil
+		return MIRFlowFieldExpr{Target: targetIdent.Name, Field: e.Field, IsLocal: locals[targetIdent.Name]}, nil
 	default:
 		return nil, unsupported(fmt.Sprintf("flow expression %T", expr))
 	}
@@ -5921,6 +5963,19 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 		targetType, err := inferFlowExprType(e.Target, env, pkg, boardFieldTypes)
 		if err != nil {
 			return "", err
+		}
+		if table, tablePkg, ok := lookupFlowRecordTable(targetType, pkg); ok {
+			if len(e.Indices) != 1 {
+				return "", unsupported("compiled flow record table indexing requires one index")
+			}
+			idxType, err := inferFlowExprType(e.Indices[0], env, pkg, boardFieldTypes)
+			if err != nil {
+				return "", err
+			}
+			if idxType != "Int" {
+				return "", fmt.Errorf("compiled flow record table index must be Int, got %s", idxType)
+			}
+			return tablePkg + ".__oct_table_row_" + table.Name, nil
 		}
 		if !strings.HasSuffix(targetType, "[]") {
 			return "", unsupported(fmt.Sprintf("compiled flow expression indexing target type %q", targetType))
@@ -6016,6 +6071,11 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 				return enumType, nil
 			}
 		}
+		if targetType, ok := env[targetIdent.Name]; ok {
+			if fieldType, ok := lookupFlowRecordFieldType(targetType, e.Field, pkg); ok {
+				return fieldType, nil
+			}
+		}
 		return "", unsupported(fmt.Sprintf("flow field access %s.%s", targetIdent.Name, e.Field))
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
@@ -6035,6 +6095,54 @@ func flattenFlowEnumValueExpr(expr ast.FieldAccessExpr) (string, string, bool) {
 		return "", "", false
 	}
 	return enumType, expr.Field, true
+}
+
+func lookupFlowRecordTable(recordType string, currentPkg string) (ast.RecordDecl, string, bool) {
+	pkgName := currentPkg
+	typeName := recordType
+	if strings.Contains(typeName, ".") {
+		parts := strings.SplitN(typeName, ".", 2)
+		pkgName, typeName = parts[0], parts[1]
+	}
+	pkg, ok := flowLowerProgram.Packages[pkgName]
+	if !ok {
+		return ast.RecordDecl{}, "", false
+	}
+	for _, record := range pkg.Records {
+		if record.Name == typeName && record.IsTable {
+			return record, pkgName, true
+		}
+	}
+	return ast.RecordDecl{}, "", false
+}
+
+func lookupFlowRecordFieldType(recordType string, fieldName string, currentPkg string) (string, bool) {
+	pkgName := currentPkg
+	typeName := recordType
+	if strings.Contains(typeName, ".") {
+		parts := strings.SplitN(typeName, ".", 2)
+		pkgName, typeName = parts[0], parts[1]
+	}
+	pkg, ok := flowLowerProgram.Packages[pkgName]
+	if !ok {
+		return "", false
+	}
+	for _, record := range pkg.Records {
+		isTableRow := record.IsTable && typeName == "__oct_table_row_"+record.Name
+		if record.Name != typeName && !isTableRow {
+			continue
+		}
+		for _, field := range record.Fields {
+			if field.Name == fieldName {
+				fieldType := typeRefStringForPackage(pkgName, field.Type)
+				if record.IsTable && !isTableRow {
+					fieldType += "[]"
+				}
+				return fieldType, true
+			}
+		}
+	}
+	return "", false
 }
 
 func resolveFlowCall(callee ast.Expr, pkg string) (string, string, bool, bool, error) {
@@ -6935,6 +7043,121 @@ func generatedImportIdent(pkg string) string {
 		return pkg[idx+1:]
 	}
 	return pkg
+}
+
+func collectFlowUserCalls(flow MIRFlow) []string {
+	seen := map[string]struct{}{}
+	var visitExpr func(MIRFlowExpr)
+	var visitStmt func(MIRFlowStmt)
+	var visitAction func(MIRFlowWhenAction)
+	visitExpr = func(expr MIRFlowExpr) {
+		switch e := expr.(type) {
+		case MIRFlowCallExpr:
+			if !e.Builtin && !e.FunctionValueLocal {
+				seen[e.Callee] = struct{}{}
+			}
+			for _, arg := range e.Args {
+				visitExpr(arg)
+			}
+		case MIRFlowBinaryExpr:
+			visitExpr(e.Left)
+			visitExpr(e.Right)
+		case MIRFlowUnaryExpr:
+			visitExpr(e.Operand)
+		case MIRFlowIndexExpr:
+			visitExpr(e.Target)
+			visitExpr(e.Index)
+		case MIRFlowRecordLiteralExpr:
+			for _, value := range e.FieldVals {
+				visitExpr(value)
+			}
+		case MIRFlowUtilityWhenExpr:
+			visitExpr(e.Hysteresis)
+			visitExpr(e.MinCommit)
+			visitExpr(e.Else)
+			for _, c := range e.Cases {
+				visitExpr(c.Value)
+				visitExpr(c.Condition)
+				visitExpr(c.Score)
+			}
+		case MIRFlowSwitchExpr:
+			if e.Subject != nil {
+				visitExpr(e.Subject)
+			}
+			for _, c := range e.Cases {
+				visitExpr(c.Match)
+				visitExpr(c.Value)
+			}
+			if e.Else != nil {
+				visitExpr(e.Else)
+			}
+		case MIRFlowMatchExpr:
+			visitExpr(e.Subject)
+			for _, c := range e.Cases {
+				visitExpr(c.Value)
+			}
+		case MIRFlowIfExpr:
+			visitExpr(e.Condition)
+			visitExpr(e.Then)
+			visitExpr(e.Else)
+		}
+	}
+	visitAction = func(action MIRFlowWhenAction) {
+		switch a := action.(type) {
+		case MIRFlowWhenReturn:
+			if a.Value != nil {
+				visitExpr(a.Value)
+			}
+		case MIRFlowWhenBlock:
+			for _, statement := range a.Statements {
+				visitStmt(statement)
+			}
+		}
+	}
+	visitStmt = func(stmt MIRFlowStmt) {
+		switch s := stmt.(type) {
+		case MIRFlowLetStmt:
+			visitExpr(s.Value)
+		case MIRFlowFieldAssign:
+			visitExpr(s.Value)
+		case MIRFlowFieldIndexAssign:
+			for _, index := range s.Indices {
+				visitExpr(index)
+			}
+			visitExpr(s.Value)
+		case MIRFlowReturn:
+			if s.Value != nil {
+				visitExpr(s.Value)
+			}
+		case MIRFlowYield:
+			visitExpr(s.Value)
+		case MIRFlowIf:
+			visitExpr(s.Condition)
+			for _, nested := range s.Then {
+				visitStmt(nested)
+			}
+			for _, nested := range s.Else {
+				visitStmt(nested)
+			}
+		case MIRFlowWhen:
+			for _, c := range s.Cases {
+				visitExpr(c.Condition)
+				visitAction(c.Action)
+			}
+			visitAction(s.Else)
+		}
+	}
+	for _, state := range flow.States {
+		for _, statement := range state.Statements {
+			visitStmt(statement)
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for call := range seen {
+		result = append(result, call)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func collectFlowBuiltins(flow MIRFlow, usedBuiltins map[string]bool) {
@@ -9644,6 +9867,9 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 		if e.Target == "board" {
 			return "f.board." + e.Field, nil
 		}
+		if e.IsLocal {
+			return e.Target + "." + e.Field, nil
+		}
 		return "f." + e.Target + "." + e.Field, nil
 	case MIRFlowBinaryExpr:
 		l, err := emitGoFlowExpr(e.Left, pkg)
@@ -9691,6 +9917,11 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			}
 			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(e.Callee, ".", "_"), strings.Join(args, ", ")), nil
 		}
+		if e.Callee == "Len" && len(e.ArgTypes) == 1 {
+			if table, _, ok := lookupFlowRecordTable(e.ArgTypes[0], pkg); ok && len(table.Fields) > 0 {
+				return fmt.Sprintf("len(%s.%s)", args[0], table.Fields[0].Name), nil
+			}
+		}
 		return emitGoBuiltinCallExpr(e.Callee, args)
 	case MIRFlowIndexExpr:
 		target, err := emitGoFlowExpr(e.Target, pkg)
@@ -9700,6 +9931,13 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 		idx, err := emitGoFlowExpr(e.Index, pkg)
 		if err != nil {
 			return "", err
+		}
+		if len(e.TableFields) > 0 {
+			parts := make([]string, 0, len(e.TableFields))
+			for _, field := range e.TableFields {
+				parts = append(parts, fmt.Sprintf("%s: %s.%s[%s]", field, target, field, idx))
+			}
+			return fmt.Sprintf("%s{%s}", goType(e.ResultType), strings.Join(parts, ", ")), nil
 		}
 		return fmt.Sprintf("%s[%s]", target, idx), nil
 	case MIRFlowRecordLiteralExpr:
@@ -10377,6 +10615,12 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = %s.__octDidYield()", st.Target, st.Args[0]), nil
 			case "Yielded":
 				return fmt.Sprintf("%s = func() %s { __value, __ok := %s.__octYielded(); if !__ok { return %s{Err: \"Yielded() called when the last turn did not yield\", IsErr: true} }; __typed, __typedOk := __value.(%s); if !__typedOk { return %s{Err: \"Yielded() flow yield type mismatch\", IsErr: true} }; return %s{Value: __typed} }()", st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
+			case "Query.First":
+				return fmt.Sprintf("%s = func() %s { for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { __value, __ok := %s.__octYielded(); if !__ok { continue }; __typed, __typedOk := __value.(%s); if !__typedOk { return %s{Err: \"Query.First flow yield type mismatch\", IsErr: true} }; return %s{Value: __typed} } }; return %s{Err: \"Query.First found no value\", IsErr: true} }()", st.Target, goResultTypeName(st.RetType), st.Args[0], st.Args[0], st.Args[0], st.Args[0], goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
+			case "Query.Any":
+				return fmt.Sprintf("%s = func() bool { for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { return true } }; return false }()", st.Target, st.Args[0], st.Args[0], st.Args[0]), nil
+			case "Query.Count":
+				return fmt.Sprintf("%s = func() int { __count := 0; for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { __count++ } }; return __count }()", st.Target, st.Args[0], st.Args[0], st.Args[0]), nil
 			case "StateHistory":
 				return fmt.Sprintf("%s = %s.__octStateHistory()", st.Target, st.Args[0]), nil
 			case "ResumeTarget":

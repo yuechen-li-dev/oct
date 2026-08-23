@@ -15,6 +15,8 @@ Choose one path based on what you are trying to do:
   - [02 Types](./language/02-types.md) -> [05 Functions](./language/05-functions.md) -> [04 Control Flow](./language/04-control-flow.md) -> [09 Builtins](./language/09-builtins.md) -> [17 Standard Libraries](./language/17-standard-libraries.md)
 - Control/behavior authoring (use this when building modes and transitions):
   - [04 Control Flow](./language/04-control-flow.md) -> [21 Octomata](./runtime/21-octomata.md) -> [11 Records](./language/11-records.md)
+- Read-only iteration/query authoring:
+  - [07 Arrays](./language/07-arrays.md) -> [21 Octomata](./runtime/21-octomata.md) -> [24 FLOW-backed queries](./runtime/24-query.md)
 - Tooling/testing (preferred when validating contracts):
   - [31 octest](./tooling/31-octest.md) -> [32 ocfmt](./tooling/32-ocfmt.md) -> [35 CLI](./tooling/35-cli.md)
 - Prometheus experiments (explicitly non-core):

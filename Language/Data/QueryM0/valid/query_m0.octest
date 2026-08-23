@@ -1,0 +1,122 @@
+package QueryM0Valid
+
+concept Job {
+    ID: Int
+    Status: Int
+}
+
+record JobView {
+    ID: Int
+    Status: Int
+}
+
+record table JobTable {
+    ID: Int
+    Status: Int
+}
+
+fn IsReady(job: Job) -> Bool {
+    return job.Status == 1
+}
+
+fn JobID(job: Job) -> Int {
+    return job.ID
+}
+
+fn Normalize(job: Job) -> Job {
+    return job with { Status: 1 }
+}
+
+query ReadyIDs(jobs: Job[], limit: Int) yields Int {
+    filter IsReady
+    map JobID
+    take limit
+}
+
+query ReadyJobs(jobs: Job[], limit: Int) yields Job {
+    filter IsReady
+    take limit
+}
+
+query NormalizedJobs(jobs: Job[]) yields Job {
+    map Normalize
+}
+
+query ReadyTableRows(jobs: JobTable, limit: Int) yields JobView {
+    filter { item.Status == 1 }
+    map { JobView { ID: item.ID Status: item.Status } }
+    take limit
+}
+
+[Fact]
+fn EmptyOneFilterAndCount() -> Void {
+    let empty: Job[] = []
+    Assert.Equal(0, Query.Count(ReadyIDs(empty, 10)), "empty source count")
+    Assert.Equal(false, Query.Any(ReadyIDs([Job { ID: 1 Status: 0 }], 10)), "filter none")
+    Assert.Equal(1, Query.Count(ReadyIDs([Job { ID: 1 Status: 1 }], 10)), "one filtered item")
+}
+
+[Fact]
+fn FilterMapTakeAndOrder() -> Void {
+    let jobs = [
+        Job { ID: 30 Status: 1 },
+        Job { ID: 10 Status: 0 },
+        Job { ID: 20 Status: 1 },
+        Job { ID: 40 Status: 1 }
+    ]
+    let ready = ReadyIDs(jobs, 2)
+    Step(ready)
+    Assert.Equal(30, Yielded(ready)!, "first result preserves source order")
+    Step(ready)
+    Assert.Equal(20, Yielded(ready)!, "map preserves filtered order")
+    Step(ready)
+    Assert.Equal(true, Complete(ready), "take completes without scanning beyond limit")
+}
+
+[Fact]
+fn TakeBoundaries() -> Void {
+    let jobs = [Job { ID: 1 Status: 1 }, Job { ID: 2 Status: 1 }]
+    let zero = ReadyIDs(jobs, 0)
+    Assert.Equal(0, Query.Count(zero), "take zero yields none")
+    Assert.Equal(1, Query.Count(ReadyIDs(jobs, 1)), "take one")
+    Assert.Equal(2, Query.Count(ReadyIDs(jobs, 20)), "take beyond length")
+    Assert.Equal(0, Query.Count(ReadyIDs(jobs, -2)), "negative take yields none")
+}
+
+[Fact]
+fn FirstAnyAndMissing() -> Void {
+    let jobs = [Job { ID: 1 Status: 0 }, Job { ID: 2 Status: 1 }, Job { ID: 3 Status: 1 }]
+    let firstFlow = ReadyIDs(jobs, 10)
+    Assert.Equal(2, Query.First(firstFlow)!, "first returns first upstream value")
+    let anyFlow = ReadyIDs(jobs, 10)
+    Assert.Equal(true, Query.Any(anyFlow), "any true")
+    Assert.Equal(false, Query.Any(ReadyIDs([Job { ID: 1 Status: 0 }], 10)), "any false")
+    Assert.Error(Query.First(ReadyIDs([Job { ID: 1 Status: 0 }], 10)), "first missing is fallible")
+}
+
+[Fact]
+fn MapWithAndRepeatedDeterminism() -> Void {
+    let jobs = [Job { ID: 7 Status: 0 }, Job { ID: 8 Status: 1 }]
+    let normalized = NormalizedJobs(jobs)
+    Step(normalized)
+    Assert.Equal(1, Yielded(normalized)!.Status, "map uses ordinary immutable with transform")
+    Assert.Equal(0, jobs[0].Status, "with leaves source record unchanged")
+    Assert.Equal(Query.First(ReadyIDs(jobs, 10))!, Query.First(ReadyIDs(jobs, 10))!, "repeated queries are deterministic")
+}
+
+[Fact]
+fn RecordTableFilterMapAndOrder() -> Void {
+    let table = JobTable {
+        ID: [9, 3, 7, 1]
+        Status: [0, 1, 1, 1]
+    }
+    let rows = ReadyTableRows(table, 2)
+    Step(rows)
+    Assert.Equal(3, Yielded(rows)!.ID, "record table first logical row")
+    Step(rows)
+    Assert.Equal(7, Yielded(rows)!.ID, "record table order preserved")
+    Step(rows)
+    Assert.Equal(true, Complete(rows), "record table take completes")
+}
+
+fn Main() -> Void {}
