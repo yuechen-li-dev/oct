@@ -1,0 +1,15 @@
+expect error: "expects fn(InventoryItem) -> String, got fn(Job) -> String"
+
+package ParametricsM0InvalidOwner
+
+record Job {ID: String}
+record InventoryItem {SKU: String}
+
+template record Keyed<Record, Key> {
+    KeyOf: Selector<Record, Key>
+}
+
+fn Main() -> Void {
+    let jobKey: Selector<Job, String> =.ID
+    let invalid = Keyed<InventoryItem, String> {KeyOf: jobKey}
+}

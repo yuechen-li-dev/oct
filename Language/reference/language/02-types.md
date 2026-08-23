@@ -6,6 +6,7 @@ Oct uses static, explicit types.
 Primitive, array, record, enum, and concept-described value shapes are first-class.
 Type identity is exact, including numeric dimensions.
 Record and enum identity is nominal.
+Bounded template applications are monomorphized to ordinary exact types before type checking and execution.
 
 ## Rules
 
@@ -22,6 +23,7 @@ Record and enum identity is nominal.
 - Enum identity is defined by enum name.
 - Two records with matching fields are different types when names differ.
 - Two enums with matching variants are different types when names differ.
+- Two applications of one template with different concrete type arguments are distinct nominal types.
 - Array element type must match exactly, including dimensions and nominal names.
 - `Void` is valid only as a function return type.
 - A named value concept is a transparent name for an existing concrete type.

@@ -1,0 +1,15 @@
+expect error: "expected Keyed__InventoryItem__String, got Keyed__Job__String"
+
+package ParametricsM0InvalidIdentity
+
+record Job {ID: String}
+record InventoryItem {SKU: String}
+
+template record Keyed<Record, Key> {
+    KeyOf: Selector<Record, Key>
+}
+
+fn Main() -> Void {
+    let jobs = Keyed<Job, String> {KeyOf: .ID}
+    let inventory: Keyed<InventoryItem, String> = jobs
+}

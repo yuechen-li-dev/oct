@@ -1,0 +1,13 @@
+expect error: "Selector .SKU does not exist on Job"
+
+package ParametricsM0InvalidSelector
+
+record Job {ID: String}
+
+template record Keyed<Record, Key> {
+    KeyOf: Selector<Record, Key>
+}
+
+fn Main() -> Void {
+    let invalid = Keyed<Job, String> {KeyOf: .SKU}
+}

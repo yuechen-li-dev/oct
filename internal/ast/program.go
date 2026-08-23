@@ -53,11 +53,17 @@ type DocSection struct {
 }
 
 type RecordDecl struct {
-	Name      string
-	Doc       *DocComment
-	Fields    []RecordField
-	IsTable   bool
-	IsConcept bool
+	Name string
+	// TypeParameters are present only on thin template authoring declarations.
+	// The project elaborator removes those declarations and emits ordinary
+	// concrete records before type checking or execution.
+	TypeParameters []string
+	IsTemplate     bool
+	TemplateOrigin *TemplateOrigin
+	Doc            *DocComment
+	Fields         []RecordField
+	IsTable        bool
+	IsConcept      bool
 }
 
 type RecordField struct {
@@ -78,9 +84,14 @@ type EnumVariantDecl struct {
 }
 
 type FunctionDecl struct {
-	Name       string
-	Doc        *DocComment
-	SourcePath string
+	Name           string
+	TypeParameters []string
+	IsTemplate     bool
+	TemplateOrigin *TemplateOrigin
+	SelectorOwner  *TypeRef
+	SelectorField  string
+	Doc            *DocComment
+	SourcePath     string
 	// IsGoImport marks the narrow, bodyless `go fn` declaration accepted only
 	// in an OctGo *.contracts.oct companion. The Go host validates and binds it;
 	// ordinary Oct execution never supplies an implementation body.
@@ -114,14 +125,17 @@ type FunctionDecl struct {
 }
 
 type FlowDecl struct {
-	Name       string
-	Parameters []Parameter
-	TurnInput  *Parameter
-	YieldType  *TypeRef
-	ReturnType TypeRef
-	Board      []BoardField
-	States     []StateDecl
-	EntryState string
+	Name           string
+	TypeParameters []string
+	IsTemplate     bool
+	TemplateOrigin *TemplateOrigin
+	Parameters     []Parameter
+	TurnInput      *Parameter
+	YieldType      *TypeRef
+	ReturnType     TypeRef
+	Board          []BoardField
+	States         []StateDecl
+	EntryState     string
 }
 
 type BoardField struct {
@@ -144,16 +158,30 @@ type Parameter struct {
 }
 
 type TypeRef struct {
-	Package    string
-	Name       string
-	TupleOf    []TypeRef
-	Dimension  dimension.Dimension
-	HasUnit    bool
-	IsArray    bool
-	ArrayDepth int
-	VectorOf   *TypeRef
-	MatrixOf   *TypeRef
-	Function   *FunctionTypeRef
+	Package       string
+	Name          string
+	TypeArguments []TypeRef
+	TupleOf       []TypeRef
+	Dimension     dimension.Dimension
+	HasUnit       bool
+	IsArray       bool
+	ArrayDepth    int
+	VectorOf      *TypeRef
+	MatrixOf      *TypeRef
+	Function      *FunctionTypeRef
+	// These fields retain compile-time provenance after Selector<R, F>
+	// erases to the exact ordinary function type fn(R) -> F.
+	SelectorOwner  *TypeRef
+	SelectorResult *TypeRef
+}
+
+// TemplateOrigin survives elaboration on each concrete declaration so
+// diagnostics and future discovery tooling can explain where specialization
+// came from without introducing runtime template metadata.
+type TemplateOrigin struct {
+	Package       string
+	Declaration   string
+	TypeArguments []TypeRef
 }
 
 type FunctionTypeRef struct {
@@ -532,8 +560,9 @@ type BatchExpr struct {
 func (BatchExpr) exprNode() {}
 
 type RecordLiteralExpr struct {
-	TypeName string
-	Fields   []RecordLiteralField
+	TypeName      string
+	TypeArguments []TypeRef
+	Fields        []RecordLiteralField
 }
 
 func (RecordLiteralExpr) exprNode() {}
@@ -549,6 +578,17 @@ type RecordUpdateExpr struct {
 }
 
 func (RecordUpdateExpr) exprNode() {}
+
+// SelectorExpr is the contextual `.Field` authoring form. It is resolved by
+// early parametric elaboration to a generated exact-signature getter function.
+// No selector node reaches the ordinary typechecker, interpreter, or backend.
+type SelectorExpr struct {
+	Field  string
+	Line   int
+	Column int
+}
+
+func (SelectorExpr) exprNode() {}
 
 type EnumValueExpr struct {
 	EnumName string

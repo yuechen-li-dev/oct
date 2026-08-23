@@ -45,7 +45,7 @@ Type matching is exact, including dimensions and nominal names.
 - Oct does not have logical indexing syntax yet: `values[mask]` is future sugar, not part of ARR2. Use `Array.Where(values, mask)`.
 - `Array.CrossSection` is not a view; mutating the result array storage does not mutate the source array storage.
 - `Array.CrossSection` and `Array.Where` are for 1D arrays only. Vectors, matrices, and tensors have separate rank-aware APIs and are not accepted as direct values.
-- `Array.Where` is a compiler-owned polymorphic array operation, not a general user-defined generic function; do not write or expose `Array.Where<T>`.
+- `Array.Where` remains a compiler-owned polymorphic array operation; do not spell it `Array.Where<T>`. User-authored bounded generic helpers use explicit `template fn Name<T>` declarations instead.
 - `Array.Where` does not add NumPy-style broadcasting, scalar masks, or matrix/vector/tensor mask indexing syntax.
 - Whole-row assignment does not add slices, column assignment, submatrix assignment, broadcasting, shape coercion, or implicit resizing.
 - Negative indices, reverse ranges, lazy views, `Array.TryCrossSection`, `Array.Copy`, `Array.Take`, `Array.Drop`, and `Array.Window` are deferred/not part of M0.

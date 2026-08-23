@@ -291,3 +291,17 @@ func TestNoJudgmentTraceWhenAutoWrapDisabled(t *testing.T) {
 		t.Fatalf("expected no traces while auto-wrap is disabled")
 	}
 }
+
+func TestParametricSyntaxKeepsTypeAnglesAndContextualSelectorReadable(t *testing.T) {
+	input := "package Main\nrecord Job{ID:String}\ntemplate record Keyed<Record,Key>{KeyOf:Selector<Record,Key>}\nfn Main()->Void{let x=Keyed<Job,String>{KeyOf:.ID}}\n"
+	out, err := FormatSource(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"template record Keyed<Record, Key>", "Selector<Record, Key>", "Keyed<Job, String> {", "KeyOf: .ID"} {
+		mustContain(t, out, want)
+	}
+	if strings.Contains(out, "Keyed <") || strings.Contains(out, "Selector <") {
+		t.Fatalf("parametric angles formatted as comparisons:\n%s", out)
+	}
+}

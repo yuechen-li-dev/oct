@@ -1,0 +1,16 @@
+expect error: "expects fn(InventoryItem) -> Bool, got fn(Job) -> Bool"
+
+package ParametricsM0InvalidPredicate
+
+record Job {Ready: Bool}
+record InventoryItem {Available: Int}
+
+template record MaterializedFilter<Record> {
+    Predicate: fn(Record) -> Bool
+}
+
+fn IsReady(job: Job) -> Bool {return job.Ready}
+
+fn Main() -> Void {
+    let invalid = MaterializedFilter<InventoryItem> {Predicate: IsReady}
+}

@@ -448,6 +448,8 @@ func normalizeCode(code string, compact bool) string {
 		return ""
 	}
 	var b strings.Builder
+	genericDepth := 0
+	previousGenericClose := false
 	for i, tok := range tokens {
 		if tok == "=>" {
 			tok = "->"
@@ -459,15 +461,35 @@ func normalizeCode(code string, compact bool) string {
 				prev = "->"
 			}
 		}
-		if !compact && i > 0 && needsSpace(prev, tok) {
+		openingGeneric := tok == "<" && i > 0 && startsUpperIdentifier(tokens[i-1])
+		closingGeneric := tok == ">" && genericDepth > 0
+		space := i > 0 && needsSpace(prev, tok)
+		if openingGeneric || closingGeneric || (genericDepth > 0 && prev == "<") || (previousGenericClose && (tok == "(" || tok == "[" || tok == ">")) {
+			space = false
+		}
+		if !compact && space {
 			b.WriteByte(' ')
 		}
-		if compact && i > 0 && needsSpaceCompact(prev, tok) {
+		if compact && i > 0 && needsSpaceCompact(prev, tok) && space {
 			b.WriteByte(' ')
 		}
 		b.WriteString(tok)
+		if openingGeneric {
+			genericDepth++
+		}
+		if closingGeneric {
+			genericDepth--
+		}
+		previousGenericClose = closingGeneric
 	}
 	return b.String()
+}
+
+func startsUpperIdentifier(token string) bool {
+	if token == "" {
+		return false
+	}
+	return token[0] >= 'A' && token[0] <= 'Z'
 }
 func shouldExpand(tokens []string, code string) bool {
 	if strings.HasPrefix(code, "fn ") || strings.HasPrefix(code, "[") {
@@ -619,8 +641,11 @@ func needsSpace(prev, curr string) bool {
 	if prev == "" || curr == "" {
 		return false
 	}
-	if curr == "," || curr == ")" || curr == "]" || curr == "}" || curr == "." || curr == ":" {
+	if curr == "," || curr == ")" || curr == "]" || curr == "}" || curr == ":" {
 		return false
+	}
+	if curr == "." {
+		return prev == ":"
 	}
 	if prev == "(" || prev == "[" || prev == "{" || prev == "." {
 		return false

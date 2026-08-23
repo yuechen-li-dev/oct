@@ -1,0 +1,3 @@
+package Main
+
+fn Main() -> Void {}

@@ -1,0 +1,11 @@
+expect error: "infinite template instantiation detected"
+
+package ParametricsM0InvalidRecursion
+
+template fn Recur<T>(value: T) -> T {
+    return Recur<T>(value)
+}
+
+fn Main() -> Int {
+    return Recur<Int>(1)
+}

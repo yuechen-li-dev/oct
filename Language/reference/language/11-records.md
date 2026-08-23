@@ -20,6 +20,7 @@ Individual record fields are not assigned in place.
 - Record construction requires all declared fields.
 - Record construction uses field names; construction order is independent of declaration order.
 - Record identity is nominal by record name. See [02 Types](./02-types.md).
+- Parametric record form is `template record Name<T> { ... }`; every concrete application remains nominal and is elaborated before ordinary record checking.
 - Field access form is `value.Field`.
 - Record update form is `value with { Field: value ... }`.
 - Record update requires at least one field and returns a new value of the same record type.
@@ -28,6 +29,7 @@ Individual record fields are not assigned in place.
 - `with` is immutable: it does not mutate the source value.
 - `with` preserves fields not listed in the update block.
 - `with` evaluates the source expression once.
+- `with` on a template application occurs after instantiation and preserves that same concrete nominal type.
 - Record values are whole-value mutable only: rebind the record value, not individual fields.
 
 ## Record tables

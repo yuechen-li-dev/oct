@@ -223,6 +223,13 @@ func expandType(t ast.TypeRef, aliases map[string]ast.TypeRef, resolve func(stri
 		}
 		t.VectorOf = &e
 	}
+	for i := range t.TypeArguments {
+		e, err := expandType(t.TypeArguments[i], aliases, resolve)
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		t.TypeArguments[i] = e
+	}
 	if t.MatrixOf != nil {
 		e, err := expandType(*t.MatrixOf, aliases, resolve)
 		if err != nil {
@@ -489,6 +496,9 @@ func expandExpr(expr ast.Expr, aliases map[string]ast.TypeRef, refinements map[s
 		e.Body = expandBlock(e.Body, aliases, refinements)
 		return e
 	case ast.RecordLiteralExpr:
+		for i := range e.TypeArguments {
+			e.TypeArguments[i] = mustExpand(e.TypeArguments[i], aliases)
+		}
 		for i := range e.Fields {
 			e.Fields[i].Value = expandExpr(e.Fields[i].Value, aliases, refinements)
 		}

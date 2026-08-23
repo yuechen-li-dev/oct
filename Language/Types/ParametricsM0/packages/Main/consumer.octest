@@ -1,0 +1,12 @@
+package Main
+
+import ParametricSupport
+
+record Job {ID: Int}
+
+[Fact]
+fn ImportedTemplatesInstantiateDeterministicallyInConsumer() -> Void {
+    let boxed = ParametricSupport.Box<Job> {Value: Job {ID: 17}}
+    let value = ParametricSupport.Identity<Job>(boxed.Value)
+    Assert.Equal(17, value.ID, "imported template preserves consumer nominal type")
+}

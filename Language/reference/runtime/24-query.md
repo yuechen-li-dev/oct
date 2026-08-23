@@ -14,6 +14,10 @@ to one ordinary yielding FLOW with `Cursor` and `Emitted` board fields and one
 `Scan` state. There is no Query value, query AST/MIR node, lazy sequence,
 coroutine scheduler, channel pipeline, or second runtime.
 
+`template query Name<T>(...)` is specialized first. Its concrete declaration
+then follows this same Query-M0-to-FLOW lowering path; FLOW never handles open
+type parameters.
+
 ## Sources and syntax
 
 The first parameter is always the explicit source. QUERY-M0 accepts `T[]` and

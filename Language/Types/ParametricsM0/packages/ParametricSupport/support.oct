@@ -1,0 +1,9 @@
+package ParametricSupport
+
+template record Box<T> {
+    Value: T
+}
+
+template fn Identity<T>(value: T) -> T {
+    return value
+}

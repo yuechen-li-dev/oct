@@ -35,6 +35,18 @@ type Program struct {
 	Entry       string
 	EntrySource string
 	Packages    map[string]Package
+	Parametrics ParametricStats
+}
+
+type ParametricStats struct {
+	TemplateRecords        int
+	TemplateFunctions      int
+	TemplateFlows          int
+	RecordInstantiations   int
+	FunctionInstantiations int
+	FlowInstantiations     int
+	SelectorsResolved      int
+	ElaborationNanoseconds int64
 }
 
 func Load(path string) (Program, error) {
@@ -125,7 +137,7 @@ func loadFromFileInPackage(path string, packageDir string, includeTests bool, ex
 	if err := builder.loadPackage(entryFile.Package, packageDir); err != nil {
 		return Program{}, err
 	}
-	return Program{Root: root, Entry: entryFile.Package, EntrySource: path, Packages: builder.packages}, nil
+	return elaborateParametrics(Program{Root: root, Entry: entryFile.Package, EntrySource: path, Packages: builder.packages})
 }
 
 func loadFromDir(root string, includeTests bool) (Program, error) {
@@ -153,7 +165,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 				return Program{}, err
 			}
 		}
-		return Program{Root: root, Entry: "Main", EntrySource: mainDir, Packages: builder.packages}, nil
+		return elaborateParametrics(Program{Root: root, Entry: "Main", EntrySource: mainDir, Packages: builder.packages})
 	}
 	packageName, err := detectSinglePackageName(root, includeTests)
 	if err != nil {
@@ -170,7 +182,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 			return Program{}, err
 		}
 	}
-	return Program{Root: root, Entry: packageName, EntrySource: root, Packages: builder.packages}, nil
+	return elaborateParametrics(Program{Root: root, Entry: packageName, EntrySource: root, Packages: builder.packages})
 }
 
 type manifestValidationResult struct {

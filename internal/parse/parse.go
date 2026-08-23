@@ -195,6 +195,41 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		}
 		switch p.current().Kind {
 		case lex.Identifier:
+			if p.current().Lexeme == "template" {
+				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+					return ast.File{}, p.errorAtCurrent("attributes cannot apply to a template declaration")
+				}
+				p.advance()
+				switch {
+				case p.current().Kind == lex.KeywordRecord:
+					record, err := p.parseRecordDeclWithTemplate(true)
+					if err != nil {
+						return ast.File{}, err
+					}
+					file.Records = append(file.Records, record)
+				case p.current().Kind == lex.KeywordFn:
+					function, err := p.parseFunctionDeclWithTemplate(true)
+					if err != nil {
+						return ast.File{}, err
+					}
+					file.Functions = append(file.Functions, function)
+				case p.current().Kind == lex.KeywordFlow:
+					flow, err := p.parseFlowDeclWithTemplate(true)
+					if err != nil {
+						return ast.File{}, err
+					}
+					file.Flows = append(file.Flows, flow)
+				case p.current().Kind == lex.Identifier && p.current().Lexeme == "query":
+					flow, err := p.parseQueryDeclWithTemplate(true)
+					if err != nil {
+						return ast.File{}, err
+					}
+					file.Flows = append(file.Flows, flow)
+				default:
+					return ast.File{}, p.errorAtCurrent("expected 'record', 'fn', 'flow', or 'query' after 'template'")
+				}
+				continue
+			}
 			if p.current().Lexeme == "query" {
 				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 					return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
@@ -413,6 +448,10 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 // The first construction parameter is always the explicit source. Filter and
 // map accept named top-level functions; take is optional and must be last.
 func (p *parser) parseQueryDecl() (ast.FlowDecl, error) {
+	return p.parseQueryDeclWithTemplate(false)
+}
+
+func (p *parser) parseQueryDeclWithTemplate(isTemplate bool) (ast.FlowDecl, error) {
 	queryToken, err := p.expect(lex.Identifier, "expected 'query' at top level")
 	if err != nil {
 		return ast.FlowDecl{}, err
@@ -421,6 +460,10 @@ func (p *parser) parseQueryDecl() (ast.FlowDecl, error) {
 		return ast.FlowDecl{}, p.errorAtToken(queryToken, "expected 'query' at top level")
 	}
 	name, err := p.expect(lex.Identifier, "expected query name")
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	typeParameters, err := p.parseOptionalTypeParameters(isTemplate, name)
 	if err != nil {
 		return ast.FlowDecl{}, err
 	}
@@ -574,10 +617,12 @@ func (p *parser) parseQueryDecl() (ast.FlowDecl, error) {
 	)
 
 	return ast.FlowDecl{
-		Name:       name.Lexeme,
-		Parameters: parameters,
-		YieldType:  &yieldType,
-		ReturnType: ast.TypeRef{Name: "Void"},
+		Name:           name.Lexeme,
+		TypeParameters: typeParameters,
+		IsTemplate:     isTemplate,
+		Parameters:     parameters,
+		YieldType:      &yieldType,
+		ReturnType:     ast.TypeRef{Name: "Void"},
 		Board: []ast.BoardField{
 			{Name: "Cursor", Type: ast.TypeRef{Name: "Int"}},
 			{Name: "Emitted", Type: ast.TypeRef{Name: "Int"}},
@@ -920,6 +965,10 @@ func isInlineDataValueExpr(expr ast.Expr) bool {
 }
 
 func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
+	return p.parseRecordDeclWithTemplate(false)
+}
+
+func (p *parser) parseRecordDeclWithTemplate(isTemplate bool) (ast.RecordDecl, error) {
 	recordToken, err := p.expect(lex.KeywordRecord, "expected 'record'")
 	if err != nil {
 		return ast.RecordDecl{}, err
@@ -930,6 +979,10 @@ func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
 		p.advance()
 	}
 	name, err := p.expect(lex.Identifier, "expected record name")
+	if err != nil {
+		return ast.RecordDecl{}, err
+	}
+	typeParameters, err := p.parseOptionalTypeParameters(isTemplate, name)
 	if err != nil {
 		return ast.RecordDecl{}, err
 	}
@@ -962,10 +1015,12 @@ func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
 	p.advance()
 
 	return ast.RecordDecl{
-		Name:    name.Lexeme,
-		Fields:  fields,
-		Doc:     p.docCommentAtLine(recordToken.Line),
-		IsTable: isTable,
+		Name:           name.Lexeme,
+		TypeParameters: typeParameters,
+		IsTemplate:     isTemplate,
+		Fields:         fields,
+		Doc:            p.docCommentAtLine(recordToken.Line),
+		IsTable:        isTable,
 	}, nil
 }
 
@@ -1014,6 +1069,10 @@ func (p *parser) parseEnumDecl() (ast.EnumDecl, error) {
 }
 
 func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
+	return p.parseFunctionDeclWithTemplate(false)
+}
+
+func (p *parser) parseFunctionDeclWithTemplate(isTemplate bool) (ast.FunctionDecl, error) {
 	fnToken, err := p.expect(lex.KeywordFn, "expected 'fn' at top level")
 	if err != nil {
 		return ast.FunctionDecl{}, err
@@ -1024,6 +1083,10 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 		return ast.FunctionDecl{}, err
 	}
 
+	typeParameters, err := p.parseOptionalTypeParameters(isTemplate, name)
+	if err != nil {
+		return ast.FunctionDecl{}, err
+	}
 	if _, err := p.expect(lex.LeftParen, "expected '(' after function name"); err != nil {
 		return ast.FunctionDecl{}, err
 	}
@@ -1046,11 +1109,13 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 	}
 
 	function := ast.FunctionDecl{
-		Name:       name.Lexeme,
-		Doc:        p.docCommentAtLine(fnToken.Line),
-		SourcePath: p.sourcePath,
-		Parameters: parameters,
-		ReturnType: returnType,
+		Name:           name.Lexeme,
+		TypeParameters: typeParameters,
+		IsTemplate:     isTemplate,
+		Doc:            p.docCommentAtLine(fnToken.Line),
+		SourcePath:     p.sourcePath,
+		Parameters:     parameters,
+		ReturnType:     returnType,
 	}
 	if p.match(lex.Bang) {
 		errorType, err := p.parseTypeRef()
@@ -1119,10 +1184,18 @@ func (p *parser) parseGoImportDecl() (ast.FunctionDecl, error) {
 }
 
 func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
+	return p.parseFlowDeclWithTemplate(false)
+}
+
+func (p *parser) parseFlowDeclWithTemplate(isTemplate bool) (ast.FlowDecl, error) {
 	if _, err := p.expect(lex.KeywordFlow, "expected 'flow' at top level"); err != nil {
 		return ast.FlowDecl{}, err
 	}
 	name, err := p.expect(lex.Identifier, "expected flow name")
+	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	typeParameters, err := p.parseOptionalTypeParameters(isTemplate, name)
 	if err != nil {
 		return ast.FlowDecl{}, err
 	}
@@ -1208,7 +1281,7 @@ func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
 		states = append(states, stateDecl)
 	}
 	p.advance()
-	flow := ast.FlowDecl{Name: name.Lexeme, Parameters: parameters, TurnInput: turnInput, YieldType: yieldType, ReturnType: returnType, Board: boardFields, States: states}
+	flow := ast.FlowDecl{Name: name.Lexeme, TypeParameters: typeParameters, IsTemplate: isTemplate, Parameters: parameters, TurnInput: turnInput, YieldType: yieldType, ReturnType: returnType, Board: boardFields, States: states}
 	if len(states) > 0 {
 		flow.EntryState = states[0].Name
 	}
@@ -1255,6 +1328,38 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 		}
 	}
 
+	return parameters, nil
+}
+
+func (p *parser) parseOptionalTypeParameters(required bool, name lex.Token) ([]string, error) {
+	if !required && p.current().Kind == lex.LeftAngle {
+		return nil, p.errorAtToken(name, "type parameters require a 'template' declaration")
+	}
+	if !p.match(lex.LeftAngle) {
+		if required {
+			return nil, p.errorAtToken(name, "template declaration requires at least one type parameter")
+		}
+		return nil, nil
+	}
+	parameters := make([]string, 0, 2)
+	seen := map[string]struct{}{}
+	for {
+		parameter, err := p.expect(lex.Identifier, "expected type parameter name")
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := seen[parameter.Lexeme]; exists {
+			return nil, p.errorAtToken(parameter, fmt.Sprintf("duplicate type parameter '%s'", parameter.Lexeme))
+		}
+		seen[parameter.Lexeme] = struct{}{}
+		parameters = append(parameters, parameter.Lexeme)
+		if !p.match(lex.Comma) {
+			break
+		}
+	}
+	if _, err := p.expect(lex.RightAngle, "expected '>' after type parameters"); err != nil {
+		return nil, err
+	}
 	return parameters, nil
 }
 
@@ -1337,15 +1442,31 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 		typeRef.Name = typeName.Lexeme
 	}
 	if typeRef.VectorOf == nil && typeRef.MatrixOf == nil && p.match(lex.LeftAngle) {
-		dim, err := p.parseDimensionSpec()
-		if err != nil {
-			return ast.TypeRef{}, err
+		if typeRef.Package == "" && isBuiltinDimensionSpelling(typeRef.Name) {
+			dim, err := p.parseDimensionSpec()
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			if _, err := p.expect(lex.RightAngle, "expected '>' after dimension qualifier"); err != nil {
+				return ast.TypeRef{}, err
+			}
+			typeRef.Dimension = dim
+			typeRef.HasUnit = true
+		} else {
+			for {
+				argument, err := p.parseTypeRef()
+				if err != nil {
+					return ast.TypeRef{}, err
+				}
+				typeRef.TypeArguments = append(typeRef.TypeArguments, argument)
+				if !p.match(lex.Comma) {
+					break
+				}
+			}
+			if _, err := p.expect(lex.RightAngle, "expected '>' after type arguments"); err != nil {
+				return ast.TypeRef{}, err
+			}
 		}
-		if _, err := p.expect(lex.RightAngle, "expected '>' after dimension qualifier"); err != nil {
-			return ast.TypeRef{}, err
-		}
-		typeRef.Dimension = dim
-		typeRef.HasUnit = true
 	}
 	for p.match(lex.LeftBracket) {
 		if _, err := p.expect(lex.RightBracket, "expected ']' after '[' in array type"); err != nil {
@@ -1356,6 +1477,15 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 	typeRef.IsArray = typeRef.ArrayDepth > 0
 
 	return typeRef, nil
+}
+
+func isBuiltinDimensionSpelling(name string) bool {
+	switch name {
+	case "Int", "Float", "Complex", "Bool", "String", "Bytes", "Range", "UI", "Void", "Error", "Index":
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *parser) parseBlock() (ast.Block, error) {
@@ -1987,6 +2117,20 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Callee: expr, Arguments: arguments, Line: callToken.Line, Column: callToken.Column}
+		case p.current().Kind == lex.LeftAngle && p.looksLikeGenericRecordLiteral():
+			typeArguments, err := p.parseTypeArguments()
+			if err != nil {
+				return nil, err
+			}
+			typeName, err := p.flattenTypeExpr(expr)
+			if err != nil {
+				return nil, err
+			}
+			fields, err := p.parseRecordLiteralFields("record literal", false)
+			if err != nil {
+				return nil, err
+			}
+			expr = ast.RecordLiteralExpr{TypeName: typeName, TypeArguments: typeArguments, Fields: fields}
 		case p.current().Kind == lex.LeftAngle && p.looksLikeTypeArgumentList():
 			callToken := p.current()
 			typeArguments, err := p.parseTypeArguments()
@@ -2054,9 +2198,14 @@ func (p *parser) looksLikeTypeArgumentList() bool {
 		p.position = start
 		return false
 	}
-	if _, err := p.parseTypeRef(); err != nil {
-		p.position = start
-		return false
+	for {
+		if _, err := p.parseTypeRef(); err != nil {
+			p.position = start
+			return false
+		}
+		if !p.match(lex.Comma) {
+			break
+		}
 	}
 	if p.current().Kind != lex.RightAngle {
 		p.position = start
@@ -2066,6 +2215,28 @@ func (p *parser) looksLikeTypeArgumentList() bool {
 	isTypeArgCall := p.current().Kind == lex.LeftParen
 	p.position = start
 	return isTypeArgCall
+}
+
+func (p *parser) looksLikeGenericRecordLiteral() bool {
+	start := p.position
+	p.advance()
+	for {
+		if _, err := p.parseTypeRef(); err != nil {
+			p.position = start
+			return false
+		}
+		if !p.match(lex.Comma) {
+			break
+		}
+	}
+	if p.current().Kind != lex.RightAngle {
+		p.position = start
+		return false
+	}
+	p.advance()
+	isRecord := p.current().Kind == lex.LeftBrace && p.looksLikeRecordLiteral()
+	p.position = start
+	return isRecord
 }
 
 func (p *parser) looksLikeLegacyTypeArgumentList() bool {
@@ -2093,14 +2264,21 @@ func (p *parser) parseTypeArguments() ([]ast.TypeRef, error) {
 	if _, err := p.expect(lex.LeftAngle, "expected '<' before type arguments"); err != nil {
 		return nil, err
 	}
-	typeArgument, err := p.parseTypeRef()
-	if err != nil {
-		return nil, err
+	typeArguments := make([]ast.TypeRef, 0, 2)
+	for {
+		typeArgument, err := p.parseTypeRef()
+		if err != nil {
+			return nil, err
+		}
+		typeArguments = append(typeArguments, typeArgument)
+		if !p.match(lex.Comma) {
+			break
+		}
 	}
 	if _, err := p.expect(lex.RightAngle, "expected '>' after type arguments"); err != nil {
 		return nil, err
 	}
-	return []ast.TypeRef{typeArgument}, nil
+	return typeArguments, nil
 }
 
 func (p *parser) isRecordLiteralTypeExpr(expr ast.Expr) bool {
@@ -2159,6 +2337,13 @@ func (p *parser) parseCallArguments() ([]ast.Expr, error) {
 func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	token := p.current()
 	switch token.Kind {
+	case lex.Dot:
+		p.advance()
+		field, err := p.expectIdentifierLike("expected selector field name after '.'")
+		if err != nil {
+			return nil, err
+		}
+		return ast.SelectorExpr{Field: field.Lexeme, Line: token.Line, Column: token.Column}, nil
 	case lex.KeywordSwitch:
 		return p.parseSwitchExpr()
 	case lex.KeywordIf:

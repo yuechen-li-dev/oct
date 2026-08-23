@@ -1,0 +1,9 @@
+expect error: "selector .ID on Job has type Int, but Selector<Job, String> requires String"
+
+package ParametricsM0InvalidSelectorType
+
+record Job {ID: Int}
+
+fn Main() -> Void {
+    let invalid: Selector<Job, String> =.ID
+}

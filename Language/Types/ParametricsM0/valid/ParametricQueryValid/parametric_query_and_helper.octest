@@ -1,0 +1,80 @@
+package ParametricQueryValid
+
+record Job {
+    ID: Int
+    Status: String
+}
+
+record InventoryItem {
+    SKU: String
+    Available: Int
+}
+
+template record MaterializedFilter<Record> {
+    Source: Record[]
+    Predicate: fn(Record) -> Bool
+}
+
+template fn FirstWhere<T>(items: T[], predicate: fn(T) -> Bool) -> T ! Error {
+    for i in 0 .. Len(items) {
+        if predicate(items[i]) {
+            return items[i]
+        }
+    }
+    return error("FirstWhere found no matching value")
+}
+
+template query Filtered<T>(source: T[], predicate: fn(T) -> Bool, limit: Int) yields T {
+    filter predicate
+    take limit
+}
+
+fn IsReady(job: Job) -> Bool {
+    return job.Status == "Ready"
+}
+
+fn IsLowStock(item: InventoryItem) -> Bool {
+    return item.Available<5
+}
+
+[Fact]
+fn GeneralHelperAndMaterializedFilterRemainExact() -> Void {
+    let jobs =[
+    Job {ID: 9 Status: "Waiting"},
+    Job {ID: 3 Status: "Ready"}
+    ]
+    let items =[
+    InventoryItem {SKU: "A" Available: 12},
+    InventoryItem {SKU: "B" Available: 2}
+    ]
+    let ready = MaterializedFilter<Job> {Source: jobs Predicate: IsReady}
+    let low = MaterializedFilter<InventoryItem> {Source: items Predicate: IsLowStock}
+    Assert.Equal(3, FirstWhere<Job>(ready.Source, ready.Predicate) !.ID, "generic Job helper")
+    Assert.Equal("B", FirstWhere<InventoryItem>(low.Source, low.Predicate) !.SKU, "generic inventory helper")
+}
+
+[Fact]
+fn ParametricQueryLowersToOrdinaryYieldingFlow() -> Void {
+    let jobs =[
+    Job {ID: 30 Status: "Ready"},
+    Job {ID: 10 Status: "Waiting"},
+    Job {ID: 20 Status: "Ready"},
+    Job {ID: 40 Status: "Ready"}
+    ]
+    let ready = Filtered<Job>(jobs, IsReady, 2)
+    Step(ready)
+    Assert.Equal(30, Yielded(ready) !.ID, "source order first")
+    Step(ready)
+    Assert.Equal(20, Yielded(ready) !.ID, "source order second")
+    Step(ready)
+    Assert.Equal(true, Complete(ready), "take preserves early completion")
+
+    let items =[
+    InventoryItem {SKU: "A" Available: 12},
+    InventoryItem {SKU: "B" Available: 2}
+    ]
+    let low = Filtered<InventoryItem>(items, IsLowStock, 1)
+    Assert.Equal("B", Query.First(low) !.SKU, "same query template specializes for unrelated record")
+}
+
+fn Main() -> Void {}

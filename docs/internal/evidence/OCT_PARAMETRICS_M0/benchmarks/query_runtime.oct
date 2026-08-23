@@ -1,0 +1,18 @@
+package Main
+
+record Job {ID: Int Status: Int}
+
+template query ParametricFilter<T>(source: T[]) yields T {
+    filter {item.Status == 1}
+}
+
+query HandwrittenFilter(source: Job[]) yields Job {
+    filter {item.Status == 1}
+}
+
+fn TouchSpecialization(jobs: Job[]) -> Void {
+    let parametric = ParametricFilter<Job>(jobs)
+    let handwritten = HandwrittenFilter(jobs)
+}
+
+fn Main() -> Void {}

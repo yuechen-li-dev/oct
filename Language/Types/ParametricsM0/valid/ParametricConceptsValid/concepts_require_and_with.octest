@@ -1,0 +1,24 @@
+package ParametricConceptsValid
+
+concept Length = Float<m>
+
+template record Config<T> {
+    Value: T
+    MaxRecords: Int
+}
+
+template fn IdentityWithStaticContract<T>(value: T) -> T {
+    let stages =["resolve", "check", "monomorphize"]
+    Require(Len(stages) == 3, "parametric elaboration contract")
+    return value
+}
+
+[Fact]
+fn ConceptsRequireAndWithComposeAfterInstantiation() -> Void {
+    let base = Config<Length> {Value: 3.0m MaxRecords: 10}
+    let specialized = base with {MaxRecords: 25}
+    let exact: Length = IdentityWithStaticContract<Length>(specialized.Value)
+    Assert.Equal(3.0m, exact, "concept alias survives substitution")
+    Assert.Equal(25, specialized.MaxRecords, "with customizes concrete instantiation")
+    Assert.Equal(10, base.MaxRecords, "with remains immutable")
+}

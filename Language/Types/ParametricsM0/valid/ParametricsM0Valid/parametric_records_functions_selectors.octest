@@ -1,0 +1,40 @@
+package ParametricsM0Valid
+
+record Job {
+    ID: String
+    Status: String
+}
+
+record InventoryItem {
+    SKU: String
+    Available: Int
+}
+
+template record BoundedKeyedDataset<Record, Key> {
+    KeyOf: Selector<Record, Key>
+    MaxRecords: Int
+}
+
+template fn Selected<Record, Key>(value: Record, selector: Selector<Record, Key>) -> Key {
+    return selector(value)
+}
+
+[Fact]
+fn ParametricRecordsFunctionsAndSelectorsRemainExact() -> Void {
+    let jobs = BoundedKeyedDataset<Job, String> {
+        KeyOf: .ID
+        MaxRecords: 100000
+    }
+    let inventory = BoundedKeyedDataset<InventoryItem, String> {
+        KeyOf: .SKU
+        MaxRecords: 50000
+    }
+    let job = Job {ID: "J-7" Status: "Ready"}
+    let item = InventoryItem {SKU: "SKU-9" Available: 4}
+    Assert.Equal("J-7", Selected<Job, String>(job, jobs.KeyOf), "job selector")
+    Assert.Equal("SKU-9", Selected<InventoryItem, String>(item, inventory.KeyOf), "inventory selector")
+    Assert.Equal(100000, jobs.MaxRecords, "job bound")
+    Assert.Equal(50000, inventory.MaxRecords, "inventory bound")
+}
+
+fn Main() -> Void {}

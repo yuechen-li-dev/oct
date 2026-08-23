@@ -18,6 +18,7 @@ Fallibility is part of the function signature.
 - Calls must provide exactly the declared number of arguments.
 - Each argument type must match the corresponding parameter type.
 - Builtin names cannot be redeclared.
+- Reusable exact-typed functions may use `template fn Name<T>(...)`; see [19 Parametric templates](./19-parametrics.md).
 
 ## OctGo companion imports
 

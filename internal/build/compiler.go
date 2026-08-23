@@ -79,6 +79,18 @@ type MIRModule struct {
 	Flows           []MIRFlow
 	Functions       []MIRFunction
 	LayoutContracts []layoutcontract.Contract
+	Selectors       []MIRSelector
+}
+
+// MIRSelector is compile-time provenance for a selector getter. Execution uses
+// the ordinary concrete function in Functions; semantic consumers reuse the
+// existing exact-subject FieldRef instead of a second field-identity system.
+type MIRSelector struct {
+	Package string
+	Name    string
+	Owner   string
+	Result  string
+	Field   layoutcontract.FieldRef
 }
 
 type MIRRefinement struct {
@@ -857,6 +869,33 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			}
 		}
 		for _, fn := range pkg.Functions {
+			if fn.SelectorOwner != nil {
+				ownerPkg := fn.SelectorOwner.Package
+				if ownerPkg == "" {
+					ownerPkg = pkgName
+				}
+				ownerName := fn.SelectorOwner.Name
+				if ownerPkgDecl, ok := program.Packages[ownerPkg]; ok {
+					for _, ownerRecord := range ownerPkgDecl.Records {
+						if ownerRecord.Name != ownerName {
+							continue
+						}
+						for ordinal, field := range ownerRecord.Fields {
+							if field.Name != fn.SelectorField {
+								continue
+							}
+							subject := layoutcontract.DataSubjectRef{Kind: layoutcontract.NominalRecord, Identity: ownerPkg + "." + ownerName}
+							module.Selectors = append(module.Selectors, MIRSelector{
+								Package: pkgName,
+								Name:    fn.Name,
+								Owner:   subject.Identity,
+								Result:  typeRefStringForPackage(pkgName, fn.ReturnType),
+								Field:   layoutcontract.FieldRef{Subject: subject, Ordinal: ordinal, Name: field.Name},
+							})
+						}
+					}
+				}
+			}
 			if fn.IsGoImport {
 				continue
 			}
@@ -1265,6 +1304,15 @@ func collectExprCallsWithLocals(expr ast.Expr, functionValueLocals map[string]st
 	case ast.BatchExpr:
 		calls = append(calls, collectExprCallsWithLocals(e.Input, functionValueLocals)...)
 		calls = append(calls, collectFunctionCalls(e.Body)...)
+	case ast.RecordLiteralExpr:
+		for _, field := range e.Fields {
+			calls = append(calls, collectExprCallsWithLocals(field.Value, functionValueLocals)...)
+		}
+	case ast.RecordUpdateExpr:
+		calls = append(calls, collectExprCallsWithLocals(e.Source, functionValueLocals)...)
+		for _, field := range e.Fields {
+			calls = append(calls, collectExprCallsWithLocals(field.Value, functionValueLocals)...)
+		}
 	}
 	return calls
 }
@@ -6208,6 +6256,9 @@ func dumpMIR(m MIRModule) string {
 	}
 	for _, contract := range m.LayoutContracts {
 		fmt.Fprintf(&b, "layout-contract %s\n", layoutcontract.Format(contract))
+	}
+	for _, selector := range m.Selectors {
+		fmt.Fprintf(&b, "selector %s.%s owner=%s field=%s[%d] result=%s\n", selector.Package, selector.Name, selector.Owner, selector.Field.Name, selector.Field.Ordinal, selector.Result)
 	}
 	for _, flow := range m.Flows {
 		fmt.Fprintf(&b, "flow %s.%s -> %s\n", flow.Package, flow.Name, flow.Return)

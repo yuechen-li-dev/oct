@@ -6955,6 +6955,9 @@ func (c checker) resolveNonReturnType(typeRef ast.TypeRef) (Type, error) {
 }
 
 func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) {
+	if len(typeRef.TypeArguments) > 0 {
+		return Type{}, fmt.Errorf("unelaborated parametric type %s reached ordinary type checking", typeRef.Name)
+	}
 	if len(typeRef.TupleOf) > 0 {
 		if typeRef.IsArray || typeRef.ArrayDepth > 0 || typeRef.VectorOf != nil || typeRef.MatrixOf != nil || typeRef.Function != nil || typeRef.Name != "" || typeRef.Package != "" || typeRef.HasUnit {
 			return Type{}, fmt.Errorf("tuple types are not part of Oct's public language. Use a record with named fields instead")

@@ -1,0 +1,14 @@
+package Algorithms
+
+/// Returns the first value accepted by an exact-typed predicate.
+/// Param values: candidate values in source order.
+/// Param predicate: exact fn(T) -> Bool predicate.
+/// Returns: first matching T, or Error when no value matches.
+template fn FirstWhere<T>(values: T[], predicate: fn(T) -> Bool) -> T ! Error {
+    for i in 0 .. Len(values) {
+        if predicate(values[i]) {
+            return values[i]
+        }
+    }
+    return error("FirstWhere found no matching value")
+}

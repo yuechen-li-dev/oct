@@ -11,6 +11,7 @@ import (
 type SubjectKind string
 
 const (
+	NominalRecord    SubjectKind = "nominal-record"
 	MIRRecordTable   SubjectKind = "mir-record-table"
 	MIRTableRow      SubjectKind = "mir-table-row"
 	StaticEvalValue  SubjectKind = "static-evaluation-value"
