@@ -268,6 +268,30 @@ fn PiecewiseWorkflowComposesWithRemap() -> Void {
 }
 
 [Fact]
+fn LagrangeInterpolationReconstructsQuadraticExactly() -> Void {
+    let xs = [-1.0, 0.0, 2.0]
+    let ys = [1.0, 0.0, 4.0]
+    Assert.Near(0.25, LagrangeInterpolate(xs, ys, 0.5)!, 0.0000001, "three samples of x squared determine the quadratic")
+    Assert.Near(4.0, LagrangeInterpolate(xs, ys, 2.0)!, 0.0000001, "interpolant should reproduce knots")
+    Assert.Near(7.0, LagrangeInterpolate([3.0], [7.0], -100.0)!, 0.0000001, "one point defines a constant polynomial")
+}
+
+[Fact]
+fn LagrangeInterpolationReturnsStoredKnotValueExactly() -> Void {
+    let xs = [-3.0, 0.25, 8.0]
+    let ys = [4.0, 0.123456789012345, -9.0]
+    let value = LagrangeInterpolate(xs, ys, xs[1])!
+    Assert.True(value == ys[1], "a knot query returns the stored y without recomputation")
+}
+
+[Fact]
+fn LagrangeInterpolationRejectsMalformedGrids() -> Void {
+    Assert.Error(LagrangeInterpolate([], [], 0.0), "empty grid must fail")
+    Assert.Error(LagrangeInterpolate([0.0], [1.0, 2.0], 0.0), "shape mismatch must fail")
+    Assert.Error(LagrangeInterpolate([0.0, 0.0], [1.0, 2.0], 0.0), "duplicate x coordinates make the basis undefined")
+}
+
+[Fact]
 fn SplineAndPiecewiseAgreeAtKnots() -> Void {
     // Both methods must agree exactly at knot locations.
     let xs = [0.0, 1.0, 2.0, 3.0]

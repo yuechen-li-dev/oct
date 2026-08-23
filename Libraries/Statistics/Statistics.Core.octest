@@ -7,6 +7,17 @@ fn MeanComputesAverageForSimpleArray() -> Void {
 }
 
 [Fact]
+fn WeightedMeanMatchesReplicationAndRejectsInvalidWeights() -> Void {
+    let weighted = WeightedMean([10.0, 20.0, 40.0], [1.0, 2.0, 1.0])!
+    Assert.Near(22.5, weighted, 0.000001, "weights should act like observation multiplicities")
+    Assert.Near(20.0, WeightedMean([10.0, 20.0], [0.0, 2.0])!, 0.000001, "zero weights should omit observations")
+    Assert.Error(WeightedMean([], []), "empty weighted sample must fail")
+    Assert.Error(WeightedMean([1.0], [1.0, 2.0]), "shape mismatch must fail")
+    Assert.Error(WeightedMean([1.0, 2.0], [0.0, 0.0]), "zero total weight must fail")
+    Assert.Error(WeightedMean([1.0], [-1.0]), "negative weight must fail")
+}
+
+[Fact]
 fn MeanDimensionlessOutputMatchesInputDimensionClass() -> Void {
     let xs = [1.5, 2.5, 3.5]
     let m = Mean(xs)

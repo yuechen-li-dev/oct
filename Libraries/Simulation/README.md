@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`Libraries/Simulation` provides explicit deterministic fixed-step simulation helpers authored on top of Octomata `flow` + `state`.
+`Libraries/Simulation` provides a compact deterministic scalar simulation runner, aligned trace analysis, and ordered parameter sweeps. Octomata `flow` remains available when a model genuinely needs suspension or explicit behavioral states.
 
 ## M0 scope
 
@@ -10,11 +10,15 @@
 - scalar (`Float`) state and output
 - deterministic progression with explicit step count
 - trace collection through explicit append operations
+- callback-defined transition and observation functions
+- trapezoidal integration of recorded outputs
+- deterministic `batch` parameter sweeps
 
 ## Core shapes
 
 - `SimulationStepResult { Time, State, Output }`
 - `SimulationTrace { Times, States, Outputs }`
+- `FixedStepConfig { InitialTime, Dt, Steps }`
 
 ## API surface
 
@@ -22,10 +26,26 @@
 - `InitializeTrace(initialTime, initialState, initialOutput)`
 - `AppendStep(trace, stepResult)`
 - `ValidateTraceShape(trace)`
+- `RunFixedStep(transition, observe, initialState, config)`
+- `FinalStep(trace)`
+- `OutputIntegral(trace)`
+- `EvaluateParameterSweep(parameters, experiment)`
 
-## Architectural rule
+## Executable decay example
 
-Simulation is built on Octomata execution primitives. Canonical simulations are authored with `flow` and `state`, using explicit `goto`/`suspend`/`return` progression.
+```oct
+fn Decay(t: Float, state: Float, dt: Float) -> Float {
+    return state - dt * state
+}
+
+fn Observe(t: Float, state: Float) -> Float { return state }
+
+let base = FixedStepConfig { InitialTime: 0.0 Dt: 0.2 Steps: 5 }
+let refined = base with { Dt: 0.1 Steps: 10 }
+let trace = RunFixedStep(Decay, Observe, 1.0, refined)!
+```
+
+Ordinary bounded fixed-step models should use `RunFixedStep`: the transition equation stays visible and the trace is deterministic. Use `flow` only when resumability, turns, or explicit state-machine progression is itself part of the scientific model. This separates numerical stepping from behavioral orchestration.
 
 ## Non-goals
 
@@ -36,3 +56,4 @@ Simulation M0 is **not**:
 - a hidden scheduler/execution-order engine
 - an event system
 - a variable-step or adaptive-time solver platform
+- a replacement for `DifferentialEquations` ODE algorithms

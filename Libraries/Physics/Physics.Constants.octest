@@ -12,6 +12,9 @@ fn PhysicalConstantsCallableSurface() -> Void {
     let _sigma = StefanBoltzmannConstant()
     let _eps0 = VacuumPermittivity()
     let _mu0 = VacuumPermeability()
+    Assert.True(_c > 0.0m/s and _kb > 0.0kg*m^2/s^2 and _h > 0.0kg*m^2/s, "core dimensional constants should be callable and positive")
+    Assert.True(_hbar > 0.0kg*m^2/s and _e > 0.0 and _na > 0.0 and _r > 0.0kg*m^2/s^2, "derived and scalar constants should be callable and positive")
+    Assert.True(_sigma > 0.0kg/s^3 and _eps0 > 0.0 and _mu0 > 0.0, "remaining constants should be callable and positive")
 }
 
 [Fact]

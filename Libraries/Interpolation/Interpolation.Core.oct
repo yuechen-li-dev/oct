@@ -100,6 +100,45 @@ fn PiecewiseLinearExtrapolated(xs: Float[], ys: Float[], x: Float) -> Float ! Er
 }
 
 // ============================================================
+// Lagrange polynomial interpolation
+// ============================================================
+
+/// Evaluates the unique degree <= n-1 polynomial through n sample points.
+/// This transparent O(n^2) reference form is useful for small teaching problems.
+/// High-degree or closely spaced grids can be ill-conditioned; prefer splines there.
+fn LagrangeInterpolate(xs: Float[], ys: Float[], x: Float) -> Float ! Error {
+    if Len(xs) == 0 or Len(xs) != Len(ys) {
+        return error("Lagrange interpolation requires non-empty matching arrays")
+    }
+    for i in 0 .. Len(xs) {
+        for j in i + 1 .. Len(xs) {
+            if xs[i] == xs[j] {
+                return error("Lagrange interpolation requires distinct x coordinates")
+            }
+        }
+    }
+
+    // Preserve stored samples exactly and avoid unnecessary basis arithmetic.
+    for i in 0 .. Len(xs) {
+        if x == xs[i] {
+            return ys[i]
+        }
+    }
+
+    var result = 0.0
+    for i in 0 .. Len(xs) {
+        var basis = 1.0
+        for j in 0 .. Len(xs) {
+            if i != j {
+                basis = basis * (x - xs[j]) / (xs[i] - xs[j])
+            }
+        }
+        result = result + ys[i] * basis
+    }
+    return result
+}
+
+// ============================================================
 // Cubic spline interpolation
 // ============================================================
 
@@ -211,15 +250,7 @@ fn EvalCubicSpline(spline: CubicSpline, x: Float) -> Float ! Error {
         return error("cubic spline query x is out of range")
     }
 
-    // Find the segment containing x.
-    var seg = spline.N - 1
-    for i in 0 .. spline.N {
-        if x <= xs[i + 1] {
-            seg = i
-            /// Break by going to a fixed index — oct has no break, so track via seg.
-        }
-    }
-    // Refine: find the last i where xs[i] <= x.
+    // Find the last knot at or before x. The prior two-pass search was redundant.
     var idx = 0
     for i in 0 .. spline.N {
         if xs[i] <= x {

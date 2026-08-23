@@ -1,0 +1,11 @@
+expect error: "function 'KineticEnergy' argument 2 expects Float<m/s>, got Float<s>"
+
+package Physics
+
+fn KineticEnergy(mass: Float<kg>, velocity: Float<m/s>) -> Float<kg*m^2/s^2> {
+    return 0.5 * mass * velocity * velocity
+}
+
+fn InvalidKineticEnergyDimensions() -> Float<kg*m^2/s^2> ! Error {
+    return KineticEnergy(2.0kg, 3.0s)?
+}

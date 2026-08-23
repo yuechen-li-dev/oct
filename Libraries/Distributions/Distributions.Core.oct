@@ -72,6 +72,80 @@ fn ExponentialCdf(x: Float, lambda: Float) -> Float ! Error {
     return 1.0 - Exp(0.0 - lambda * x)
 }
 
+/// Bernoulli probability mass function for k in {0, 1}.
+fn BernoulliPmf(k: Int, probability: Float) -> Float ! Error {
+    let ok = ValidateProbability(probability)?
+    if k == 0 {
+        return 1.0 - probability
+    }
+    if k == 1 {
+        return probability
+    }
+    return 0.0
+}
+
+/// Binomial probability mass for k successes in n independent trials.
+/// The multiplicative coefficient avoids constructing factorials explicitly.
+/// Suitable for moderate n; extreme-tail work should use a log-domain implementation.
+fn BinomialPmf(k: Int, n: Int, probability: Float) -> Float ! Error {
+    let ok = ValidateProbability(probability)?
+    if n < 0 {
+        return error("binomial pmf requires n >= 0")
+    }
+    if k < 0 or k > n {
+        return 0.0
+    }
+    if probability == 0.0 {
+        return if k == 0 { 1.0 } else { 0.0 }
+    }
+    if probability == 1.0 {
+        return if k == n { 1.0 } else { 0.0 }
+    }
+
+    let symmetricK = if k < n - k { k } else { n - k }
+    var coefficient = 1.0
+    for i in 1 .. symmetricK + 1 {
+        coefficient = coefficient * Float(n - symmetricK + i) / Float(i)
+    }
+    return coefficient * Pow(probability, Float(k)) * Pow(1.0 - probability, Float(n - k))
+}
+
+/// Poisson probability mass for k events at positive expected count lambda.
+/// The recurrence exp(-lambda) * product(lambda/i) avoids factorial overflow.
+fn PoissonPmf(k: Int, lambda: Float) -> Float ! Error {
+    if lambda <= 0.0 {
+        return error("poisson pmf requires lambda > 0")
+    }
+    if k < 0 {
+        return 0.0
+    }
+
+    var probability = Exp(0.0 - lambda)
+    for i in 1 .. k + 1 {
+        probability = probability * lambda / Float(i)
+    }
+    return probability
+}
+
+/// log(n!) computed as a sum of logarithms, avoiding factorial overflow.
+fn LogFactorial(n: Int) -> Float ! Error {
+    if n < 0 {
+        return error("log factorial requires n >= 0")
+    }
+    var result = 0.0
+    for i in 2 .. n + 1 {
+        result = result + Ln(Float(i))
+    }
+    return result
+}
+
+fn ValidateProbability(probability: Float) -> Bool ! Error {
+    if probability < 0.0 or probability > 1.0 {
+        return error("probability must be in [0, 1]")
+    }
+    return true
+}
+
 fn ErfApprox(value: Float) -> Float {
     // Abramowitz and Stegun 7.1.26 (deterministic approximation).
     let p = 0.3275911

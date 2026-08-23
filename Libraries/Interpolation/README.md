@@ -1,7 +1,7 @@
 # Interpolation Library
 
 Deterministic 1D and 2D interpolation for oct. Covers scalar lerp primitives,
-piecewise linear interpolation with three boundary modes, natural cubic spline,
+piecewise linear interpolation with three boundary modes, Lagrange polynomials, natural cubic spline,
 and bilinear surface interpolation.
 
 ## Components
@@ -58,6 +58,10 @@ values outside the range.
 For n=2 knots the spline degenerates to a line — `BuildCubicSpline` handles
 this without error.
 
+### Lagrange polynomial
+
+`LagrangeInterpolate(xs, ys, x)` evaluates the O(n^2) basis formula directly. Three samples from `y=x^2`, for example, reconstruct the quadratic exactly. The implementation is deliberately readable and intended for small grids; high-degree or tightly spaced interpolation is numerically ill-conditioned, so splines are the better default there.
+
 The spline is strictly more accurate than piecewise linear for smooth data.
 For interpolating sin(x) at knots spaced 1 unit apart, the cubic spline error
 at midpoints is an order of magnitude smaller than piecewise linear error.
@@ -82,6 +86,7 @@ Use bilinear for 2D lookup tables, terrain height queries, and image sampling.
 - `LinearInterpolate` rejects x0 == x1 with `Error`.
 - `BilinearInterpolate` rejects zero-extent dimensions with `Error`.
 - `BuildCubicSpline` inherits piecewise validation (strictly increasing xs, ≥2 points).
+- `LagrangeInterpolate` requires non-empty matching arrays and distinct x coordinates.
 - `InverseLerp` and `Remap` reject equal endpoints with `Error`.
 
 ## Type policy
@@ -98,7 +103,7 @@ in this library, since oct's `for` loops are forward-only.
 
 ## Test coverage
 
-28 contracts covering all functions, boundary modes, error paths, the
+31 contracts covering all functions, boundary modes, error paths, the
 spline accuracy comparison against piecewise linear, and the bilinear
 corner/edge identity contracts.
 

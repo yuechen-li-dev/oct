@@ -25,6 +25,29 @@ fn RK4StepImprovesAccuracyOnExponentialGrowth() -> Void {
 }
 
 [Fact]
+fn EulerMidpointAndRK4FormAccuracyProgression() -> Void {
+    let dt = 0.2
+    let exact = Exp(dt)
+    let euler = EulerStep(DerivativeIdentity, 0.0, 1.0, dt)!
+    let midpoint = MidpointStep(DerivativeIdentity, 0.0, 1.0, dt)!
+    let rk4 = RK4Step(DerivativeIdentity, 0.0, 1.0, dt)!
+
+    Assert.True(Abs(exact - midpoint) < Abs(exact - euler), "midpoint should improve on Euler for y'=y")
+    Assert.True(Abs(exact - rk4) < Abs(exact - midpoint), "RK4 should improve on midpoint for y'=y")
+}
+
+[Fact]
+fn MidpointSolveReturnsExpectedGridAndRejectsInvalidSetup() -> Void {
+    let solution = MidpointSolve(DerivativeIdentity, 1.0, 2.0, 0.25, 4)!
+    Assert.Equal(5, Len(solution.Times), "solution should include initial state")
+    Assert.Equal(5, Len(solution.Values), "solution values should align with times")
+    Assert.Near(2.0, solution.Times[4], 0.000001, "four steps should reach t=2")
+    Assert.True(solution.Values[4] > solution.Values[0], "positive exponential slope should grow")
+    Assert.Error(MidpointStep(DerivativeIdentity, 0.0, 1.0, 0.0), "zero step must fail")
+    Assert.Error(MidpointSolve(DerivativeIdentity, 0.0, 1.0, 0.1, 0), "non-positive step count must fail")
+}
+
+[Fact]
 fn EulerAndRK4SolveReturnExpectedShapeAndBoundaries() -> Void {
     let steps = 5
     let dt = 0.2

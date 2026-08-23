@@ -1,0 +1,50 @@
+package Physics
+
+/// Positive mass is a scientific precondition, not a sentinel convention.
+concept PositiveMass = Float<kg> {
+    Require(Self > 0.0kg, "mass must be positive")
+}
+
+/// Positive elapsed time prevents undefined average power.
+concept PositiveDuration = Float<s> {
+    Require(Self > 0.0s, "duration must be positive")
+}
+
+/// Newton's second law, F = m a.
+fn Force(mass: PositiveMass, acceleration: Float<m/s^2>) -> Float<kg*m/s^2> ! Error {
+    return mass * acceleration
+}
+
+/// Linear momentum, p = m v.
+fn Momentum(mass: PositiveMass, velocity: Float<m/s>) -> Float<kg*m/s> ! Error {
+    return mass * velocity
+}
+
+/// Translational kinetic energy, E_k = 1/2 m v^2.
+fn KineticEnergy(mass: PositiveMass, velocity: Float<m/s>) -> Float<kg*m^2/s^2> ! Error {
+    return 0.5 * mass * velocity * velocity
+}
+
+/// Near-surface gravitational potential energy, E_p = m g h.
+fn GravitationalPotentialEnergy(
+    mass: PositiveMass,
+    gravity: Float<m/s^2>,
+    height: Float<m>
+) -> Float<kg*m^2/s^2> ! Error {
+    return mass * gravity * height
+}
+
+/// Work by a collinear constant force, W = F d.
+fn Work(force: Float<kg*m/s^2>, displacement: Float<m>) -> Float<kg*m^2/s^2> {
+    return force * displacement
+}
+
+/// Average power, P = E / dt.
+fn AveragePower(energy: Float<kg*m^2/s^2>, duration: PositiveDuration) -> Float<kg*m^2/s^3> ! Error {
+    return energy / duration
+}
+
+/// Elastic potential energy, E = 1/2 k x^2, for a linear spring.
+fn SpringPotentialEnergy(stiffness: Float<kg/s^2>, displacement: Float<m>) -> Float<kg*m^2/s^2> {
+    return 0.5 * stiffness * displacement * displacement
+}

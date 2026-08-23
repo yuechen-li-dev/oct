@@ -12,6 +12,44 @@ fn Mean(xs: Float[]) -> Float {
     return sum / n
 }
 
+/// Weighted arithmetic mean, sum(w_i x_i) / sum(w_i).
+/// Weights must be non-negative and contain positive total mass.
+/// Compensated summation reduces loss of low-order terms for mixed magnitudes.
+fn WeightedMean(xs: Float[], weights: Float[]) -> Float ! Error {
+    if Len(xs) == 0 {
+        return error("WeightedMean requires at least one value")
+    }
+    if Len(xs) != Len(weights) {
+        return error("WeightedMean requires equal-length values and weights")
+    }
+
+    var weightedSum = 0.0
+    var weightedCompensation = 0.0
+    var weightSum = 0.0
+    var weightCompensation = 0.0
+    for i in 0 .. Len(xs) {
+        let weight = weights[i]
+        if weight < 0.0 {
+            return error("WeightedMean requires non-negative weights")
+        }
+
+        let weightedTerm = xs[i] * weight - weightedCompensation
+        let nextWeightedSum = weightedSum + weightedTerm
+        weightedCompensation = (nextWeightedSum - weightedSum) - weightedTerm
+        weightedSum = nextWeightedSum
+
+        let weightTerm = weight - weightCompensation
+        let nextWeightSum = weightSum + weightTerm
+        weightCompensation = (nextWeightSum - weightSum) - weightTerm
+        weightSum = nextWeightSum
+    }
+
+    if weightSum <= 0.0 {
+        return error("WeightedMean requires positive total weight")
+    }
+    return weightedSum / weightSum
+}
+
 fn Variance(xs: Float[]) -> Float {
     let n = Len(xs)
     Assert.True(n > 0, "Variance requires at least one value")

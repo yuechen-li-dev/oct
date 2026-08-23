@@ -82,3 +82,34 @@ fn DistributionWorkflowComposesInExpressionChain() -> Void {
 
     Assert.True(weighted > 0.0, "distribution evaluations should compose deterministically")
 }
+
+[Fact]
+fn BernoulliPmfCoversSupportAndProbabilityContract() -> Void {
+    Assert.Near(0.7, BernoulliPmf(0, 0.3)!, 0.0000001, "zero outcome has probability 1-p")
+    Assert.Near(0.3, BernoulliPmf(1, 0.3)!, 0.0000001, "one outcome has probability p")
+    Assert.Near(0.0, BernoulliPmf(2, 0.3)!, 0.0000001, "outside support has zero mass")
+    Assert.Error(BernoulliPmf(1, 1.1), "probability above one must fail")
+}
+
+[Fact]
+fn BinomialPmfMatchesExactTextbookCases() -> Void {
+    Assert.Near(0.3125, BinomialPmf(2, 5, 0.5)!, 0.0000001, "five fair trials have C(5,2)/32 mass")
+    Assert.Near(1.0, BinomialPmf(0, 0, 0.4)!, 0.0000001, "zero trials produce zero successes")
+    Assert.Near(0.0, BinomialPmf(6, 5, 0.5)!, 0.0000001, "outside support has zero mass")
+    Assert.Error(BinomialPmf(0, -1, 0.5), "negative trial count must fail")
+
+    var total = 0.0
+    for k in 0 .. 7 {
+        total = total + BinomialPmf(k, 6, 0.25)!
+    }
+    Assert.Near(1.0, total, 0.0000001, "finite binomial support should sum to one")
+}
+
+[Fact]
+fn PoissonPmfAndLogFactorialMatchAnalyticCases() -> Void {
+    Assert.Near(Exp(-2.0) * 2.0, PoissonPmf(1, 2.0)!, 0.0000001, "P(X=1) should equal e^-lambda lambda")
+    Assert.Near(Ln(120.0), LogFactorial(5)!, 0.0000001, "log(5!) should equal log(120)")
+    Assert.Near(0.0, PoissonPmf(-1, 2.0)!, 0.0000001, "negative count is outside support")
+    Assert.Error(PoissonPmf(1, 0.0), "lambda must be positive")
+    Assert.Error(LogFactorial(-1), "negative factorial domain must fail")
+}

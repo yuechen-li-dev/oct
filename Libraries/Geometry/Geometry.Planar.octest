@@ -56,3 +56,42 @@ fn PlanarComposabilityChain() -> Void {
     Assert.Near(5.0, d / 1m, 0.000001, "distance in chain should remain correct")
     Assert.True(scaled > 0m ^ 2, "derived area expression should remain physically meaningful")
 }
+
+[Fact]
+fn OrientationExplainsTurnDirectionAndCollinearity() -> Void {
+    let origin = Point2D { X: 0.0m Y: 0.0m }
+    let east = Point2D { X: 2.0m Y: 0.0m }
+    let north = Point2D { X: 0.0m Y: 2.0m }
+    let fartherEast = Point2D { X: 4.0m Y: 0.0m }
+
+    Assert.Equal(1, Orientation2D(origin, east, north), "left turn should be counter-clockwise")
+    Assert.Equal(-1, Orientation2D(origin, north, east), "right turn should be clockwise")
+    Assert.Equal(0, Orientation2D(origin, east, fartherEast), "points on one line should be collinear")
+}
+
+[Fact]
+fn PolygonShoelaceAreaAndCentroidMatchRectangle() -> Void {
+    let xs: Float<m>[] = [0.0m, 4.0m, 4.0m, 0.0m]
+    let ys: Float<m>[] = [0.0m, 0.0m, 2.0m, 2.0m]
+    let area = PolygonArea(xs, ys)!
+    let centroid = PolygonCentroid(xs, ys)!
+
+    Assert.Near(8.0m^2, area, 0.000001m^2, "shoelace area should match width times height")
+    Assert.Near(2.0m, centroid.X, 0.000001m, "rectangle centroid x should be centered")
+    Assert.Near(1.0m, centroid.Y, 0.000001m, "rectangle centroid y should be centered")
+
+    let reversedXs: Float<m>[] = [0.0m, 4.0m, 4.0m, 0.0m]
+    let reversedYs: Float<m>[] = [2.0m, 2.0m, 0.0m, 0.0m]
+    Assert.Near(area, PolygonArea(reversedXs, reversedYs)!, 0.000001m^2, "area should not depend on winding")
+}
+
+[Fact]
+fn PolygonOperationsRejectMalformedAndDegenerateInputs() -> Void {
+    let shortXs: Float<m>[] = [0.0m, 1.0m]
+    let shortYs: Float<m>[] = [0.0m, 1.0m]
+    Assert.Error(PolygonArea(shortXs, shortYs), "fewer than three vertices must fail")
+
+    let xs: Float<m>[] = [0.0m, 1.0m, 2.0m]
+    let ys: Float<m>[] = [0.0m, 0.0m, 0.0m]
+    Assert.Error(PolygonCentroid(xs, ys), "zero-area polygon has undefined centroid")
+}

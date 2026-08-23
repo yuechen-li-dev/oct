@@ -21,3 +21,76 @@ fn RectangleArea(width: NonNegativeLength, height: NonNegativeLength) -> Float <
 fn TriangleArea(base: NonNegativeLength, height: NonNegativeLength) -> Float < m ^ 2 >! Error {
     return 0.5 * base * height
 }
+
+/// A point in a two-dimensional metric plane.
+record Point2D {
+    X: Float<m>
+    Y: Float<m>
+}
+
+/// Twice the signed triangle area for a->b->c.
+/// Positive means counter-clockwise, negative clockwise, and zero collinear.
+fn OrientationValue(a: Point2D, b: Point2D, c: Point2D) -> Float<m^2> {
+    return (b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X)
+}
+
+/// Orientation sign for three ordered points: +1 counter-clockwise, -1 clockwise, 0 collinear.
+fn Orientation2D(a: Point2D, b: Point2D, c: Point2D) -> Int {
+    let value = OrientationValue(a, b, c)
+    if value > 0.0m^2 {
+        return 1
+    }
+    if value < 0.0m^2 {
+        return -1
+    }
+    return 0
+}
+
+/// Area of a simple polygon using the O(n) shoelace formula.
+/// Vertices may be clockwise or counter-clockwise; self-intersections are not diagnosed.
+fn PolygonArea(xs: Float<m>[], ys: Float<m>[]) -> Float<m^2> ! Error {
+    let twiceSignedArea = PolygonTwiceSignedArea(xs, ys)?
+    let magnitude = if twiceSignedArea < 0.0m^2 { 0.0m^2 - twiceSignedArea } else { twiceSignedArea }
+    return magnitude / 2.0
+}
+
+/// Centroid of a non-degenerate simple polygon.
+/// The signed shoelace weights make the result independent of vertex winding.
+fn PolygonCentroid(xs: Float<m>[], ys: Float<m>[]) -> Point2D ! Error {
+    let twiceSignedArea = PolygonTwiceSignedArea(xs, ys)?
+    if twiceSignedArea == 0.0m^2 {
+        return error("polygon centroid requires non-zero area")
+    }
+
+    var xWeighted = 0.0m^3
+    var yWeighted = 0.0m^3
+    let n = Len(xs)
+    for i in 0 .. n {
+        let next = if i + 1 == n { 0 } else { i + 1 }
+        let cross = xs[i] * ys[next] - xs[next] * ys[i]
+        xWeighted = xWeighted + (xs[i] + xs[next]) * cross
+        yWeighted = yWeighted + (ys[i] + ys[next]) * cross
+    }
+
+    return Point2D {
+        X: xWeighted / (3.0 * twiceSignedArea)
+        Y: yWeighted / (3.0 * twiceSignedArea)
+    }
+}
+
+fn PolygonTwiceSignedArea(xs: Float<m>[], ys: Float<m>[]) -> Float<m^2> ! Error {
+    if Len(xs) != Len(ys) {
+        return error("polygon coordinates must have matching lengths")
+    }
+    if Len(xs) < 3 {
+        return error("polygon requires at least three vertices")
+    }
+
+    var sum = 0.0m^2
+    let n = Len(xs)
+    for i in 0 .. n {
+        let next = if i + 1 == n { 0 } else { i + 1 }
+        sum = sum + xs[i] * ys[next] - xs[next] * ys[i]
+    }
+    return sum
+}

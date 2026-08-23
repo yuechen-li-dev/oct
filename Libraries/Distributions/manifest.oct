@@ -19,8 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "Distributions"
         Version: "0.1.0"
         Authors: ["Codex"]
-        Date: "2026-06-15"
-        Description: "Deterministic core probability distribution evaluation"
+        Date: "2026-08-23"
+        Description: "Deterministic continuous and foundational discrete distribution evaluation"
         Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
     }
 }

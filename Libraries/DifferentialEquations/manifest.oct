@@ -19,8 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "DifferentialEquations"
         Version: "0.1.0"
         Authors: ["Codex"]
-        Date: "2026-06-15"
-        Description: "Deterministic fixed-step ODE initial value solvers"
+        Date: "2026-08-23"
+        Description: "Readable Euler, midpoint, and RK4 fixed-step ODE solvers"
         Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
     }
 }

@@ -55,6 +55,78 @@ fn AppendStepRejectsMismatchedTraceShape() -> Void {
     Assert.Error(AppendStep(bad, stepResult), "mismatched trace arrays must fail")
 }
 
+fn DecayEulerTransition(t: Float, state: Float, dt: Float) -> Float {
+    return state - dt * state
+}
+
+fn IdentityObservation(t: Float, state: Float) -> Float {
+    return state
+}
+
+fn SquareExperiment(parameter: Float) -> Float {
+    return parameter * parameter
+}
+
+[Fact]
+fn RunFixedStepBuildsAlignedDeterministicTrace() -> Void {
+    let config = FixedStepConfig { InitialTime: 0.0 Dt: 0.1 Steps: 3 }
+    let trace = RunFixedStep(DecayEulerTransition, IdentityObservation, 10.0, config)!
+    let final = FinalStep(trace)!
+
+    Assert.Equal(4, Len(trace.Times), "trace should include initial plus three steps")
+    Assert.Near(0.3, final.Time, 0.000001, "final time should equal t0 + steps*dt")
+    Assert.Near(7.29, final.State, 0.000001, "Euler decay should follow its exact discrete recurrence")
+    Assert.Near(final.State, final.Output, 0.000001, "identity observation should expose state")
+}
+
+[Fact]
+fn FixedStepConfigWithSupportsInspectableScenarioVariants() -> Void {
+    let base = FixedStepConfig { InitialTime: 0.0 Dt: 0.2 Steps: 2 }
+    let refined = base with { Dt: 0.1 Steps: 4 }
+    let coarseTrace = RunFixedStep(DecayEulerTransition, IdentityObservation, 1.0, base)!
+    let refinedTrace = RunFixedStep(DecayEulerTransition, IdentityObservation, 1.0, refined)!
+
+    Assert.Near(FinalStep(coarseTrace)!.Time, FinalStep(refinedTrace)!.Time, 0.000001, "scenario variants should cover the same horizon")
+    Assert.True(FinalStep(refinedTrace)!.State > FinalStep(coarseTrace)!.State, "smaller Euler steps should reduce decay discretization error")
+}
+
+[Fact]
+fn OutputIntegralSupportsNonUniformTraceAndRejectsBadTimeOrder() -> Void {
+    let trace = SimulationTrace {
+        Times: [0.0, 1.0, 3.0]
+        States: [0.0, 1.0, 3.0]
+        Outputs: [0.0, 1.0, 3.0]
+    }
+    Assert.Near(4.5, OutputIntegral(trace)!, 0.000001, "trapezoids should integrate y=t exactly")
+
+    let bad = SimulationTrace {
+        Times: [0.0, 0.0]
+        States: [1.0, 1.0]
+        Outputs: [1.0, 1.0]
+    }
+    Assert.Error(OutputIntegral(bad), "repeated time makes integration undefined")
+    Assert.Error(FinalStep(SimulationTrace { Times: [] States: [] Outputs: [] }), "empty trace has no final sample")
+}
+
+[Fact]
+fn ParameterSweepUsesOrderedDeterministicBatchMapping() -> Void {
+    let results = EvaluateParameterSweep([3.0, -2.0, 0.5], SquareExperiment)
+    Assert.Equal(3, Len(results), "sweep should preserve input cardinality")
+    Assert.Near(9.0, results[0], 0.000001, "first result belongs to first parameter")
+    Assert.Near(4.0, results[1], 0.000001, "second result belongs to second parameter")
+    Assert.Near(0.25, results[2], 0.000001, "third result belongs to third parameter")
+}
+
+[Fact]
+fn RunFixedStepAndAppendRejectInvalidProgression() -> Void {
+    let invalid = FixedStepConfig { InitialTime: 0.0 Dt: 0.0 Steps: 2 }
+    Assert.Error(RunFixedStep(DecayEulerTransition, IdentityObservation, 1.0, invalid), "zero dt must fail")
+
+    let trace = InitializeTrace(1.0, 2.0, 2.0)
+    let repeated = SimulationStepResult { Time: 1.0 State: 1.0 Output: 1.0 }
+    Assert.Error(AppendStep(trace, repeated), "appended time must advance")
+}
+
 flow ScalarDecayThreeStepFlow() -> Int {
     state Init {
         goto Step1

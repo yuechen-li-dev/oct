@@ -86,14 +86,9 @@ fn ZScores(xs: Float[]) -> Float[] ! Error {
         return error("z-scores require a non-constant sequence")
     }
 
-    let z0 = (xs[0] - mean) / sd
-    var out = [z0]
-    for i in 1 .. n {
-        let z = (xs[i] - mean) / sd
-        out = Append(out, z)
+    return batch xs as value {
+        return (value - mean) / sd
     }
-
-    return out
 }
 
 // MinOf returns the minimum value in the array.

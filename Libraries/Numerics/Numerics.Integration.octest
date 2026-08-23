@@ -79,6 +79,17 @@ fn AdaptiveSimpsonExp() -> Void {
 }
 
 [Fact]
+fn AdaptiveSimpsonReportsActualEvaluationsAndDepthExhaustion() -> Void {
+    let converged = AdaptiveSimpson(fExp, 0.0, 1.0, 0.000000001, 20)!
+    Assert.True(converged.Converged, "sufficient depth should meet the tolerance estimate")
+    Assert.True(converged.Iterations > 5, "reported evaluations should include recursive refinements")
+
+    let exhausted = AdaptiveSimpson(fExp, 0.0, 1.0, 0.000000000000000001, 1)!
+    Assert.False(exhausted.Converged, "depth exhaustion must not be reported as convergence")
+    Assert.Equal(9, exhausted.Iterations, "one split should evaluate three initial and six refinement points")
+}
+
+[Fact]
 fn AdaptiveSimpsonRejectsZeroTolerance() -> Void {
     Assert.Error(AdaptiveSimpson(fSquare, 0.0, 1.0, 0.0, 50),
         "adaptive Simpson tolerance=0 should error")

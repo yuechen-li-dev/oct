@@ -13,6 +13,10 @@ It does **not** provide sampling, inference, fitting, significance tests, or any
 - `UniformCdf(x: Float, a: Float, b: Float) -> Float ! Error`
 - `ExponentialPdf(x: Float, lambda: Float) -> Float ! Error`
 - `ExponentialCdf(x: Float, lambda: Float) -> Float ! Error`
+- `BernoulliPmf(k: Int, probability: Float) -> Float ! Error`
+- `BinomialPmf(k: Int, n: Int, probability: Float) -> Float ! Error`
+- `PoissonPmf(k: Int, lambda: Float) -> Float ! Error`
+- `LogFactorial(n: Int) -> Float ! Error`
 
 ## Parameter and domain policy
 
@@ -21,6 +25,9 @@ It does **not** provide sampling, inference, fitting, significance tests, or any
   - `sigma <= 0` for Normal
   - `a >= b` for Uniform
   - `lambda <= 0` for Exponential
+  - probability outside `[0, 1]` for Bernoulli/Binomial
+  - `n < 0` for Binomial
+  - `lambda <= 0` for Poisson
 - Out-of-support values use mathematical distribution behavior:
   - `UniformPdf` outside `[a, b]` returns `0.0`
   - `UniformCdf` returns `0.0` for `x < a`, `1.0` for `x > b`, and linear interpolation on `[a, b]`
@@ -35,3 +42,14 @@ Boundary behavior is explicit:
 
 `NormalCdf` is implemented via the identity `Φ(z) = 0.5 * (1 + erf(z / sqrt(2)))` and a compact deterministic approximation for `erf` (Abramowitz & Stegun 7.1.26).
 This keeps M0 small while providing stable practical accuracy for routine numeric workflows.
+
+## Discrete textbook examples
+
+For five fair independent trials, exactly two successes have probability
+`C(5,2) / 2^5 = 0.3125`:
+
+```oct
+let mass = BinomialPmf(2, 5, 0.5)!
+```
+
+Binomial coefficients are accumulated multiplicatively rather than through integer factorials. `PoissonPmf` uses the recurrence `exp(-lambda) * product(lambda/i)`. Both are reference-quality routines for moderate parameters; extreme tails need log-domain distribution algorithms.

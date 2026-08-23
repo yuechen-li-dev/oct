@@ -37,6 +37,36 @@ fn EulerSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, ste
     }
 }
 
+/// Explicit midpoint (RK2) step.
+/// Sampling the slope at the estimated half-step cancels Euler's leading error term.
+fn MidpointStep(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: Float) -> Float ! Error {
+    let ok = ValidateStepInputs(dt)?
+    let halfDt = dt / 2.0
+    let midpointY = y + halfDt * f(t, y)
+    return y + dt * f(t + halfDt, midpointY)
+}
+
+/// Fixed-step midpoint/RK2 solve for the scalar initial-value problem y' = f(t, y).
+fn MidpointSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: Float, steps: Int) -> ODESolution ! Error {
+    let ok = ValidateSolveInputs(dt, steps)?
+
+    var times = [t0]
+    var values = [y0]
+    var t = t0
+    var y = y0
+    for i in 0 .. steps {
+        y = MidpointStep(f, t, y, dt)?
+        t = t + dt
+        times = Append(times, t)
+        values = Append(values, y)
+    }
+
+    return ODESolution {
+        Times: times
+        Values: values
+    }
+}
+
 fn RK4Step(f: fn(Float, Float) -> Float, t: Float, y: Float, dt: Float) -> Float ! Error {
     let ok = ValidateStepInputs(dt)?
 

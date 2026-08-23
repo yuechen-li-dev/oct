@@ -1,0 +1,43 @@
+package Physics
+
+fn InvalidRuntimeMass() -> Float<kg> {
+    return -1.0kg
+}
+
+fn InvalidRuntimeDuration() -> Float<s> {
+    return 0.0s
+}
+
+[Fact]
+fn MechanicsEquationsPreserveSIUnitsAndValues() -> Void {
+    let mass: Float<kg> = 2.0kg
+    let velocity: Float<m/s> = 3.0m/s
+    let acceleration: Float<m/s^2> = 4.0m/s^2
+
+    let force: Float<kg*m/s^2> = Force(mass, acceleration)!
+    let momentum: Float<kg*m/s> = Momentum(mass, velocity)!
+    let energy: Float<kg*m^2/s^2> = KineticEnergy(mass, velocity)!
+
+    Assert.Near(8.0kg*m/s^2, force, 0.000001kg*m/s^2, "F=ma should retain force dimensions")
+    Assert.Near(6.0kg*m/s, momentum, 0.000001kg*m/s, "p=mv should retain momentum dimensions")
+    Assert.Near(9.0kg*m^2/s^2, energy, 0.000001kg*m^2/s^2, "kinetic energy should be one half m v squared")
+}
+
+[Fact]
+fn EnergyWorkAndPowerComposeAsTextbookEquations() -> Void {
+    let potential = GravitationalPotentialEnergy(2.0kg, StandardGravity(), 5.0m)!
+    let work = Work(10.0kg*m/s^2, 3.0m)
+    let spring = SpringPotentialEnergy(20.0kg/s^2, 0.5m)
+    let power = AveragePower(work, 2.0s)!
+
+    Assert.Near(98.0665kg*m^2/s^2, potential, 0.0001kg*m^2/s^2, "mgh should compose with standard gravity")
+    Assert.Near(30.0kg*m^2/s^2, work, 0.000001kg*m^2/s^2, "work should be force times distance")
+    Assert.Near(2.5kg*m^2/s^2, spring, 0.000001kg*m^2/s^2, "spring energy should be one half k x squared")
+    Assert.Near(15.0kg*m^2/s^3, power, 0.000001kg*m^2/s^3, "average power should be energy per time")
+}
+
+[Fact]
+fn MechanicsConceptsRejectInvalidRuntimeDomains() -> Void {
+    Assert.Error(PositiveMass(InvalidRuntimeMass()), "mass must be positive")
+    Assert.Error(PositiveDuration(InvalidRuntimeDuration()), "duration must be positive")
+}

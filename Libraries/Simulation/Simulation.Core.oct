@@ -12,6 +12,14 @@ record SimulationTrace {
     Outputs: Float[]
 }
 
+/// Configuration for a deterministic scalar fixed-step run.
+/// Keeping configuration as data makes parameter sweeps inspectable and `with`-friendly.
+record FixedStepConfig {
+    InitialTime: Float
+    Dt: Float
+    Steps: Int
+}
+
 fn ValidateFixedStepSetup(dt: Float, steps: Int) -> Bool ! Error {
     if dt <= 0.0 {
         return error("simulation requires dt > 0")
@@ -35,10 +43,81 @@ fn InitializeTrace(initialTime: Float, initialState: Float, initialOutput: Float
 fn AppendStep(trace: SimulationTrace, stepResult: SimulationStepResult) -> SimulationTrace ! Error {
     let valid = ValidateTraceShape(trace)?
 
+    if Len(trace.Times) > 0 and stepResult.Time <= trace.Times[Len(trace.Times) - 1] {
+        return error("simulation step time must increase strictly")
+    }
+
     return SimulationTrace {
         Times: Append(trace.Times, stepResult.Time)
         States: Append(trace.States, stepResult.State)
         Outputs: Append(trace.Outputs, stepResult.Output)
+    }
+}
+
+/// Runs a deterministic scalar discrete-time model.
+/// `transition(t, state, dt)` computes the next state; `observe(t, state)` computes output.
+/// The trace includes the initial sample followed by exactly config.Steps samples.
+fn RunFixedStep(
+    transition: fn(Float, Float, Float) -> Float,
+    observe: fn(Float, Float) -> Float,
+    initialState: Float,
+    config: FixedStepConfig
+) -> SimulationTrace ! Error {
+    let valid = ValidateFixedStepSetup(config.Dt, config.Steps)?
+
+    var time = config.InitialTime
+    var state = initialState
+    var trace = InitializeTrace(time, state, observe(time, state))
+    for i in 0 .. config.Steps {
+        let nextState = transition(time, state, config.Dt)
+        time = time + config.Dt
+        state = nextState
+        trace = AppendStep(trace, SimulationStepResult {
+            Time: time
+            State: state
+            Output: observe(time, state)
+        })?
+    }
+    return trace
+}
+
+/// Returns the final aligned sample from a non-empty trace.
+fn FinalStep(trace: SimulationTrace) -> SimulationStepResult ! Error {
+    let valid = ValidateTraceShape(trace)?
+    if Len(trace.Times) == 0 {
+        return error("final simulation step requires a non-empty trace")
+    }
+    let last = Len(trace.Times) - 1
+    return SimulationStepResult {
+        Time: trace.Times[last]
+        State: trace.States[last]
+        Output: trace.Outputs[last]
+    }
+}
+
+/// Integrates recorded output over time with the trapezoidal rule.
+/// Non-uniform time spacing is supported as long as times increase strictly.
+fn OutputIntegral(trace: SimulationTrace) -> Float ! Error {
+    let valid = ValidateTraceShape(trace)?
+    if Len(trace.Times) < 2 {
+        return error("output integral requires at least two samples")
+    }
+
+    var integral = 0.0
+    for i in 0 .. Len(trace.Times) - 1 {
+        let dt = trace.Times[i + 1] - trace.Times[i]
+        if dt <= 0.0 {
+            return error("output integral requires strictly increasing times")
+        }
+        integral = integral + 0.5 * dt * (trace.Outputs[i] + trace.Outputs[i + 1])
+    }
+    return integral
+}
+
+/// Evaluates independent scalar experiments as a deterministic ordered parameter sweep.
+fn EvaluateParameterSweep(parameters: Float[], experiment: fn(Float) -> Float) -> Float[] {
+    return batch parameters as parameter {
+        return experiment(parameter)
     }
 }
 

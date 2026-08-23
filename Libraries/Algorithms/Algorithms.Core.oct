@@ -12,3 +12,117 @@ template fn FirstWhere<T>(values: T[], predicate: fn(T) -> Bool) -> T ! Error {
     }
     return error("FirstWhere found no matching value")
 }
+
+/// Counts values accepted by an exact-typed predicate in O(n) time.
+/// The template removes type-specific copies while keeping the predicate type explicit.
+template fn CountWhere<T>(values: T[], predicate: fn(T) -> Bool) -> Int {
+    var count = 0
+    for i in 0 .. Len(values) {
+        if predicate(values[i]) {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+/// Returns the index of target in an ascending Int array, or -1 when absent.
+/// Binary search performs O(log n) comparisons. The caller owns the sorted-input contract.
+fn BinarySearch(sorted: Int[], target: Int) -> Int {
+    var low = 0
+    var high = Len(sorted) - 1
+
+    while low <= high {
+        let mid = low + (high - low) / 2
+        if sorted[mid] == target {
+            return mid
+        }
+        if sorted[mid] < target {
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return -1
+}
+
+/// Euclid's algorithm returns the non-negative greatest common divisor.
+/// GCD(0, 0) is defined as 0, matching the useful algebraic convention.
+fn GCD(a: Int, b: Int) -> Int {
+    var x = if a < 0 { 0 - a } else { a }
+    var y = if b < 0 { 0 - b } else { b }
+    while y != 0 {
+        let remainder = x % y
+        x = y
+        y = remainder
+    }
+    return x
+}
+
+/// Returns the least common multiple, or 0 when either input is 0.
+/// Division precedes multiplication to reduce intermediate overflow risk.
+fn LCM(a: Int, b: Int) -> Int {
+    if a == 0 or b == 0 {
+        return 0
+    }
+    let gcd = GCD(a, b)
+    let product = (a / gcd) * b
+    return if product < 0 { 0 - product } else { product }
+}
+
+/// Trial-division primality test using divisors through sqrt(n).
+/// This O(sqrt(n)) reference algorithm is suitable for moderate integers.
+fn IsPrime(n: Int) -> Bool {
+    if n < 2 {
+        return false
+    }
+    if n == 2 {
+        return true
+    }
+    if n % 2 == 0 {
+        return false
+    }
+
+    var divisor = 3
+    while divisor <= n / divisor {
+        if n % divisor == 0 {
+            return false
+        }
+        divisor = divisor + 2
+    }
+    return true
+}
+
+/// Sieve of Eratosthenes returning every prime <= limit.
+/// Complexity is O(n log log n) time and O(n) memory.
+fn PrimesThrough(limit: Int) -> Int[] ! Error {
+    if limit < 2 {
+        return error("PrimesThrough requires limit >= 2")
+    }
+
+    var prime = [false]
+    for i in 1 .. limit + 1 {
+        prime = Append(prime, true)
+    }
+    prime[0] = false
+    prime[1] = false
+
+    var p = 2
+    while p <= limit / p {
+        if prime[p] {
+            var multiple = p * p
+            while multiple <= limit {
+                prime[multiple] = false
+                multiple = multiple + p
+            }
+        }
+        p = p + 1
+    }
+
+    var result = [2]
+    for value in 3 .. limit + 1 {
+        if prime[value] {
+            result = Append(result, value)
+        }
+    }
+    return result
+}

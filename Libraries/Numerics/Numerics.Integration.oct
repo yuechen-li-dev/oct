@@ -20,6 +20,12 @@ record IntegrationResult {
     Converged:  Bool  // only meaningful for adaptive methods
 }
 
+record AdaptivePanelResult {
+    Value: Float
+    Evaluations: Int
+    Converged: Bool
+}
+
 // ============================================================
 // Trapezoidal rule
 //
@@ -176,21 +182,18 @@ fn AdaptiveSimpson(
         return error("AdaptiveSimpson: maxDepth must be > 0")
     }
 
-    var evalCount = 0
-
     let mid  = (a + b) / 2.0
     let fa   = f(a)
     let fm   = f(mid)
     let fb   = f(b)
-    evalCount = evalCount + 3
 
     let whole = (b - a) / 6.0 * (fa + 4.0 * fm + fb)
 
     let result = adaptiveSimpsonHelper(f, a, b, fa, fm, fb, whole, tolerance, maxDepth)
     return IntegrationResult {
-        Value: result
-        Iterations: evalCount
-        Converged: true
+        Value: result.Value
+        Iterations: 3 + result.Evaluations
+        Converged: result.Converged
     }
 }
 
@@ -204,7 +207,7 @@ fn adaptiveSimpsonHelper(
     whole: Float,
     tolerance: Float,
     depth: Int
-) -> Float {
+) -> AdaptivePanelResult {
     let mid  = (a + b) / 2.0
     let lmid = (a + mid) / 2.0
     let rmid = (mid + b) / 2.0
@@ -216,10 +219,27 @@ fn adaptiveSimpsonHelper(
     let right = (b - mid) / 6.0 * (fm  + 4.0 * frm + fb)
     let delta = left + right - whole
 
-    if depth <= 0 or Abs(delta) <= tolerance * 15.0 {
-        return left + right + delta / 15.0
+    let corrected = left + right + delta / 15.0
+    if Abs(delta) <= tolerance * 15.0 {
+        return AdaptivePanelResult {
+            Value: corrected
+            Evaluations: 2
+            Converged: true
+        }
+    }
+    if depth <= 0 {
+        return AdaptivePanelResult {
+            Value: corrected
+            Evaluations: 2
+            Converged: false
+        }
     }
 
-    return adaptiveSimpsonHelper(f, a, mid, fa, flm, fm, left,  tolerance / 2.0, depth - 1)
-         + adaptiveSimpsonHelper(f, mid, b, fm, frm, fb, right, tolerance / 2.0, depth - 1)
+    let leftResult = adaptiveSimpsonHelper(f, a, mid, fa, flm, fm, left, tolerance / 2.0, depth - 1)
+    let rightResult = adaptiveSimpsonHelper(f, mid, b, fm, frm, fb, right, tolerance / 2.0, depth - 1)
+    return AdaptivePanelResult {
+        Value: leftResult.Value + rightResult.Value
+        Evaluations: 2 + leftResult.Evaluations + rightResult.Evaluations
+        Converged: leftResult.Converged and rightResult.Converged
+    }
 }

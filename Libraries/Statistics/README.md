@@ -5,6 +5,7 @@
 `Libraries/Statistics` provides descriptive statistics over finite `Float[]` collections:
 
 - `Mean(xs: Float[]) -> Float`
+- `WeightedMean(xs: Float[], weights: Float[]) -> Float ! Error`
 - `Variance(xs: Float[]) -> Float`
 - `StandardDeviation(xs: Float[]) -> Float`
 - `Median(xs: Float[]) -> Float`
@@ -16,6 +17,8 @@
 - `StandardDeviation` is `Sqrt(Variance(xs))`.
 - `Median` sorts ascending; for even length it returns the average of the two middle values.
 - `Percentile` accepts `p` in `[0, 100]` and uses linear interpolation on rank `r = (p/100) * (n-1)`.
+- `WeightedMean` uses non-negative weights and compensated summation; total weight must be positive.
+- `ZScores` uses deterministic `batch` mapping because each standardized observation is independent and output order is preserved.
 
 ## Edge-case policy
 
