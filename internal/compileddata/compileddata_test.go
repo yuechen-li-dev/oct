@@ -67,6 +67,94 @@ func TestLayoutContractMaterializesStaticColumnsWithoutChangingSemanticHashes(t 
 	t.Logf("generic-source-bytes=%d contract-source-bytes=%d", len(generic.Source), len(aware.Source))
 }
 
+func TestProvedUniqueSortedFieldEnablesBinarySearchWithoutChangingSemanticIdentity(t *testing.T) {
+	dataset := provedBenchmarkDataset(16)
+	m1, err := emitGoLayout(dataset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m2, err := EmitGo(dataset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m1.LogicalHash != m2.LogicalHash || m1.SchemaHash != m2.SchemaHash || m1.RowCount != m2.RowCount {
+		t.Fatalf("proof-aware realization changed semantic identity: m1=%+v m2=%+v", m1, m2)
+	}
+	if strings.Contains(string(m1.Source), "LookupByID") {
+		t.Fatal("M1 control invented a proof-aware lookup")
+	}
+	if !strings.Contains(string(m2.Source), "func RowsLookupByID(key int) (SampleRow, bool)") {
+		t.Fatalf("M2 source omitted proved lookup:\n%s", m2.Source)
+	}
+	if len(m2.Contract.Invariants.UniqueFields) != 1 || len(m2.Contract.Invariants.SortedFields) != 1 || len(m2.Contract.Metadata.SearchIndexes) != 1 {
+		t.Fatalf("proof facts were not promoted: %s", layoutcontract.Format(m2.Contract))
+	}
+	if m2.Materialization != "row-array+static-column-projections+proved-binary-search" {
+		t.Fatalf("materialization = %q", m2.Materialization)
+	}
+}
+
+func TestMissingCrossSubjectAndStaleFactsCannotSpecialize(t *testing.T) {
+	cases := []struct {
+		name    string
+		dataset Dataset
+	}{
+		{name: "missing", dataset: benchmarkDataset(8)},
+		{name: "same-field-other-table", dataset: func() Dataset {
+			dataset := provedBenchmarkDataset(8)
+			dataset.ProofSubject = layoutcontract.DataSubjectRef{Kind: layoutcontract.StaticEvalValue, Identity: "Other#1"}
+			return dataset
+		}()},
+		{name: "old-transformed-subject", dataset: func() Dataset {
+			dataset := provedBenchmarkDataset(8)
+			dataset.ProofSubject = layoutcontract.DataSubjectRef{Kind: layoutcontract.StaticEvalValue, Identity: "Sample#2"}
+			return dataset
+		}()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := EmitGo(tc.dataset)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(result.Source), "LookupByID") || len(result.Contract.Metadata.SearchIndexes) != 0 {
+				t.Fatalf("unproved/cross-subject data specialized: %s", layoutcontract.Format(result.Contract))
+			}
+		})
+	}
+}
+
+func TestUniqueAndSortedRemainIndependentAndRequireStaticProvenance(t *testing.T) {
+	proved := provedBenchmarkDataset(8)
+	cases := []struct {
+		name  string
+		facts []layoutcontract.StaticFact
+	}{
+		{name: "unique-only", facts: proved.StaticFacts[:1]},
+		{name: "sorted-only", facts: proved.StaticFacts[1:]},
+		{name: "publication-structural-is-not-assertion-proof", facts: func() []layoutcontract.StaticFact {
+			facts := append([]layoutcontract.StaticFact(nil), proved.StaticFacts...)
+			for index := range facts {
+				facts[index].Provenance.Phase = layoutcontract.PublicationMaterial
+			}
+			return facts
+		}()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dataset := proved
+			dataset.StaticFacts = tc.facts
+			result, err := EmitGo(dataset)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Contract.Metadata.SearchIndexes) != 0 || strings.Contains(string(result.Source), "LookupByID") {
+				t.Fatalf("insufficient or wrong-phase evidence enabled search: %s", layoutcontract.Format(result.Contract))
+			}
+		})
+	}
+}
+
 func TestNonTableStaticArrayContractIsTruthfulAndConsumed(t *testing.T) {
 	intType := Type{Kind: Int}
 	dataset := Dataset{Symbol: "PublishedIDs", Type: Type{Kind: Array, Elem: &intType}, Value: Value{Kind: Array, Array: []Value{{Kind: Int, Int: 1}, {Kind: Int, Int: 3}, {Kind: Int, Int: 5}}}}
@@ -86,7 +174,7 @@ func TestNonTableStaticArrayContractIsTruthfulAndConsumed(t *testing.T) {
 }
 
 func TestContractAndGenerationAreDeterministic(t *testing.T) {
-	dataset := benchmarkDataset(257)
+	dataset := provedBenchmarkDataset(257)
 	first, err := EmitGo(dataset)
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +205,11 @@ func TestContractIsRederivedAfterValueExtentChanges(t *testing.T) {
 }
 
 func TestContractAwareGeneratedGoCompilesAndColumnsMatchRows(t *testing.T) {
-	result, err := EmitGo(benchmarkDataset(16))
+	dataset := provedBenchmarkDataset(16)
+	for index := range dataset.Value.Fields["ID"].Array {
+		dataset.Value.Fields["ID"].Array[index].Int = int64((index + 1) * 10)
+	}
+	result, err := EmitGo(dataset)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +226,15 @@ func TestProjectionParity(t *testing.T) {
     if len(Rows) != RowsRowCount || len(RowsIDColumn) != RowsRowCount { t.Fatal("extent mismatch") }
     for index, row := range Rows {
         if row.ID != RowsIDColumn[index] || row.Status != RowsStatusColumn[index] || row.Price != RowsPriceColumn[index] || row.Name != RowsNameColumn[index] { t.Fatalf("row %d differs", index) }
+    }
+}
+func TestProvedLookupBoundaries(t *testing.T) {
+    cases := []struct { key, want int; found bool }{
+		{9, 0, false}, {10, 10, true}, {80, 80, true}, {160, 160, true}, {15, 0, false}, {161, 0, false},
+    }
+    for _, tc := range cases {
+        row, found := RowsLookupByID(tc.key)
+        if found != tc.found || row.ID != tc.want { t.Fatalf("key %d => (%d,%v), want (%d,%v)", tc.key, row.ID, found, tc.want, tc.found) }
     }
 }
 `
@@ -155,6 +256,42 @@ func BenchmarkEmitGo100000Rows(b *testing.B) {
 	benchmarkEmitGoRows(b, 100_000)
 }
 
+func BenchmarkEmitGoMaterializationScale(b *testing.B) {
+	for _, rows := range []int{1_000, 10_000, 100_000} {
+		dataset := provedBenchmarkDataset(rows)
+		for _, strategy := range []struct {
+			name string
+			emit func(Dataset) (Result, error)
+		}{
+			{name: "M1-projections", emit: emitGoLayout},
+			{name: "M2-proof-aware", emit: EmitGo},
+		} {
+			b.Run(fmt.Sprintf("rows=%d/%s", rows, strategy.name), func(b *testing.B) {
+				var last Result
+				b.ResetTimer()
+				for iteration := 0; iteration < b.N; iteration++ {
+					result, err := strategy.emit(dataset)
+					if err != nil {
+						b.Fatal(err)
+					}
+					last = result
+				}
+				b.ReportMetric(float64(len(last.Source)), "source-bytes")
+				b.ReportMetric(float64(last.Timings.ContractEnrichment.Nanoseconds()), "contract-ns")
+				b.ReportMetric(float64(last.Timings.Emission.Microseconds()), "materialize-us")
+			})
+		}
+	}
+}
+
+func BenchmarkLayoutContractEnrichment(b *testing.B) {
+	dataset := provedBenchmarkDataset(100_000)
+	b.ReportAllocs()
+	for iteration := 0; iteration < b.N; iteration++ {
+		contractBenchmarkSink = deriveLayoutContract(dataset)
+	}
+}
+
 type lookupBenchmarkRow struct {
 	ID     int
 	Status int
@@ -166,6 +303,7 @@ var lookupBenchmarkRows []lookupBenchmarkRow
 var lookupBenchmarkStatuses []int
 var lookupBenchmarkIDs []int
 var lookupBenchmarkSink int
+var contractBenchmarkSink layoutcontract.Contract
 
 func init() {
 	lookupBenchmarkRows = make([]lookupBenchmarkRow, 100_000)
@@ -193,6 +331,61 @@ func BenchmarkCatalogLookupMissingGenericRows(b *testing.B) {
 
 func BenchmarkCatalogLookupMissingLayoutColumn(b *testing.B) {
 	benchmarkCatalogLookup(b, true, 100_001)
+}
+
+func BenchmarkCatalogLookupScale(b *testing.B) {
+	for _, rows := range []int{1_000, 10_000, 100_000} {
+		ids := lookupBenchmarkIDs[:rows]
+		for _, lookup := range []struct {
+			name string
+			key  int
+		}{
+			{name: "existing", key: rows - 9},
+			{name: "missing", key: rows + 1},
+			{name: "edge", key: rows},
+		} {
+			b.Run(fmt.Sprintf("rows=%d/M1-linear/%s", rows, lookup.name), func(b *testing.B) {
+				benchmarkIDsLinear(b, ids, lookup.key)
+			})
+			b.Run(fmt.Sprintf("rows=%d/M2-binary/%s", rows, lookup.name), func(b *testing.B) {
+				benchmarkIDsBinary(b, ids, lookup.key)
+			})
+		}
+	}
+}
+
+func benchmarkIDsLinear(b *testing.B, ids []int, key int) {
+	b.ReportAllocs()
+	for iteration := 0; iteration < b.N; iteration++ {
+		found := -1
+		for index, id := range ids {
+			if id == key {
+				found = index
+				break
+			}
+		}
+		lookupBenchmarkSink = found
+	}
+}
+
+func benchmarkIDsBinary(b *testing.B, ids []int, key int) {
+	b.ReportAllocs()
+	for iteration := 0; iteration < b.N; iteration++ {
+		low, high := 0, len(ids)
+		for low < high {
+			middle := int(uint(low+high) >> 1)
+			if ids[middle] < key {
+				low = middle + 1
+			} else {
+				high = middle
+			}
+		}
+		found := -1
+		if low < len(ids) && ids[low] == key {
+			found = low
+		}
+		lookupBenchmarkSink = found
+	}
 }
 
 func benchmarkCatalogLookup(b *testing.B, projected bool, key int) {
@@ -288,4 +481,20 @@ func benchmarkDataset(rows int) Dataset {
 		columns["Name"].Array[row] = Value{Kind: String, Text: fmt.Sprintf("row-%05d", row)}
 	}
 	return Dataset{Symbol: "Rows", Type: tableType, Value: Value{Kind: Record, Fields: columns}}
+}
+
+func provedBenchmarkDataset(rows int) Dataset {
+	dataset := benchmarkDataset(rows)
+	subject := layoutcontract.DataSubjectRef{Kind: layoutcontract.StaticEvalValue, Identity: "Sample#1"}
+	field := layoutcontract.FieldRef{Subject: subject, Ordinal: 0, Name: "ID"}
+	provenance := layoutcontract.StaticFactProvenance{
+		Phase: layoutcontract.ArtifactEvaluation, Source: layoutcontract.StaticAssertProof,
+		Identity: "CompiledDataValid.PublishCatalog:41:5/field-comparison-coverage",
+	}
+	dataset.ProofSubject = subject
+	dataset.StaticFacts = []layoutcontract.StaticFact{
+		{Subject: subject, Kind: layoutcontract.Unique, Fields: []layoutcontract.FieldRef{field}, Provenance: provenance},
+		{Subject: subject, Kind: layoutcontract.SortedAscending, Fields: []layoutcontract.FieldRef{field}, Provenance: provenance},
+	}
+	return dataset
 }

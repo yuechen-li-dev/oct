@@ -1,0 +1,34 @@
+package CompiledDataValid
+
+record table ScopeA { ID: Int Name: String }
+record table ScopeB { ID: Int Name: String }
+
+fn ScopeAIDsUnique(table: ScopeA) -> Bool {
+    for i in 0..Len(table) {
+        for j in (i + 1)..Len(table) {
+            if table[i].ID == table[j].ID { return false }
+        }
+    }
+    return true
+}
+
+fn ScopeAIDsSorted(table: ScopeA) -> Bool {
+    for i in 1..Len(table) {
+        if table[i - 1].ID > table[i].ID { return false }
+    }
+    return true
+}
+
+[Artifact]
+fn PublishProofScopeControls() -> Void {
+    let proved = ScopeA { ID: [1, 3, 5] Name: ["A", "B", "C"] }
+    StaticAssert.True(ScopeAIDsUnique(proved), "ScopeA IDs must be unique")
+    StaticAssert.True(ScopeAIDsSorted(proved), "ScopeA IDs must be sorted")
+
+    let sameFieldOtherSubject = ScopeB { ID: [1, 3, 5] Name: ["A", "B", "C"] }
+    let transformedAfterProof = proved with { Name: ["X", "Y", "Z"] }
+
+    Artifact.WriteCompiledData("compiled/proved_scope.generated.go", "ProvedScope", proved)
+    Artifact.WriteCompiledData("compiled/cross_subject.generated.go", "CrossSubject", sameFieldOtherSubject)
+    Artifact.WriteCompiledData("compiled/transformed_after_proof.generated.go", "TransformedAfterProof", transformedAfterProof)
+}

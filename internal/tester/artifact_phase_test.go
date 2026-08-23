@@ -116,6 +116,36 @@ func artifactLanguageFixture(parts ...string) string {
 	return filepath.Join(all...)
 }
 
+func compiledDataLanguageFixture(parts ...string) string {
+	all := append([]string{"..", "..", "Language", "Tooling", "CompiledData", "valid"}, parts...)
+	return filepath.Join(all...)
+}
+
+func TestCompiledDataStaticFactsAreSubjectScopedBeforeBackendPlanning(t *testing.T) {
+	outputRoot := t.TempDir()
+	var stdout bytes.Buffer
+	if err := ExecuteArtifactsWithOptions(compiledDataLanguageFixture("proof_scope_publication.octest"), &stdout, ArtifactOptions{OutputRoot: outputRoot}); err != nil {
+		t.Fatalf("proof-scope publication failed: %v\n%s", err, stdout.String())
+	}
+	checks := []struct {
+		path       string
+		wantLookup bool
+	}{
+		{path: "proved_scope.generated.go", wantLookup: true},
+		{path: "cross_subject.generated.go", wantLookup: false},
+		{path: "transformed_after_proof.generated.go", wantLookup: false},
+	}
+	for _, check := range checks {
+		source, err := os.ReadFile(filepath.Join(outputRoot, "compiled", check.path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bytes.Contains(source, []byte("LookupByID")); got != check.wantLookup {
+			t.Fatalf("%s lookup presence = %v, want %v\n%s", check.path, got, check.wantLookup, source)
+		}
+	}
+}
+
 func TestBuildTimeArtifactEvaluationPublishesTypedOutputsWithoutBackend(t *testing.T) {
 	outputRoot := t.TempDir()
 	target := artifactLanguageFixture("valid", "build_time_artifact_evaluation.octest")
@@ -200,6 +230,11 @@ func TestArtifactCapabilityRejectsUnsafePathsDuplicatesEffectsAndFailures(t *tes
 			if tc.file == "fallible_failure.octest" {
 				if _, statErr := os.Stat(filepath.Join(outputRoot, "must-not-publish.txt")); !os.IsNotExist(statErr) {
 					t.Fatalf("failed artifact evaluation published staged output: %v", statErr)
+				}
+			}
+			if tc.file == "static_assert_duplicate.octest" || tc.file == "static_assert_unsorted.octest" {
+				if _, statErr := os.Stat(filepath.Join(outputRoot, "must-not-publish.go")); !os.IsNotExist(statErr) {
+					t.Fatalf("failed proof assertion emitted specialized artifact: %v", statErr)
 				}
 			}
 		})

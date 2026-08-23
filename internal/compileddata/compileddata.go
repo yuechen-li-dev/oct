@@ -56,9 +56,11 @@ type Value struct {
 }
 
 type Dataset struct {
-	Symbol string
-	Type   Type
-	Value  Value
+	Symbol       string
+	Type         Type
+	Value        Value
+	ProofSubject layoutcontract.DataSubjectRef
+	StaticFacts  []layoutcontract.StaticFact
 }
 
 type Result struct {
@@ -72,22 +74,28 @@ type Result struct {
 }
 
 type Timings struct {
-	Validation time.Duration
-	Emission   time.Duration
-	Formatting time.Duration
+	Validation         time.Duration
+	ContractEnrichment time.Duration
+	Emission           time.Duration
+	Formatting         time.Duration
 }
 
 func EmitGo(dataset Dataset) (Result, error) {
-	return emitGo(dataset, true)
+	return emitGo(dataset, 2)
 }
 
 // emitGoGeneric is the test/benchmark control for the pre-contract emitter.
 // It is intentionally unexported: this is not a user-facing compiler option.
 func emitGoGeneric(dataset Dataset) (Result, error) {
-	return emitGo(dataset, false)
+	return emitGo(dataset, 0)
 }
 
-func emitGo(dataset Dataset, useContract bool) (Result, error) {
+// emitGoLayout is the M1 materialized-projection benchmark control.
+func emitGoLayout(dataset Dataset) (Result, error) {
+	return emitGo(dataset, 1)
+}
+
+func emitGo(dataset Dataset, materializationLevel int) (Result, error) {
 	validationStarted := time.Now()
 	if !validIdentifier(dataset.Symbol) {
 		return Result{}, fmt.Errorf("compiled data symbol %q is not a valid Go identifier", dataset.Symbol)
@@ -100,7 +108,9 @@ func emitGo(dataset Dataset, useContract bool) (Result, error) {
 	logicalHash := hash(logical)
 	schemaHash := hash(schema)
 	validationElapsed := time.Since(validationStarted)
+	contractStarted := time.Now()
 	contract := deriveLayoutContract(dataset)
+	contractElapsed := time.Since(contractStarted)
 
 	emissionStarted := time.Now()
 	var b strings.Builder
@@ -114,11 +124,14 @@ func emitGo(dataset Dataset, useContract bool) (Result, error) {
 		rows = tableExtent(dataset.Value)
 		fmt.Fprintf(&b, "const %sRowCount = %d\n\n", dataset.Symbol, rows)
 		emitTable(&b, dataset.Symbol, dataset.Type, dataset.Value)
-		if useContract {
+		if materializationLevel >= 1 {
 			emitColumnProjections(&b, dataset.Symbol, dataset.Type, dataset.Value, contract)
 		}
+		if materializationLevel >= 2 {
+			emitSearchIndexes(&b, dataset.Symbol, dataset.Type, contract)
+		}
 	} else {
-		if useContract && dataset.Type.Kind == Array && contract.Invariants.ExactExtent != nil {
+		if materializationLevel >= 1 && dataset.Type.Kind == Array && contract.Invariants.ExactExtent != nil {
 			fmt.Fprintf(&b, "const %sExtent = %d\n", dataset.Symbol, contract.Invariants.ExactExtent.Value)
 		}
 		b.WriteString("\nvar ")
@@ -136,13 +149,16 @@ func emitGo(dataset Dataset, useContract bool) (Result, error) {
 	materialization := "generic-static-value"
 	if dataset.Type.Kind == Record && dataset.Type.Table {
 		materialization = "row-array"
-		if useContract && len(contract.Metadata.ColumnProjections) > 0 {
+		if materializationLevel >= 1 && len(contract.Metadata.ColumnProjections) > 0 {
 			materialization = "row-array+static-column-projections"
+		}
+		if materializationLevel >= 2 && len(contract.Metadata.SearchIndexes) > 0 {
+			materialization += "+proved-binary-search"
 		}
 	} else if dataset.Type.Kind == Array && contract.Invariants.ExactExtent != nil {
 		materialization = "fixed-array"
 	}
-	return Result{Source: formatted, LogicalHash: logicalHash, SchemaHash: schemaHash, RowCount: rows, Timings: Timings{Validation: validationElapsed, Emission: emissionElapsed, Formatting: time.Since(formatStarted)}, Contract: contract, Materialization: materialization}, nil
+	return Result{Source: formatted, LogicalHash: logicalHash, SchemaHash: schemaHash, RowCount: rows, Timings: Timings{Validation: validationElapsed, ContractEnrichment: contractElapsed, Emission: emissionElapsed, Formatting: time.Since(formatStarted)}, Contract: contract, Materialization: materialization}, nil
 }
 
 func deriveLayoutContract(dataset Dataset) layoutcontract.Contract {
@@ -157,9 +173,9 @@ func deriveLayoutContract(dataset Dataset) layoutcontract.Contract {
 	if dataset.Type.Kind == Record && dataset.Type.Table {
 		contract.Invariants.ExactExtent = &layoutcontract.ExactExtent{Value: tableExtent(dataset.Value), Provenance: phase}
 		contract.Invariants.LogicalOrder = &layoutcontract.LogicalOrder{Provenance: phase}
-		for _, field := range dataset.Type.Fields {
+		for ordinal, field := range dataset.Type.Fields {
 			if staticallyProjectable(field.Type) {
-				contract.Metadata.ColumnProjections = append(contract.Metadata.ColumnProjections, layoutcontract.ColumnProjectionEligibility{Field: field.Name, Provenance: phase})
+				contract.Metadata.ColumnProjections = append(contract.Metadata.ColumnProjections, layoutcontract.ColumnProjectionEligibility{Field: layoutcontract.FieldRef{Subject: contract.Subject, Ordinal: ordinal, Name: field.Name}, Provenance: phase})
 			}
 		}
 	} else if dataset.Type.Kind == Array {
@@ -167,7 +183,51 @@ func deriveLayoutContract(dataset Dataset) layoutcontract.Contract {
 		contract.Invariants.ExactExtent = &layoutcontract.ExactExtent{Value: len(dataset.Value.Array), Provenance: phase}
 		contract.Invariants.LogicalOrder = &layoutcontract.LogicalOrder{Provenance: phase}
 	}
+	promoted := rebaseStaticFacts(dataset, contract.Subject)
+	layoutcontract.Enrich(&contract, promoted)
+	for _, unique := range contract.Invariants.UniqueFields {
+		if !hasFieldInvariant(contract.Invariants.SortedFields, unique.Field) || !fieldSupportsBinarySearch(dataset.Type, unique.Field) {
+			continue
+		}
+		contract.Metadata.SearchIndexes = append(contract.Metadata.SearchIndexes, layoutcontract.SearchIndexEligibility{
+			Field: unique.Field, DerivedFrom: contract.Subject,
+			ProofBasis: []layoutcontract.StaticFactKind{layoutcontract.Unique, layoutcontract.SortedAscending},
+		})
+	}
 	return contract
+}
+
+func rebaseStaticFacts(dataset Dataset, target layoutcontract.DataSubjectRef) []layoutcontract.StaticFact {
+	if dataset.ProofSubject.Identity == "" {
+		return nil
+	}
+	result := make([]layoutcontract.StaticFact, 0, len(dataset.StaticFacts))
+	for _, fact := range dataset.StaticFacts {
+		if fact.Subject != dataset.ProofSubject || fact.Provenance.Phase != layoutcontract.ArtifactEvaluation || fact.Provenance.Source != layoutcontract.StaticAssertProof || len(fact.Fields) != 1 {
+			continue
+		}
+		field := fact.Fields[0]
+		if field.Subject != dataset.ProofSubject || field.Ordinal < 0 || field.Ordinal >= len(dataset.Type.Fields) || dataset.Type.Fields[field.Ordinal].Name != field.Name {
+			continue
+		}
+		fact.Subject = target
+		fact.Fields = []layoutcontract.FieldRef{{Subject: target, Ordinal: field.Ordinal, Name: field.Name}}
+		result = append(result, fact)
+	}
+	return result
+}
+
+func hasFieldInvariant(invariants []layoutcontract.FieldInvariant, field layoutcontract.FieldRef) bool {
+	for _, invariant := range invariants {
+		if invariant.Field == field {
+			return true
+		}
+	}
+	return false
+}
+
+func fieldSupportsBinarySearch(typ Type, field layoutcontract.FieldRef) bool {
+	return typ.Kind == Record && typ.Table && field.Ordinal >= 0 && field.Ordinal < len(typ.Fields) && typ.Fields[field.Ordinal].Name == field.Name && typ.Fields[field.Ordinal].Type.Kind == Int
 }
 
 func staticallyProjectable(typ Type) bool {
@@ -188,7 +248,7 @@ func emitColumnProjections(b *strings.Builder, symbol string, typ Type, value Va
 	}
 	for _, candidate := range contract.Metadata.ColumnProjections {
 		for _, field := range typ.Fields {
-			if field.Name != candidate.Field {
+			if field.Name != candidate.Field.Name {
 				continue
 			}
 			fmt.Fprintf(b, "\nvar %s%sColumn = [...]%s{", symbol, safeName(field.Name), goType(field.Type))
@@ -201,6 +261,26 @@ func emitColumnProjections(b *strings.Builder, symbol string, typ Type, value Va
 			b.WriteString("}\n")
 			break
 		}
+	}
+}
+
+func emitSearchIndexes(b *strings.Builder, symbol string, typ Type, contract layoutcontract.Contract) {
+	for _, candidate := range contract.Metadata.SearchIndexes {
+		field := typ.Fields[candidate.Field.Ordinal]
+		if field.Type.Kind != Int {
+			continue
+		}
+		rowType := safeName(typ.Name) + "Row"
+		column := symbol + safeName(field.Name) + "Column"
+		fmt.Fprintf(b, "\nfunc %sLookupBy%s(key int) (%s, bool) {\n", symbol, safeName(field.Name), rowType)
+		fmt.Fprintf(b, "\tlow, high := 0, len(%s)\n", column)
+		b.WriteString("\tfor low < high {\n")
+		b.WriteString("\t\tmiddle := int(uint(low+high) >> 1)\n")
+		fmt.Fprintf(b, "\t\tif %s[middle] < key { low = middle + 1 } else { high = middle }\n", column)
+		b.WriteString("\t}\n")
+		fmt.Fprintf(b, "\tif low < len(%s) && %s[low] == key { return %s[low], true }\n", column, column, symbol)
+		fmt.Fprintf(b, "\treturn %s{}, false\n", rowType)
+		b.WriteString("}\n")
 	}
 }
 

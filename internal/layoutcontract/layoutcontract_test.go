@@ -3,16 +3,31 @@ package layoutcontract
 import "testing"
 
 func TestInvariantAndMetadataHaveDistinctRepresentations(t *testing.T) {
+	subject := DataSubjectRef{Kind: CompiledDataRoot, Identity: "Rows"}
 	contract := Contract{
-		Subject:    DataSubjectRef{Kind: CompiledDataRoot, Identity: "Rows"},
+		Subject:    subject,
 		Invariants: Invariants{ExactExtent: &ExactExtent{Value: 4}},
-		Metadata:   Metadata{ColumnProjections: []ColumnProjectionEligibility{{Field: "Status"}}},
+		Metadata:   Metadata{ColumnProjections: []ColumnProjectionEligibility{{Field: FieldRef{Subject: subject, Ordinal: 1, Name: "Status"}}}},
 	}
 	if contract.Invariants.ExactExtent.Value != 4 {
 		t.Fatal("exact extent invariant was lost")
 	}
-	if got := contract.Metadata.ColumnProjections[0].Field; got != "Status" {
+	if got := contract.Metadata.ColumnProjections[0].Field.Name; got != "Status" {
 		t.Fatalf("projection metadata field = %q", got)
+	}
+}
+
+func TestEnrichRejectsCrossSubjectFact(t *testing.T) {
+	subject := DataSubjectRef{Kind: CompiledDataRoot, Identity: "Catalog"}
+	other := DataSubjectRef{Kind: CompiledDataRoot, Identity: "Other"}
+	contract := Contract{Subject: subject}
+	Enrich(&contract, []StaticFact{{
+		Subject: other, Kind: Unique,
+		Fields:     []FieldRef{{Subject: other, Ordinal: 0, Name: "ID"}},
+		Provenance: StaticFactProvenance{Phase: ArtifactEvaluation, Source: StaticAssertProof},
+	}})
+	if len(contract.Invariants.UniqueFields) != 0 {
+		t.Fatal("cross-subject fact was promoted")
 	}
 }
 

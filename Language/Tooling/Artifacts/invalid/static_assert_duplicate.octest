@@ -1,6 +1,19 @@
 package Main
 
+record table Rows { ID: Int }
+
+fn IDsAreUnique(rows: Rows) -> Bool {
+    for i in 0..Len(rows) {
+        for j in (i + 1)..Len(rows) {
+            if rows[i].ID == rows[j].ID { return false }
+        }
+    }
+    return true
+}
+
 [Artifact]
 fn RejectDuplicateIDs() -> Void {
-    StaticAssert.True(false, "duplicate ID 7")
+	let rows = Rows { ID: [1, 7, 7, 9] }
+	StaticAssert.True(IDsAreUnique(rows), "duplicate ID 7")
+	Artifact.WriteCompiledData("must-not-publish.go", "RowsData", rows)
 }

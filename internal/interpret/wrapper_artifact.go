@@ -8,6 +8,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/compileddata"
+	"github.com/yuechen-li-dev/oct/internal/layoutcontract"
 )
 
 func artifactWrapperBuiltins() map[string]wrapperBuiltinHandler {
@@ -47,7 +48,16 @@ func (i *interpreter) evalArtifactWriteCompiledDataBuiltin(env *environment, pkg
 	if err != nil {
 		return evalResult{}, fmt.Errorf("Artifact.WriteCompiledData: %w", err)
 	}
-	result, err := compileddata.EmitGo(compileddata.Dataset{Symbol: args[1].Text, Type: typ, Value: compiledDataValue(args[2])})
+	proofSubject := layoutcontract.DataSubjectRef{}
+	var facts []layoutcontract.StaticFact
+	if args[2].Kind == ValueRecord {
+		proofSubject = args[2].Record.StaticSubject
+		facts = i.staticProofs.facts.ForSubject(proofSubject)
+	}
+	result, err := compileddata.EmitGo(compileddata.Dataset{
+		Symbol: args[1].Text, Type: typ, Value: compiledDataValue(args[2]),
+		ProofSubject: proofSubject, StaticFacts: facts,
+	})
 	if err != nil {
 		return evalResult{}, fmt.Errorf("Artifact.WriteCompiledData: %w", err)
 	}

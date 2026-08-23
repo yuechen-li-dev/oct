@@ -1,6 +1,17 @@
 package Main
 
+record table Rows { ID: Int }
+
+fn IDsAreSorted(rows: Rows) -> Bool {
+    for i in 1..Len(rows) {
+        if rows[i - 1].ID > rows[i].ID { return false }
+    }
+    return true
+}
+
 [Artifact]
 fn RejectUnsortedIndex() -> Void {
-    StaticAssert.True(false, "row-ID index is not sorted")
+	let rows = Rows { ID: [1, 3, 2, 4] }
+	StaticAssert.True(IDsAreSorted(rows), "row-ID index is not sorted")
+	Artifact.WriteCompiledData("must-not-publish.go", "RowsData", rows)
 }

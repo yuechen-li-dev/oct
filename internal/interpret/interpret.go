@@ -19,6 +19,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/batchplan"
 	"github.com/yuechen-li-dev/oct/internal/builtin"
 	"github.com/yuechen-li-dev/oct/internal/dimension"
+	"github.com/yuechen-li-dev/oct/internal/layoutcontract"
 	machinauiir "github.com/yuechen-li-dev/oct/internal/machina/uiir"
 	"github.com/yuechen-li-dev/oct/internal/octagon"
 	"github.com/yuechen-li-dev/oct/internal/project"
@@ -118,27 +119,28 @@ const (
 )
 
 type Value struct {
-	Kind      ValueKind
-	Dimension dimension.Dimension
-	Int       int64
-	Float     float64
-	Complex   complex128
-	Bool      bool
-	Text      string
-	Bytes     []byte
-	Array     []Value
-	Vector    []Value
-	Matrix    MatrixValue
-	Range     RangeValue
-	Error     ErrorValue
-	Record    RecordValue
-	Enum      EnumValue
-	Function  FunctionValue
-	Flow      *FlowRuntimeInstance
-	UI        *machinauiir.Node
-	DiffOp    DifferentialOpValue
-	FieldOp   FieldOpValue
-	Tuple     []Value
+	Kind        ValueKind
+	Dimension   dimension.Dimension
+	Int         int64
+	Float       float64
+	Complex     complex128
+	Bool        bool
+	Text        string
+	Bytes       []byte
+	Array       []Value
+	Vector      []Value
+	Matrix      MatrixValue
+	Range       RangeValue
+	Error       ErrorValue
+	Record      RecordValue
+	Enum        EnumValue
+	Function    FunctionValue
+	Flow        *FlowRuntimeInstance
+	UI          *machinauiir.Node
+	DiffOp      DifferentialOpValue
+	FieldOp     FieldOpValue
+	Tuple       []Value
+	StaticField *staticFieldOrigin
 }
 
 type DifferentialOpValue struct {
@@ -166,9 +168,13 @@ type RangeValue struct {
 }
 
 type RecordValue struct {
-	TypeName   string
-	FieldOrder []string
-	Fields     map[string]Value
+	TypeName      string
+	FieldOrder    []string
+	Fields        map[string]Value
+	StaticSubject layoutcontract.DataSubjectRef
+	StaticRow     int
+	StaticExtent  int
+	HasStaticRow  bool
 }
 
 type EnumValue struct {
@@ -342,6 +348,7 @@ type interpreter struct {
 	artifactWriteDepth       int
 	currentFunctionName      string
 	ctx                      context.Context
+	staticProofs             *staticProofState
 }
 
 type xlsxWorkbook struct {
@@ -624,6 +631,7 @@ func newInterpreter(program project.Program, stdout io.Writer) (interpreter, err
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
 		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), plotWrapperBuiltins(), pdfWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), artifactWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
 		wrapperClients: newInterpretedWrapperClientCache(),
+		staticProofs:   newStaticProofState(),
 	}
 	for currentPkg, pkg := range program.Packages {
 		imports := make(map[string]struct{}, len(pkg.Imports))
@@ -1794,7 +1802,11 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				rowFields[field.Name] = column.Array[rowIndex]
 				rowOrder = append(rowOrder, field.Name)
 			}
-			return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: "__oct_table_row_" + target.value.Record.TypeName, FieldOrder: rowOrder, Fields: rowFields}}}, nil
+			return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{
+				TypeName: "__oct_table_row_" + target.value.Record.TypeName, FieldOrder: rowOrder, Fields: rowFields,
+				StaticSubject: target.value.Record.StaticSubject, StaticRow: int(rowIndex), HasStaticRow: target.value.Record.StaticSubject.Identity != "",
+				StaticExtent: len(target.value.Record.Fields[tableDecl.Fields[0].Name].Array),
+			}}}, nil
 		default:
 			return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index value of kind %s", target.value.Kind)
 		}
@@ -1853,6 +1865,18 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		if !ok {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: type '%s' has no field '%s'", target.value.Record.TypeName, node.Field)
 		}
+		if target.value.Record.HasStaticRow {
+			for ordinal, fieldName := range target.value.Record.FieldOrder {
+				if fieldName == node.Field {
+					origin := staticFieldOrigin{
+						Field: layoutcontract.FieldRef{Subject: target.value.Record.StaticSubject, Ordinal: ordinal, Name: node.Field},
+						Row:   target.value.Record.StaticRow, Extent: target.value.Record.StaticExtent,
+					}
+					fieldValue.StaticField = &origin
+					break
+				}
+			}
+		}
 		return evalResult{value: fieldValue}, nil
 	case ast.ParenExpr:
 		return i.evalExpr(env, pkgName, node.Inner)
@@ -1901,6 +1925,7 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 		if err != nil {
 			return evalResult{}, err
 		}
+		i.staticProofs.observe(node.Operator, left.value, right.value, value)
 		return evalResult{value: value}, nil
 	case ast.UnaryExpr:
 		operand, err := i.evalExpr(env, pkgName, node.Operand)
@@ -2458,7 +2483,7 @@ regularCall:
 		if strings.HasPrefix(calleeName, "StaticAssert.") && i.artifactCapability == nil {
 			return evalResult{}, fmt.Errorf("StaticAssert requires a compiler-owned static evaluation phase; ordinary runtime execution cannot evaluate it")
 		}
-		return i.evalAssertCallExpr(env, pkgName, calleeName, expr.Arguments)
+		return i.evalAssertCallExpr(env, pkgName, calleeName, expr.Arguments, expr.Line, expr.Column)
 	}
 	if hasDirectName && calleeName == "SkipTest" {
 		if len(expr.TypeArguments) != 0 {
@@ -2545,7 +2570,7 @@ regularCall:
 	return evalResult{value: result.value}, nil
 }
 
-func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr, line, column int) (evalResult, error) {
 	isStatic := strings.HasPrefix(callee, "StaticAssert.")
 	fail := func(message string) (evalResult, error) {
 		if isStatic {
@@ -2571,12 +2596,26 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 	switch normalized {
 	case "Assert.True":
 		recordAssertion()
+		var previous *staticProofTrace
+		if isStatic {
+			identity := fmt.Sprintf("%s.%s:%d:%d", pkgName, i.currentFunctionName, line, column)
+			previous = i.staticProofs.begin(identity)
+		}
 		condition, err := evalArg(0)
 		if err != nil {
+			if isStatic {
+				i.staticProofs.finish(previous, false)
+			}
 			return evalResult{}, err
 		}
 		if condition.hasError {
+			if isStatic {
+				i.staticProofs.finish(previous, false)
+			}
 			return evalResult{hasError: true, errorVal: condition.errorVal}, nil
+		}
+		if isStatic {
+			i.staticProofs.finish(previous, condition.value.Bool)
 		}
 		message, err := evalArg(1)
 		if err != nil {
@@ -5421,7 +5460,11 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, exp
 			return evalResult{}, fmt.Errorf("runtime error [OCT-RTBL003]: record table '%s' columns have inconsistent lengths: %s", expr.TypeName, strings.Join(lengths, ", "))
 		}
 	}
-	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: resolvedTypeName, FieldOrder: fieldOrder, Fields: fieldValues}}}, nil
+	record := RecordValue{TypeName: resolvedTypeName, FieldOrder: fieldOrder, Fields: fieldValues}
+	if recordDecl.IsTable && i.staticProofs != nil {
+		record.StaticSubject = i.staticProofs.newSubject(resolvedTypeName)
+	}
+	return evalResult{value: Value{Kind: ValueRecord, Record: record}}, nil
 }
 
 func (i interpreter) evalRecordUpdateExpr(env *environment, pkgName string, expr ast.RecordUpdateExpr) (evalResult, error) {
@@ -5466,7 +5509,13 @@ func (i interpreter) evalRecordUpdateExpr(env *environment, pkgName string, expr
 		fields[field.Name] = value.value
 	}
 
-	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: source.value.Record.TypeName, FieldOrder: append([]string(nil), source.value.Record.FieldOrder...), Fields: fields}}}, nil
+	record := RecordValue{TypeName: source.value.Record.TypeName, FieldOrder: append([]string(nil), source.value.Record.FieldOrder...), Fields: fields}
+	if isTable && i.staticProofs != nil {
+		// Every immutable table transformation creates a fresh subject. Facts for
+		// the old value cannot attach accidentally; the new value is re-proved.
+		record.StaticSubject = i.staticProofs.newSubject(source.value.Record.TypeName)
+	}
+	return evalResult{value: Value{Kind: ValueRecord, Record: record}}, nil
 }
 
 func (i interpreter) lookupRecordDecl(currentPackage string, typeName string) (ast.RecordDecl, string, bool) {

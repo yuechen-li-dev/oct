@@ -161,7 +161,11 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 		for extra := range fields {
 			return Value{}, fmt.Errorf("record %s has unexpected field %s", expectedTypeString(expectedType), extra)
 		}
-		return Value{Kind: ValueRecord, Record: RecordValue{TypeName: resolvedRecordName, Fields: values, FieldOrder: fieldOrder}}, nil
+		record := RecordValue{TypeName: resolvedRecordName, Fields: values, FieldOrder: fieldOrder}
+		if recordDecl.IsTable && i.staticProofs != nil {
+			record.StaticSubject = i.staticProofs.newSubject(resolvedRecordName)
+		}
+		return Value{Kind: ValueRecord, Record: record}, nil
 	}
 
 	enumDecl, resolvedEnumName, hasEnum := i.lookupEnumDecl(currentPkg, expectedTypeName(expectedType))
