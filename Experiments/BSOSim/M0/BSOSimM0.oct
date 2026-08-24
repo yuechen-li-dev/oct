@@ -1,0 +1,38 @@
+package BSOSimM0
+
+enum TransferState {
+    Reserved
+    Accepted
+    Committed
+    Acknowledged
+    Rejected
+    Expired
+}
+
+enum MessageKind {
+    Offer
+    Accept
+    Reject
+    Commit
+    Acknowledge
+    ReconcileExpired
+}
+
+fn SenderTransition(current: TransferState, message: MessageKind) -> TransferState {
+    return switch {
+        case current == TransferState.Reserved and message == MessageKind.Accept => TransferState.Committed
+        case current == TransferState.Accepted and message == MessageKind.Accept => TransferState.Committed
+        case current == TransferState.Reserved and message == MessageKind.Reject => TransferState.Rejected
+        case current == TransferState.Accepted and message == MessageKind.Reject => TransferState.Rejected
+        case current == TransferState.Committed and message == MessageKind.Acknowledge => TransferState.Acknowledged
+        else => current
+    }
+}
+
+fn ReceiverTransition(current: TransferState, message: MessageKind) -> TransferState {
+    return switch {
+        case current == TransferState.Accepted and message == MessageKind.Commit => TransferState.Committed
+        case current == TransferState.Accepted and message == MessageKind.ReconcileExpired => TransferState.Expired
+        else => current
+    }
+}

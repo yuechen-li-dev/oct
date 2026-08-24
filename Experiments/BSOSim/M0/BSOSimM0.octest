@@ -1,0 +1,30 @@
+package BSOSimM0
+
+[Fact]
+fn SenderProtocolIsReplaySafe() -> Void {
+    let committed = SenderTransition(TransferState.Reserved, MessageKind.Accept)
+    Assert.Equal(TransferState.Committed, committed, "accept finalizes the reserved debit")
+    Assert.Equal(TransferState.Committed, SenderTransition(committed, MessageKind.Accept), "duplicate accept is boring")
+
+    let acknowledged = SenderTransition(committed, MessageKind.Acknowledge)
+    Assert.Equal(TransferState.Acknowledged, acknowledged, "acknowledgement closes sender state")
+    Assert.Equal(TransferState.Acknowledged, SenderTransition(acknowledged, MessageKind.Acknowledge), "duplicate acknowledgement is boring")
+}
+
+[Fact]
+fn ReceiverCommitAndExpiryAreReplaySafe() -> Void {
+    let committed = ReceiverTransition(TransferState.Accepted, MessageKind.Commit)
+    Assert.Equal(TransferState.Committed, committed, "commit finalizes one credit")
+    Assert.Equal(TransferState.Committed, ReceiverTransition(committed, MessageKind.Commit), "duplicate commit cannot apply another credit")
+
+    let expired = ReceiverTransition(TransferState.Accepted, MessageKind.ReconcileExpired)
+    Assert.Equal(TransferState.Expired, expired, "sender expiry reconciles an uncommitted acceptance")
+    Assert.Equal(TransferState.Expired, ReceiverTransition(expired, MessageKind.ReconcileExpired), "duplicate expiry reconciliation is boring")
+}
+
+[Fact]
+fn TerminalStatesDoNotRegressOnReorderedMessages() -> Void {
+    Assert.Equal(TransferState.Acknowledged, SenderTransition(TransferState.Acknowledged, MessageKind.Accept), "late accept does not reopen a transfer")
+    Assert.Equal(TransferState.Committed, ReceiverTransition(TransferState.Committed, MessageKind.ReconcileExpired), "late expiry cannot erase committed credit")
+    Assert.Equal(TransferState.Rejected, SenderTransition(TransferState.Rejected, MessageKind.Accept), "late accept cannot revive rejection")
+}
