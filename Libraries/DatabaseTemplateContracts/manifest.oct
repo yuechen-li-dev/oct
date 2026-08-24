@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "DatabaseTemplateContracts"
+        Version: "0.1.0"
+        Description: "Refined value contracts shared by typed database templates"
+        Authors:["Codex"]
+        Date: "2026-08-23"
+        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+    }
+}

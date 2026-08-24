@@ -52,6 +52,7 @@ func TestParametricM0ErasesBeforeOrdinaryFlowAndGoLowering(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, required := range []string{
+		"Oct template provenance:",
 		"type ParametricQueryValid_MaterializedFilter__Job struct",
 		"type ParametricQueryValid_MaterializedFilter__InventoryItem struct",
 		"type __octFlow_ParametricQueryValid_Filtered__Job struct",

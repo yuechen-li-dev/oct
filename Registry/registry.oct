@@ -119,6 +119,26 @@ fn Registry() -> RegistryIndex {
                 Description: "Thin CSV wrappers for raw row-major string tables"
             },
             PackageEntry {
+                Name: "DatabaseTemplateContracts"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/DatabaseTemplateContracts"
+                Description: "Refined value contracts shared by typed database templates"
+            },
+            PackageEntry {
+                Name: "DatabaseTemplates"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/DatabaseTemplates"
+                Description: "Typed semantic specialization templates for bounded read-oriented database workloads"
+            },
+            PackageEntry {
                 Name: "Deployment"
                 Version: "0.1.0"
                 Kind: "library"

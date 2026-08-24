@@ -1,0 +1,41 @@
+package DatabaseTemplates
+
+import DatabaseTemplateContracts
+
+concept SemanticPrimitive = String {
+    Require(Self == "semantic-primitive", "category must be semantic-primitive")
+}
+
+/// A stable, application-owned identity field for one nominal record type.
+/// Category: SemanticPrimitive
+/// Requires[Type]: KeyOf belongs to Record and returns exactly Key.
+/// Provides: stable identity semantics and exact selector provenance.
+/// Use when: records have one durable logical identity used by point access.
+/// Avoid when: identity is composite or changes during the record lifetime.
+template record StableIdentity<Record, Key> {
+    /// Exact typed key field; never a string field name.
+    KeyOf: Selector<Record, Key>
+}
+
+/// A logical upper bound for one nominal record population.
+/// Category: SemanticPrimitive
+/// Requires[Require]: MaxRecords satisfies the compile-time PositiveCount Concept.
+/// Provides: a reviewable bounded-extent assumption; no physical layout choice.
+/// Use when: the application owns a credible maximum live population.
+/// Avoid when: the population is intentionally unbounded or the number is a guess.
+template record BoundedExtent<Record> {
+    MaxRecords: DatabaseTemplateContracts.PositiveCount
+}
+
+/// An explicit rebuild/publication boundary for a derived read representation.
+/// Category: SemanticPrimitive
+/// Requires[Require]: source identity is non-empty and version is non-negative.
+/// Requires[Application]: Rebuild is invoked after open and at every application-owned publication boundary.
+/// Provides: honest immutable-or-rebuild coherence and a source version for provenance.
+/// Use when: a read-only snapshot or explicitly rebuilt materialization is acceptable.
+/// Avoid when: writes and derived reads require transactionally maintained coherence.
+template record RebuildPublication<Record> {
+    SourceName: DatabaseTemplateContracts.PublicationSource
+    SourceVersion: DatabaseTemplateContracts.PublicationVersion
+    Rebuild: fn(Record[]) -> Record[]
+}

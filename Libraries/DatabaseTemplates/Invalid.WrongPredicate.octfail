@@ -1,0 +1,32 @@
+expect error: "expects fn(WrongPredicateInventoryItem) -> Bool, got fn(WrongPredicateJob) -> Bool"
+
+package DatabaseTemplates
+
+record WrongPredicateJob {Ready: Bool}
+record WrongPredicateInventoryItem {Available: Int}
+
+template record RebuildPublication<Record> {
+    SourceName: String
+    SourceVersion: Int
+    Rebuild: fn(Record[]) -> Record[]
+}
+
+template record ReadMostlyDataset<Record> {
+    Publication: RebuildPublication<Record>
+    ExpectedReadsPerPublish: Int
+}
+
+template record MaterializedFilter<Record> {
+    Access: ReadMostlyDataset<Record>
+    Predicate: fn(Record) -> Bool
+    Limit: Int
+}
+
+fn JobIsReady(job: WrongPredicateJob) -> Bool {return job.Ready}
+fn RebuildWrongPredicateItems(source: WrongPredicateInventoryItem[]) -> WrongPredicateInventoryItem[] {return source}
+
+fn Main() -> Void {
+    let publication = RebuildPublication<WrongPredicateInventoryItem> {SourceName: "Inventory" SourceVersion: 1 Rebuild: RebuildWrongPredicateItems}
+    let access = ReadMostlyDataset<WrongPredicateInventoryItem> {Publication: publication ExpectedReadsPerPublish: 10}
+    let invalid = MaterializedFilter<WrongPredicateInventoryItem> {Access: access Predicate: JobIsReady Limit: 5}
+}

@@ -59,6 +59,7 @@ func TestCommandHelp(t *testing.T) {
 		{[]string{"pkg", "lock", "--help"}, []string{"lock.octagon"}},
 		{[]string{"pkg", "sync", "--help"}, []string{"--locked"}},
 		{[]string{"pkg", "build-wrappers", "--help"}, []string{"--allow-native"}},
+		{[]string{"templates", "--help"}, []string{"templates list", "describe <Name>", "--json"}},
 	}
 	for _, tc := range cases {
 		var out, errOut bytes.Buffer

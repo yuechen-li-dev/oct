@@ -76,6 +76,8 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 	}
 
 	switch command {
+	case "templates":
+		return executeTemplates(args[1:], stdout, stderr, workingDir)
 	case "new":
 		return executeNew(args[1:], stdout, stderr, workingDir)
 	case "init":
@@ -1361,7 +1363,7 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	return result, nil
 }
 func writeTopLevelHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  check      Validate external semantic contracts\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  sdslv      Check, test, emit HLSL, and generate SPIR-V/header artifacts from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  check      Validate external semantic contracts\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  templates  Discover documented *.template.oct declarations\n  sdslv      Check, test, emit HLSL, and generate SPIR-V/header artifacts from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
 	return err
 }
 

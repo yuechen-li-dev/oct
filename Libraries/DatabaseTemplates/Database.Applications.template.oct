@@ -1,0 +1,29 @@
+package DatabaseTemplates
+
+concept ApplicationStartingPoint = String {
+    Require(Self == "application-starting-point", "category must be application-starting-point")
+}
+
+/// A shallow starting point for bounded keyed queues with lifecycle and Ready-view semantics.
+/// Category: ApplicationStartingPoint
+/// Requires[Type]: each component is specialized for the same Record.
+/// Requires[Structure]: ReadyView publication is explicit.
+/// Provides: explicit composition of bounded identity, finite state, and filtered read patterns.
+/// Use when: a job profile is dominated by repeated Ready scans.
+/// Avoid when: queue mutation/coherence dominates or a default scan meets the target.
+template record JobQueue<Record, Key, State> {
+    Dataset: DatabaseTemplates.BoundedKeyedDataset<Record, Key>
+    Lifecycle: DatabaseTemplates.FiniteStateDataset<Record, State>
+    ReadyView: DatabaseTemplates.MaterializedFilter<Record>
+}
+
+/// A shallow starting point for bounded keyed inventory with a low-stock read view.
+/// Category: ApplicationStartingPoint
+/// Requires[Type]: Dataset and LowStockView share the same Inventory record identity.
+/// Provides: explicit composition of bounded SKU identity and a published filtered view.
+/// Use when: measured low-stock scans dominate inventory reads.
+/// Avoid when: stock writes require a transactionally maintained secondary view.
+template record Inventory<Record, Key> {
+    Dataset: DatabaseTemplates.BoundedKeyedDataset<Record, Key>
+    LowStockView: DatabaseTemplates.MaterializedFilter<Record>
+}

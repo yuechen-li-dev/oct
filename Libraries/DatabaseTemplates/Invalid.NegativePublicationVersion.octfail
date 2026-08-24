@@ -1,0 +1,20 @@
+expect error: "publication version must not be negative"
+
+package DatabaseTemplates
+
+concept PublicationVersion = Int {
+    Require(Self >= 0, "publication version must not be negative")
+}
+
+record InvalidVersionJob {ID: String}
+
+template record RebuildPublication<Record> {
+    SourceVersion: PublicationVersion
+    Rebuild: fn(Record[]) -> Record[]
+}
+
+fn Rebuild(source: InvalidVersionJob[]) -> InvalidVersionJob[] {return source}
+
+fn Main() -> Void {
+    let invalid = RebuildPublication<InvalidVersionJob> {SourceVersion: - 1 Rebuild: Rebuild}
+}

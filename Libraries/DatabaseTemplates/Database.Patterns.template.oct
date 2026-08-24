@@ -1,0 +1,58 @@
+package DatabaseTemplates
+
+import DatabaseTemplateContracts
+
+concept SpecializationPattern = String {
+    Require(Self == "specialization-pattern", "category must be specialization-pattern")
+}
+
+/// A bounded nominal dataset with one stable typed key.
+/// Category: SpecializationPattern
+/// Requires[Type]: Identity.KeyOf belongs to Record and Extent belongs to the same Record.
+/// Requires[Require]: Extent.MaxRecords satisfies PositiveCount.
+/// Provides: stable identity, bounded logical extent, and exact FieldRef provenance.
+/// Use when: profiling identifies a bounded dataset whose logical key is stable.
+/// Avoid when: bounds or identity are unknown, composite, or mutable.
+template record BoundedKeyedDataset<Record, Key> {
+    Identity: DatabaseTemplates.StableIdentity<Record, Key>
+    Extent: DatabaseTemplates.BoundedExtent<Record>
+}
+
+/// A read-dominant dataset with an explicit materialization publication boundary.
+/// Category: SpecializationPattern
+/// Requires[Require]: ExpectedReadsPerPublish satisfies PositiveCount.
+/// Requires[Application]: Publication is honored after open and after every source change made visible to readers.
+/// Provides: stable read form plus an explicit reads-per-publication workload assumption.
+/// Use when: measured reads dominate and rebuild publication is application-owned.
+/// Avoid when: mutable mixed-view coherence must be maintained transactionally.
+template record ReadMostlyDataset<Record> {
+    Publication: DatabaseTemplates.RebuildPublication<Record>
+    ExpectedReadsPerPublish: DatabaseTemplateContracts.PositiveCount
+}
+
+/// A typed filtered read view that preserves source order and stops at Limit.
+/// Category: SpecializationPattern
+/// Requires[Type]: Predicate is exactly fn(Record) -> Bool.
+/// Requires[Structure]: Access carries rebuild/publication evidence.
+/// Requires[Require]: Limit satisfies PositiveCount.
+/// Provides: reusable Query-M0 filter/take semantics with no separate query runtime.
+/// Use when: profiling shows repeated filtered scans over an immutable or explicitly rebuilt source.
+/// Avoid when: the source mutates without a publication boundary or default scans are already adequate.
+template record MaterializedFilter<Record> {
+    Access: DatabaseTemplates.ReadMostlyDataset<Record>
+    Predicate: fn(Record) -> Bool
+    Limit: DatabaseTemplateContracts.PositiveCount
+}
+
+/// A finite application state model attached to an exact typed state field.
+/// Category: SpecializationPattern
+/// Requires[Type]: StateOf belongs to Record and returns exactly State.
+/// Requires[Application]: States lists the complete domain and AllowsTransition remains application-owned.
+/// Provides: finite state-domain and transition semantics without a workflow runtime.
+/// Use when: records share a small explicit lifecycle domain.
+/// Avoid when: state is open-ended or transition policy is not stable.
+template record FiniteStateDataset<Record, State> {
+    StateOf: Selector<Record, State>
+    States: State[]
+    AllowsTransition: fn(State, State) -> Bool
+}

@@ -1,0 +1,51 @@
+expect error: "expects BoundedKeyedDataset__CompositionJob__String, got BoundedKeyedDataset__CompositionInventoryItem__String"
+
+package DatabaseTemplates
+
+record CompositionJob {ID: String Status: Int}
+record CompositionInventoryItem {SKU: String}
+
+template record StableIdentity<Record, Key> {KeyOf: Selector<Record, Key>}
+template record BoundedExtent<Record> {MaxRecords: Int}
+template record BoundedKeyedDataset<Record, Key> {
+    Identity: StableIdentity<Record, Key>
+    Extent: BoundedExtent<Record>
+}
+template record RebuildPublication<Record> {
+    SourceName: String
+    SourceVersion: Int
+    Rebuild: fn(Record[]) -> Record[]
+}
+template record ReadMostlyDataset<Record> {
+    Publication: RebuildPublication<Record>
+    ExpectedReadsPerPublish: Int
+}
+template record MaterializedFilter<Record> {
+    Access: ReadMostlyDataset<Record>
+    Predicate: fn(Record) -> Bool
+    Limit: Int
+}
+template record FiniteStateDataset<Record, State> {
+    StateOf: Selector<Record, State>
+    States: State[]
+    AllowsTransition: fn(State, State) -> Bool
+}
+template record JobQueue<Record, Key, State> {
+    Dataset: BoundedKeyedDataset<Record, Key>
+    Lifecycle: FiniteStateDataset<Record, State>
+    ReadyView: MaterializedFilter<Record>
+}
+fn CompositionReady(job: CompositionJob) -> Bool {return job.Status == 1}
+fn CompositionTransition(from: Int, to: Int) -> Bool {return from != to}
+fn RebuildCompositionJobs(source: CompositionJob[]) -> CompositionJob[] {return source}
+
+fn Main() -> Void {
+    let inventoryIdentity = StableIdentity<CompositionInventoryItem, String> {KeyOf: .SKU}
+    let inventoryExtent = BoundedExtent<CompositionInventoryItem> {MaxRecords: 100}
+    let inventoryDataset = BoundedKeyedDataset<CompositionInventoryItem, String> {Identity: inventoryIdentity Extent: inventoryExtent}
+    let lifecycle = FiniteStateDataset<CompositionJob, Int> {StateOf: .Status States:[0, 1] AllowsTransition: CompositionTransition}
+    let publication = RebuildPublication<CompositionJob> {SourceName: "Jobs" SourceVersion: 1 Rebuild: RebuildCompositionJobs}
+    let access = ReadMostlyDataset<CompositionJob> {Publication: publication ExpectedReadsPerPublish: 10}
+    let ready = MaterializedFilter<CompositionJob> {Access: access Predicate: CompositionReady Limit: 10}
+    let invalid = JobQueue<CompositionJob, String, Int> {Dataset: inventoryDataset Lifecycle: lifecycle ReadyView: ready}
+}

@@ -1,0 +1,78 @@
+package DatabaseTemplates
+
+import DatabaseTemplateContracts
+
+record Job {
+    ID: String
+    Status: Int
+}
+
+record InventoryItem {
+    SKU: String
+    Available: Int
+}
+
+fn IsReady(job: Job) -> Bool {return job.Status == 1}
+fn IsLowStock(item: InventoryItem) -> Bool {return item.Available<5}
+fn AllowsJobTransition(from: Int, to: Int) -> Bool {return from != to}
+fn RebuildJobs(source: Job[]) -> Job[] {return source}
+fn RebuildInventory(source: InventoryItem[]) -> InventoryItem[] {return source}
+
+query BespokeFilteredView(source: Job[], predicate: fn(Job) -> Bool, limit: Int) yields Job {
+    filter predicate
+    take limit
+}
+
+[Fact]
+fn JobQueueComposesKnownPatternsWithOrdinaryOverrides() -> Void {
+    let identity = StableIdentity<Job, String> {KeyOf: .ID}
+    let defaultExtent = BoundedExtent<Job> {MaxRecords: 1}
+    let extent = defaultExtent with {MaxRecords: 100000}
+    let dataset = BoundedKeyedDataset<Job, String> {Identity: identity Extent: extent}
+    let publication = RebuildPublication<Job> {SourceName: "Jobs" SourceVersion: 1 Rebuild: RebuildJobs}
+    let defaultAccess = ReadMostlyDataset<Job> {Publication: publication ExpectedReadsPerPublish: 1}
+    let access = defaultAccess with {ExpectedReadsPerPublish: 1000}
+    let defaultReady = MaterializedFilter<Job> {Access: access Predicate: IsReady Limit: 1}
+    let ready = defaultReady with {Limit: 10}
+    let lifecycle = FiniteStateDataset<Job, Int> {StateOf: .Status States:[0, 1, 2] AllowsTransition: AllowsJobTransition}
+    let queue = JobQueue<Job, String, Int> {Dataset: dataset Lifecycle: lifecycle ReadyView: ready}
+    let job = Job {ID: "J-7" Status: 1}
+    let keyOf = queue.Dataset.Identity.KeyOf
+    Assert.Equal("J-7", keyOf(job), "typed job key")
+    Assert.True(queue.Dataset.Extent.MaxRecords == 100000, "bound customized with with")
+    Assert.True(queue.ReadyView.Limit == 10, "view limit customized with with")
+}
+
+[Fact]
+fn InventoryCompositionAndFilteredViewsRemainNominallyDistinct() -> Void {
+    let identity = StableIdentity<InventoryItem, String> {KeyOf: .SKU}
+    let extent = BoundedExtent<InventoryItem> {MaxRecords: 50000}
+    let dataset = BoundedKeyedDataset<InventoryItem, String> {Identity: identity Extent: extent}
+    let publication = RebuildPublication<InventoryItem> {SourceName: "Inventory" SourceVersion: 4 Rebuild: RebuildInventory}
+    let access = ReadMostlyDataset<InventoryItem> {Publication: publication ExpectedReadsPerPublish: 400}
+    let lowStock = MaterializedFilter<InventoryItem> {Access: access Predicate: IsLowStock Limit: 5}
+    let inventory = Inventory<InventoryItem, String> {Dataset: dataset LowStockView: lowStock}
+    let items =[InventoryItem {SKU: "A" Available: 9}, InventoryItem {SKU: "B" Available: 2}]
+    let view = FilteredView<InventoryItem>(items, inventory.LowStockView.Predicate, inventory.LowStockView.Limit)
+    Assert.Equal("B", Query.First(view) !.SKU, "low-stock view")
+    Assert.True(inventory.LowStockView.Access.Publication.SourceName == "Inventory", "explicit publication source")
+}
+
+[Fact]
+fn FilteredViewPreservesSourceOrderAndEarlyStop() -> Void {
+    let jobs =[
+    Job {ID: "J-30" Status: 1},
+    Job {ID: "J-10" Status: 0},
+    Job {ID: "J-20" Status: 1},
+    Job {ID: "J-40" Status: 1}
+    ]
+    let ready = FilteredView<Job>(jobs, IsReady, 2)
+    Step(ready)
+    Assert.Equal("J-30", Yielded(ready) !.ID, "first source-order match")
+    Step(ready)
+    Assert.Equal("J-20", Yielded(ready) !.ID, "second source-order match")
+    Step(ready)
+    Assert.Equal(true, Complete(ready), "take stops before third match")
+}
+
+fn Main() -> Void {}

@@ -1,0 +1,31 @@
+package DatabaseTemplateContracts
+
+/// A strictly positive logical count used by bounded template configuration.
+concept PositiveCount = Int {
+    Require(Self > 0, "database template counts must be positive")
+}
+
+/// A non-empty application-owned publication source identity.
+concept PublicationSource = String {
+    Require(Self != "", "publication source identity must not be empty")
+}
+
+/// A non-negative application-owned publication generation/version.
+concept PublicationVersion = Int {
+    Require(Self >= 0, "publication version must not be negative")
+}
+
+/// Admits a runtime-derived positive count through the ordinary fallible Concept constructor.
+fn AdmitPositiveCount(value: Int) -> PositiveCount ! Error {
+    return PositiveCount(value) ?
+}
+
+/// Admits a runtime-derived non-empty publication identity.
+fn AdmitPublicationSource(value: String) -> PublicationSource ! Error {
+    return PublicationSource(value) ?
+}
+
+/// Admits a runtime-derived non-negative publication version.
+fn AdmitPublicationVersion(value: Int) -> PublicationVersion ! Error {
+    return PublicationVersion(value) ?
+}

@@ -1,0 +1,15 @@
+expect error: "database template counts must be positive"
+
+package DatabaseTemplates
+
+concept PositiveCount = Int {
+    Require(Self > 0, "database template counts must be positive")
+}
+
+record InvalidBoundJob {ID: String}
+
+template record BoundedExtent<Record> {MaxRecords: PositiveCount}
+
+fn Main() -> Void {
+    let invalid = BoundedExtent<InvalidBoundJob> {MaxRecords: 0}
+}

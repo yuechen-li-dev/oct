@@ -142,6 +142,16 @@ oct init <experiment|library|wrapper-library|application|app>
 
 `oct init` writes the same `Authors: ["Unknown"]` and ISO `Date` metadata as `oct new`, but it always initializes the current directory and never moves into `Experiments/` or `Libraries/`. `oct init` refuses to overwrite an existing `manifest.oct`. Use `oct init experiment` for existing experiment folders, `oct init library` for reusable libraries, `oct init application` (or shorthand `oct init app`) for runnable programs/services/UIs/CLIs, and `oct init wrapper-library` for wrapper-library manifests.
 
+## `oct templates` discovery
+
+```sh
+oct templates list Libraries/DatabaseTemplates
+oct templates list Libraries/DatabaseTemplates --json
+oct templates describe MaterializedFilter Libraries/DatabaseTemplates
+```
+
+`oct templates` deterministically discovers ordinary `*.template.oct` files. Metadata is derived from real template declarations and their adjacent `///` documentation: name, declaration kind, category Concept, summary, type parameters, configurable fields/parameters, classified requirements, provided semantics, usage guidance, and source path. A Category must name a String-refining Concept with `Require`; each requirement declares its enforcement as `Require`, `Type`, `Structure`, or `Application`. The JSON form is intended for tools and LLMs. Discovery does not instantiate templates, select optimizations, execute source, or use a registry/runtime service.
+
 ## `oct pkg` wrapper tooling
 
 Inspection remains inert:

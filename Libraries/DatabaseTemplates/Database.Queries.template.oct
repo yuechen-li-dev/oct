@@ -1,0 +1,16 @@
+package DatabaseTemplates
+
+concept SpecializationQuery = String {
+    Require(Self == "specialization-query", "category must be specialization-query")
+}
+
+/// Reusable filter/take execution for MaterializedFilter configuration.
+/// Category: SpecializationQuery
+/// Requires[Application]: source has been published according to the associated MaterializedFilter Access contract.
+/// Provides: concrete Query-M0 FLOW preserving input order and early stopping at limit.
+/// Use when: a selected MaterializedFilter is justified by a measured scan hot path.
+/// Avoid when: point lookup or durable synchronization dominates.
+template query FilteredView<Record>(source: Record[], predicate: fn(Record) -> Bool, limit: Int) yields Record {
+    filter predicate
+    take limit
+}

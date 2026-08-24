@@ -1,0 +1,20 @@
+expect error: "database template counts must be positive"
+
+package DatabaseTemplates
+
+concept PositiveCount = Int {
+    Require(Self > 0, "database template counts must be positive")
+}
+
+record InvalidLimitJob {ID: String}
+
+template record MaterializedFilter<Record> {
+    Predicate: fn(Record) -> Bool
+    Limit: PositiveCount
+}
+
+fn Accept(job: InvalidLimitJob) -> Bool {return true}
+
+fn Main() -> Void {
+    let invalid = MaterializedFilter<InvalidLimitJob> {Predicate: Accept Limit: - 1}
+}

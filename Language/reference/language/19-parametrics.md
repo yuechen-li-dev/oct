@@ -100,3 +100,9 @@ Existing transparent Concept aliases compose with type arguments and are expande
 ## Explicit limits
 
 M0 does not provide higher-kinded types, variance, associated types, specialization ordering, const/value parameters, lifetimes, dependent types, type-level arithmetic, arbitrary compile-time loops/functions, filesystem/network/process access, quote/unquote, eval, AST/token macros, field enumeration, reflection over `T`, runtime dictionaries, or a template registry.
+
+## Catalog convention
+
+`*.template.oct` is an ordinary-source naming convention for discovery and documentation. It has no separate parser or execution semantics. `oct templates list <root>` and `oct templates describe <Name> <root>` derive catalog metadata from real declarations and adjacent `///` documentation; `--json` provides the same deterministic data to tools. Catalog Category names are actual String-refining Concepts with `Require`. Requirements are classified by their executable enforcement boundary: `Require`, exact `Type`, structural composition, or an explicit application lifecycle obligation. Template choice remains explicit author intent.
+
+The database catalog demonstrates existing Concept constraints on template configuration. Consumers explicitly import `DatabaseTemplateContracts`; its package-qualified refined value types survive concrete specialization and erase to ordinary representations after admission. This uses the existing Concept/Require path rather than a template-specific bounds system.

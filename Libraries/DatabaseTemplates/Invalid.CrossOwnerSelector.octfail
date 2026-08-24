@@ -1,0 +1,13 @@
+expect error: "expects fn(InvalidSelectorInventoryItem) -> String, got fn(InvalidSelectorJob) -> String"
+
+package DatabaseTemplates
+
+record InvalidSelectorJob {ID: String}
+record InvalidSelectorInventoryItem {SKU: String}
+
+template record StableIdentity<Record, Key> {KeyOf: Selector<Record, Key>}
+
+fn Main() -> Void {
+    let jobKey: Selector<InvalidSelectorJob, String> =.ID
+    let invalid = StableIdentity<InvalidSelectorInventoryItem, String> {KeyOf: jobKey}
+}

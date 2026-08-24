@@ -1,0 +1,16 @@
+expect error: "has type String"
+
+package DatabaseTemplates
+
+record StateSelectorJob {Status: String}
+fn AllowsIntState(from: Int, to: Int) -> Bool {return from != to}
+
+template record FiniteStateDataset<Record, State> {
+    StateOf: Selector<Record, State>
+    States: State[]
+    AllowsTransition: fn(State, State) -> Bool
+}
+
+fn Main() -> Void {
+    let invalid = FiniteStateDataset<StateSelectorJob, Int> {StateOf: .Status States:[0, 1] AllowsTransition: AllowsIntState}
+}

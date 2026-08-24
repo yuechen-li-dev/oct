@@ -80,6 +80,18 @@ type MIRModule struct {
 	Functions       []MIRFunction
 	LayoutContracts []layoutcontract.Contract
 	Selectors       []MIRSelector
+	Templates       []MIRTemplateSpecialization
+}
+
+// MIRTemplateSpecialization is compile-time-only authoring provenance. It is
+// emitted as a generated-source comment and never participates in execution.
+type MIRTemplateSpecialization struct {
+	Kind          string
+	Package       string
+	ConcreteName  string
+	OriginPackage string
+	OriginName    string
+	TypeArguments []string
 }
 
 // MIRSelector is compile-time provenance for a selector getter. Execution uses
@@ -446,10 +458,12 @@ type MIRDestructureCall struct {
 func (MIRDestructureCall) mirStmt() {}
 
 type MIRConstructRecord struct {
-	Target     string
-	TypeName   string
-	FieldNames []string
-	FieldVals  []string
+	Target              string
+	TypeName            string
+	FieldNames          []string
+	FieldVals           []string
+	TemplateOrigin      string
+	TemplateOverrideSet []string
 }
 
 func (MIRConstructRecord) mirStmt() {}
@@ -781,21 +795,31 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 	sort.Strings(pkgNames)
 	for _, pkgName := range pkgNames {
 		pkg := program.Packages[pkgName]
-		for _, conceptDecl := range pkg.Concepts {
+		concepts := append([]ast.ConceptDecl(nil), pkg.Concepts...)
+		sort.SliceStable(concepts, func(i, j int) bool { return concepts[i].Name < concepts[j].Name })
+		records := append([]ast.RecordDecl(nil), pkg.Records...)
+		sort.SliceStable(records, func(i, j int) bool { return records[i].Name < records[j].Name })
+		enums := append([]ast.EnumDecl(nil), pkg.Enums...)
+		sort.SliceStable(enums, func(i, j int) bool { return enums[i].Name < enums[j].Name })
+		flows := append([]ast.FlowDecl(nil), pkg.Flows...)
+		sort.SliceStable(flows, func(i, j int) bool { return flows[i].Name < flows[j].Name })
+		functions := append([]ast.FunctionDecl(nil), pkg.Functions...)
+		sort.SliceStable(functions, func(i, j int) bool { return functions[i].Name < functions[j].Name })
+		for _, conceptDecl := range concepts {
 			if len(conceptDecl.Requirements) == 0 {
 				continue
 			}
 			module.Refinements = append(module.Refinements, MIRRefinement{Package: pkgName, Name: conceptDecl.Name, Base: typeRefStringForPackage("", conceptDecl.Target)})
 		}
 		if pkgName == program.Entry {
-			for _, fn := range pkg.Functions {
+			for _, fn := range functions {
 				if fn.Name == "main" {
 					module.EntryFunc = "main"
 					break
 				}
 			}
 			if module.EntryFunc == "" {
-				for _, fn := range pkg.Functions {
+				for _, fn := range functions {
 					if fn.Name == "Main" {
 						module.EntryFunc = "Main"
 						break
@@ -803,7 +827,10 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 				}
 			}
 		}
-		for _, r := range pkg.Records {
+		for _, r := range records {
+			if r.TemplateOrigin != nil {
+				module.Templates = append(module.Templates, mirTemplateSpecialization("record", pkgName, r.Name, r.TemplateOrigin, pkgName))
+			}
 			mr := MIRRecord{Package: pkgName, Name: r.Name, Kind: MIRRecordOrdinary}
 			if r.IsTable {
 				identity := pkgName + "." + r.Name
@@ -830,7 +857,7 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 				module.Records = append(module.Records, row)
 			}
 		}
-		for _, e := range pkg.Enums {
+		for _, e := range enums {
 			variants := make([]MIREnumVariant, 0, len(e.Variants))
 			for _, variant := range e.Variants {
 				payloadType := ""
@@ -841,7 +868,10 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			}
 			module.Enums = append(module.Enums, MIREnum{Package: pkgName, Name: e.Name, Variants: variants})
 		}
-		for _, flow := range pkg.Flows {
+		for _, flow := range flows {
+			if flow.TemplateOrigin != nil {
+				module.Templates = append(module.Templates, mirTemplateSpecialization("flow/query", pkgName, flow.Name, flow.TemplateOrigin, pkgName))
+			}
 			if len(flow.Board) > 0 {
 				snapshot := MIRRecord{Package: pkgName, Name: flow.Name + "BoardSnapshot", Kind: MIRRecordOrdinary}
 				for _, field := range flow.Board {
@@ -868,7 +898,10 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 				}
 			}
 		}
-		for _, fn := range pkg.Functions {
+		for _, fn := range functions {
+			if fn.TemplateOrigin != nil {
+				module.Templates = append(module.Templates, mirTemplateSpecialization("function", pkgName, fn.Name, fn.TemplateOrigin, pkgName))
+			}
 			if fn.SelectorOwner != nil {
 				ownerPkg := fn.SelectorOwner.Package
 				if ownerPkg == "" {
@@ -1006,6 +1039,21 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 	}
 	module.EntryReturn, module.EntryFallible = lookupEntryFunctionShape(program, module.EntryPackage, module.EntryFunc)
 	return module, nil
+}
+
+func mirTemplateSpecialization(kind, pkgName, concreteName string, origin *ast.TemplateOrigin, consumerPkg string) MIRTemplateSpecialization {
+	args := make([]string, len(origin.TypeArguments))
+	for i := range origin.TypeArguments {
+		args[i] = typeRefStringForPackage(consumerPkg, origin.TypeArguments[i])
+	}
+	return MIRTemplateSpecialization{
+		Kind:          kind,
+		Package:       pkgName,
+		ConcreteName:  concreteName,
+		OriginPackage: origin.Package,
+		OriginName:    origin.Declaration,
+		TypeArguments: args,
+	}
 }
 
 func lookupEntryFunctionShape(program project.Program, pkgName string, fnName string) (string, bool) {
@@ -3439,7 +3487,18 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			valueExpr := fmt.Sprintf("func() %s { %s; return %s{%s} }()", goType(sourceType), strings.Join(checks, "; "), goType(sourceType), strings.Join(parts, ", "))
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: valueExpr})
 		} else {
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: sourceType, FieldNames: names, FieldVals: values})
+			overrideNames := make([]string, 0, len(e.Fields))
+			for _, field := range e.Fields {
+				overrideNames = append(overrideNames, field.Name)
+			}
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{
+				Target:              tmp,
+				TypeName:            sourceType,
+				FieldNames:          names,
+				FieldVals:           values,
+				TemplateOrigin:      c.recordTemplateOrigin(sourceType),
+				TemplateOverrideSet: overrideNames,
+			})
 		}
 		return tmp, sourceType, false, nil
 	case ast.EnumValueExpr:
@@ -3762,6 +3821,30 @@ func (c *lowerCtx) lookupRecordFields(recordType string) ([]MIRField, bool) {
 		return fields, true
 	}
 	return nil, false
+}
+
+func (c *lowerCtx) recordTemplateOrigin(recordType string) string {
+	pkgName := c.pkg.Name
+	typeName := recordType
+	if strings.Contains(typeName, ".") {
+		parts := strings.SplitN(typeName, ".", 2)
+		pkgName, typeName = parts[0], parts[1]
+	}
+	pkg, ok := c.program.Packages[pkgName]
+	if !ok {
+		return ""
+	}
+	for _, record := range pkg.Records {
+		if record.Name != typeName || record.TemplateOrigin == nil {
+			continue
+		}
+		args := make([]string, len(record.TemplateOrigin.TypeArguments))
+		for i := range record.TemplateOrigin.TypeArguments {
+			args[i] = typeRefStringForPackage(pkgName, record.TemplateOrigin.TypeArguments[i])
+		}
+		return record.TemplateOrigin.Package + "." + record.TemplateOrigin.Declaration + "<" + strings.Join(args, ", ") + ">"
+	}
+	return ""
 }
 
 func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, bool, error) {
@@ -6251,6 +6334,9 @@ func resolveFlowCall(callee ast.Expr, pkg string) (string, string, bool, bool, e
 func dumpMIR(m MIRModule) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "module entry=%s\n", m.EntryPackage)
+	for _, template := range m.Templates {
+		fmt.Fprintf(&b, "template %s.%s kind=%s origin=%s.%s args=%s\n", template.Package, template.ConcreteName, template.Kind, template.OriginPackage, template.OriginName, strings.Join(template.TypeArguments, ","))
+	}
 	for _, record := range m.Records {
 		fmt.Fprintf(&b, "record %s.%s kind=%s\n", record.Package, record.Name, record.Kind)
 	}
@@ -6524,6 +6610,15 @@ func emitGo(m MIRModule) (string, error) {
 
 func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	var b strings.Builder
+	for _, template := range m.Templates {
+		fmt.Fprintf(&b, "// Oct template provenance: %s.%s <- %s.%s<%s> [%s]\n", template.Package, template.ConcreteName, template.OriginPackage, template.OriginName, strings.Join(template.TypeArguments, ", "), template.Kind)
+	}
+	for _, selector := range m.Selectors {
+		fmt.Fprintf(&b, "// Oct selector provenance: %s.%s -> %s.%s (ordinal %d)\n", selector.Package, selector.Name, selector.Field.Subject.Identity, selector.Field.Name, selector.Field.Ordinal)
+	}
+	if len(m.Templates) > 0 || len(m.Selectors) > 0 {
+		b.WriteString("\n")
+	}
 	usedBuiltins := map[string]bool{}
 	emittedRecordTypes := map[string]struct{}{}
 	loadTypes := map[string]struct{}{}
@@ -10333,7 +10428,11 @@ func goStmt(s MIRStmt) (string, error) {
 		for i := range st.FieldNames {
 			parts = append(parts, fmt.Sprintf("%s: %s", st.FieldNames[i], st.FieldVals[i]))
 		}
-		return fmt.Sprintf("%s = %s{%s}", st.Target, goType(st.TypeName), strings.Join(parts, ", ")), nil
+		statement := fmt.Sprintf("%s = %s{%s}", st.Target, goType(st.TypeName), strings.Join(parts, ", "))
+		if st.TemplateOrigin != "" {
+			return fmt.Sprintf("// Oct template override: %s fields=%s\n%s", st.TemplateOrigin, strings.Join(st.TemplateOverrideSet, ","), statement), nil
+		}
+		return statement, nil
 	case MIRGenericOctxiliaryCall:
 		valueArgs := make([]string, 0, len(st.Args))
 		for i, arg := range st.Args {

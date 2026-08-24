@@ -1,0 +1,19 @@
+expect error: "missing field 'Extent'"
+
+package DatabaseTemplates
+
+record MissingBoundJob {ID: String}
+
+template record StableIdentity<Record, Key> {KeyOf: Selector<Record, Key>}
+
+template record BoundedExtent<Record> {MaxRecords: Int}
+
+template record BoundedKeyedDataset<Record, Key> {
+    Identity: StableIdentity<Record, Key>
+    Extent: BoundedExtent<Record>
+}
+
+fn Main() -> Void {
+    let identity = StableIdentity<MissingBoundJob, String> {KeyOf: .ID}
+    let invalid = BoundedKeyedDataset<MissingBoundJob, String> {Identity: identity}
+}
