@@ -1,5 +1,9 @@
 # Cooking Library
 
+## Shelf boundary
+
+`Cooking` is the canonical applied-science package for recipe scaling, ingredient conversions, brines, baker's percentages, mixtures, and practical cooling/rest calculations. [`Units`](../Units/README.md) owns conversions, and [`Thermofluids`](../Thermofluids/README.md) owns reusable heat-transfer equations; `Cooking` composes them rather than duplicating thermodynamics. Start with the preferred typed M1 surface below.
+
 Practical cooking mathematics for oct. The things you need a calculator for
 but never bother using one — so your cakes fail and your brine is wrong.
 

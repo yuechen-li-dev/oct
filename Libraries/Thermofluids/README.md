@@ -2,6 +2,8 @@
 
 Thermofluids is an executable textbook chapter spanning thermodynamics, foundational fluid mechanics, dimensionless analysis, and bounded heat transfer. The original lumped process helpers remain compatible.
 
+This package supplies thermal/fluid equations; it does not own general time integrators or scenario runners. Use [`DifferentialEquations`](../DifferentialEquations/README.md) to integrate a cooling ODE and [`Simulation`](../Simulation/README.md) for traces or parameter sweeps. [`Physics`](../Physics/README.md) owns shared constants, while [`Cooking`](../Cooking/README.md) owns culinary applications. Start with the heat-transfer quick start below.
+
 ## Chapters
 
 - Thermodynamics: ideal-gas state relations, heat capacities, first law, isentropic temperature, efficiencies, COP, sensible and latent heat.

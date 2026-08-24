@@ -1,9 +1,11 @@
 package RF
 
-/// Returns the physical speed of light used by RF propagation helpers.
+import Physics
+
+/// Compatibility RF name for the canonical Physics speed of light.
 /// Units: m/s.
 fn SpeedOfLightMetersPerSecond() -> Float<m/s> {
-    return 299792458.0m/s
+    return Physics.SpeedOfLight()
 }
 
 /// Computes free-space path loss factor from Friis geometry in linear scale.

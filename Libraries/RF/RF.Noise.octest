@@ -1,5 +1,12 @@
 package RF
 
+import Physics
+
+[Fact]
+fn RFCompatibilityBoltzmannConstantUsesPhysicsConstant() -> Void {
+    Assert.Equal(Physics.BoltzmannConstantSI(), BoltzmannConstantWattsPerHzKelvin(), "RF Boltzmann alias matches Physics")
+}
+
 [Fact]
 fn ThermalNoiseIncreasesWithBandwidthAndTemperature() -> Void {
     let narrow: Float<kg*m^2/s^3> = ThermalNoisePower(1000000Hz, 290.0K)

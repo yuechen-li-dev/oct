@@ -4,6 +4,8 @@
 
 `Libraries/Simulation` provides a compact deterministic scalar simulation runner, aligned trace analysis, and ordered parameter sweeps. Octomata `flow` remains available when a model genuinely needs suspension or explicit behavioral states.
 
+This package does not own numerical ODE algorithms; use [`DifferentialEquations`](../DifferentialEquations/README.md) for Euler, midpoint, or RK4 solvers. Domain packages supply model relations, and [`ComputationalScience`](../ComputationalScience/README.md) demonstrates canonical cross-library composition. Start with `RunFixedStep` below.
+
 ## M0 scope
 
 - fixed-step (`dt` is explicit)

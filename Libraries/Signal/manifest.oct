@@ -19,8 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "Signal"
         Version: "0.1.0"
         Authors: ["Codex"]
-        Date: "2026-06-15"
-        Description: "Signal package"
+        Date: "2026-08-23"
+        Description: "Deterministic finite-sequence convolution, correlation, and moving-average helpers"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

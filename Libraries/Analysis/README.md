@@ -1,5 +1,9 @@
 # Analysis Library
 
+## Shelf boundary
+
+Use `Analysis` for derivatives, accumulation, and shape features of already sampled data. Use [`Numerics`](../Numerics/README.md) to differentiate or integrate a function, [`Signal`](../Signal/README.md) for convolution/correlation, and [`Statistics`](../Statistics/README.md) for population summaries. Start with `DiffCentral`, `CumulativeTrapezoid`, and the examples below.
+
 Numerical analysis of discrete data series for oct.
 
 **Identity:** Analysis operates on `Float[]` arrays of observed measurements.

@@ -19,8 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "Random"
         Version: "0.1.0"
         Authors: ["Codex"]
-        Date: "2026-06-15"
-        Description: "Placeholder Description"
+        Date: "2026-08-23"
+        Description: "Seeded pseudorandom generation plus bounded distribution, coin, and dice sampling helpers"
         Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
     }
 }

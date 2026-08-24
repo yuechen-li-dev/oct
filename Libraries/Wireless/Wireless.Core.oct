@@ -1,5 +1,7 @@
 package Wireless
 
+import Physics
+
 // Legacy API note: frequency/bandwidth values in this file remain dimensionless Float for compatibility.
 // Preferred typed siblings now live in Wireless.Typed; these names remain compatibility-only.
 // Power values use Float<kg*m^2/s^3*A^2> which is Watts (SI).
@@ -90,7 +92,7 @@ fn FreeSpacePathLossDb(distanceM: Float<m>, freqHz: Float) -> Float {
 }
 
 fn ThermalNoiseFloorDbm(bandwidthHz: Float) -> Float {
-    let kTb = 1.380649e-23 * 290.0 * bandwidthHz
+    let kTb = BaseUnit(Physics.BoltzmannConstantSI()) * 290.0 * bandwidthHz
     return 10.0 * Log10(kTb) + 30.0
 }
 

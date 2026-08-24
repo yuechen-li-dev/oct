@@ -4,6 +4,8 @@
 
 `Libraries/DifferentialEquations` provides a deterministic, fixed-step initial value problem surface for ordinary differential equations.
 
+This package owns mathematical ODE integration methods. [`Simulation`](../Simulation/README.md) owns scenario transitions, observation traces, and parameter sweeps; physical equations belong in packages such as [`Thermofluids`](../Thermofluids/README.md) or [`Electromagnetism`](../Electromagnetism/README.md). Start with the RK4 progression below.
+
 ## Solver surface
 
 - `EulerStep(f, t, y, dt: ODEStep) -> Float`

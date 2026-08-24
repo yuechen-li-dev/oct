@@ -1,5 +1,9 @@
 # RF Library (M2c)
 
+## Shelf boundary
+
+`RF` owns first-principles radio-frequency propagation, fading, multipath, Doppler/coherence, deterministic MIMO channel math, and S-parameters. [`Signal`](../Signal/README.md) owns domain-neutral sequence DSP; [`Wireless`](../Wireless/README.md) owns bands, link budgets, OFDMA, and throughput; [`Electromagnetism`](../Electromagnetism/README.md) owns foundational field/circuit relations. Shared `c` and `k_B` values come from [`Physics`](../Physics/README.md); the historical RF constant names remain compatibility wrappers. Start with `FreeSpacePathLossLinear`, `ThermalNoisePower`, or the S-parameter examples below.
+
 RF M2c keeps the deterministic M0/M0a/M1 RF math and channel helpers, retains M2a sequence ergonomics, keeps M2b Doppler/coherence reasoning, and adds a small deterministic MIMO channel layer:
 
 - constant deterministic series

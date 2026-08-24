@@ -19,8 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "Analysis"
         Version: "0.1.0"
         Authors: ["Claude", "Codex"]
-        Date: "2026-06-15"
-        Description: "Analysis package"
+        Date: "2026-08-23"
+        Description: "Finite differences, accumulation, and shape analysis for sampled data series"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

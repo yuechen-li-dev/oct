@@ -1,5 +1,7 @@
 # Astrophysics
 
+`Astrophysics` owns orbital, stellar-radiation, and astronomical-distance applications. [`Physics`](../Physics/README.md) owns gravitational and radiation constants, [`Units`](../Units/README.md) owns astronomical unit conversions, and [`Simulation`](../Simulation/README.md) can execute repeated normalized scenarios. Start with the circular-orbit example below.
+
 ## Orbits
 
 Newtonian two-body relations connect gravitational parameter, circular speed, period, escape speed, specific orbital energy, vis-viva, and the Hill approximation. `CircularOrbit` is a record-shaped Concept so radius, speed, period, and specific energy travel as one readable scientific result. Orbital radius is measured from the central body's center, not from its surface; `SpecificEnergy` is J/kg, not total energy.

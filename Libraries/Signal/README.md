@@ -1,5 +1,9 @@
 # Signal (M0a)
 
+## Shelf boundary
+
+`Signal` owns generic finite-sequence convolution, correlation, and moving averages. Use [`Mathematics`](../Mathematics/README.md) or the built-in `FFT` for transforms, [`RF`](../RF/README.md) for radio-frequency channel mathematics, and [`Wireless`](../Wireless/README.md) for communication/link calculations. Start with `Convolve` and `Correlate` below.
+
 Time-domain, deterministic signal helpers for **dimensionless `Float[]`** inputs.
 
 ## Scope

@@ -1,5 +1,12 @@
 package RF
 
+import Physics
+
+[Fact]
+fn RFCompatibilitySpeedOfLightUsesPhysicsConstant() -> Void {
+    Assert.Equal(Physics.SpeedOfLight(), SpeedOfLightMetersPerSecond(), "RF speed-of-light alias matches Physics")
+}
+
 [Fact]
 fn FreeSpacePathLossIncreasesWithDistanceAndFrequency() -> Void {
     let f: Float<Hz> = 2400000000Hz

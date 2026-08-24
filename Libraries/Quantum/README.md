@@ -1,5 +1,9 @@
 # Quantum
 
+## Shelf boundary
+
+`Quantum` owns bounded foundational quantum models. [`Physics`](../Physics/README.md) owns Planck constants and other shared constants, [`Complex`](../Complex/README.md) supplies reusable complex functions, and [`Units`](../Units/README.md) owns non-SI conversions. This is not a general wavefunction or quantum-computing simulator. Start with photon energy or `DiscreteProbabilityStateAt` in `Quantum.Core.octest`.
+
 This deliberately small chapter moves through photon energy, matter wavelength, ideal discrete energy levels, uncertainty products, and finite-state Born probabilities.
 
 `QuantumLevel` is a refined positive-integer Concept. Runtime levels use `AdmitQuantumLevel`. `DiscreteProbabilityState` is a record-shaped Concept that keeps normalized probabilities with the original norm, making normalization inspectable rather than magical.

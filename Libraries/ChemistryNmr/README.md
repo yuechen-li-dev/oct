@@ -1,5 +1,9 @@
 # ChemistryNmr
 
+## Shelf boundary
+
+`ChemistryNmr` owns NMR frequency, chemical-shift, peak, multiplicity, spectrum, and spectrum-analysis operations. [`Chemistry`](../Chemistry/README.md) owns general solution chemistry and kinetics; [`Units.Spectroscopy`](../Units/README.md) owns reusable ppm/wavenumber conversion records. Start with `ChemistryNmr.Core.octest`, then the spectrum constructors in `ChemistryNmr.Spectrum.octest`.
+
 NMR spectroscopy library for Oct. 29 tests, all compiled, zero interpreted fallback.
 
 ## Packages

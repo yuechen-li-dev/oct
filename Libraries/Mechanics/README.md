@@ -1,5 +1,9 @@
 # Mechanics
 
+## Shelf boundary
+
+`Mechanics` owns engineering analysis: stress, failure, fatigue, shafts, beams, deformation, buckling, torsion, pressure vessels, and continuum helpers. [`Physics`](../Physics/README.md) owns foundational force, momentum, energy, and shared constants; [`Thermofluids`](../Thermofluids/README.md) owns fluid and heat-transfer relations. Start with `Mechanics.Structures.octest` for the structural progression.
+
 `Mechanics` is the engineering-analysis side of the science shelf. Foundational laws such as `F = m*a`, impulse, and point-particle kinematics live in `Physics`; this package applies those laws to stresses, shafts, fatigue, continuum models, beams, columns, and pressure vessels.
 
 ## M1 structural chapter

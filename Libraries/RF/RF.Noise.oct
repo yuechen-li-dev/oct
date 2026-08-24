@@ -1,9 +1,11 @@
 package RF
 
-/// Returns the Boltzmann constant used by thermal noise calculations.
+import Physics
+
+/// Compatibility RF name for the canonical Physics Boltzmann constant.
 /// Units: W/(Hz·K), represented in base SI units.
 fn BoltzmannConstantWattsPerHzKelvin() -> Float<kg*m^2/s^2/K> {
-    return 0.00000000000000000000001380649kg*m^2/s^2/K
+    return Physics.BoltzmannConstantSI()
 }
 
 /// Computes available thermal noise power using kTB.

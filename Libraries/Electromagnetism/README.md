@@ -1,5 +1,9 @@
 # Electromagnetism
 
+## Shelf boundary
+
+`Electromagnetism` owns electrostatics, ideal lumped circuits, magnetism, and induction. [`Physics`](../Physics/README.md) owns shared constants and generic laws; [`RF`](../RF/README.md) owns radio-frequency system mathematics, and [`Wireless`](../Wireless/README.md) owns communication/link calculations. Use [`DifferentialEquations`](../DifferentialEquations/README.md) or [`Simulation`](../Simulation/README.md) when an electrical model needs numerical time progression. Start with the RC quick start below.
+
 This package is a bounded executable chapter from charge through induction:
 
 1. point-charge force, field, and potential

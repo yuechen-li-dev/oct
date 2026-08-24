@@ -4,6 +4,8 @@
 
 `Libraries/Physics` owns foundational physical laws and constants. Engineering analysis models—beams, fatigue, pressure vessels, and related design relations—remain in `Mechanics`.
 
+Adjacent application owners are [`Mechanics`](../Mechanics/README.md), [`Thermofluids`](../Thermofluids/README.md), [`Electromagnetism`](../Electromagnetism/README.md), [`Optics`](../Optics/README.md), [`Quantum`](../Quantum/README.md), and [`Astrophysics`](../Astrophysics/README.md). They consume this package's constants and laws rather than redeclaring them. Start with `Physics.Constants.oct` or the force/energy facts in `Physics.Mechanics.octest`.
+
 ## Chapters
 
 - constants: exact SI-defined constants, measured constants, and compatibility wrappers

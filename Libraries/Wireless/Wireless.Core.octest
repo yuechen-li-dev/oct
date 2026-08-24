@@ -1,5 +1,14 @@
 package Wireless
 
+import Physics
+
+[Fact]
+fn LegacyWirelessNoiseUsesPhysicsBoltzmannConstant() -> Void {
+    let bandwidth = 320000000.0
+    let expected = 10.0 * Log10(BaseUnit(Physics.BoltzmannConstantSI()) * 290.0 * bandwidth) + 30.0
+    Assert.Near(expected, ThermalNoiseFloorDbm(bandwidth), 0.000000001, "legacy wireless noise delegates to Physics constant")
+}
+
 [Fact]
 fn TestBand6GhzCenter() -> Void {
     let b = Band6Ghz()

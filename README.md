@@ -352,6 +352,7 @@ go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|
 
 For more details, start with:
 
+- [`docs/science/README.md`](docs/science/README.md) — task- and discipline-oriented map of the scientific libraries;
 - `docs/ARCHITECTURE.md` — architecture and execution model;
 - `docs/CLI.md` — CLI quick reference;
 - `docs/COMPILED_SUPPORT.md` — compiled-backend status;

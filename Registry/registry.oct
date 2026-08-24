@@ -26,7 +26,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Analysis"
-                Description: "Analysis package"
+                Description: "Finite differences, accumulation, and shape analysis for sampled data series"
             },
             PackageEntry {
                 Name: "Archive"
@@ -376,7 +376,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Random"
-                Description: "Placeholder Description"
+                Description: "Seeded pseudorandom generation plus bounded distribution, coin, and dice sampling helpers"
             },
             PackageEntry {
                 Name: "Signal"
@@ -386,7 +386,7 @@ fn Registry() -> RegistryIndex {
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Signal"
-                Description: "Signal package"
+                Description: "Deterministic finite-sequence convolution, correlation, and moving-average helpers"
             },
             PackageEntry {
                 Name: "Simulation"

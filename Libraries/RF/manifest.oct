@@ -19,8 +19,11 @@ fn Manifest() -> PackageManifest {
         Name: "RF"
         Version: "0.2.4"
         Authors: ["Codex"]
-        Date: "2026-06-15"
+        Date: "2026-08-23"
         Description: "First-principles RF helpers with fading/shadowing/multipath, deterministic sequence builders, Doppler/coherence reasoning, simple deterministic MIMO helpers, and deterministic 2-port S-parameter operations"
-        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Physics" VersionRequirement: "0.1.0" }
+        ]
     }
 }
