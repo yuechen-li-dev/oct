@@ -1,0 +1,29 @@
+package BSOSimM1
+
+[Fact]
+fn AgentTransitionsAreExplicitAndReplaySafe() -> Void {
+    Assert.Equal(AgentPhase.OfferReceiver, NextAgentPhase(AgentPhase.Created, MessageKind.None), "creation chooses one legal action")
+    Assert.Equal(AgentPhase.CommitSender, NextAgentPhase(AgentPhase.AwaitAccept, MessageKind.Accept), "accept advances sender commit")
+    Assert.Equal(AgentPhase.CommitSender, NextAgentPhase(AgentPhase.CommitSender, MessageKind.Accept), "duplicate fact cannot skip a phase")
+    Assert.Equal(AgentPhase.Done, NextAgentPhase(AgentPhase.AwaitAcknowledge, MessageKind.Acknowledge), "acknowledgement terminates")
+    Assert.Equal(AgentPhase.Done, NextAgentPhase(AgentPhase.Done, MessageKind.Commit), "terminal agent cannot regress")
+}
+
+[Fact]
+fn TerminalSetIsBounded() -> Void {
+    Assert.True(IsTerminal(AgentPhase.Done), "done is terminal")
+    Assert.True(IsTerminal(AgentPhase.Rejected), "rejected is terminal")
+    Assert.True(IsTerminal(AgentPhase.Expired), "expired is terminal")
+    Assert.True(not IsTerminal(AgentPhase.Reconcile), "reconcile remains runnable")
+}
+
+[Fact]
+fn TypedOctagonFixturesLoad() -> Void ! Error {
+    let envelope = LoadOctagon<ProtocolEnvelopeV1>("Experiments/BSOSim/M1/offer.octagon")?
+    let checkpoint = LoadOctagon<TransactionAgentCheckpointV1>("Experiments/BSOSim/M1/checkpoint.octagon")?
+    let placement = LoadOctagon<AgentPlacementV1>("Experiments/BSOSim/M1/placement.octagon")?
+    Assert.Equal(1, envelope.ProtocolVersion, "envelope version is explicit")
+    Assert.Equal(MessageKind.Offer, envelope.Kind, "offer remains nominal")
+    Assert.Equal(AgentPhase.AwaitAccept, checkpoint.Phase, "checkpoint phase remains nominal")
+    Assert.Equal(3, placement.WorkerID, "placement is typed data")
+}

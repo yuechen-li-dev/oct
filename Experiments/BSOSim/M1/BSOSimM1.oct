@@ -1,0 +1,86 @@
+package BSOSimM1
+
+enum AgentPhase {
+    Created
+    OfferReceiver
+    AwaitAccept
+    CommitSender
+    CommitReceiver
+    AwaitAcknowledge
+    Reconcile
+    Done
+    Rejected
+    Expired
+}
+
+enum MessageKind {
+    None
+    Offer
+    Accept
+    Reject
+    Commit
+    Acknowledge
+    Reconcile
+}
+
+enum TransferState {
+    None
+    Reserved
+    Accepted
+    Committed
+    Acknowledged
+    Rejected
+    Expired
+}
+
+record ProtocolEnvelopeV1 {
+    ProtocolVersion: Int
+    Schema: String
+    MessageID: String
+    TransferID: String
+    From: String
+    To: String
+    Kind: MessageKind
+    Amount: Int
+    State: TransferState
+    Auth: String
+}
+
+record TransactionAgentCheckpointV1 {
+    ProtocolVersion: Int
+    TransferID: String
+    SenderBSO: String
+    ReceiverBSO: String
+    Amount: Int
+    Phase: AgentPhase
+    RetryCount: Int
+    NextLogicalDeadline: Int
+    LastObservedSenderVersion: Int
+    LastObservedReceiverVersion: Int
+    PlacementGeneration: Int
+    LastMessageKind: MessageKind
+}
+
+record AgentPlacementV1 {
+    ProtocolVersion: Int
+    TransferID: String
+    WorkerID: Int
+    PlacementGeneration: Int
+}
+
+fn NextAgentPhase(current: AgentPhase, fact: MessageKind) -> AgentPhase {
+    return switch {
+        case current == AgentPhase.Created and fact == MessageKind.None => AgentPhase.OfferReceiver
+        case current == AgentPhase.OfferReceiver and fact == MessageKind.None => AgentPhase.AwaitAccept
+        case current == AgentPhase.AwaitAccept and fact == MessageKind.Accept => AgentPhase.CommitSender
+        case current == AgentPhase.AwaitAccept and fact == MessageKind.Reject => AgentPhase.Rejected
+        case current == AgentPhase.CommitSender and fact == MessageKind.None => AgentPhase.CommitReceiver
+        case current == AgentPhase.CommitReceiver and fact == MessageKind.None => AgentPhase.AwaitAcknowledge
+        case current == AgentPhase.AwaitAcknowledge and fact == MessageKind.Acknowledge => AgentPhase.Done
+        else => current
+    }
+}
+
+fn IsTerminal(phase: AgentPhase) -> Bool {
+    return phase == AgentPhase.Done or phase == AgentPhase.Rejected or phase == AgentPhase.Expired
+}

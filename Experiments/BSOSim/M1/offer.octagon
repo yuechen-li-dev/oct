@@ -1,0 +1,1 @@
+ProtocolEnvelopeV1 { ProtocolVersion: 1 Schema: "TransferOfferV1" MessageID: "transfer:00000001/offer/bso:000001" TransferID: "transfer:00000001" From: "bso:000001" To: "bso:000002" Kind: MessageKind.Offer Amount: 42 State: TransferState.Reserved Auth: "deterministic-stub" }

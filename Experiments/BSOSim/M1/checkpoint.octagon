@@ -1,0 +1,1 @@
+TransactionAgentCheckpointV1 { ProtocolVersion: 1 TransferID: "transfer:00000001" SenderBSO: "bso:000001" ReceiverBSO: "bso:000002" Amount: 42 Phase: AgentPhase.AwaitAccept RetryCount: 1 NextLogicalDeadline: 7 LastObservedSenderVersion: 1 LastObservedReceiverVersion: 0 PlacementGeneration: 2 LastMessageKind: MessageKind.Offer }
