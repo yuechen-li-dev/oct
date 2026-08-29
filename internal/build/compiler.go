@@ -1479,7 +1479,9 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return err
 			}
 			v = coerceExprToType(v, t, targetType)
-			v = cloneCompiledValueExpr(v, targetType)
+			if !isSelfAppendAssign(s.Name, s.Value) {
+				v = cloneCompiledValueExpr(v, targetType)
+			}
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.DestructureAssignStmt:
 			call, ok := s.Value.(ast.CallExpr)
@@ -6604,6 +6606,48 @@ func compiledValueNeedsClone(typeName string) bool {
 	return typeName == "Bytes" || strings.HasSuffix(typeName, "[]") || parseMatrixElemTypeOK(typeName) || parseVectorElemTypeOK(typeName)
 }
 
+// isSelfAppendAssign reports whether stmt is the self-referential
+// accumulation idiom `x = Append(x, v)`, where cloning the append
+// result is provably unnecessary: append() either extends the
+// existing backing array in place or allocates a fresh one, and in
+// neither case does skipping the defensive clone risk aliasing
+// another live binding, since x's own binding is what's being
+// replaced and no other statement runs in between the read and the
+// write. Any value-semantics boundary between x and some other
+// variable was already enforced when that other variable was bound
+// (LetStmt/VarStmt/AssignStmt all clone on assignment), so by the
+// time control reaches `x = Append(x, v)`, x's backing array is not
+// shared with anything else that needs protecting.
+//
+// Without this exemption, every iteration of an accumulation loop
+// (`var out = []; for ... { out = Append(out, v) }`) pays a full
+// reflection-based deep clone of the whole array on top of the
+// append, turning Go's amortized-O(1) append into an O(current
+// length) copy per call -- O(n^2) total to build an n-element array.
+// This exemption only widens the no-clone case for this one provably
+// safe self-append shape; it does not relax cloning anywhere else
+// (in particular, the appended value `v` itself is still cloned by
+// the Append builtin's own codegen when `v` is itself an array/matrix
+// element, independent of this check).
+func isSelfAppendAssign(targetName string, value ast.Expr) bool {
+	call, ok := value.(ast.CallExpr)
+	if !ok {
+		return false
+	}
+	callee, ok := call.Callee.(ast.IdentifierExpr)
+	if !ok || callee.Name != "Append" {
+		return false
+	}
+	if len(call.Arguments) == 0 {
+		return false
+	}
+	firstArg, ok := call.Arguments[0].(ast.IdentifierExpr)
+	if !ok {
+		return false
+	}
+	return firstArg.Name == targetName
+}
+
 func emitGo(m MIRModule) (string, error) {
 	return emitGoWithOptions(m, goEmitOptions{packageName: "main", includeMain: true})
 }
@@ -9445,7 +9489,9 @@ func emitGoFlowHostFacade(b *strings.Builder, flow MIRFlow, features flowFeature
 		}
 		fmt.Fprintf(b, "%s %s", parameter.Name, goType(parameter.Type))
 	}
-	b.WriteString(") *" + machineName + " {\n")
+	b.WriteString(") *")
+	b.WriteString(machineName)
+	b.WriteString(" {\n")
 	fmt.Fprintf(b, "\treturn &%s{flow: fn_%s_%s(", machineName, flow.Package, flow.Name)
 	for i, parameter := range flow.Parameters {
 		if i > 0 {
