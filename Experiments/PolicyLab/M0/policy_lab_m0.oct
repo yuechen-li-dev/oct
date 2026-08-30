@@ -1,0 +1,417 @@
+package PolicyLab
+
+import Algorithms
+import Artifact
+import IO
+import Markdown
+import String
+
+/// PL-A-DOMAIN-1. Hours are a structural input-domain constraint, not an
+/// overtime-eligibility conclusion. A week has at most 168 elapsed hours.
+concept WorkweekHours = Int {
+    Require(Self >= 0, "workweek hours cannot be negative")
+    Require(Self <= 168, "workweek hours cannot exceed elapsed hours in a week")
+}
+
+/// PL-A-DOMAIN-2. This experiment stores money as whole cents and requires a
+/// positive regular hourly rate. Oct currently has no currency-domain type.
+concept RegularRateCents = Int {
+    Require(Self > 0, "regular hourly rate must be positive whole cents")
+}
+
+enum OvertimeExemption {
+    None
+    ExecutiveAdministrativeProfessional
+}
+
+enum OvertimeReason {
+    OvertimeDue
+    NoHoursAboveThreshold
+    OutsideAssumedCoverage
+    Section213A1ExemptionApplied
+}
+
+record EmploymentCase {
+    Hours: WorkweekHours
+    RegularRate: RegularRateCents
+    CoveredBySection207A1: Bool
+    Exemption: OvertimeExemption
+}
+
+record RuleProvenance {
+    Rule: String
+    Authority: String
+    Section: String
+    Interpretation: String
+}
+
+record OvertimeDecision {
+    Eligible: Bool
+    Reason: OvertimeReason
+    OvertimeHours: Int
+    RegularEarningsCents: Int
+    OvertimeCompensationCents: Int
+    TotalCompensationCents: Int
+    Trace: String[]
+    Provenance: RuleProvenance
+}
+
+enum RuleEffect {
+    NotApplicable
+    RequiresOvertime
+    DeniesOvertime
+}
+
+enum ConflictResult {
+    NoApplicableRule
+    OneApplicableRule
+    MultipleCompatibleRules
+    ConflictingRules
+}
+
+enum AppealEvent {
+    IssueAdverseResponse
+    IssueFullRelease
+    FileAppeal
+    DeadlineReached
+    Withdraw
+    IssueAffirmance
+    IssueRemand
+}
+
+enum AppealResult {
+    FullRelease
+    AppealUntimely
+    AppealWindowExpired
+    Withdrawn
+    Affirmed
+    Remanded
+}
+
+enum DecisionTimeliness {
+    NotApplicable
+    OnTime
+    Late
+}
+
+record AppealOutcome {
+    Result: AppealResult
+    Timeliness: DecisionTimeliness
+    Explanation: String
+}
+
+record SourceMapTable {
+    RuleID: String[]
+    Authority: String[]
+    Section: String[]
+    Interpretation: String[]
+    Symbol: String[]
+    Facts: String[]
+}
+
+fn AdmitWorkweekHours(raw: Int) -> WorkweekHours ! Error {
+    return WorkweekHours(raw) ?
+}
+
+fn AdmitRegularRateCents(raw: Int) -> RegularRateCents ! Error {
+    return RegularRateCents(raw) ?
+}
+
+fn OvertimeThresholdHours() -> Int {
+    return 40
+}
+
+fn BaseOvertimeApplies(employmentCase: EmploymentCase, threshold: Int) -> Bool {
+    return employmentCase.CoveredBySection207A1 and employmentCase.Hours > threshold
+}
+
+fn Section213A1ExceptionApplies(employmentCase: EmploymentCase) -> Bool {
+    return employmentCase.Exemption == OvertimeExemption.ExecutiveAdministrativeProfessional
+}
+
+/// Explicit whole-cent interpretation. The cited statutory section specifies
+/// at least 1.5 times the regular rate but does not specify discrete-cent
+/// rounding. This experiment selects ceiling at a half-cent boundary.
+fn OvertimeCompensationCeilingHalfCent(rateCents: Int, overtimeHours: Int) -> Int {
+    let numerator = rateCents * 3 * overtimeHours
+    return(numerator + 1) / 2
+}
+
+/// Alternative interpretation retained for the ambiguity experiment.
+fn OvertimeCompensationFloorHalfCent(rateCents: Int, overtimeHours: Int) -> Int {
+    return rateCents * 3 * overtimeHours / 2
+}
+
+fn OvertimeProvenance() -> RuleProvenance {
+    return RuleProvenance {
+        Rule: "PL-A-207A1"
+        Authority: "Fair Labor Standards Act"
+        Section: "29 U.S.C. 207(a)(1); exemption probe 29 U.S.C. 213(a)(1)"
+        Interpretation: "Whole hours and whole cents; supplied regular rate and coverage status; half-cent ceiling selected"
+    }
+}
+
+fn EvaluateOvertimeAtThreshold(employmentCase: EmploymentCase, threshold: Int) -> OvertimeDecision {
+    let provenance = OvertimeProvenance()
+
+    if not employmentCase.CoveredBySection207A1 {
+        return OvertimeDecision {
+            Eligible: false
+            Reason: OvertimeReason.OutsideAssumedCoverage
+            OvertimeHours: 0
+            RegularEarningsCents: employmentCase.Hours * employmentCase.RegularRate
+            OvertimeCompensationCents: 0
+            TotalCompensationCents: employmentCase.Hours * employmentCase.RegularRate
+            Trace:[
+            "Assumed section 207(a)(1) coverage: fail",
+            "Section 213(a)(1) exception: not evaluated",
+            "Hours threshold: not evaluated",
+            "Final decision: outside the experiment's assumed coverage"
+            ]
+            Provenance: provenance
+        }
+    }
+
+    if Section213A1ExceptionApplies(employmentCase) {
+        return OvertimeDecision {
+            Eligible: false
+            Reason: OvertimeReason.Section213A1ExemptionApplied
+            OvertimeHours: 0
+            RegularEarningsCents: employmentCase.Hours * employmentCase.RegularRate
+            OvertimeCompensationCents: 0
+            TotalCompensationCents: employmentCase.Hours * employmentCase.RegularRate
+            Trace:[
+            "Assumed section 207(a)(1) coverage: pass",
+            "Section 213(a)(1) exception: applies",
+            "Hours threshold: overridden by explicit exception",
+            "Final decision: no overtime in this bounded interpretation"
+            ]
+            Provenance: provenance
+        }
+    }
+
+    if not BaseOvertimeApplies(employmentCase, threshold) {
+        return OvertimeDecision {
+            Eligible: false
+            Reason: OvertimeReason.NoHoursAboveThreshold
+            OvertimeHours: 0
+            RegularEarningsCents: employmentCase.Hours * employmentCase.RegularRate
+            OvertimeCompensationCents: 0
+            TotalCompensationCents: employmentCase.Hours * employmentCase.RegularRate
+            Trace:[
+            "Assumed section 207(a)(1) coverage: pass",
+            "Section 213(a)(1) exception: not applicable",
+            "Hours above threshold: none",
+            "Final decision: no overtime compensation"
+            ]
+            Provenance: provenance
+        }
+    }
+
+    let overtimeHours = employmentCase.Hours - threshold
+    let regularEarnings = threshold * employmentCase.RegularRate
+    let overtimeCompensation = OvertimeCompensationCeilingHalfCent(employmentCase.RegularRate, overtimeHours)
+    return OvertimeDecision {
+        Eligible: true
+        Reason: OvertimeReason.OvertimeDue
+        OvertimeHours: overtimeHours
+        RegularEarningsCents: regularEarnings
+        OvertimeCompensationCents: overtimeCompensation
+        TotalCompensationCents: regularEarnings + overtimeCompensation
+        Trace:[
+        "Assumed section 207(a)(1) coverage: pass",
+        "Section 213(a)(1) exception: not applicable",
+        "Hours above threshold: pass",
+        "Rounding interpretation: ceiling at half-cent",
+        "Final decision: overtime compensation due"
+        ]
+        Provenance: provenance
+    }
+}
+
+fn EvaluateOvertime(employmentCase: EmploymentCase) -> OvertimeDecision {
+    return EvaluateOvertimeAtThreshold(employmentCase, OvertimeThresholdHours())
+}
+
+/// Controlled amendment probe only; this is not a claim about enacted law.
+fn EvaluateSyntheticThirtyEightHourAmendment(employmentCase: EmploymentCase) -> OvertimeDecision {
+    return EvaluateOvertimeAtThreshold(employmentCase, 38)
+}
+
+template fn AtOrBelow<T>(value: T, threshold: T) -> Bool {
+    return value <= threshold
+}
+
+fn MakeAtOrBelowPredicate(threshold: Int) -> fn(Int) -> Bool {
+    return fn(value: Int) -> Bool with {
+        threshold: threshold
+    } {
+        return value <= threshold
+    }
+}
+
+fn ResolveRuleEffects(effects: RuleEffect[]) -> ConflictResult {
+    var applicable = 0
+    var requires = 0
+    var denies = 0
+    for i in 0 .. Len(effects) {
+        if effects[i] != RuleEffect.NotApplicable {
+            applicable = applicable + 1
+        }
+        if effects[i] == RuleEffect.RequiresOvertime {
+            requires = requires + 1
+        }
+        if effects[i] == RuleEffect.DeniesOvertime {
+            denies = denies + 1
+        }
+    }
+
+    return switch {
+        case applicable == 0 -> ConflictResult.NoApplicableRule
+        case applicable == 1 -> ConflictResult.OneApplicableRule
+        case requires > 0 and denies > 0 -> ConflictResult.ConflictingRules
+        else -> ConflictResult.MultipleCompatibleRules
+    }
+}
+
+fn BuildSourceMap() -> SourceMapTable {
+    return SourceMapTable {
+        RuleID:["PL-A-DOMAIN-1", "PL-A-207A1", "PL-A-213A1", "PL-B-APPEAL-90", "PL-B-DECISION-20"]
+        Authority:["Experiment domain", "Fair Labor Standards Act", "Fair Labor Standards Act", "Freedom of Information Act", "Freedom of Information Act"]
+        Section:["Structural assumption", "29 U.S.C. 207(a)(1)", "29 U.S.C. 213(a)(1)", "5 U.S.C. 552(a)(6)(A)(i)", "5 U.S.C. 552(a)(6)(A)(ii)"]
+        Interpretation:["Elapsed whole hours 0 through 168", "Whole-hour covered employment only", "Caller supplies already-classified exemption status", "Elapsed calendar-day index; day 90 is timely", "Supplied working-day index; day 20 is on time"]
+        Symbol:["WorkweekHours", "EvaluateOvertime", "Section213A1ExceptionApplies", "DOJAppealProcess", "DecisionTimelinessForWorkingDay"]
+        Facts:["InvalidWorkweekHoursAreRejected", "ThresholdBoundaryClassifiesOvertime", "DisqualifyingExceptionOverridesBaseRule", "AppealDeadlineBoundaryIsExplicit", "AppealDecisionTimelinessBoundaryIsExplicit"]
+    }
+}
+
+fn DecisionTimelinessForWorkingDay(day: Int) -> DecisionTimeliness {
+    if day <= 20 {
+        return DecisionTimeliness.OnTime
+    }
+    return DecisionTimeliness.Late
+}
+
+/// PL-B models only the bounded DOJ administrative-appeal path described in
+/// the README. It does not model litigation, tolling, holidays, extensions,
+/// or all request/appeal grounds.
+flow DOJAppealProcess(appealCalendarDay: Int, decisionWorkingDay: Int) accepts event: AppealEvent yields String -> AppealOutcome {
+    board {
+        NoticeIssued: Bool
+        AppealAccepted: Bool
+        ReviewStarted: Bool
+    }
+
+    state Filed {
+        when {
+            case event == AppealEvent.IssueAdverseResponse -> goto NoticeIssued
+            case event == AppealEvent.IssueFullRelease -> goto FullRelease
+            else -> suspend
+        }
+    }
+
+    state NoticeIssued {
+        board.NoticeIssued = true
+        yield "NoticeIssued"
+        goto AppealWindow
+    }
+
+    state AppealWindow {
+        when {
+            case event == AppealEvent.FileAppeal and appealCalendarDay <= 90 -> goto Review
+            case event == AppealEvent.FileAppeal and appealCalendarDay > 90 -> goto Untimely
+            case event == AppealEvent.DeadlineReached -> goto Expired
+            case event == AppealEvent.Withdraw -> goto Withdrawn
+            else -> suspend
+        }
+    }
+
+    state Review {
+        board.AppealAccepted = true
+        board.ReviewStarted = true
+        yield "Review"
+        when {
+            case event == AppealEvent.IssueAffirmance -> goto Affirmed
+            case event == AppealEvent.IssueRemand -> goto Remanded
+            case event == AppealEvent.Withdraw -> goto Withdrawn
+            else -> suspend
+        }
+    }
+
+    state FullRelease {
+        return AppealOutcome {Result: AppealResult.FullRelease Timeliness: DecisionTimeliness.NotApplicable Explanation: "Full release ended the bounded appeal path"}
+    }
+
+    state Untimely {
+        return AppealOutcome {Result: AppealResult.AppealUntimely Timeliness: DecisionTimeliness.NotApplicable Explanation: "Appeal filed after the modeled 90-calendar-day boundary"}
+    }
+
+    state Expired {
+        return AppealOutcome {Result: AppealResult.AppealWindowExpired Timeliness: DecisionTimeliness.NotApplicable Explanation: "Modeled appeal window expired without an appeal"}
+    }
+
+    state Withdrawn {
+        return AppealOutcome {Result: AppealResult.Withdrawn Timeliness: DecisionTimeliness.NotApplicable Explanation: "Requester withdrew from the bounded process"}
+    }
+
+    state Affirmed {
+        return AppealOutcome {Result: AppealResult.Affirmed Timeliness: DecisionTimelinessForWorkingDay(decisionWorkingDay) Explanation: "OIP affirmed the component action in the bounded model"}
+    }
+
+    state Remanded {
+        return AppealOutcome {Result: AppealResult.Remanded Timeliness: DecisionTimelinessForWorkingDay(decisionWorkingDay) Explanation: "OIP remanded for further component action in the bounded model"}
+    }
+}
+
+fn RunSampleAppealHistory() -> String[] {
+    let process = DOJAppealProcess(30, 18)
+    Step(process, AppealEvent.IssueAdverseResponse)
+    Step(process, AppealEvent.FileAppeal)
+    Step(process, AppealEvent.IssueRemand)
+    return StateHistory(process)
+}
+
+fn BuildPolicyAuditMarkdown() -> String[] {
+    let sample = EmploymentCase {
+        Hours: 45
+        RegularRate: 1001
+        CoveredBySection207A1: true
+        Exemption: OvertimeExemption.None
+    }
+    let decision = EvaluateOvertime(sample)
+    let history = RunSampleAppealHistory()
+    let sourceMap = BuildSourceMap()
+    let settings = Markdown.KeyValueTable(
+    ["specimen_a", "specimen_b", "law_status", "rounding", "convergence"],
+    ["FLSA overtime, bounded", "DOJ FOIA administrative appeal, bounded", "executable interpretation, not law", "explicit half-cent ceiling", "static/runtime forms remain separate"]
+    )
+    let sourceTable = Markdown.Table(sourceMap)
+    let trace = Markdown.KeyValueTable(
+    ["coverage", "exception", "threshold", "overtime_hours", "overtime_cents", "final"],
+    [decision.Trace[0], decision.Trace[1], decision.Trace[2], String.From<Int>(decision.OvertimeHours), String.From<Int>(decision.OvertimeCompensationCents), decision.Trace[4]]
+    )
+    let historyTable = Markdown.KeyValueTable(
+    ["state_0", "state_1", "state_2", "state_3", "state_4", "result"],
+    [history[0], history[1], history[2], history[3], history[4], "Remanded"]
+    )
+
+    return Markdown.Report([
+    Markdown.H1("Policy Lab M0 audit"),
+    Markdown.Paragraph("Research artifact only. This is an executable interpretation of cited authority, not legal advice or an authoritative statement of law."),
+    Markdown.Section("Experiment",[settings]),
+    Markdown.Section("Source map",[sourceTable]),
+    Markdown.Section("Substantive decision trace",[trace]),
+    Markdown.Section("Procedural history",[historyTable]),
+    Markdown.Section("Exceptions and conflicts",[Markdown.Paragraph("The FLSA probe evaluates assumed coverage, then an explicit section 213(a)(1) exemption, then the hour threshold. Synthetic conflict probes return ConflictingRules instead of relying on first-match order.")]),
+    Markdown.Section("Concepts",[Markdown.Paragraph("WorkweekHours and RegularRateCents admit structurally valid inputs. Ineligibility remains an ordinary OvertimeDecision, never a Concept construction failure.")]),
+    Markdown.Section("Facts and theories",[Markdown.Paragraph("Facts state source-derived, boundary, invariant, interpretation-selection, and procedural propositions. Theories tabulate threshold, deadline, quantifier, and amendment case families.")]),
+    Markdown.Section("Known ambiguities",[Markdown.Paragraph("The narrowed section 207(a)(1) source does not specify whole-cent rounding. The executable interpretation selects ceiling at half-cent; floor is retained as an explicit alternative. The procedural model uses elapsed day indexes rather than a date/holiday library.")]),
+    Markdown.Section("Amendment impact",[Markdown.Paragraph("A synthetic threshold amendment from 40 to 38 changes cases at 39 and 40 hours; the ordinary source-derived 40-hour Facts remain unchanged and the amendment has its own Theory.")]),
+    Markdown.Section("Limits",[Markdown.Paragraph("Coverage, regular-rate derivation, exemption classification, holidays, extensions, litigation, and all other statutory or regulatory provisions are out of scope.")])
+    ])
+}
+
+fn WritePolicyAuditArtifact() -> Void {
+    let root = "out/test-artifacts/experiments_policy_lab_m0"
+    Artifact.WriteMarkdown(IO.JoinPath([root, "policy_lab_audit.md"]), BuildPolicyAuditMarkdown())
+}

@@ -1,0 +1,29 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "PolicyLab"
+        Version: "0.1.0"
+        Description: "M0 ordinary-Oct policy-as-executable-knowledge experiment"
+        Authors:["Codex"]
+        Date: "2026-08-30"
+        Dependencies:[
+        Dependency {Name: "OctStd" VersionRequirement: "0.1.0"},
+        Dependency {Name: "Algorithms" VersionRequirement: "0.1.0"}
+        ]
+    }
+}

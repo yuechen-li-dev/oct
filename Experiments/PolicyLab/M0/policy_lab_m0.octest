@@ -1,0 +1,298 @@
+package PolicyLab
+
+import Algorithms
+
+fn CoveredCase(hours: WorkweekHours, rate: RegularRateCents) -> EmploymentCase {
+    return EmploymentCase {
+        Hours: hours
+        RegularRate: rate
+        CoveredBySection207A1: true
+        Exemption: OvertimeExemption.None
+    }
+}
+
+/// PL-A-207A1: 29 U.S.C. 207(a)(1), bounded whole-hour interpretation.
+[Fact]
+fn ApplicantAtFortyHoursHasNoOvertimeHours() -> Void {
+    let decision = EvaluateOvertime(CoveredCase(40, 1000))
+    Assert.False(decision.Eligible, "exactly 40 hours is not above the statutory threshold")
+    Assert.True(decision.Reason == OvertimeReason.NoHoursAboveThreshold, "negative policy result remains an ordinary decision")
+    Assert.Equal(0, decision.OvertimeCompensationCents, "no overtime compensation at 40 hours")
+}
+
+/// PL-A-207A1: 29 U.S.C. 207(a)(1).
+[Fact]
+fn ApplicantAboveThresholdReceivesOneAndOneHalfRate() -> Void {
+    let decision = EvaluateOvertime(CoveredCase(41, 1000))
+    Assert.True(decision.Eligible, "one hour above 40 qualifies in the bounded covered model")
+    Assert.Equal(1, decision.OvertimeHours, "one overtime hour")
+    Assert.Equal(1500, decision.OvertimeCompensationCents, "one hour at one and one-half rate")
+    Assert.Equal(41500, decision.TotalCompensationCents, "40 regular hours plus overtime compensation")
+}
+
+/// PL-A-213A1: 29 U.S.C. 213(a)(1), caller-supplied classification.
+[Fact]
+fn DisqualifyingExceptionOverridesBaseRule() -> Void {
+    let employmentCase = EmploymentCase {
+        Hours: 50
+        RegularRate: 2000
+        CoveredBySection207A1: true
+        Exemption: OvertimeExemption.ExecutiveAdministrativeProfessional
+    }
+    Assert.True(BaseOvertimeApplies(employmentCase, 40), "base threshold rule applies before exception")
+    let decision = EvaluateOvertime(employmentCase)
+    Assert.False(decision.Eligible, "explicit modeled exemption overrides the base threshold rule")
+    Assert.True(decision.Reason == OvertimeReason.Section213A1ExemptionApplied, "decision exposes exception reason")
+}
+
+/// PL-A-DOMAIN-1: structural invalidity is rejected at Concept construction.
+[Fact]
+fn InvalidWorkweekHoursAreRejected() -> Void {
+    match AdmitWorkweekHours(- 1) {
+        ok(value) -> {Assert.True(false, "negative hours must not be admitted")}
+        err(e) -> {Assert.True(true, "checked Concept construction rejects negative hours")}
+    }
+    match AdmitWorkweekHours(169) {
+        ok(value) -> {Assert.True(false, "more than 168 elapsed hours must not be admitted")}
+        err(e) -> {Assert.True(true, "checked Concept construction rejects impossible elapsed hours")}
+    }
+}
+
+/// PL-A-DOMAIN-1: known and checked valid values are admitted.
+[Fact]
+fn ValidRefinedInputsAreAdmitted() -> Void {
+    let known: WorkweekHours = 40
+    Assert.True(known == 40, "known valid refined input is statically admitted")
+    match AdmitWorkweekHours(41) {
+        ok(value) -> {Assert.True(value == 41, "dynamic valid input is admitted")}
+        err(e) -> {Assert.True(false, "41 hours should be admitted")}
+    }
+    match AdmitRegularRateCents(0) {
+        ok(value) -> {Assert.True(false, "zero regular rate is outside this experiment's domain")}
+        err(e) -> {Assert.True(true, "rate Concept rejects zero")}
+    }
+}
+
+/// PL-A-207A1: a structurally valid case may still be policy-negative.
+[Fact]
+fn PolicyNegativeCaseRemainsStructurallyValid() -> Void {
+    let employmentCase = CoveredCase(20, 2500)
+    let decision = EvaluateOvertime(employmentCase)
+    Assert.False(decision.Eligible, "valid case does not imply legal eligibility")
+    Assert.True(decision.Reason == OvertimeReason.NoHoursAboveThreshold, "policy function explains the negative outcome")
+}
+
+/// PL-A-207A1: threshold family around 40 hours.
+[Theory]
+[InlineData(39, 0, false)]
+[InlineData(40, 0, false)]
+[InlineData(41, 1, true)]
+fn ThresholdBoundaryClassifiesOvertime(hours: Int, expectedOvertimeHours: Int, expectedEligible: Bool) -> Void {
+    let admitted = Assert.LGTM(AdmitWorkweekHours(hours), "boundary table values are structurally valid")
+    let decision = EvaluateOvertime(CoveredCase(admitted, 1000))
+    Assert.Equal(expectedOvertimeHours, decision.OvertimeHours, "overtime hours at boundary")
+    Assert.Equal(expectedEligible, decision.Eligible, "eligibility at boundary")
+}
+
+/// PL-A-ROUNDING: interpretation selection is explicit and testable.
+[Fact]
+fn HalfCentRoundingInterpretationsRemainVisible() -> Void {
+    Assert.Equal(1502, OvertimeCompensationCeilingHalfCent(1001, 1), "selected interpretation rounds half-cent upward")
+    Assert.Equal(1501, OvertimeCompensationFloorHalfCent(1001, 1), "alternative interpretation remains executable")
+    let decision = EvaluateOvertime(CoveredCase(41, 1001))
+    Assert.Equal(1502, decision.OvertimeCompensationCents, "policy selects the documented ceiling interpretation")
+}
+
+/// PL-A-INVARIANT: benefit/compensation results cannot be negative.
+[Theory]
+[InlineData(40, 1000)]
+[InlineData(41, 1001)]
+[InlineData(168, 1)]
+fn OvertimeAmountsCannotBeNegative(hours: Int, rate: Int) -> Void {
+    let admittedHours = Assert.LGTM(AdmitWorkweekHours(hours), "hours admitted")
+    let admittedRate = Assert.LGTM(AdmitRegularRateCents(rate), "rate admitted")
+    let decision = EvaluateOvertime(CoveredCase(admittedHours, admittedRate))
+    Assert.True(decision.OvertimeCompensationCents >= 0, "overtime compensation is nonnegative")
+    Assert.True(decision.TotalCompensationCents >= 0, "total compensation is nonnegative")
+}
+
+/// PL-A-QUANTIFIERS: Algorithms maps legal-style case families to ordinary typed callables.
+[Fact]
+fn QuantifierAndTransformationMappingIsReadable() -> Void {
+    let hours =[39, 40, 41, 45]
+    let atMostForty = MakeAtOrBelowPredicate(40)
+    let aboveForty = fn(value: Int) -> Bool with {threshold: 40} {return value > threshold}
+    let overtimeHours = fn(value: Int) -> Int with {threshold: 40} {
+        if value <= threshold {return 0}
+        return value - threshold
+    }
+    let add = fn(total: Int, value: Int) -> Int {return total + value}
+
+    Assert.True(Algorithms.Any<Int>(hours, aboveForty), "exists maps to Algorithms.Any")
+    Assert.False(Algorithms.All<Int>(hours, atMostForty), "for all maps to Algorithms.All")
+    Assert.Equal(2, Len(Algorithms.Filter<Int>(hours, aboveForty)), "filter keeps the two overtime cases")
+    let mapped = Algorithms.Map<Int, Int>(hours, overtimeHours)
+    Assert.Equal(6, Algorithms.Fold<Int, Int>(mapped, 0, add), "map then fold totals overtime hours")
+}
+
+/// PL-A-TEMPLATE: concrete specialization works, while the language has no operator bound.
+[Fact]
+fn TemplateAndExplicitCaptureExposeDependencies() -> Void {
+    Assert.True(AtOrBelow<Int>(40, 40), "concrete Int specialization admits <=")
+    let atMostNinety = MakeAtOrBelowPredicate(90)
+    Assert.True(atMostNinety(90), "capture makes the policy threshold dependency explicit")
+    Assert.False(atMostNinety(91), "capture preserves the boundary")
+}
+
+/// PL-A-CONFLICT: no first-match or declaration-order conflict hiding.
+[Theory]
+[InlineData(0)]
+[InlineData(1)]
+[InlineData(2)]
+[InlineData(3)]
+fn ConflictingRuleStatesAreExplicit(caseID: Int) -> Void {
+    let result = switch caseID {
+        case 0 -> ResolveRuleEffects([RuleEffect.NotApplicable])
+        case 1 -> ResolveRuleEffects([RuleEffect.RequiresOvertime])
+        case 2 -> ResolveRuleEffects([RuleEffect.RequiresOvertime, RuleEffect.RequiresOvertime])
+        else -> ResolveRuleEffects([RuleEffect.RequiresOvertime, RuleEffect.DeniesOvertime])
+    }
+    if caseID == 0 {Assert.True(result == ConflictResult.NoApplicableRule, "no applicable rule exposed")}
+    if caseID == 1 {Assert.True(result == ConflictResult.OneApplicableRule, "one applicable rule exposed")}
+    if caseID == 2 {Assert.True(result == ConflictResult.MultipleCompatibleRules, "compatible overlap exposed")}
+    if caseID == 3 {Assert.True(result == ConflictResult.ConflictingRules, "conflict exposed")}
+}
+
+/// PL-A-AMENDMENT: synthetic controlled amendment, not enacted law.
+[Theory]
+[InlineData(38, false, false)]
+[InlineData(39, false, true)]
+[InlineData(40, false, true)]
+[InlineData(41, true, true)]
+fn SyntheticThresholdAmendmentHasLocalizedImpact(hours: Int, currentEligible: Bool, amendedEligible: Bool) -> Void {
+    let admitted = Assert.LGTM(AdmitWorkweekHours(hours), "amendment case admitted")
+    let employmentCase = CoveredCase(admitted, 1000)
+    Assert.Equal(currentEligible, EvaluateOvertime(employmentCase).Eligible, "current source-derived threshold outcome")
+    Assert.Equal(amendedEligible, EvaluateSyntheticThirtyEightHourAmendment(employmentCase).Eligible, "synthetic amended threshold outcome")
+}
+
+fn RunAppeal(appealDay: Int, decisionDay: Int, finalEvent: AppealEvent) -> AppealOutcome {
+    let process = DOJAppealProcess(appealDay, decisionDay)
+    Step(process, AppealEvent.IssueAdverseResponse)
+    Step(process, AppealEvent.FileAppeal)
+    Step(process, finalEvent)
+    return Assert.LGTM(Result(process), "appeal process should have a result")
+}
+
+/// PL-B-APPEAL-90 and PL-B-DECISION-20: normal procedural path.
+[Fact]
+fn TimelyAppealCannotSkipReview() -> Void {
+    let process = DOJAppealProcess(30, 18)
+    Step(process, AppealEvent.IssueAdverseResponse)
+    Step(process, AppealEvent.FileAppeal)
+    Assert.False(Complete(process), "timely filed appeal pauses in review")
+    Assert.Equal("Review", Active(process), "accepted appeal enters review before decision")
+    let snapshot = Assert.LGTM(BoardSnapshot(process), "board is inspectable")
+    Assert.True(snapshot.NoticeIssued, "adverse notice preceded appeal")
+    Assert.True(snapshot.AppealAccepted, "appeal was accepted")
+    Assert.True(snapshot.ReviewStarted, "review started")
+}
+
+/// PL-B-APPEAL-90: 5 U.S.C. 552(a)(6)(A)(i), elapsed-day interpretation.
+[Theory]
+[InlineData(90, true)]
+[InlineData(91, false)]
+fn AppealDeadlineBoundaryIsExplicit(day: Int, accepted: Bool) -> Void {
+    let process = DOJAppealProcess(day, 20)
+    Step(process, AppealEvent.IssueAdverseResponse)
+    Step(process, AppealEvent.FileAppeal)
+    if accepted {
+        Assert.False(Complete(process), "timely appeal proceeds to review")
+        Assert.Equal("Review", Active(process), "day 90 is admitted")
+    } else {
+        Assert.True(Complete(process), "late appeal produces an explicit result")
+        let outcome = Assert.LGTM(Result(process), "untimely result available")
+        Assert.True(outcome.Result == AppealResult.AppealUntimely, "day 91 is untimely in selected interpretation")
+    }
+}
+
+/// PL-B-DECISION-20: 5 U.S.C. 552(a)(6)(A)(ii), working-day index supplied by caller.
+[Theory]
+[InlineData(20, true)]
+[InlineData(21, false)]
+fn AppealDecisionTimelinessBoundaryIsExplicit(day: Int, onTime: Bool) -> Void {
+    let outcome = RunAppeal(30, day, AppealEvent.IssueAffirmance)
+    if onTime {
+        Assert.True(outcome.Timeliness == DecisionTimeliness.OnTime, "day 20 is on time")
+    } else {
+        Assert.True(outcome.Timeliness == DecisionTimeliness.Late, "day 21 is late")
+    }
+}
+
+/// PL-B-PROCEDURE: a decision event cannot precede the required response notice.
+[Fact]
+fn DecisionCannotPrecedeRequiredNotice() -> Void {
+    let process = DOJAppealProcess(30, 18)
+    Step(process, AppealEvent.IssueAffirmance)
+    Assert.False(Complete(process), "early decision cannot complete the process")
+    Assert.Equal("Filed", Active(process), "invalid early event leaves process at Filed")
+}
+
+/// PL-B-PROCEDURE: remand is an explicit exceptional result, not a hidden branch.
+[Fact]
+fn AppealMayRemandForFurtherAction() -> Void {
+    let outcome = RunAppeal(30, 18, AppealEvent.IssueRemand)
+    Assert.True(outcome.Result == AppealResult.Remanded, "remand is explicit")
+    Assert.True(outcome.Timeliness == DecisionTimeliness.OnTime, "sample remand is timely")
+}
+
+/// PL-B-PROCEDURE: deadline expiration is a negative procedural proposition.
+[Fact]
+fn UnappealedAdverseResponseExpiresAtDeadlineEvent() -> Void {
+    let process = DOJAppealProcess(90, 20)
+    Step(process, AppealEvent.IssueAdverseResponse)
+    Step(process, AppealEvent.DeadlineReached)
+    let outcome = Assert.LGTM(Result(process), "expiration result should be available")
+    Assert.True(outcome.Result == AppealResult.AppealWindowExpired, "deadline closes unappealed path")
+}
+
+/// PL-B-AUDIT: StateHistory is deterministic procedural audit evidence.
+[Fact]
+fn ProceduralHistoryRecordsNoticeAppealReviewAndDecision() -> Void {
+    let first = RunSampleAppealHistory()
+    let second = RunSampleAppealHistory()
+    Assert.Equal(5, Len(first), "history has five explicit state entries")
+    Assert.Equal("Filed", first[0], "request filed")
+    Assert.Equal("NoticeIssued", first[1], "adverse notice issued")
+    Assert.Equal("AppealWindow", first[2], "appeal window entered")
+    Assert.Equal("Review", first[3], "review entered")
+    Assert.Equal("Remanded", first[4], "remand decision entered")
+    Assert.Equal(first[4], second[4], "same case produces deterministic history")
+}
+
+/// PL-SOURCE-MAP: every major implemented rule has authority and Fact linkage.
+[Fact]
+fn SourceMapRetainsRuleAuthorityAndFactNames() -> Void {
+    let map = BuildSourceMap()
+    Assert.Equal(5, Len(map.RuleID), "source map row count")
+    Assert.Equal("PL-A-207A1", map.RuleID[1], "substantive rule ID")
+    Assert.Equal("29 U.S.C. 207(a)(1)", map.Section[1], "exact substantive section")
+    Assert.Equal("PL-B-APPEAL-90", map.RuleID[3], "procedural rule ID")
+    Assert.Equal("AppealDeadlineBoundaryIsExplicit", map.Facts[3], "source-to-Fact linkage")
+}
+
+/// PL-ARTIFACT: the explanation source is deterministic before filesystem write.
+[Fact]
+fn ExplanationArtifactSourceIsDeterministic() -> Void {
+    let first = BuildPolicyAuditMarkdown()
+    let second = BuildPolicyAuditMarkdown()
+    Assert.Equal(Len(first), Len(second), "artifact line count repeats")
+    for i in 0 .. Len(first) {
+        Assert.Equal(first[i], second[i], "artifact lines repeat exactly")
+    }
+}
+
+[Artifact]
+fn EmitPolicyLabAudit() -> Void {
+    WritePolicyAuditArtifact()
+}
