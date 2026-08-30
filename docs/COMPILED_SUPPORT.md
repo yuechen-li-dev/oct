@@ -125,7 +125,7 @@ Still deferred after M24: Complex support, Einstein/tensor notation, broad callb
 
 ## Octomata feature-granular support snapshot
 
-Measured using `go run ./cmd/oct test ... --execution compiled|auto` on May 21, 2026.
+Re-audited using `go run ./cmd/oct test ... --execution interpreted|compiled|auto` on August 30, 2026. The semantic contract is now summarized in `docs/FLOW_SEMANTIC_PARITY_M0.md`; this table remains implementation evidence, not a language whitelist.
 
 | Feature | Interpreted support | Compiled support | Fixture evidence | Limitations |
 | --- | --- | --- | --- | --- |
@@ -137,10 +137,11 @@ Measured using `go run ./cmd/oct test ... --execution compiled|auto` on May 21, 
 | remember | Supported | Supported | `OctomataResumeM57/runtime/valid/single_slot_resume_behaviors.octest` | Single-slot semantics only; latest remember overwrites prior slot. |
 | when policy / utility when | Supported | Supported | `OctomataCoreB` + `OctomataUtilityWhen` suites | Must satisfy existing utility-when shape/type constraints. |
 | board declarations | Supported | Supported | `OctomataBlackboardM6/valid/flow_declared_board_surface.octest` | Placement/type rules still enforced by invalid fixtures. |
-| board fields Bool/String/Int/Float, dimensioned numeric scalars, and arrays of those types | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest`; `OctomataBoardIndexedAssignment/valid/board_indexed_assignment.octest` | Arrays may be nested; record, enum, vector, matrix, and other aggregate fields remain unsupported. |
-| flow-state local `let` temporaries | Supported | Supported (state/block scoped, immutable, non-persistent) | `OctomataFlowLocals/valid/flow_state_let_surface.octest` | Local bindings are scoped to the current state/block only; they do not persist across states and do not appear in board/history snapshots. Fallible flow-let RHS remains unsupported in compiled mode. |
-| flow expression calls (pure builtins) | Supported | Supported (builtin-only in flow state expressions) | `OctomataFlowCallExpr/valid/flow_call_builtin_surface.octest` | Calls inside flow expressions are currently limited to non-fallible pure builtins (`Len`, `Abs`, `Sqrt`, trig/log family, `FloorToInt`/`CeilToInt`/`RoundToInt`, `FormatFloat`). Fallible or side-effectful wrappers remain deferred. |
-| flow expression indexing | Supported (array indexing) | Supported (array indexing `T[]` with `Int` index in flow expressions) | `OctomataFlowIndexExpr/valid/flow_index_expr_surface.octest` | Current compiled flow support is scoped to single-dimension array indexing. String/matrix/vector flow-expression indexing remains deferred until explicitly verified. |
+| deterministic persistent board values | Supported | Supported for scalars, arrays, vectors, matrices, records, nested records, plain/payload enums composed from persistent values | `OctomataBoardAggregatesM0/valid/board_record_enum_persistence.octest`; `OctomataBoardIndexedAssignment` | Function-valued fields remain deliberately excluded. Logical checkpoint serialization still has a narrower aggregate codec than live `BoardSnapshot`. |
+| flow-state local `let`, `var`, assignment, and bounded loops | Supported | Supported (state/block scoped, non-persistent) | `OctomataCoreA/valid/ordinary_oct_inside_state.octest`; `OctomataFlowLocals` | Locals do not persist across state/turn boundaries. Control transfer nested directly inside compiled loops remains explicit implementation debt rather than silently falling back. |
+| ordinary synchronous calls and function values | Supported | Supported for ordinary user functions, builtins, function-valued parameters, returned callables, and early-specialized generic consumers | `OctomataFlowUnsupportedCall`; `Libraries/Algorithms/Algorithms.Core.octest` | No cheapness/purity-name allowlist applies to user functions. Wrapper/resource operations remain governed by their actual compiled backend and lifetime contract. |
+| fallible calls | Supported | `!` and local statement `match` supported; unhandled calls rejected; `?` deliberately rejected | `OctomataFallibilityM0` | `?` requires an explicit fallible-FLOW terminal contract and is not part of M0. |
+| flow expression indexing | Supported | Arrays, nested arrays, vectors, and matrices supported with ordinary Int indices | `OctomataFlowIndexExpr`; `OctomataBoardAggregatesM0` | String indexing follows the ordinary language/backend status and is not newly introduced here. |
 | board array fields over supported scalar element types | Supported | Supported | `OctomataBoardIndexedAssignment/valid/board_indexed_assignment.octest` | Covers Bool, String, Int/Int&lt;D&gt;, Float/Float&lt;D&gt;, nested arrays, indexed writes, and snapshots. |
 | Step(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Mutates flow in place; returns `Int` sentinel in lowered MIR. |
 | Active(machine) | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | Returns empty string before first step and after completion. |
@@ -157,21 +158,27 @@ Notes:
 
 ## Flow expression parity matrix (compiled)
 
+> Retired as a language contract in FLOW semantic parity M0. The rows below are
+> retained as historical implementation evidence only. Current semantics are
+> "ordinary expressions, except explicit FLOW control/persistence exclusions";
+> see `docs/FLOW_SEMANTIC_PARITY_M0.md`.
+
 | AST expression kind | Normal compiled | Flow compiled | Safe for flow M0 | Decision | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `ast.IntegerLiteral` / `ast.FloatLiteral` / `ast.BoolLiteral` / `ast.StringLiteralExpr` | Yes | Yes | Yes | Keep | Baseline literal support in both paths. |
 | `ast.IdentifierExpr` | Yes | Yes | Yes | Keep | Flow identifiers include params + flow locals. |
 | `ast.BinaryExpr` / `ast.UnaryExpr` | Yes | Yes | Yes | Keep | Arithmetic/logical/comparison operators are already available. |
 | `ast.ParenExpr` | Yes | **Yes (added in this sweep)** | Yes | Implement now | Lower/type-infer now recurse into inner expression. |
-| `ast.CallExpr` | Yes | Yes (builtin-only) | Yes (pure only) | Keep allowlist | Flow keeps non-fallible pure builtin-only boundary. |
-| `ast.IndexExpr` | Yes | Yes (single-dimension array only) | Yes | Keep scoped | Matrix/vector/string indexing still deferred in flow path. |
+| `ast.CallExpr` | Yes | Yes | Yes | Ordinary call semantics | User functions, function values, returned callables, and specialized generic consumers are verified. |
+| `ast.IndexExpr` | Yes | Yes (array/vector/matrix verified) | Yes | Ordinary indexing | String indexing remains governed by ordinary backend support. |
 | `ast.FieldAccessExpr` | Yes | Partial (`board.<field>` + enum variant values/constructors) | Yes (M0 board + enum constructors) | Scoped support | Compiled flow now supports enum `Type.Variant` values and `Type.Variant(payload)` constructors in expression positions; arbitrary object/member field access remains unsupported. |
-| `ast.ArrayLiteralExpr` | Yes | No | Maybe | Defer | Not required for current scalar-board M0 parity and would expand flow type surface. |
+| `ast.ArrayLiteralExpr` / vector / matrix literals | Yes | Yes | Yes | Implemented | Collection construction uses ordinary generated-Go value representations. |
 | `ast.RecordLiteralExpr` | Yes | Yes (record construction for flow return/value expressions) | Yes (named-field record construction) | Implemented | Compiled flow lowering now supports named-field record literals for direct value construction (including return paths). Imported/advanced record forms remain bounded by existing flow type resolution. |
-| `ast.RecordUpdateExpr` (`with`) | Yes | No | Maybe | Defer | Wider record semantics not needed for current M0 flow support target. |
+| `ast.RecordUpdateExpr` (`with`) | Yes | Yes | Yes | Implemented | Verified for local and board record values. |
 | `ast.IfExpr` / `ast.SwitchExpr` | Yes | `ast.IfExpr`: **Yes (M0)**, `ast.SwitchExpr`: Yes | Yes | Implemented for `IfExpr` | Compiled flow now supports expression `if { } else { }` with Bool condition and same-typed branches; `else if` syntax remains unsupported by language policy. |
 | `ast.UtilityWhenExpr` | Yes | Yes | Yes | Keep | Compiled flow has dedicated utility-when MIR node. |
-| `ast.PropagateExpr` / `ast.UnwrapExpr` | Yes | No | No | Defer/reject | Flow expressions deliberately reject fallible expression handling in compiled mode. |
+| `ast.UnwrapExpr` | Yes | Yes for direct fallible calls | Yes | Implemented | Same fatal failure behavior as ordinary compiled Oct. |
+| `ast.PropagateExpr` | Yes in fallible functions | No by design | No without contract | Explicit semantic exclusion | Diagnostic requires a fallible FLOW result contract and suggests `match` or `!`. |
 | `ast.MatchExpr` | Partial | **Yes (enum-tag/payload M0)** | Yes (enum-only) | Implemented | Compiled flow supports enum `match` with tag dispatch and optional single payload binding in arm scope. |
 | `ast.BatchExpr` / runtime-heavy expression forms | Yes (ordinary functions) | No | No | Keep ordinary support; defer flow placement | Ordinary compiled batch uses `MIRBatchMap` plus sequential/chunked specialization. It is still outside the current pure local flow-expression scope. |
 

@@ -915,23 +915,63 @@ func (c checker) resolveFlowBoardFieldType(ref ast.TypeRef) (Type, error) {
 	if err != nil {
 		return Type{}, err
 	}
-	if t.IsVector || t.IsMatrix || t.Name != "" || t.Base == BaseTypeError || t.Base == BaseTypeVoid || t.Base == BaseTypeComplex || t.Base == BaseTypeRange || t.Base == BaseTypeUI || t.Base == BaseTypeIndex {
-		return Type{}, invalidFlowBoardFieldTypeError()
+	if err := c.validatePersistentFlowBoardType(t, map[string]bool{}); err != nil {
+		return Type{}, err
 	}
-	scalar := t
-	for scalar.IsArray {
-		scalar = peelArrayType(scalar)
+	return t, nil
+}
+
+func (c checker) validatePersistentFlowBoardType(t Type, visiting map[string]bool) error {
+	for t.IsArray {
+		t = peelArrayType(t)
 	}
-	switch scalar.Base {
+	if t.IsFunction {
+		return fmt.Errorf("function-valued board fields are not persistent FLOW values in M0")
+	}
+	if t.IsFlowInstance || t.Tuple != nil {
+		return invalidFlowBoardFieldTypeError(t)
+	}
+	if t.IsVector || t.IsMatrix {
+		t.IsVector = false
+		t.IsMatrix = false
+		return c.validatePersistentFlowBoardType(t, visiting)
+	}
+	if t.Name != "" {
+		if visiting[t.Name] {
+			return nil
+		}
+		visiting[t.Name] = true
+		defer delete(visiting, t.Name)
+		if record, ok := c.lookupRecord(t.Name); ok {
+			for _, field := range record.fields {
+				if err := c.validatePersistentFlowBoardType(field, visiting); err != nil {
+					return fmt.Errorf("record %s is not persistent because field type %s is not persistent: %w", t.Name, field, err)
+				}
+			}
+			return nil
+		}
+		if enum, ok := c.lookupEnum(t.Name); ok {
+			for variant, info := range enum.variants {
+				if info.payload != nil {
+					if err := c.validatePersistentFlowBoardType(*info.payload, visiting); err != nil {
+						return fmt.Errorf("enum %s is not persistent because variant %s payload %s is not persistent: %w", t.Name, variant, info.payload, err)
+					}
+				}
+			}
+			return nil
+		}
+		return invalidFlowBoardFieldTypeError(t)
+	}
+	switch t.Base {
 	case BaseTypeBool, BaseTypeInt, BaseTypeFloat, BaseTypeString:
-		return t, nil
+		return nil
 	default:
-		return Type{}, invalidFlowBoardFieldTypeError()
+		return invalidFlowBoardFieldTypeError(t)
 	}
 }
 
-func invalidFlowBoardFieldTypeError() error {
-	return fmt.Errorf("board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types")
+func invalidFlowBoardFieldTypeError(t Type) error {
+	return fmt.Errorf("board field type %s is not a deterministic persistent FLOW value; M0 supports Bool, String, Int, Float, arrays, vectors, matrices, records, and enums composed from persistent values", t)
 }
 
 func (c checker) checkInlineDataExpr(expr ast.Expr) (Type, error) {
@@ -2070,6 +2110,9 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, fmt.Errorf("operator '?' requires fallible expression")
 		}
 		if !ctx.isFallible {
+			if ctx.inFlow {
+				return ExprType{}, fmt.Errorf("error propagation with '?' requires a fallible FLOW result contract; handle the error with match or use '!'")
+			}
 			return ExprType{}, fmt.Errorf("cannot use '?' in infallible function")
 		}
 		return ExprType{ValueType: innerType.ValueType}, nil

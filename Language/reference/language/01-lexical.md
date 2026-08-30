@@ -4,7 +4,7 @@
 
 Oct source is tokenized from Unicode text.
 Identifiers, literals, keywords, and punctuation define the lexical surface.
-Whitespace separates tokens.
+Whitespace separates tokens. Semicolons are optional separators and are never required.
 `//` starts a line comment.
 
 ## Rules
@@ -19,6 +19,7 @@ Whitespace separates tokens.
 - Dimension suffixes attach to numeric literals (`5m`, `2.5s`, `90deg`, `22C`).
 - `//` comments continue to end of line.
 - Arrow tokens accept both `->` and `=>` spellings in arrow positions; parser semantics are identical.
+- Semicolons are treated like whitespace. Canonical style remains one declaration or statement per line; semicolons are useful only for deliberately compact source.
 
 ## Examples
 

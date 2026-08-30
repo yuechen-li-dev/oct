@@ -37,8 +37,8 @@ Octomata and records are complementary:
 - Flow `when` actions are only `goto`, `suspend`, or `return`.
 - `board { Field: Type ... }` declares flow-local board memory with a fixed field shape.
 - Board fields must be declared up front and are not dynamically extensible.
-- Board fields may be `Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`, or arrays (including nested arrays) whose element type is one of those scalars. Vectors, matrices, records, enums, and other runtime types are unsupported.
-- Board fields are default-initialized from their declared type (for example: `Bool` -> `false`, `Int`/`Int<D>` -> `0`, `Float`/`Float<D>` -> `0.0`, `String` -> `""`, and arrays -> empty arrays).
+- Board fields may be deterministic persistent values composed from `Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`, arrays, vectors, matrices, records, and enums. Function values remain excluded because capture-environment identity, checkpoint representation, and history semantics are not part of M0.
+- Board fields are default-initialized recursively from their declared type (scalars use their zero value, collections are empty, records default each field, and enums use their first declared variant with a defaulted payload when present).
 - Board writes are valid only inside flow state bodies (including nested `if`/`when` inside a state body).
 - Controller utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
 - Standalone utility form `when utility { case value when condition score Int ... else value }` is an expression form valid wherever expressions are allowed.
@@ -62,7 +62,26 @@ Octomata and records are complementary:
 - `ResumeTarget(flow)` reports the current remembered target or `""` when slot is empty.
 - `StateHistory(flow)` returns state-entry history as `String[]`.
 - Builtins `Step`, `DidYield`, `Yielded`, `Active`, `Complete`, `Result`, `ResumeTarget`, `StateHistory`, and `BoardSnapshot` require a flow instance argument.
-- `BoardSnapshot(flow)` returns a fallible, read-only typed record snapshot of current board fields when the flow declares a board. It preserves supported scalar types and arrays (including nested arrays) of those scalar types. Snapshot arrays are detached from the flow's mutable board. Vectors, matrices, records, enums, and other runtime types are unsupported as board fields.
+- `BoardSnapshot(flow)` returns a fallible, read-only typed record snapshot of current board fields when the flow declares a board. Ordinary value semantics apply: records/enums are copied by value and interpreted collection values are deeply detached. Compiled aggregate replacement is also detached; indexed mutation of collection fields retains the existing generated-Go snapshot limitations documented in `docs/FLOW_SEMANTIC_PARITY_M0.md`.
+
+## Ordinary computation inside a state
+
+A state activation uses ordinary Oct expression and type rules. Parameters,
+the current turn input, state locals, board fields, globals, and imports form
+the FLOW expression context; they do not define a secondary expression
+language. Ordinary synchronous user functions and function values may be
+called. `!` has its ordinary fatal-unwrap meaning, and a fallible call may be
+handled locally with statement `match`.
+
+`?` is deliberately rejected until FLOW declares an explicit fallible terminal
+contract. The diagnostic directs authors to local `match` or `!`; M0 does not
+invent an implicit failed-machine state.
+
+State locals, including captured anonymous functions, exist only for the
+current activation. They do not cross `goto`, `suspend`, `yield`, or turn
+boundaries unless their value is written into an explicitly legal persistent
+construct. FLOW accepts exactly one typed turn input value; use a record or enum
+when one turn carries several related facts.
 
 ## Turn and yield model (FLOW-TURN-M0)
 

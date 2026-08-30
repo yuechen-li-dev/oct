@@ -1,0 +1,14 @@
+expect error: "error propagation with '?' requires a fallible FLOW result contract; handle the error with match or use '!'"
+
+package Main
+
+fn ParsePositive(x: Int) -> Int ! Error {
+    return x
+}
+
+flow Load(x: Int) -> Int {
+    state Run {
+        let value = ParsePositive(x)?
+        return value
+    }
+}

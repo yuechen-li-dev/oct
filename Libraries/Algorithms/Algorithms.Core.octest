@@ -8,6 +8,46 @@ fn MakeScale(factor: Float) -> fn(Float) -> Float {
     }
 }
 
+fn MakeAtLeast(limit: Int) -> fn(Int) -> Bool {
+    return fn(value: Int) -> Bool with {
+        limit: limit
+    } {
+        return value >= limit
+    }
+}
+
+flow FilterWithEscapedCallable(values: Int[], limit: Int) -> Int {
+    state Run {
+        let predicate = MakeAtLeast(limit)
+        let accepted = Filter<Int>(values, predicate)
+        return Len(accepted)
+    }
+}
+
+flow FilterWithCapturedParameter(values: Int[], predicate: fn(Int) -> Bool) -> Int {
+    state Run {
+        let accepted = Filter<Int>(values, predicate)
+        return Len(accepted)
+    }
+}
+
+[Fact]
+fn FlowConsumesEscapedAndExplicitlyCapturedCallables() -> Void {
+    let escapedMachine = FilterWithEscapedCallable([1, 4, 6], 4)
+    Step(escapedMachine)
+    Assert.Equal(2, Result(escapedMachine)!, "FLOW should pass escaped callable to generic Filter")
+
+    let threshold = 5
+    let captured = fn(value: Int) -> Bool with {
+        threshold: threshold
+    } {
+        return value >= threshold
+    }
+    let capturedMachine = FilterWithCapturedParameter([2, 5, 7], captured)
+    Step(capturedMachine)
+    Assert.Equal(2, Result(capturedMachine)!, "FLOW should consume explicit capture through ordinary fn type")
+}
+
 template fn MapThroughTemplate<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
     return Map<T, U>(values, transform)
 }

@@ -899,7 +899,7 @@ func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, argument
 		boardFields := make(map[string]Value, len(flow.Board))
 		fieldOrder := make([]string, 0, len(flow.Board))
 		for _, field := range flow.Board {
-			boardFields[field.Name] = defaultFlowBoardValue(field.Type)
+			boardFields[field.Name] = i.defaultFlowBoardValue(pkgName, field.Type)
 			fieldOrder = append(fieldOrder, field.Name)
 		}
 		rootEnv.define("board", Value{
@@ -922,9 +922,15 @@ func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, argument
 	}
 }
 
-func defaultFlowBoardValue(fieldType ast.TypeRef) Value {
+func (i interpreter) defaultFlowBoardValue(pkgName string, fieldType ast.TypeRef) Value {
 	if fieldType.IsArray || fieldType.ArrayDepth > 0 {
 		return Value{Kind: ValueArray, Array: []Value{}}
+	}
+	if fieldType.VectorOf != nil {
+		return Value{Kind: ValueVector, Vector: []Value{}}
+	}
+	if fieldType.MatrixOf != nil {
+		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Elements: []Value{}}}
 	}
 	switch fieldType.Name {
 	case "Bool":
@@ -936,8 +942,40 @@ func defaultFlowBoardValue(fieldType ast.TypeRef) Value {
 	case "String":
 		return Value{Kind: ValueString, Text: ""}
 	default:
+		if record, typeName, ok := i.lookupRecordDecl(pkgName, qualifiedTypeRefName(fieldType)); ok {
+			fields := make(map[string]Value, len(record.Fields))
+			order := make([]string, 0, len(record.Fields))
+			for _, field := range record.Fields {
+				fields[field.Name] = i.defaultFlowBoardValue(packageForTypeName(pkgName, typeName), field.Type)
+				order = append(order, field.Name)
+			}
+			return Value{Kind: ValueRecord, Record: RecordValue{TypeName: typeName, Fields: fields, FieldOrder: order}}
+		}
+		if enum, typeName, ok := i.lookupEnumDecl(pkgName, qualifiedTypeRefName(fieldType)); ok && len(enum.Variants) > 0 {
+			variant := enum.Variants[0]
+			value := EnumValue{TypeName: typeName, Variant: variant.Name}
+			if variant.Payload != nil {
+				payload := i.defaultFlowBoardValue(packageForTypeName(pkgName, typeName), *variant.Payload)
+				value.Payload = &payload
+			}
+			return Value{Kind: ValueEnum, Enum: value}
+		}
 		return Value{}
 	}
+}
+
+func qualifiedTypeRefName(ref ast.TypeRef) string {
+	if ref.Package != "" {
+		return ref.Package + "." + ref.Name
+	}
+	return ref.Name
+}
+
+func packageForTypeName(fallback string, typeName string) string {
+	if pkg, _, ok := splitQualifiedTypeName(typeName); ok {
+		return pkg
+	}
+	return fallback
 }
 
 type flowSignalKind int

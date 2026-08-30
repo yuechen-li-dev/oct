@@ -1,0 +1,54 @@
+package Main
+
+fn ParsePositive(x: Int) -> Int ! Error {
+    if x <= 0 {
+        return error("not positive")
+    }
+    return x + 1
+}
+
+flow Load(x: Int) -> Int {
+    state Run {
+        let value = ParsePositive(x)!
+        return value
+    }
+}
+
+flow LoadHandled(x: Int) -> Int {
+    board {
+        Value: Int
+    }
+    state Load {
+        match ParsePositive(x) {
+            ok(value) => {
+                board.Value = value
+                goto Done
+            }
+            err(problem) => {
+                goto Recover
+            }
+        }
+    }
+    state Done {
+        return board.Value
+    }
+    state Recover {
+        return 0
+    }
+}
+
+[Fact]
+fn FatalUnwrapUsesOrdinaryOctSemanticsInsideFlow() -> Void {
+    let machine = Load(4)
+    Step(machine)
+    Assert.Equal(5, Result(machine)!, "FLOW fatal unwrap should return the successful value")
+}
+
+[Theory]
+[InlineData(4, 5)]
+[InlineData(0, 0)]
+fn FallibleMatchHandlesLocallyInsideFlow(input: Int, expected: Int) -> Void {
+    let machine = LoadHandled(input)
+    Step(machine)
+    Assert.Equal(expected, Result(machine)!, "FLOW match should select ok or err state locally")
+}

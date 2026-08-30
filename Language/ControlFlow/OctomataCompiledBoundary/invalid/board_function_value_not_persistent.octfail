@@ -1,0 +1,10 @@
+expect error: "flow FunctionBoard board field Callback: function-valued board fields are not persistent FLOW values in M0"
+
+package ControlFlowOctomataCompiledBoundary
+
+flow FunctionBoard() -> Void {
+    board {
+        Callback: fn(Int) -> Int
+    }
+    state Start { return }
+}

@@ -138,7 +138,7 @@ func (l *lexer) skipWhitespaceAndComments() {
 	for {
 		for {
 			r, _ := l.peekRune()
-			if !isWhitespace(r) {
+			if !isWhitespace(r) && r != ';' {
 				break
 			}
 			l.advanceRune()
@@ -267,8 +267,6 @@ func (l *lexer) nextToken() (Token, error) {
 	case '@':
 		l.advanceRune()
 		return Token{Kind: At, Lexeme: "@", Line: line, Column: column}, nil
-	case ';':
-		return Token{}, fmt.Errorf("invalid token at %d:%d: ';' (Oct does not use semicolons to separate statements; use one statement per line)", line, column)
 	case '&':
 		if l.matchString("&&") {
 			return Token{}, fmt.Errorf("invalid token at %d:%d: '&&' is not an Oct operator; use 'and'", line, column)

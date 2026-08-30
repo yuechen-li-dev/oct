@@ -473,16 +473,17 @@ func TestAnalyzeRejectsInvalidToken(t *testing.T) {
 	}
 }
 
-func TestAnalyzeRejectsSemicolonWithGuidance(t *testing.T) {
+func TestAnalyzeTreatsSemicolonAsOptionalSeparator(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "fn Main() -> Int { let a = 1; return a }"}
 
-	_, err := Analyze(file)
-	if err == nil {
-		t.Fatal("expected invalid token error")
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatalf("optional semicolon separator should lex: %v", err)
 	}
-
-	if got := err.Error(); !strings.Contains(got, "does not use semicolons") {
-		t.Fatalf("expected semicolon guidance in error, got %q", got)
+	for _, token := range result.Tokens {
+		if token.Lexeme == ";" {
+			t.Fatalf("semicolon must not enter the parser token stream: %#v", token)
+		}
 	}
 }
 

@@ -1,4 +1,4 @@
-expect error: "flow BoardComplexUnsupported board field Samples: board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types"
+expect error: "flow BoardComplexUnsupported board field Samples: board field type Complex is not a deterministic persistent FLOW value"
 
 package ControlFlowOctomataCompiledBoundary
 

@@ -1,4 +1,4 @@
-expect error: "expected 'concept', 'record', 'enum', 'fn', or 'flow' at top level"
+expect error: "expected 'concept', 'record', 'enum', 'fn', 'flow', or 'query' at top level"
 
 package Main
 
