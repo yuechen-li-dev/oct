@@ -49,3 +49,4 @@ Start with [00-overview.md](./00-overview.md).
 - [34 octagon](./tooling/34-octagon.md)
 - [35 CLI](./tooling/35-cli.md)
 - [36 VSCode en-human view](./tooling/36-vscode.md)
+- [37 Atlas semantic documentation graphs](./tooling/37-atlas.md)

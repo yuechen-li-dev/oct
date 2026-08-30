@@ -1,0 +1,10 @@
+package RiemannAtlas
+
+[Fact]
+fn GlobalComponentClaimNamesThreeDerivedInputsWithoutClaimingFullRHProof() -> Void {
+    let document = AtlasDocument()
+    Assert.Equal(Len(document.Claims), 4, "three inputs plus the bounded component claim")
+    Assert.Equal(Len(document.Authorities), 3, "commit-pinned M23-M25 reports")
+    Assert.Equal(Len(document.Links), 9, "four source supports, three derivations, and two dependency links")
+    Assert.True(document.Claims[3].Text != "The Riemann Hypothesis is proved.", "scope remains bounded")
+}

@@ -1,0 +1,135 @@
+package Atlas
+
+enum Relation {
+    Supports
+    Interprets
+    Implements
+    Verifies
+    DerivedFrom
+    DependsOn
+    Supersedes
+    Explains
+    Produces
+    Contradicts
+}
+
+enum SymbolKind {
+    Function
+    Concept
+    Record
+    Enum
+    Flow
+}
+
+enum EvidenceKind {
+    Fact
+    Theory
+}
+
+record Authority {
+    ID: String
+    Title: String
+    URI: String
+    Version: String
+    Digest: String
+}
+
+record Citation {
+    ID: String
+    Authority: String
+    Locator: String
+}
+
+record Requirement {
+    ID: String
+    Text: String
+}
+
+record Interpretation {
+    ID: String
+    Text: String
+}
+
+record Claim {
+    ID: String
+    Text: String
+}
+
+record SymbolRef {
+    ID: String
+    Symbol: String
+    Kind: SymbolKind
+}
+
+record EvidenceRef {
+    ID: String
+    Evidence: String
+    Kind: EvidenceKind
+}
+
+record ArtifactRef {
+    ID: String
+    Artifact: String
+    Output: String
+}
+
+record Link {
+    From: String
+    Relation: Relation
+    To: String
+}
+
+record Policy {
+    RequireRequirementImplementation: Bool
+    RequireRequirementVerifier: Bool
+    RequireInterpretationCitation: Bool
+    RequireClaimSupport: Bool
+}
+
+record Document {
+    Authorities: Authority[]
+    Citations: Citation[]
+    Requirements: Requirement[]
+    Interpretations: Interpretation[]
+    Claims: Claim[]
+    Symbols: SymbolRef[]
+    Evidence: EvidenceRef[]
+    Artifacts: ArtifactRef[]
+    Links: Link[]
+    Policy: Policy
+}
+
+// Columnar authoring is optional. It is useful for larger homogeneous sets and
+// preserves ordinary record-table validation, row access, and immutable `with`
+// column updates. Document remains the row-oriented alternative.
+record table AuthorityTable {ID: String Title: String URI: String Version: String Digest: String}
+record table CitationTable {ID: String Authority: String Locator: String}
+record table RequirementTable {ID: String Text: String}
+record table InterpretationTable {ID: String Text: String}
+record table ClaimTable {ID: String Text: String}
+record table SymbolRefTable {ID: String Symbol: String Kind: SymbolKind}
+record table EvidenceRefTable {ID: String Evidence: String Kind: EvidenceKind}
+record table ArtifactRefTable {ID: String Artifact: String Output: String}
+record table LinkTable {From: String Relation: Relation To: String}
+
+record TableDocument {
+    Authorities: AuthorityTable
+    Citations: CitationTable
+    Requirements: RequirementTable
+    Interpretations: InterpretationTable
+    Claims: ClaimTable
+    Symbols: SymbolRefTable
+    Evidence: EvidenceRefTable
+    Artifacts: ArtifactRefTable
+    Links: LinkTable
+    Policy: Policy
+}
+
+fn AdvisoryPolicy() -> Policy {
+    return Policy {
+        RequireRequirementImplementation: false
+        RequireRequirementVerifier: false
+        RequireInterpretationCitation: false
+        RequireClaimSupport: false
+    }
+}

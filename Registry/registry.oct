@@ -49,6 +49,16 @@ fn Registry() -> RegistryIndex {
                 Description: "Typed Newtonian orbits, stellar radiation, distance, parallax, and redshift relations"
             },
             PackageEntry {
+                Name: "Atlas"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Atlas"
+                Description: "Domain-neutral semantic provenance and traceability authoring records"
+            },
+            PackageEntry {
                 Name: "Chemistry"
                 Version: "0.1.0"
                 Kind: "library"

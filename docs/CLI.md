@@ -14,6 +14,8 @@ Common commands:
 - `go run ./cmd/oct test <path> --all-packages`
 - `go run ./cmd/oct artifact <path>`
 - `go run ./cmd/oct artifact <path> --output-root <directory>`
+- `go run ./cmd/oct atlas verify <path>`
+- `go run ./cmd/oct atlas explain <ID> <path>`
 - `go run ./cmd/oct fmt <path> --mode en-llm --check`
 - `go run ./cmd/oct fmt <path> --mode en-llm-compact --check`
 - `go run ./cmd/oct bench <path> --profile`
@@ -23,6 +25,17 @@ Common commands:
 - `go run ./cmd/oct new application MyApp`
 
 `oct test` defaults to running tests only from the selected entry package/root. Imported packages are still loaded for typechecking, but their tests are excluded unless `--all-packages` is specified.
+
+## `oct atlas`
+
+`oct atlas` compiles and queries an opt-in, build-time-only semantic documentation
+graph authored by `AtlasDocument() -> Atlas.Document`. `verify` checks stable IDs,
+links, compiler-known symbol/Fact/Theory/Artifact references, relation categories,
+cycles, and project policies. `build` writes deterministic `atlas.octagon`; `show`,
+`explain`, `affected-by`, and `coverage` provide bounded deterministic queries.
+Atlas does not alter ordinary runtime codegen. See the authoritative
+[`Language/reference/tooling/37-atlas.md`](../Language/reference/tooling/37-atlas.md)
+for the complete M0 contract.
 
 ## `oct make` and `Make.octest`
 

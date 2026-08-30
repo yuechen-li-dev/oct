@@ -270,17 +270,6 @@ fn ProceduralHistoryRecordsNoticeAppealReviewAndDecision() -> Void {
     Assert.Equal(first[4], second[4], "same case produces deterministic history")
 }
 
-/// PL-SOURCE-MAP: every major implemented rule has authority and Fact linkage.
-[Fact]
-fn SourceMapRetainsRuleAuthorityAndFactNames() -> Void {
-    let map = BuildSourceMap()
-    Assert.Equal(5, Len(map.RuleID), "source map row count")
-    Assert.Equal("PL-A-207A1", map.RuleID[1], "substantive rule ID")
-    Assert.Equal("29 U.S.C. 207(a)(1)", map.Section[1], "exact substantive section")
-    Assert.Equal("PL-B-APPEAL-90", map.RuleID[3], "procedural rule ID")
-    Assert.Equal("AppealDeadlineBoundaryIsExplicit", map.Facts[3], "source-to-Fact linkage")
-}
-
 /// PL-ARTIFACT: the explanation source is deterministic before filesystem write.
 [Fact]
 fn ExplanationArtifactSourceIsDeterministic() -> Void {

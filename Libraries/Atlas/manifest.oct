@@ -16,15 +16,11 @@ record Dependency {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "PolicyLab"
+        Name: "Atlas"
         Version: "0.1.0"
-        Description: "M0 ordinary-Oct policy-as-executable-knowledge experiment"
+        Description: "Domain-neutral semantic provenance and traceability authoring records"
         Authors:["Codex"]
         Date: "2026-08-30"
-        Dependencies:[
-        Dependency {Name: "OctStd" VersionRequirement: "0.1.0"},
-        Dependency {Name: "Algorithms" VersionRequirement: "0.1.0"},
-        Dependency {Name: "Atlas" VersionRequirement: "0.1.0"}
-        ]
+        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
     }
 }

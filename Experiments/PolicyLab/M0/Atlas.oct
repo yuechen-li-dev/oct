@@ -1,0 +1,101 @@
+package PolicyLab
+
+import Atlas
+
+fn AtlasDocument() -> Atlas.TableDocument {
+    let policy = Atlas.AdvisoryPolicy() with {
+        RequireRequirementImplementation: true
+        RequireRequirementVerifier: true
+        RequireInterpretationCitation: true
+        RequireClaimSupport: true
+    }
+    return Atlas.TableDocument {
+        Authorities: Atlas.AuthorityTable {
+            ID:["Authority.US.FLSA", "Authority.US.FOIA"]
+            Title:["Fair Labor Standards Act", "Freedom of Information Act"]
+            URI:["https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title29-section207", "https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title5-section552"]
+            Version:["2023", "2023"]
+            Digest:["", ""]
+        }
+        Citations: Atlas.CitationTable {
+            ID:["Citation.US.FLSA.207a1", "Citation.US.FOIA.552a6"]
+            Authority:["Authority.US.FLSA", "Authority.US.FOIA"]
+            Locator:["29 U.S.C. § 207(a)(1)", "5 U.S.C. § 552(a)(6)(A)(i)-(ii)"]
+        }
+        Requirements: Atlas.RequirementTable {
+            ID:["Requirement.Policy.FLSA.OvertimeThreshold", "Requirement.Policy.FOIA.TimelyAppealEntersReview"]
+            Text:["Hours above 40 in the modeled workweek enter overtime calculation.", "A timely modeled appeal enters review before disposition."]
+        }
+        Interpretations: Atlas.InterpretationTable {
+            ID:["Interpretation.Policy.FLSA.WeeklyThreshold", "Interpretation.Policy.FOIA.BoundedProcedure"]
+            Text:["Policy Lab models the weekly threshold as hours greater than 40 under its bounded assumptions.", "Policy Lab models the cited response and appeal windows with explicit supplied day indexes."]
+        }
+        Claims: Atlas.ClaimTable {
+            ID:["Claim.Policy.FLSA.TimeAndAHalf", "Claim.Policy.AmendmentImpactIsLocalized"]
+            Text:["Eligible overtime hours use one and one-half the supplied regular rate under the bounded integer-cent interpretation.", "Changing only the modeled threshold changes boundary cases and their dependent evidence without rewriting unrelated procedure."]
+        }
+        Symbols: Atlas.SymbolRefTable {
+            ID:["Symbol.PolicyLab.EvaluateOvertime", "Symbol.PolicyLab.DOJAppealProcess", "Symbol.PolicyLab.WorkweekHours"]
+            Symbol:["PolicyLab.EvaluateOvertime", "PolicyLab.DOJAppealProcess", "PolicyLab.WorkweekHours"]
+            Kind:[Atlas.SymbolKind.Function, Atlas.SymbolKind.Flow, Atlas.SymbolKind.Concept]
+        }
+        Evidence: Atlas.EvidenceRefTable {
+            ID:["Evidence.PolicyLab.ApplicantAboveThresholdReceivesOneAndOneHalfRate", "Evidence.PolicyLab.ThresholdBoundaryClassifiesOvertime", "Evidence.PolicyLab.TimelyAppealCannotSkipReview"]
+            Evidence:["PolicyLab.ApplicantAboveThresholdReceivesOneAndOneHalfRate", "PolicyLab.ThresholdBoundaryClassifiesOvertime", "PolicyLab.TimelyAppealCannotSkipReview"]
+            Kind:[Atlas.EvidenceKind.Fact, Atlas.EvidenceKind.Theory, Atlas.EvidenceKind.Fact]
+        }
+        Artifacts: Atlas.ArtifactRefTable {
+            ID:["Artifact.PolicyLab.Audit"]
+            Artifact:["PolicyLab.EmitPolicyLabAudit"]
+            Output:["policy_lab_audit.md"]
+        }
+        Links: Atlas.LinkTable {
+            From:[
+            "Citation.US.FLSA.207a1",
+            "Interpretation.Policy.FLSA.WeeklyThreshold",
+            "Symbol.PolicyLab.EvaluateOvertime",
+            "Symbol.PolicyLab.WorkweekHours",
+            "Evidence.PolicyLab.ApplicantAboveThresholdReceivesOneAndOneHalfRate",
+            "Evidence.PolicyLab.ThresholdBoundaryClassifiesOvertime",
+            "Requirement.Policy.FLSA.OvertimeThreshold",
+            "Requirement.Policy.FLSA.OvertimeThreshold",
+            "Artifact.PolicyLab.Audit",
+            "Interpretation.Policy.FOIA.BoundedProcedure",
+            "Symbol.PolicyLab.DOJAppealProcess",
+            "Evidence.PolicyLab.TimelyAppealCannotSkipReview",
+            "Claim.Policy.AmendmentImpactIsLocalized"
+            ]
+            Relation:[
+            Atlas.Relation.Supports,
+            Atlas.Relation.Interprets,
+            Atlas.Relation.Implements,
+            Atlas.Relation.Implements,
+            Atlas.Relation.Verifies,
+            Atlas.Relation.Verifies,
+            Atlas.Relation.Supports,
+            Atlas.Relation.Supports,
+            Atlas.Relation.Explains,
+            Atlas.Relation.Interprets,
+            Atlas.Relation.Implements,
+            Atlas.Relation.Verifies,
+            Atlas.Relation.DependsOn
+            ]
+            To:[
+            "Requirement.Policy.FLSA.OvertimeThreshold",
+            "Citation.US.FLSA.207a1",
+            "Requirement.Policy.FLSA.OvertimeThreshold",
+            "Requirement.Policy.FLSA.OvertimeThreshold",
+            "Requirement.Policy.FLSA.OvertimeThreshold",
+            "Requirement.Policy.FLSA.OvertimeThreshold",
+            "Claim.Policy.FLSA.TimeAndAHalf",
+            "Claim.Policy.AmendmentImpactIsLocalized",
+            "Requirement.Policy.FLSA.OvertimeThreshold",
+            "Citation.US.FOIA.552a6",
+            "Requirement.Policy.FOIA.TimelyAppealEntersReview",
+            "Requirement.Policy.FOIA.TimelyAppealEntersReview",
+            "Requirement.Policy.FLSA.OvertimeThreshold"
+            ]
+        }
+        Policy: policy
+    }
+}

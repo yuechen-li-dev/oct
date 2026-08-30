@@ -100,15 +100,6 @@ record AppealOutcome {
     Explanation: String
 }
 
-record SourceMapTable {
-    RuleID: String[]
-    Authority: String[]
-    Section: String[]
-    Interpretation: String[]
-    Symbol: String[]
-    Facts: String[]
-}
-
 fn AdmitWorkweekHours(raw: Int) -> WorkweekHours ! Error {
     return WorkweekHours(raw) ?
 }
@@ -274,17 +265,6 @@ fn ResolveRuleEffects(effects: RuleEffect[]) -> ConflictResult {
     }
 }
 
-fn BuildSourceMap() -> SourceMapTable {
-    return SourceMapTable {
-        RuleID:["PL-A-DOMAIN-1", "PL-A-207A1", "PL-A-213A1", "PL-B-APPEAL-90", "PL-B-DECISION-20"]
-        Authority:["Experiment domain", "Fair Labor Standards Act", "Fair Labor Standards Act", "Freedom of Information Act", "Freedom of Information Act"]
-        Section:["Structural assumption", "29 U.S.C. 207(a)(1)", "29 U.S.C. 213(a)(1)", "5 U.S.C. 552(a)(6)(A)(i)", "5 U.S.C. 552(a)(6)(A)(ii)"]
-        Interpretation:["Elapsed whole hours 0 through 168", "Whole-hour covered employment only", "Caller supplies already-classified exemption status", "Elapsed calendar-day index; day 90 is timely", "Supplied working-day index; day 20 is on time"]
-        Symbol:["WorkweekHours", "EvaluateOvertime", "Section213A1ExceptionApplies", "DOJAppealProcess", "DecisionTimelinessForWorkingDay"]
-        Facts:["InvalidWorkweekHoursAreRejected", "ThresholdBoundaryClassifiesOvertime", "DisqualifyingExceptionOverridesBaseRule", "AppealDeadlineBoundaryIsExplicit", "AppealDecisionTimelinessBoundaryIsExplicit"]
-    }
-}
-
 fn DecisionTimelinessForWorkingDay(day: Int) -> DecisionTimeliness {
     if day <= 20 {
         return DecisionTimeliness.OnTime
@@ -380,12 +360,10 @@ fn BuildPolicyAuditMarkdown() -> String[] {
     }
     let decision = EvaluateOvertime(sample)
     let history = RunSampleAppealHistory()
-    let sourceMap = BuildSourceMap()
     let settings = Markdown.KeyValueTable(
     ["specimen_a", "specimen_b", "law_status", "rounding", "convergence"],
     ["FLSA overtime, bounded", "DOJ FOIA administrative appeal, bounded", "executable interpretation, not law", "explicit half-cent ceiling", "static/runtime forms remain separate"]
     )
-    let sourceTable = Markdown.Table(sourceMap)
     let trace = Markdown.KeyValueTable(
     ["coverage", "exception", "threshold", "overtime_hours", "overtime_cents", "final"],
     [decision.Trace[0], decision.Trace[1], decision.Trace[2], String.From<Int>(decision.OvertimeHours), String.From<Int>(decision.OvertimeCompensationCents), decision.Trace[4]]
@@ -399,7 +377,7 @@ fn BuildPolicyAuditMarkdown() -> String[] {
     Markdown.H1("Policy Lab M0 audit"),
     Markdown.Paragraph("Research artifact only. This is an executable interpretation of cited authority, not legal advice or an authoritative statement of law."),
     Markdown.Section("Experiment",[settings]),
-    Markdown.Section("Source map",[sourceTable]),
+    Markdown.Section("Traceability",[Markdown.Paragraph("The package's canonical AtlasDocument links authorities, citations, bounded interpretations, requirements, implementation symbols, Facts, Theories, and this audit Artifact. Use oct atlas explain for the compiled source map.")]),
     Markdown.Section("Substantive decision trace",[trace]),
     Markdown.Section("Procedural history",[historyTable]),
     Markdown.Section("Exceptions and conflicts",[Markdown.Paragraph("The FLSA probe evaluates assumed coverage, then an explicit section 213(a)(1) exemption, then the hour threshold. Synthetic conflict probes return ConflictingRules instead of relying on first-match order.")]),

@@ -174,6 +174,9 @@ Current milestone capabilities include:
 - source-controlled canonical first-party registry at `Registry/registry.oct`;
 - manifest-declared wrapper lifecycle with Octxiliary sidecars and explicit `oct pkg build-wrappers --allow-native`;
 - tests and CI coverage across core compiler/tooling paths.
+- opt-in Atlas semantic documentation graphs that connect authorities,
+  interpretations, requirements/claims, implementation symbols, executable
+  evidence, and artifacts without changing runtime semantics;
 
 The language definition lives in Oct source contracts under `Language/`. The Go implementation (`cmd/`, `internal/`) is the current implementation/backend for those contracts.
 

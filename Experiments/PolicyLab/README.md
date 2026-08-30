@@ -55,7 +55,7 @@ change; current authority must be checked before any real-world use.
 ## Corpus
 
 - `M0/policy_lab_m0.oct` — records, enums, refined Concepts, policy functions,
-  explicit exception/conflict logic, templates, captured callables, source map,
+  explicit exception/conflict logic, templates, captured callables, Atlas graph,
   Octomata procedure, and deterministic artifact builder.
 - `M0/policy_lab_m0.octest` — normative Facts, boundary Theories, negative
   propositions, amendment cases, procedural invariants, history, and artifact.
@@ -86,7 +86,9 @@ out/test-artifacts/experiments_policy_lab_m0/policy_lab_audit.md
 
 ## Known ambiguities and gaps
 
-- Literate source-law proximity and first-class provenance are absent.
+- Literate source-law proximity remains absent; first-class project provenance
+  now lives in the package's ordinary `AtlasDocument()` and is checked by
+  `oct atlas verify`.
 - Money, currency, calendar date, working-day, and holiday types are absent from
   the core surface used here.
 - Default/exception priority and conflict resolution are ordinary explicit code,

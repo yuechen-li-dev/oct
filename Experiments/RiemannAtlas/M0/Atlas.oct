@@ -1,0 +1,46 @@
+package RiemannAtlas
+
+import Atlas
+
+fn AtlasDocument() -> Atlas.Document {
+    return Atlas.Document {
+        Authorities:[
+        Atlas.Authority {ID: "Authority.Riemann.M23Report" Title: "M23 certified variable-radius two-atom local optimum" URI: "https://github.com/yuechen-li-dev/Riemann/blob/7afc3c35a50610459a63088e88a91ebe86aa7d79/docs/m23-variable-radius-local-optimum.md" Version: "7afc3c35a50610459a63088e88a91ebe86aa7d79" Digest: "sha256:44cfcfa5c961143edd804317a4f4baf22ad0a3a3f0b9faaf1059c96670155453"},
+        Atlas.Authority {ID: "Authority.Riemann.M24Report" Title: "M24 global control of the contact-preserving two-atom component" URI: "https://github.com/yuechen-li-dev/Riemann/blob/7afc3c35a50610459a63088e88a91ebe86aa7d79/docs/m24-two-atom-component-control.md" Version: "7afc3c35a50610459a63088e88a91ebe86aa7d79" Digest: "sha256:bbd09ce3660491c63148a96fc953a6c8f954b46750331062d9517e0301ecf65b"},
+        Atlas.Authority {ID: "Authority.Riemann.M25Report" Title: "M25 B1 control and component optimum" URI: "https://github.com/yuechen-li-dev/Riemann/blob/7afc3c35a50610459a63088e88a91ebe86aa7d79/docs/m25-b1-component-global-optimum.md" Version: "7afc3c35a50610459a63088e88a91ebe86aa7d79" Digest: "sha256:68eb81168bce0e243e62f60217778a59cc6b153875295e573e2a016d28d883c5"}
+        ]
+        Citations:[
+        Atlas.Citation {ID: "Citation.Riemann.M23.Outcome" Authority: "Authority.Riemann.M23Report" Locator: "Outcome and certified optimizer sections"},
+        Atlas.Citation {ID: "Citation.Riemann.M24.ResidualWindow" Authority: "Authority.Riemann.M24Report" Locator: "Outcome and final residual-window conclusion"},
+        Atlas.Citation {ID: "Citation.Riemann.M25.Composition" Authority: "Authority.Riemann.M25Report" Locator: "M23/M24/M25 composition and whole-line feasibility sections"}
+        ]
+        Requirements:[]
+        Interpretations:[]
+        Claims:[
+        Atlas.Claim {ID: "Claim.Riemann.M23.LocalStationaryOptimizer" Text: "M23 establishes the bounded local stationary optimizer used by the later component argument."},
+        Atlas.Claim {ID: "Claim.Riemann.M24.OutsideWindowExclusion" Text: "M24 excludes improving candidates outside the bounded residual window used by the component argument."},
+        Atlas.Claim {ID: "Claim.Riemann.M25.B1GlobalWindowControl" Text: "M25 supplies B1 control across the remaining bounded global window."},
+        Atlas.Claim {ID: "Claim.Riemann.ContactPreservingTwoAtomComponentGlobalOptimum" Text: "The completed M23-M25 chain establishes the named contact-preserving two-atom component optimum; it is not a proof of the Riemann Hypothesis."}
+        ]
+        Symbols:[]
+        Evidence:[]
+        Artifacts:[]
+        Links:[
+        Atlas.Link {From: "Citation.Riemann.M23.Outcome" Relation: Atlas.Relation.Supports To: "Claim.Riemann.M23.LocalStationaryOptimizer"},
+        Atlas.Link {From: "Citation.Riemann.M24.ResidualWindow" Relation: Atlas.Relation.Supports To: "Claim.Riemann.M24.OutsideWindowExclusion"},
+        Atlas.Link {From: "Citation.Riemann.M25.Composition" Relation: Atlas.Relation.Supports To: "Claim.Riemann.M25.B1GlobalWindowControl"},
+        Atlas.Link {From: "Citation.Riemann.M25.Composition" Relation: Atlas.Relation.Supports To: "Claim.Riemann.ContactPreservingTwoAtomComponentGlobalOptimum"},
+        Atlas.Link {From: "Claim.Riemann.ContactPreservingTwoAtomComponentGlobalOptimum" Relation: Atlas.Relation.DerivedFrom To: "Claim.Riemann.M23.LocalStationaryOptimizer"},
+        Atlas.Link {From: "Claim.Riemann.ContactPreservingTwoAtomComponentGlobalOptimum" Relation: Atlas.Relation.DerivedFrom To: "Claim.Riemann.M24.OutsideWindowExclusion"},
+        Atlas.Link {From: "Claim.Riemann.ContactPreservingTwoAtomComponentGlobalOptimum" Relation: Atlas.Relation.DerivedFrom To: "Claim.Riemann.M25.B1GlobalWindowControl"},
+        Atlas.Link {From: "Claim.Riemann.M25.B1GlobalWindowControl" Relation: Atlas.Relation.DependsOn To: "Claim.Riemann.M24.OutsideWindowExclusion"},
+        Atlas.Link {From: "Claim.Riemann.M24.OutsideWindowExclusion" Relation: Atlas.Relation.DependsOn To: "Claim.Riemann.M23.LocalStationaryOptimizer"}
+        ]
+        Policy: Atlas.Policy {
+            RequireRequirementImplementation: false
+            RequireRequirementVerifier: false
+            RequireInterpretationCitation: false
+            RequireClaimSupport: false
+        }
+    }
+}
