@@ -1,0 +1,224 @@
+package Optimization
+
+// ============================================================
+// Optimization.ContextualSearch
+//
+// Oct function values (fn(...) -> ...) cannot capture surrounding
+// state -- only named top-level functions can be passed where a
+// function value is expected. That means the existing NelderMead
+// and (implicitly) any gradient-free solver in this library can only
+// minimize an objective that needs NO external data: real use almost
+// always wants to score a candidate parameter vector against some
+// external evidence (training data, a trajectory, a target curve),
+// which a captureless fn(Float[]) -> Float cannot express.
+//
+// The fix here is mechanical, not a language change: thread an
+// opaque context vector through every objective call --
+// fn(Float[], Float[]) -> Float instead of fn(Float[]) -> Float --
+// exactly mirroring how ordinary functions already pass data as
+// arguments. The caller's objective function decodes whatever it
+// needs out of `context` itself (packed indices, flattened trajectory
+// data, whatever the caller's problem requires); this library never
+// interprets it.
+//
+// NelderMeadWithContext is a direct line-for-line port of
+// Optimization.NelderMead's algorithm (see that file for the method
+// description) with this signature change, reusing all of that
+// file's non-objective-calling helpers (ArgMin, ArgMax, ArgSecondMax,
+// Centroid, InitialSimplex, SimplexCombine) unchanged.
+//
+// CoordinateDescentWithContext is a second, simpler solver in the
+// same spirit: single-coordinate perturbation with a shrinking step
+// size. It converges more slowly than Nelder-Mead in general but is
+// cheap per iteration and was found in practice to work well for
+// refining an already-reasonable starting point on a sparse
+// coefficient vector (e.g. after a linear regression fit) against an
+// expensive, non-smooth objective such as ODE rollout error, where
+// each objective evaluation is itself costly and a method that makes
+// many cheap, bounded, well-understood moves can be preferable to one
+// that explores more aggressively per iteration.
+// ============================================================
+
+/// Nelder-Mead downhill simplex minimization of an objective that
+/// needs external data: f(x, context) is scored at each candidate
+/// point x, with `context` passed through unchanged on every call.
+fn NelderMeadWithContext(
+    f:       fn(Float[], Float[]) -> Float,
+    context: Float[],
+    x0:      Float[],
+    xTol:    Float,
+    fTol:    Float,
+    maxIter: Int
+) -> OptimizationResultND ! Error {
+    if Len(x0) == 0 {
+        return error("NelderMeadWithContext: x0 must be non-empty")
+    }
+    if xTol <= 0.0 {
+        return error("NelderMeadWithContext: xTol must be > 0")
+    }
+    if fTol <= 0.0 {
+        return error("NelderMeadWithContext: fTol must be > 0")
+    }
+    if maxIter <= 0 {
+        return error("NelderMeadWithContext: maxIter must be > 0")
+    }
+
+    let n = Len(x0)
+
+    var simplex = InitialSimplex(x0)
+    var fvals   = [f(simplex[0], context)]
+    for i in 1 .. n + 1 {
+        fvals = Append(fvals, f(simplex[i], context))
+    }
+
+    var iter      = 0
+    var converged = false
+
+    while iter < maxIter and not converged {
+        let bestIdx     = ArgMin(fvals)
+        let worstIdx    = ArgMax(fvals)
+        let sndWorstIdx = ArgSecondMax(fvals, worstIdx)
+
+        let fRange   = fvals[worstIdx] - fvals[bestIdx]
+        let edgeDiff = VecSub(simplex[worstIdx], simplex[bestIdx])?
+        let edgeLen  = L2Norm(edgeDiff)?
+
+        if fRange <= fTol and edgeLen <= xTol {
+            converged = true
+        }
+
+        if not converged {
+            let centroid = Centroid(simplex, worstIdx)?
+
+            let xr = SimplexCombine(centroid, centroid, simplex[worstIdx], 1.0)?
+            let fr = f(xr, context)
+
+            if fr < fvals[bestIdx] {
+                let xe = SimplexCombine(centroid, xr, centroid, 2.0)?
+                let fe = f(xe, context)
+                if fe < fr {
+                    simplex[worstIdx] = xe
+                    fvals[worstIdx]   = fe
+                }
+                if fe >= fr {
+                    simplex[worstIdx] = xr
+                    fvals[worstIdx]   = fr
+                }
+            }
+
+            if fr >= fvals[bestIdx] and fr < fvals[sndWorstIdx] {
+                simplex[worstIdx] = xr
+                fvals[worstIdx]   = fr
+            }
+
+            if fr >= fvals[sndWorstIdx] {
+                let xc = SimplexCombine(centroid, simplex[worstIdx], centroid, 0.5)?
+                let fc = f(xc, context)
+
+                if fc < fvals[worstIdx] {
+                    simplex[worstIdx] = xc
+                    fvals[worstIdx]   = fc
+                }
+                if fc >= fvals[worstIdx] {
+                    let xBest = simplex[bestIdx]
+                    for i in 0 .. n + 1 {
+                        if i != bestIdx {
+                            let xs = SimplexCombine(xBest, simplex[i], xBest, 0.5)?
+                            simplex[i] = xs
+                            fvals[i]   = f(xs, context)
+                        }
+                    }
+                }
+            }
+
+            iter = iter + 1
+        }
+    }
+
+    let bestIdx = ArgMin(fvals)
+    return OptimizationResultND {
+        Point:      simplex[bestIdx]
+        FMin:       fvals[bestIdx]
+        Iterations: iter
+        Converged:  converged
+        GradNorm:   0.0
+    }
+}
+
+/// Single-coordinate perturbation search with a shrinking step size,
+/// scoring f(x, context) as the objective. Only the entries of x
+/// where `active[i]` is true are perturbed -- entries outside the
+/// active set are held fixed at their x0 value, so this can refine a
+/// sparse coefficient vector's magnitudes without touching its
+/// (separately decided) support. Each outer round tries +/-stepSize
+/// on every active coordinate, keeping any improving move, then
+/// halves stepSize; stops early if a full round makes no improving
+/// move at all.
+fn CoordinateDescentWithContext(
+    f:              fn(Float[], Float[]) -> Float,
+    context:        Float[],
+    x0:             Float[],
+    active:         Bool[],
+    initialStep:    Float,
+    outerRounds:    Int
+) -> OptimizationResultND ! Error {
+    if Len(x0) == 0 {
+        return error("CoordinateDescentWithContext: x0 must be non-empty")
+    }
+    if Len(active) != Len(x0) {
+        return error("CoordinateDescentWithContext: active must be the same length as x0")
+    }
+    if initialStep <= 0.0 {
+        return error("CoordinateDescentWithContext: initialStep must be > 0")
+    }
+    if outerRounds <= 0 {
+        return error("CoordinateDescentWithContext: outerRounds must be > 0")
+    }
+
+    let n = Len(x0)
+    var x = x0
+    var bestLoss = f(x, context)
+    var stepSize = initialStep
+    var totalIter = 0
+
+    for round in 0 .. outerRounds {
+        var improved = true
+        while improved {
+            improved = false
+            for j in 0 .. n {
+                if active[j] {
+                    let original = x[j]
+
+                    x[j] = original + stepSize
+                    let lossUp = f(x, context)
+
+                    x[j] = original - stepSize
+                    let lossDown = f(x, context)
+
+                    x[j] = original
+
+                    if lossUp < bestLoss and lossUp <= lossDown {
+                        x[j] = original + stepSize
+                        bestLoss = lossUp
+                        improved = true
+                    }
+                    if lossDown < bestLoss and lossDown < lossUp {
+                        x[j] = original - stepSize
+                        bestLoss = lossDown
+                        improved = true
+                    }
+                    totalIter = totalIter + 1
+                }
+            }
+        }
+        stepSize = stepSize * 0.5
+    }
+
+    return OptimizationResultND {
+        Point:      x
+        FMin:       bestLoss
+        Iterations: totalIter
+        Converged:  true
+        GradNorm:   0.0
+    }
+}

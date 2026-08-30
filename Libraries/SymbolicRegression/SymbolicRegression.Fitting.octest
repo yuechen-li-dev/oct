@@ -1,0 +1,92 @@
+package SymbolicRegression
+
+import DifferentialEquations
+
+fn LorenzTrueField(t: Float, state: Float[]) -> Float[] {
+    let x = state[0]
+    let y = state[1]
+    let z = state[2]
+    let sigma = 10.0
+    let rho = 28.0
+    let beta = 8.0 / 3.0
+    return [sigma * (y - x), x * (rho - z) - y, x * y - beta * z]
+}
+
+[Fact]
+fn EndToEndFitAndRolloutRecoversKnownSystem() -> Void ! Error {
+    // Generate noiseless Lorenz data via DifferentialEquations, fit it
+    // back with BaseLibrary + FitEquation, then roll the FITTED system
+    // forward with DifferentialEquations again and confirm it tracks
+    // the true trajectory closely -- exercising the whole pipeline
+    // (Features -> Fitting -> Statistics -> DifferentialEquations) in
+    // one pass.
+    let dt = 0.01
+    let steps = 300
+    let solution = DifferentialEquations.VectorRK4Solve(LorenzTrueField, 0.0, [1.0, 1.0, 1.0], dt, steps)?
+
+    var xs: Float[] = []
+    var ys: Float[] = []
+    var zs: Float[] = []
+    var dxs: Float[] = []
+    var dys: Float[] = []
+    var dzs: Float[] = []
+    // Central-difference derivative estimates (noiseless data, so a
+    // plain finite difference is fine here -- this test is about the
+    // fit/rollout pipeline, not denoising).
+    for i in 1 .. steps {
+        let prev = solution.States[i - 1]
+        let next = solution.States[i + 1]
+        let cur = solution.States[i]
+        xs = Append(xs, cur[0])
+        ys = Append(ys, cur[1])
+        zs = Append(zs, cur[2])
+        dxs = Append(dxs, (next[0] - prev[0]) / (2.0 * dt))
+        dys = Append(dys, (next[1] - prev[1]) / (2.0 * dt))
+        dzs = Append(dzs, (next[2] - prev[2]) / (2.0 * dt))
+    }
+
+    let library = BaseLibrary()
+    let eqX = FitEquation(library, xs, ys, zs, dxs, 0.5, 10)?
+    let eqY = FitEquation(library, xs, ys, zs, dys, 0.5, 10)?
+    let eqZ = FitEquation(library, xs, ys, zs, dzs, 0.5, 10)?
+
+    // Roll the FITTED system forward manually (RK4) and compare
+    // against the true trajectory. Rolled manually rather than via
+    // DifferentialEquations.VectorRK4Solve because that needs a
+    // captureless fn(Float, Float[]) -> Float[] and a fitted system's
+    // coefficients can't be captured -- itself a live example of the
+    // context/closure limitation these libraries were built to work
+    // around (see Optimization.ContextualSearch).
+    var state = [1.0, 1.0, 1.0]
+    var maxDrift = 0.0
+    var step = 0
+    while step < steps {
+        let k1x = EvalFittedEquation(library, eqX.AllCoefficients, state[0], state[1], state[2])
+        let k1y = EvalFittedEquation(library, eqY.AllCoefficients, state[0], state[1], state[2])
+        let k1z = EvalFittedEquation(library, eqZ.AllCoefficients, state[0], state[1], state[2])
+        let midX = state[0] + 0.5 * dt * k1x
+        let midY = state[1] + 0.5 * dt * k1y
+        let midZ = state[2] + 0.5 * dt * k1z
+        let k2x = EvalFittedEquation(library, eqX.AllCoefficients, midX, midY, midZ)
+        let k2y = EvalFittedEquation(library, eqY.AllCoefficients, midX, midY, midZ)
+        let k2z = EvalFittedEquation(library, eqZ.AllCoefficients, midX, midY, midZ)
+        state[0] = state[0] + dt * k2x
+        state[1] = state[1] + dt * k2y
+        state[2] = state[2] + dt * k2z
+        step = step + 1
+
+        let trueState = solution.States[step]
+        let drift = Abs(state[0] - trueState[0]) + Abs(state[1] - trueState[1]) + Abs(state[2] - trueState[2])
+        if drift > maxDrift { maxDrift = drift }
+    }
+
+    // Loose bound: this is a midpoint-method rollout of an STLSQ fit
+    // to finite-differenced (not even denoised) data over a genuinely
+    // chaotic system -- the point is confirming the pipeline recovers
+    // a system that tracks reasonably, not achieving tight numerical
+    // agreement.
+    Assert.True(maxDrift < 5.0, "fitted system's rollout should track the true Lorenz trajectory reasonably over the fitted window")
+    Assert.True(Len(eqX.ActiveTerms) > 0, "x-equation should have recovered a nonempty active term set")
+    Assert.True(Len(eqY.ActiveTerms) > 0, "y-equation should have recovered a nonempty active term set")
+    Assert.True(Len(eqZ.ActiveTerms) > 0, "z-equation should have recovered a nonempty active term set")
+}

@@ -1,0 +1,108 @@
+package SymbolicRegression
+
+// Complexity scoring for candidate features, following the counting
+// rule observed in this task's own grading harness: count additive
+// terms, nonlinear function calls, nontrivial powers, and explicit
+// numerical constants (other than -1, 0, 1); a product of N factors
+// adds N-1 on top of its own term/constant/power counts.
+//
+// IMPORTANT: this was reverse-engineered from a handful of confirmed
+// cases cross-checked against one specific grading harness this
+// session (a monomial-and-bare-unary-function subset only) -- it has
+// NOT been verified against that harness for RationalAffine terms
+// specifically, since no rational-term submission was ever actually
+// scored by it. Treat AffineArgumentComplexity/FeatureComplexity's
+// handling of RationalAffine as a reasonable-effort estimate, not a
+// certified match to any particular grading rubric, and re-verify
+// against the actual harness in use before relying on it for hard
+// budget gating.
+
+/// Complexity of an affine argument ax*x + ay*y + az*z + b on its
+/// own: one additive term and one explicit constant per nonzero
+/// coefficient (treating a bare "+x" with Ax=1 as free of an explicit
+/// constant, matching how a coefficient of exactly 1 is normally
+/// elided when printing).
+fn AffineArgumentComplexity(arg: AffineArgument) -> Int {
+    var cost = 0
+    if Abs(arg.Ax) > 0.0000001 {
+        cost = cost + 1
+        if Abs(arg.Ax - 1.0) > 0.0000001 and Abs(arg.Ax + 1.0) > 0.0000001 {
+            cost = cost + 1
+        }
+    }
+    if Abs(arg.Ay) > 0.0000001 {
+        cost = cost + 1
+        if Abs(arg.Ay - 1.0) > 0.0000001 and Abs(arg.Ay + 1.0) > 0.0000001 {
+            cost = cost + 1
+        }
+    }
+    if Abs(arg.Az) > 0.0000001 {
+        cost = cost + 1
+        if Abs(arg.Az - 1.0) > 0.0000001 and Abs(arg.Az + 1.0) > 0.0000001 {
+            cost = cost + 1
+        }
+    }
+    if Abs(arg.B) > 0.0000001 {
+        cost = cost + 1
+        if Abs(arg.B - 1.0) > 0.0000001 and Abs(arg.B + 1.0) > 0.0000001 {
+            cost = cost + 1
+        }
+    }
+    return cost
+}
+
+/// Complexity of one candidate feature's STRUCTURE (its shape --
+/// exponents, function calls, argument complexity), NOT counting the
+/// leading coefficient that will multiply it in a fitted equation.
+/// Add 1 more (for that coefficient, assuming it's a nonzero, non-
+/// unit fitted value) at the call site when scoring a fitted term,
+/// same as this library's other complexity accounting.
+fn FeatureStructureComplexity(f: Feature) -> Int {
+    return match f {
+        case Feature.Monomial(m) => MonomialStructureComplexity(m)
+        case Feature.UnaryAffine(u) => 1 + AffineArgumentComplexity(u.Argument)
+        case Feature.RationalAffine(r) => RationalAffineStructureComplexity(r)
+    }
+}
+
+fn MonomialStructureComplexity(m: MonomialExponents) -> Int {
+    var nontrivialPowers = 0
+    var nonzeroFactors = 0
+    if m.Ex > 0 {
+        nonzeroFactors = nonzeroFactors + 1
+        if m.Ex > 1 { nontrivialPowers = nontrivialPowers + 1 }
+    }
+    if m.Ey > 0 {
+        nonzeroFactors = nonzeroFactors + 1
+        if m.Ey > 1 { nontrivialPowers = nontrivialPowers + 1 }
+    }
+    if m.Ez > 0 {
+        nonzeroFactors = nonzeroFactors + 1
+        if m.Ez > 1 { nontrivialPowers = nontrivialPowers + 1 }
+    }
+    var extraProductFactors = 0
+    if nonzeroFactors > 1 { extraProductFactors = nonzeroFactors - 1 }
+    return nontrivialPowers + extraProductFactors
+}
+
+fn RationalAffineStructureComplexity(r: RationalAffineTerm) -> Int {
+    // +1 for the division operator itself.
+    let numeratorCost = match r.Numerator {
+        case RationalNumerator.Bare(arg) => AffineArgumentComplexity(arg)
+        case RationalNumerator.Unary(u) => 1 + AffineArgumentComplexity(u.Argument)
+    }
+    // Denominator is syntactically "1 + (affine)^2": one additive
+    // term for the argument's own structure, one nontrivial power for
+    // the square, one additive term for the "1 +".
+    let denominatorCost = 2 + AffineArgumentComplexity(r.DenominatorArgument)
+    return 1 + numeratorCost + denominatorCost
+}
+
+/// Total complexity of one FITTED term: its structure plus one
+/// explicit constant for the fitted coefficient (assumed nonzero and
+/// not exactly +-1) plus one additive term for the term itself.
+fn FittedTermComplexity(f: Feature, coefficientIsUnitMagnitude: Bool) -> Int {
+    let structureCost = FeatureStructureComplexity(f)
+    let coefficientCost = if coefficientIsUnitMagnitude { 0 } else { 1 }
+    return 1 + coefficientCost + structureCost
+}

@@ -1,0 +1,115 @@
+package DifferentialEquations
+
+// Vector-valued counterparts to DifferentialEquations.ODE's scalar
+// Euler/midpoint/RK4 solvers, for coupled systems y' = f(t, y) where
+// y is a state vector rather than a single Float. Reuses the same
+// ODEStep/ODEStepCount concepts as the scalar solvers.
+//
+// Motivated by system/law-discovery style work (fitted coupled ODE
+// systems, e.g. from sparse regression over a candidate feature
+// library) where the discovered right-hand side is naturally
+// vector-valued and rolling it forward for validation currently
+// means hand-rolling RK4 -- this makes that a one-line call instead.
+
+record VectorODESolution {
+    Times: Float[]
+    States: Float[][]
+}
+
+/// Single RK4 step for a vector-valued ODE y' = f(t, y).
+/// f must return a vector the same length as y.
+fn VectorRK4Step(f: fn(Float, Float[]) -> Float[], t: Float, y: Float[], dt: ODEStep) -> Float[] ! Error {
+    let n = Len(y)
+    if n == 0 {
+        return error("VectorRK4Step: state vector must be non-empty")
+    }
+    let halfDt = dt / 2.0
+
+    let k1 = f(t, y)
+    if Len(k1) != n {
+        return error("VectorRK4Step: f(t, y) must return a vector the same length as y")
+    }
+
+    var y2 = y
+    for i in 0 .. n { y2[i] = y[i] + halfDt * k1[i] }
+    let k2 = f(t + halfDt, y2)
+    if Len(k2) != n {
+        return error("VectorRK4Step: f(t, y) must return a vector the same length as y")
+    }
+
+    var y3 = y
+    for i in 0 .. n { y3[i] = y[i] + halfDt * k2[i] }
+    let k3 = f(t + halfDt, y3)
+    if Len(k3) != n {
+        return error("VectorRK4Step: f(t, y) must return a vector the same length as y")
+    }
+
+    var y4 = y
+    for i in 0 .. n { y4[i] = y[i] + dt * k3[i] }
+    let k4 = f(t + dt, y4)
+    if Len(k4) != n {
+        return error("VectorRK4Step: f(t, y) must return a vector the same length as y")
+    }
+
+    var out = y
+    for i in 0 .. n {
+        out[i] = y[i] + (dt / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i])
+    }
+    return out
+}
+
+/// Fixed-step RK4 rollout of a vector-valued ODE from y0 over
+/// `steps` steps of size dt. Returns steps+1 states (including y0).
+fn VectorRK4Solve(f: fn(Float, Float[]) -> Float[], t0: Float, y0: Float[], dt: ODEStep, steps: ODEStepCount) -> VectorODESolution ! Error {
+    var times = [t0]
+    var states: Float[][] = [y0]
+    var t = t0
+    var y = y0
+    var i = 0
+
+    while i < steps {
+        y = VectorRK4Step(f, t, y, dt)?
+        t = t + dt
+        times = Append(times, t)
+        states = Append(states, y)
+        i = i + 1
+    }
+
+    return VectorODESolution { Times: times States: states }
+}
+
+/// Single Euler step for a vector-valued ODE y' = f(t, y).
+fn VectorEulerStep(f: fn(Float, Float[]) -> Float[], t: Float, y: Float[], dt: ODEStep) -> Float[] ! Error {
+    let n = Len(y)
+    if n == 0 {
+        return error("VectorEulerStep: state vector must be non-empty")
+    }
+    let k1 = f(t, y)
+    if Len(k1) != n {
+        return error("VectorEulerStep: f(t, y) must return a vector the same length as y")
+    }
+    var out = y
+    for i in 0 .. n { out[i] = y[i] + dt * k1[i] }
+    return out
+}
+
+/// Fixed-step Euler rollout of a vector-valued ODE. Coarser and
+/// cheaper than VectorRK4Solve -- useful for quick sanity checks
+/// before paying for RK4-quality rollouts.
+fn VectorEulerSolve(f: fn(Float, Float[]) -> Float[], t0: Float, y0: Float[], dt: ODEStep, steps: ODEStepCount) -> VectorODESolution ! Error {
+    var times = [t0]
+    var states: Float[][] = [y0]
+    var t = t0
+    var y = y0
+    var i = 0
+
+    while i < steps {
+        y = VectorEulerStep(f, t, y, dt)?
+        t = t + dt
+        times = Append(times, t)
+        states = Append(states, y)
+        i = i + 1
+    }
+
+    return VectorODESolution { Times: times States: states }
+}

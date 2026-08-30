@@ -1,0 +1,48 @@
+package DifferentialEquations
+
+fn LinearDecayField(t: Float, y: Float[]) -> Float[] {
+    // dy0/dt = -y0, dy1/dt = -2*y1 -- independent exponential decays,
+    // exact solution known in closed form for verification.
+    return [0.0 - y[0], 0.0 - 2.0 * y[1]]
+}
+
+[Fact]
+fn VectorRK4SolveMatchesKnownExponentialDecay() -> Void ! Error {
+    let dt = 0.01
+    let steps = 100
+    let solution = VectorRK4Solve(LinearDecayField, 0.0, [1.0, 1.0], dt, steps)?
+    Assert.True(Len(solution.States) == steps + 1, "should return steps+1 states")
+    let finalState = solution.States[steps]
+    let t = Float(steps) * dt
+    let expected0 = Exp(0.0 - t)
+    let expected1 = Exp(0.0 - 2.0 * t)
+    Assert.True(Abs(finalState[0] - expected0) < 0.0001, "y0 should match exp(-t) closely")
+    Assert.True(Abs(finalState[1] - expected1) < 0.0001, "y1 should match exp(-2t) closely")
+}
+
+[Fact]
+fn VectorEulerSolveIsCoarserThanRK4() -> Void ! Error {
+    let dt = 0.01
+    let steps = 100
+    let t = Float(steps) * dt
+    let expected0 = Exp(0.0 - t)
+
+    let rk4 = VectorRK4Solve(LinearDecayField, 0.0, [1.0, 1.0], dt, steps)?
+    let euler = VectorEulerSolve(LinearDecayField, 0.0, [1.0, 1.0], dt, steps)?
+
+    let rk4Error = Abs(rk4.States[steps][0] - expected0)
+    let eulerError = Abs(euler.States[steps][0] - expected0)
+    Assert.True(rk4Error < eulerError, "RK4 should be meaningfully more accurate than Euler at the same step size")
+}
+
+[Fact]
+fn VectorRK4StepRejectsMismatchedFieldOutput() -> Void ! Error {
+    match VectorRK4Step(LinearDecayField, 0.0, [1.0, 1.0, 1.0], 0.01) {
+        ok(v) => {
+            Assert.True(false, "should have errored on state/field-output length mismatch")
+        }
+        err(e) => {
+            Assert.True(true, "correctly rejected mismatched lengths")
+        }
+    }
+}

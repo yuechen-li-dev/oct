@@ -18,9 +18,12 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Signal"
         Version: "0.1.0"
-        Authors: ["Codex"]
+        Authors: ["Codex", "Claude"]
         Date: "2026-08-23"
         Description: "Deterministic finite-sequence convolution, correlation, and moving-average helpers"
-        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "LinearAlgebra" VersionRequirement: "0.1.0" }
+        ]
     }
 }

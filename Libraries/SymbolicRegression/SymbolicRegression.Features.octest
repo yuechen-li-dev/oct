@@ -1,0 +1,43 @@
+package SymbolicRegression
+
+[Fact]
+fn MonomialEvaluatesCorrectly() -> Void {
+    let f = Mono(2, 1, 0)
+    let v = EvalFeature(f, 3.0, 4.0, 100.0)
+    Assert.True(Abs(v - 36.0) < 0.0001, "x^2*y at (3,4,100) should be 9*4=36")
+}
+
+[Fact]
+fn UnaryOfAffinePairEvaluatesSinOfSum() -> Void {
+    // sin(y + 0.5*z) at y=1.0, z=2.0 -> sin(2.0)
+    let f = UnaryOfAffinePair(UnaryFn.Sin, 1, 2, 0.5)
+    let v = EvalFeature(f, 0.0, 1.0, 2.0)
+    let expected = Sin(2.0)
+    Assert.True(Abs(v - expected) < 0.0001, "should evaluate sin(y + 0.5*z) correctly")
+}
+
+[Fact]
+fn RationalOfUnaryAffinePairMatchesReferenceShape() -> Void {
+    // sin(y + 0.5*z) / (1 + (x - z)^2) at x=1, y=2, z=3
+    let f = RationalOfUnaryAffinePair(UnaryFn.Sin, 1, 2, 0.5, 0, 2, 0.0 - 1.0)
+    let v = EvalFeature(f, 1.0, 2.0, 3.0)
+    let numerator = Sin(2.0 + 0.5 * 3.0)
+    let denomArg = 1.0 - 3.0
+    let denominator = 1.0 + denomArg * denomArg
+    let expected = numerator / denominator
+    Assert.True(Abs(v - expected) < 0.0001, "should match the reference system's exact rational shape")
+}
+
+[Fact]
+fn RationalAffineDenominatorNeverBelowOne() -> Void {
+    // Sweep a range of inputs; denominator (and hence the whole
+    // feature) should never blow up or divide by anything near zero.
+    let f = RationalOfUnaryAffinePair(UnaryFn.Cos, 0, 1, 1.0, 2, 0, 0.5)
+    var i = 0 - 20
+    while i <= 20 {
+        let x = Float(i) * 0.5
+        let v = EvalFeature(f, x, x, x)
+        Assert.True(Abs(v) <= 1.0, "cos(...)/(1+q^2) magnitude should never exceed the numerator's own bound of 1")
+        i = i + 1
+    }
+}

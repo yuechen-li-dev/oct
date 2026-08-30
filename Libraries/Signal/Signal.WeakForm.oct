@@ -1,0 +1,137 @@
+package Signal
+
+import LinearAlgebra
+
+// Weak-form (integral) smoothing and derivative estimation: an
+// alternative to point-wise differencing (e.g. a naive finite
+// difference, or a hard-windowed local polynomial fit) for pulling a
+// derivative estimate out of a noisy uniformly-sampled series.
+//
+// The core idea, standard in the weak/integral formulation of
+// system identification (see e.g. WSINDy): instead of differencing
+// noisy samples directly (which amplifies noise) or fitting a
+// polynomial with a uniform window (which has a discontinuous weight
+// at the window edge for noise to leak through), weight each window
+// by a compactly-supported bump function that tapers smoothly to
+// zero at both ends, then fit the local polynomial with THOSE
+// weights. The smooth taper is what makes this meaningfully more
+// noise-robust than a uniform window at the same width.
+//
+// Requires uniformly spaced samples (constant dt), same as this
+// library's other windowed filters.
+
+concept WeakFormHalfWidth = Int {
+    Require(Self >= 2, "weak-form half-width must be at least 2")
+}
+
+concept WeakFormBumpPower = Int {
+    Require(Self >= 1, "weak-form bump power must be at least 1")
+}
+
+record WeakFormSeries {
+    // Only interior points [halfWidth .. n-1-halfWidth] are covered;
+    // edges are dropped rather than extrapolated, same convention as
+    // this library's other windowed filters.
+    Times: Float[]
+    Values: Float[]
+    Derivatives: Float[]
+}
+
+/// Compactly supported Wendland-type bump weight phi(s) = (1-s^2)^power
+/// for s in [-1, 1], zero outside. Smoothly tapers to zero at the
+/// window edge, unlike a uniform/rectangular window.
+fn BumpWeight(s: Float, power: Int) -> Float {
+    let base = 1.0 - s * s
+    if base <= 0.0 {
+        return 0.0
+    }
+    var result = 1.0
+    var i = 0
+    while i < power {
+        result = result * base
+        i = i + 1
+    }
+    return result
+}
+
+/// Fit one weighted-least-squares local polynomial window, centered
+/// at `center`, returning the polynomial's coefficients (coeffs[0] is
+/// the value at the window center, coeffs[1] is the derivative per
+/// sample). A standalone top-level helper -- Oct does not support
+/// nested function definitions -- shared by WeakFormSmooth's first
+/// point and its main loop.
+fn FitWeakFormWindow(values: Float[], weights: Float[], center: Int, halfWidth: Int, windowSize: Int, nCoef: Int) -> Float[] ! Error {
+    var AtWA = [0.0]
+    for k in 1 .. nCoef * nCoef { AtWA = Append(AtWA, 0.0) }
+    var AtWy = [0.0]
+    for k in 1 .. nCoef { AtWy = Append(AtWy, 0.0) }
+
+    for i in 0 .. windowSize {
+        let offset = Float(i - halfWidth)
+        let w = weights[i]
+        let y = values[center - halfWidth + i]
+        var powers = [1.0]
+        for k in 1 .. nCoef { powers = Append(powers, powers[k - 1] * offset) }
+        for r in 0 .. nCoef {
+            AtWy[r] = AtWy[r] + w * powers[r] * y
+            for c in 0 .. nCoef {
+                AtWA[r * nCoef + c] = AtWA[r * nCoef + c] + w * powers[r] * powers[c]
+            }
+        }
+    }
+
+    return LinearAlgebra.SolveLinearSystem(AtWA, nCoef, nCoef, AtWy)?
+}
+
+/// Weak-form local-polynomial smoothing + derivative estimation. At
+/// each interior point, fits a degree-`polyOrder` polynomial to the
+/// window via weighted least squares (weights from BumpWeight), then
+/// reads the smoothed value and derivative off that local polynomial
+/// at the window center. `bumpPower` controls how sharply the weight
+/// tapers (higher = more concentrated near the center, closer to a
+/// uniform window; lower = broader, gentler taper).
+fn WeakFormSmooth(times: Float[], values: Float[], halfWidth: Int, polyOrder: Int, bumpPower: Int, dt: Float) -> WeakFormSeries ! Error {
+    let admittedWidth = WeakFormHalfWidth(halfWidth)?
+    let admittedPower = WeakFormBumpPower(bumpPower)?
+    if polyOrder < 1 {
+        return error("WeakFormSmooth: polyOrder must be at least 1")
+    }
+    if dt <= 0.0 {
+        return error("WeakFormSmooth: dt must be positive")
+    }
+    let n = Len(values)
+    if Len(times) != n {
+        return error("WeakFormSmooth: times and values must be the same length")
+    }
+    let windowSize = 2 * halfWidth + 1
+    if n < windowSize {
+        return error("WeakFormSmooth: series shorter than window")
+    }
+    let nCoef = polyOrder + 1
+
+    // Bump weights are the same for every window (uniform sampling),
+    // so precompute once.
+    var weights = [0.0]
+    for k in 1 .. windowSize { weights = Append(weights, 0.0) }
+    for i in 0 .. windowSize {
+        let offset = i - halfWidth
+        let s = Float(offset) / Float(halfWidth)
+        weights[i] = BumpWeight(s, bumpPower)
+    }
+
+    let firstCoeffs = FitWeakFormWindow(values, weights, halfWidth, halfWidth, windowSize, nCoef)?
+    var outTimes = [times[halfWidth]]
+    var outValues = [firstCoeffs[0]]
+    var outDerivs = [firstCoeffs[1] / dt]
+
+    var center = halfWidth + 1
+    while center < n - halfWidth {
+        let coeffs = FitWeakFormWindow(values, weights, center, halfWidth, windowSize, nCoef)?
+        outTimes = Append(outTimes, times[center])
+        outValues = Append(outValues, coeffs[0])
+        outDerivs = Append(outDerivs, coeffs[1] / dt)
+        center = center + 1
+    }
+
+    return WeakFormSeries { Times: outTimes Values: outValues Derivatives: outDerivs }
+}

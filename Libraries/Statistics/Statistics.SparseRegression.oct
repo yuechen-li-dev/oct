@@ -1,0 +1,127 @@
+package Statistics
+
+import LinearAlgebra
+
+// Sparse linear regression via sequential thresholded least squares
+// (STLSQ): general-purpose, not tied to any one application. Given
+// a design matrix and a target, it fits ordinary least squares, zeroes
+// coefficients below a threshold, and refits on the reduced support,
+// repeating until the active set stabilizes. This is the standard
+// sparse-identification workhorse behind SINDy-style equation
+// discovery, but is equally usable for any "find a small active
+// feature subset" linear regression problem.
+
+concept SparsityThreshold = Float {
+    Require(Self > 0.0, "STLSQ threshold must be positive")
+}
+
+record SparseRegressionResult {
+    Coefficients: Float[]
+    ActiveMask: Bool[]
+    Iterations: Int
+}
+
+/// Sequential thresholded least squares. `theta` is the design matrix,
+/// nSamples x nFeatures, flattened row-major (theta[i*nFeatures+j] is
+/// feature j of sample i). `target` has length nSamples. Coefficients
+/// with magnitude below `threshold` are pruned each iteration; the
+/// remaining support is refit via ordinary least squares (normal
+/// equations) until the active set stops changing or `maxIter` is hit.
+fn SequentialThresholdedLeastSquares(theta: Float[], nSamples: Int, nFeatures: Int, target: Float[], threshold: Float, maxIter: Int) -> SparseRegressionResult ! Error {
+    let admittedThreshold = SparsityThreshold(threshold)?
+    if nSamples <= 0 or nFeatures <= 0 {
+        return error("SequentialThresholdedLeastSquares: nSamples and nFeatures must be positive")
+    }
+    if Len(theta) != nSamples * nFeatures {
+        return error("SequentialThresholdedLeastSquares: theta length must equal nSamples * nFeatures")
+    }
+    if Len(target) != nSamples {
+        return error("SequentialThresholdedLeastSquares: target length must equal nSamples")
+    }
+    if maxIter <= 0 {
+        return error("SequentialThresholdedLeastSquares: maxIter must be positive")
+    }
+
+    var active = [true]
+    for k in 1 .. nFeatures { active = Append(active, true) }
+
+    var coeffs = [0.0]
+    for k in 1 .. nFeatures { coeffs = Append(coeffs, 0.0) }
+
+    var iter = 0
+    var changed = true
+    while iter < maxIter and changed {
+        var activeIdx = [0]
+        var first = true
+        for j in 0 .. nFeatures {
+            if active[j] {
+                if first {
+                    activeIdx = [j]
+                    first = false
+                } else {
+                    activeIdx = Append(activeIdx, j)
+                }
+            }
+        }
+        let nActive = Len(activeIdx)
+        if nActive == 0 {
+            changed = false
+        }
+        if nActive > 0 {
+            var thetaR = [0.0]
+            for k in 1 .. nSamples * nActive { thetaR = Append(thetaR, 0.0) }
+            for i in 0 .. nSamples {
+                for jj in 0 .. nActive {
+                    thetaR[i * nActive + jj] = theta[i * nFeatures + activeIdx[jj]]
+                }
+            }
+
+            let thetaRt = LinearAlgebra.Transpose(thetaR, nSamples, nActive)?
+            let AtA = LinearAlgebra.MatMul(thetaRt, nActive, nSamples, thetaR, nSamples, nActive)?
+            let Atb = LinearAlgebra.MatVecMul(thetaRt, nActive, nSamples, target)?
+            let cReduced = LinearAlgebra.SolveLinearSystem(AtA, nActive, nActive, Atb)?
+
+            var newCoeffs = [0.0]
+            for k in 1 .. nFeatures { newCoeffs = Append(newCoeffs, 0.0) }
+            for jj in 0 .. nActive {
+                newCoeffs[activeIdx[jj]] = cReduced[jj]
+            }
+
+            var newActive = [false]
+            for k in 1 .. nFeatures { newActive = Append(newActive, false) }
+            var anyChange = false
+            for j in 0 .. nFeatures {
+                let keep = Abs(newCoeffs[j]) >= threshold
+                if keep {
+                    newActive[j] = true
+                }
+                if not keep {
+                    newCoeffs[j] = 0.0
+                }
+                if keep != active[j] {
+                    anyChange = true
+                }
+            }
+            coeffs = newCoeffs
+            active = newActive
+            changed = anyChange
+        }
+        iter = iter + 1
+    }
+
+    return SparseRegressionResult { Coefficients: coeffs ActiveMask: active Iterations: iter }
+}
+
+/// Predict theta*coefficients for one row of a design matrix already
+/// evaluated at nFeatures columns (a convenience for scoring a fitted
+/// SparseRegressionResult against new feature rows one at a time).
+fn PredictSparseRegressionRow(coefficients: Float[], featureRow: Float[]) -> Float ! Error {
+    if Len(coefficients) != Len(featureRow) {
+        return error("PredictSparseRegressionRow: coefficients and featureRow must be the same length")
+    }
+    var sum = 0.0
+    for j in 0 .. Len(coefficients) {
+        sum = sum + coefficients[j] * featureRow[j]
+    }
+    return sum
+}

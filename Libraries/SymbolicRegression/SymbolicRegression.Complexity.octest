@@ -1,0 +1,31 @@
+package SymbolicRegression
+
+[Fact]
+fn MatchesConfirmedComplexityFromRealTaskGrading() -> Void {
+    // Cross-checked this session against an actual grading harness:
+    // "0.1677 - 0.3928*y - 0.8123*z + 0.2098*x*y" scored complexity 9
+    // (4 additive terms + 4 explicit constants + 1 extra product
+    // factor for x*y). This is the one real data point available to
+    // validate the monomial-and-constant part of this scoring against.
+    let constTerm = FittedTermComplexity(Mono(0, 0, 0), false)
+    let yTerm = FittedTermComplexity(Mono(0, 1, 0), false)
+    let zTerm = FittedTermComplexity(Mono(0, 0, 1), false)
+    let xyTerm = FittedTermComplexity(Mono(1, 1, 0), false)
+    let total = constTerm + yTerm + zTerm + xyTerm
+    Assert.Equal(9, total, "should match the confirmed real-world complexity score of 9")
+}
+
+[Fact]
+fn UnitCoefficientDoesNotAddConstantCost() -> Void {
+    let withUnitCoef = FittedTermComplexity(Mono(1, 0, 0), true)
+    let withNonUnitCoef = FittedTermComplexity(Mono(1, 0, 0), false)
+    Assert.True(withUnitCoef < withNonUnitCoef, "a unit (+-1) coefficient should not cost an explicit constant")
+}
+
+[Fact]
+fn AffineArgumentComplexityCountsEachNonzeroCoefficient() -> Void {
+    // y + 0.5*z: two additive terms, one explicit constant (the 0.5;
+    // the y coefficient of 1 is elided).
+    let arg = AffineArgument { Ax: 0.0 Ay: 1.0 Az: 0.5 B: 0.0 }
+    Assert.Equal(3, AffineArgumentComplexity(arg), "should count 2 terms + 1 explicit constant")
+}

@@ -1,0 +1,176 @@
+package SymbolicRegression
+
+// Candidate feature representation for sparse symbolic (SINDy-style)
+// regression over three state variables (x, y, z). Deliberately wider
+// than a "bare variable" library in two specific ways that turned out
+// to matter in practice: unary functions can take an AFFINE
+// COMBINATION of the variables as their argument (sin(y + 0.5*z), not
+// just sin(x)), and a narrow, syntactically-safe RATIONAL form is
+// available (numerator / (1 + affine^2)) -- the denominator is always
+// >= 1 by construction, so this needs no runtime safety checking or
+// interval-arithmetic certification, unlike a general division
+// operator over arbitrary candidate expressions.
+//
+// This is deliberately a narrower, safer subset of what a full
+// grammar-driven enumeration (arbitrary binary operators, certified
+// via conservative interval arithmetic over the evaluation domain)
+// would cover -- that's real additional scope, left for a follow-up
+// rather than bundled in here. What's here covers monomials, affine-
+// argument unary compositions, and the single most common safe
+// rational shape, which in practice covers a meaningful set of terms
+// a bare-variable library cannot represent at all.
+
+enum UnaryFn {
+    Sin
+    Cos
+    Exp
+    Log
+    Sqrt
+}
+
+/// ax*x + ay*y + az*z + b. The argument to a unary function, or the
+/// numerator/denominator argument of a RationalAffine term.
+record AffineArgument {
+    Ax: Float
+    Ay: Float
+    Az: Float
+    B: Float
+}
+
+record MonomialExponents {
+    Ex: Int
+    Ey: Int
+    Ez: Int
+}
+
+record UnaryAffineTerm {
+    Fn: UnaryFn
+    Argument: AffineArgument
+}
+
+enum RationalNumerator {
+    // A bare affine numerator: (ax*x + ay*y + az*z + b) / (1 + q^2)
+    Bare(AffineArgument)
+    // A unary-of-affine numerator: fn(affine) / (1 + q^2)
+    Unary(UnaryAffineTerm)
+}
+
+record RationalAffineTerm {
+    Numerator: RationalNumerator
+    // Denominator is always exactly 1 + DenominatorArgument(x,y,z)^2,
+    // which is always >= 1 -- safe by construction, no division-by-
+    // zero or near-zero-denominator case is representable here.
+    DenominatorArgument: AffineArgument
+}
+
+enum Feature {
+    Monomial(MonomialExponents)
+    UnaryAffine(UnaryAffineTerm)
+    RationalAffine(RationalAffineTerm)
+}
+
+fn EvalAffine(arg: AffineArgument, x: Float, y: Float, z: Float) -> Float {
+    return arg.Ax * x + arg.Ay * y + arg.Az * z + arg.B
+}
+
+fn EvalUnaryFn(f: UnaryFn, v: Float) -> Float {
+    return match f {
+        case UnaryFn.Sin => Sin(v)
+        case UnaryFn.Cos => Cos(v)
+        case UnaryFn.Exp => Exp(v)
+        case UnaryFn.Log => Ln(v)
+        case UnaryFn.Sqrt => Sqrt(v)
+    }
+}
+
+fn MonomialPow(base: Float, exp: Int) -> Float {
+    var result = 1.0
+    var i = 0
+    while i < exp {
+        result = result * base
+        i = i + 1
+    }
+    return result
+}
+
+fn EvalRationalAffine(r: RationalAffineTerm, x: Float, y: Float, z: Float) -> Float {
+    let denomArg = EvalAffine(r.DenominatorArgument, x, y, z)
+    let denominator = 1.0 + denomArg * denomArg
+    let numerator = match r.Numerator {
+        case RationalNumerator.Bare(arg) => EvalAffine(arg, x, y, z)
+        case RationalNumerator.Unary(u) => EvalUnaryFn(u.Fn, EvalAffine(u.Argument, x, y, z))
+    }
+    return numerator / denominator
+}
+
+/// Evaluate a candidate feature at a point (x, y, z). Never errors:
+/// RationalAffine's denominator is always >= 1 by construction.
+fn EvalFeature(f: Feature, x: Float, y: Float, z: Float) -> Float {
+    return match f {
+        case Feature.Monomial(m) => MonomialPow(x, m.Ex) * MonomialPow(y, m.Ey) * MonomialPow(z, m.Ez)
+        case Feature.UnaryAffine(u) => EvalUnaryFn(u.Fn, EvalAffine(u.Argument, x, y, z))
+        case Feature.RationalAffine(r) => EvalRationalAffine(r, x, y, z)
+    }
+}
+
+// ---- Construction helpers ----
+
+fn Mono(ex: Int, ey: Int, ez: Int) -> Feature {
+    return Feature.Monomial(MonomialExponents { Ex: ex Ey: ey Ez: ez })
+}
+
+/// A bare variable's affine argument: 1*that variable, no offset.
+fn BareVarArgument(varIndex: Int) -> AffineArgument {
+    if varIndex == 0 { return AffineArgument { Ax: 1.0 Ay: 0.0 Az: 0.0 B: 0.0 } }
+    if varIndex == 1 { return AffineArgument { Ax: 0.0 Ay: 1.0 Az: 0.0 B: 0.0 } }
+    return AffineArgument { Ax: 0.0 Ay: 0.0 Az: 1.0 B: 0.0 }
+}
+
+/// Returns `arg` with `weight * (that variable)` added into it --
+/// e.g. AddWeightedVarToArgument(BareVarArgument(1), 2, 0.5) builds
+/// the affine argument for "y + 0.5*z".
+fn AddWeightedVarToArgument(arg: AffineArgument, varIndex: Int, weight: Float) -> AffineArgument {
+    let addend = BareVarArgument(varIndex)
+    return arg with {
+        Ax: arg.Ax + weight * addend.Ax
+        Ay: arg.Ay + weight * addend.Ay
+        Az: arg.Az + weight * addend.Az
+    }
+}
+
+/// fn(that variable) -- the "bare argument" case, e.g. sin(x).
+fn UnaryOfVar(f: UnaryFn, varIndex: Int) -> Feature {
+    return Feature.UnaryAffine(UnaryAffineTerm { Fn: f Argument: BareVarArgument(varIndex) })
+}
+
+/// fn(primary + weight*secondary) -- an affine two-variable argument,
+/// e.g. UnaryOfAffinePair(Sin, 1, 2, 0.5) is sin(y + 0.5*z).
+fn UnaryOfAffinePair(f: UnaryFn, primaryVar: Int, secondaryVar: Int, weight: Float) -> Feature {
+    let arg = AddWeightedVarToArgument(BareVarArgument(primaryVar), secondaryVar, weight)
+    return Feature.UnaryAffine(UnaryAffineTerm { Fn: f Argument: arg })
+}
+
+/// (primary + weight*secondary) / (1 + (denomPrimary + denomWeight*denomSecondary)^2)
+/// -- a bare-affine-numerator rational term.
+fn RationalOfAffinePair(primaryVar: Int, secondaryVar: Int, weight: Float, denomPrimaryVar: Int, denomSecondaryVar: Int, denomWeight: Float) -> Feature {
+    let numArg = AddWeightedVarToArgument(BareVarArgument(primaryVar), secondaryVar, weight)
+    let denomArg = AddWeightedVarToArgument(BareVarArgument(denomPrimaryVar), denomSecondaryVar, denomWeight)
+
+    return Feature.RationalAffine(RationalAffineTerm {
+        Numerator: RationalNumerator.Bare(numArg)
+        DenominatorArgument: denomArg
+    })
+}
+
+/// fn(primary + weight*secondary) / (1 + (denomPrimary + denomWeight*denomSecondary)^2)
+/// -- a unary-of-affine-numerator rational term, e.g. this is the
+/// exact shape of sin(y + 0.5*z) / (1 + (x - z)^2).
+fn RationalOfUnaryAffinePair(f: UnaryFn, primaryVar: Int, secondaryVar: Int, weight: Float, denomPrimaryVar: Int, denomSecondaryVar: Int, denomWeight: Float) -> Feature {
+    let numArg = AddWeightedVarToArgument(BareVarArgument(primaryVar), secondaryVar, weight)
+    let denomArg = AddWeightedVarToArgument(BareVarArgument(denomPrimaryVar), denomSecondaryVar, denomWeight)
+
+    return Feature.RationalAffine(RationalAffineTerm {
+        Numerator: RationalNumerator.Unary(UnaryAffineTerm { Fn: f Argument: numArg })
+        DenominatorArgument: denomArg
+    })
+}

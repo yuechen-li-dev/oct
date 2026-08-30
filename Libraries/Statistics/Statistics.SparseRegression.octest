@@ -1,0 +1,32 @@
+package Statistics
+
+[Fact]
+fn STLSQRecoversKnownSparseSystemExactly() -> Void ! Error {
+    // theta columns: [1, x, x^2], target = 2 - 3x (x^2 coefficient
+    // should be pruned to exactly zero).
+    let n = 50
+    var theta = [0.0]
+    for k in 1 .. n * 3 { theta = Append(theta, 0.0) }
+    var target = [0.0]
+    for k in 1 .. n { target = Append(target, 0.0) }
+    for i in 0 .. n {
+        let x = Float(i) * 0.1 - 2.5
+        theta[i * 3 + 0] = 1.0
+        theta[i * 3 + 1] = x
+        theta[i * 3 + 2] = x * x
+        target[i] = 2.0 - 3.0 * x
+    }
+
+    let result = SequentialThresholdedLeastSquares(theta, n, 3, target, 0.05, 10)?
+    Assert.True(Abs(result.Coefficients[0] - 2.0) < 0.0001, "constant term should recover 2.0")
+    Assert.True(Abs(result.Coefficients[1] - (0.0 - 3.0)) < 0.0001, "linear term should recover -3.0")
+    Assert.True(result.Coefficients[2] == 0.0, "quadratic term should be pruned to exactly zero")
+    Assert.True(result.ActiveMask[0] and result.ActiveMask[1], "constant and linear terms should be active")
+    Assert.True(not result.ActiveMask[2], "quadratic term should be inactive")
+}
+
+[Fact]
+fn PredictSparseRegressionRowComputesDotProduct() -> Void ! Error {
+    let prediction = PredictSparseRegressionRow([1.0, 0.0, 2.0], [5.0, 100.0, 3.0])?
+    Assert.True(Abs(prediction - 11.0) < 0.0001, "should compute 1*5 + 0*100 + 2*3 = 11")
+}

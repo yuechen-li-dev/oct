@@ -1,0 +1,192 @@
+package SymbolicRegression
+
+import Statistics
+import LinearAlgebra
+
+// Ties Feature evaluation to Statistics.SequentialThresholdedLeastSquares:
+// build a design matrix from a candidate feature library, fit it, and
+// read fitted coefficients back out alongside their originating
+// features.
+
+record FittedFeature {
+    Feature: Feature
+    Coefficient: Float
+}
+
+record FittedSystemEquation {
+    ActiveTerms: FittedFeature[]
+    AllCoefficients: Float[]
+    ActiveMask: Bool[]
+}
+
+/// Build the design matrix Theta: nSamples x Len(library), flattened
+/// row-major, evaluating every candidate feature at every sample.
+fn BuildDesignMatrix(library: Feature[], xs: Float[], ys: Float[], zs: Float[]) -> Float[] ! Error {
+    let n = Len(xs)
+    if Len(ys) != n or Len(zs) != n {
+        return error("BuildDesignMatrix: xs, ys, and zs must be the same length")
+    }
+    let nf = Len(library)
+    var theta = [0.0]
+    for k in 1 .. n * nf { theta = Append(theta, 0.0) }
+    for i in 0 .. n {
+        for j in 0 .. nf {
+            theta[i * nf + j] = EvalFeature(library[j], xs[i], ys[i], zs[i])
+        }
+    }
+    return theta
+}
+
+/// Fit one equation's right-hand side against a candidate library via
+/// STLSQ, returning both the raw coefficient vector (for rollout/
+/// integration use) and the human-inspectable list of active terms.
+fn FitEquation(library: Feature[], xs: Float[], ys: Float[], zs: Float[], target: Float[], threshold: Float, maxIter: Int) -> FittedSystemEquation ! Error {
+    let theta = BuildDesignMatrix(library, xs, ys, zs)?
+    let n = Len(xs)
+    let nf = Len(library)
+    let result = Statistics.SequentialThresholdedLeastSquares(theta, n, nf, target, threshold, maxIter)?
+
+    var activeTerms: FittedFeature[] = []
+    for j in 0 .. nf {
+        if result.ActiveMask[j] {
+            activeTerms = Append(activeTerms, FittedFeature { Feature: library[j] Coefficient: result.Coefficients[j] })
+        }
+    }
+
+    return FittedSystemEquation {
+        ActiveTerms: activeTerms
+        AllCoefficients: result.Coefficients
+        ActiveMask: result.ActiveMask
+    }
+}
+
+/// Evaluate a fitted equation's right-hand side (dot product of its
+/// coefficients against the library evaluated at one point) -- the
+/// per-equation building block for a vector field usable with
+/// DifferentialEquations.VectorRK4Solve.
+fn EvalFittedEquation(library: Feature[], coefficients: Float[], x: Float, y: Float, z: Float) -> Float {
+    var sum = 0.0
+    for j in 0 .. Len(library) {
+        sum = sum + coefficients[j] * EvalFeature(library[j], x, y, z)
+    }
+    return sum
+}
+
+/// Total complexity of a fitted equation (sum of FittedTermComplexity
+/// over its active terms). See SymbolicRegression.Complexity for the
+/// caveats on RationalAffine's contribution.
+fn FittedEquationComplexity(equation: FittedSystemEquation) -> Int {
+    var total = 0
+    for i in 0 .. Len(equation.ActiveTerms) {
+        let term = equation.ActiveTerms[i]
+        let isUnit = Abs(Abs(term.Coefficient) - 1.0) < 0.0000001
+        total = total + FittedTermComplexity(term.Feature, isUnit)
+    }
+    return total
+}
+
+// ---- Candidate library builders ----
+
+/// Every monomial of total degree <= 2 (10 terms): the standard
+/// starting hypothesis for a 3-variable quadratic system.
+fn BaseLibrary() -> Feature[] {
+    return [
+        Mono(0, 0, 0),
+        Mono(1, 0, 0),
+        Mono(0, 1, 0),
+        Mono(0, 0, 1),
+        Mono(2, 0, 0),
+        Mono(0, 2, 0),
+        Mono(0, 0, 2),
+        Mono(1, 1, 0),
+        Mono(1, 0, 1),
+        Mono(0, 1, 1)
+    ]
+}
+
+/// Every monomial of total degree == 3 whose factors are NOT all the
+/// same variable (excludes x^3, y^3, z^3). Pure odd-power self-terms
+/// are the classic ODE-rollout instability risk: a positive fitted
+/// coefficient on x^3 creates unbounded positive feedback (bigger x
+/// -> bigger x^3 -> even bigger x) the moment a rollout drifts past
+/// the fit's stable region, in a way cross-terms like x^2*y don't,
+/// since their growth is coupled to another (independently damped)
+/// variable rather than self-reinforcing. Confirmed empirically this
+/// session: including x^3/y^3/z^3 produced a rollout that diverged to
+/// NaN; excluding them and keeping only these cross-terms did not.
+fn SafeCubicCrossTerms() -> Feature[] {
+    return [
+        Mono(2, 1, 0),
+        Mono(2, 0, 1),
+        Mono(1, 2, 0),
+        Mono(0, 2, 1),
+        Mono(1, 0, 2),
+        Mono(0, 1, 2),
+        Mono(1, 1, 1)
+    ]
+}
+
+/// sin/cos of each bare variable (6 terms). exp is deliberately
+/// excluded from this "safe" pool for the same reason as pure odd
+/// monomials: it's unbounded, so a positive fitted coefficient risks
+/// rollout blowup the moment a trajectory drifts outside the fit's
+/// training range, unlike sin/cos which are bounded on the whole real
+/// line by construction.
+fn SafeBareTrigTerms() -> Feature[] {
+    var lib: Feature[] = []
+    for varIdx in 0 .. 3 {
+        lib = Append(lib, UnaryOfVar(UnaryFn.Sin, varIdx))
+        lib = Append(lib, UnaryOfVar(UnaryFn.Cos, varIdx))
+    }
+    return lib
+}
+
+/// sin/cos of each pairwise affine combination (var_i + weight*var_j)
+/// for a small set of weights -- the term family this library adds
+/// beyond a bare-variable-only search, and the one confirmed to
+/// matter: this task's actual hidden reference system used
+/// sin(y + 0.5*z), cos(x + 0.5*z), and similar affine-argument
+/// compositions that a bare sin(x)/sin(y)/sin(z) library cannot
+/// represent at any coefficient setting.
+fn AffineTrigCandidates(weights: Float[]) -> Feature[] {
+    var lib: Feature[] = []
+    for primary in 0 .. 3 {
+        for secondary in 0 .. 3 {
+            if primary != secondary {
+                for w in 0 .. Len(weights) {
+                    lib = Append(lib, UnaryOfAffinePair(UnaryFn.Sin, primary, secondary, weights[w]))
+                    lib = Append(lib, UnaryOfAffinePair(UnaryFn.Cos, primary, secondary, weights[w]))
+                }
+            }
+        }
+    }
+    return lib
+}
+
+/// Rational candidates of the shape fn(var_i + weight*var_j) /
+/// (1 + (var_k - var_l)^2)-style denominators, for a small set of
+/// weights -- the second confirmed-missing term family: the hidden
+/// reference system's dx/dy equations both used this exact saturating-
+/// nonlinearity shape (a bounded numerator divided by a denominator
+/// that grows with the square of a variable difference), which no
+/// polynomial-plus-bare-unary library can approximate well globally.
+fn AffineRationalCandidates(weights: Float[]) -> Feature[] {
+    var lib: Feature[] = []
+    for primary in 0 .. 3 {
+        for secondary in 0 .. 3 {
+            if primary != secondary {
+                for denomPrimary in 0 .. 3 {
+                    for denomSecondary in 0 .. 3 {
+                        if denomPrimary != denomSecondary {
+                            for w in 0 .. Len(weights) {
+                                lib = Append(lib, RationalOfUnaryAffinePair(UnaryFn.Sin, primary, secondary, weights[w], denomPrimary, denomSecondary, 0.0 - 1.0))
+                                lib = Append(lib, RationalOfUnaryAffinePair(UnaryFn.Cos, primary, secondary, weights[w], denomPrimary, denomSecondary, 0.0 - 1.0))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return lib
+}

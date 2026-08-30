@@ -1,0 +1,20 @@
+package Signal
+
+[Fact]
+fn WeakFormSmoothRecoversQuadraticExactly() -> Void ! Error {
+    let dt = 0.05
+    var times = [0.0]
+    var values = [1.0]
+    for i in 1 .. 60 {
+        let t = Float(i) * dt
+        times = Append(times, t)
+        values = Append(values, 2.0 * t * t - 3.0 * t + 1.0)
+    }
+    let result = WeakFormSmooth(times, values, 8, 2, 6, dt)?
+    let idx = 20
+    let t = result.Times[idx]
+    let expectedValue = 2.0 * t * t - 3.0 * t + 1.0
+    let expectedDeriv = 4.0 * t - 3.0
+    Assert.True(Abs(result.Values[idx] - expectedValue) < 0.001, "should recover quadratic value closely")
+    Assert.True(Abs(result.Derivatives[idx] - expectedDeriv) < 0.01, "should recover quadratic derivative closely")
+}

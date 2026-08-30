@@ -1,0 +1,35 @@
+package Optimization
+
+// Objective: sum of squared residuals against a target curve packed
+// into `context` -- data that a plain fn(Float[]) -> Float could
+// never see, since Oct function values can't capture it.
+fn SumOfSquaresAgainstContext(x: Float[], context: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0 .. Len(x) {
+        let diff = x[i] - context[i]
+        sum = sum + diff * diff
+    }
+    return sum
+}
+
+[Fact]
+fn NelderMeadWithContextFindsTargetPackedInContext() -> Void ! Error {
+    let target = [3.0, 0.0 - 1.5, 2.25]
+    let result = NelderMeadWithContext(SumOfSquaresAgainstContext, target, [0.0, 0.0, 0.0], 0.0001, 0.0000001, 500)?
+    Assert.True(Abs(result.Point[0] - 3.0) < 0.01, "should recover x[0] near 3.0")
+    Assert.True(Abs(result.Point[1] - (0.0 - 1.5)) < 0.01, "should recover x[1] near -1.5")
+    Assert.True(Abs(result.Point[2] - 2.25) < 0.01, "should recover x[2] near 2.25")
+    Assert.True(result.FMin < 0.0001, "objective should be near zero at the optimum")
+}
+
+[Fact]
+fn CoordinateDescentWithContextRespectsActiveMask() -> Void ! Error {
+    let target = [3.0, 0.0 - 1.5, 2.25]
+    // Only coordinate 0 and 2 are active -- coordinate 1 should stay
+    // pinned at its starting value regardless of the target.
+    let active = [true, false, true]
+    let result = CoordinateDescentWithContext(SumOfSquaresAgainstContext, target, [0.0, 0.0, 0.0], active, 0.5, 8)?
+    Assert.True(Abs(result.Point[0] - 3.0) < 0.01, "active coordinate 0 should move toward target")
+    Assert.True(result.Point[1] == 0.0, "inactive coordinate 1 should stay fixed at its starting value")
+    Assert.True(Abs(result.Point[2] - 2.25) < 0.01, "active coordinate 2 should move toward target")
+}

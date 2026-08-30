@@ -1,0 +1,32 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "SymbolicRegression"
+        Version: "0.1.0"
+        Authors: ["Claude"]
+        Date: "2026-08-29"
+        Description: "Candidate feature libraries, complexity scoring, and structural search for sparse symbolic (SINDy-style) ODE/model discovery over 3 state variables"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "LinearAlgebra" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Statistics" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Optimization" VersionRequirement: "0.1.0" },
+            Dependency { Name: "DifferentialEquations" VersionRequirement: "0.1.0" }
+        ]
+    }
+}
