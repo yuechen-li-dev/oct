@@ -31,6 +31,19 @@ flow FilterWithCapturedParameter(values: Int[], predicate: fn(Int) -> Bool) -> I
     }
 }
 
+flow FilterWithActivationCapture(values: Int[], limit: Int) -> Int {
+    state Run {
+        let threshold = limit
+        let predicate = fn(value: Int) -> Bool with {
+            threshold: threshold
+        } {
+            return value >= threshold
+        }
+        let accepted = Filter<Int>(values, predicate)
+        return Len(accepted)
+    }
+}
+
 [Fact]
 fn FlowConsumesEscapedAndExplicitlyCapturedCallables() -> Void {
     let escapedMachine = FilterWithEscapedCallable([1, 4, 6], 4)
@@ -46,6 +59,10 @@ fn FlowConsumesEscapedAndExplicitlyCapturedCallables() -> Void {
     let capturedMachine = FilterWithCapturedParameter([2, 5, 7], captured)
     Step(capturedMachine)
     Assert.Equal(2, Result(capturedMachine)!, "FLOW should consume explicit capture through ordinary fn type")
+
+    let activationMachine = FilterWithActivationCapture([2, 5, 7], 5)
+    Step(activationMachine)
+    Assert.Equal(2, Result(activationMachine)!, "FLOW should construct an ordinary captured callable inside the activation")
 }
 
 template fn MapThroughTemplate<T, U>(values: T[], transform: fn(T) -> U) -> U[] {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -2358,14 +2359,11 @@ func renderFlowCheckpoint(b *strings.Builder, c interpret.FlowCheckpoint, ind st
 	fmt.Fprintf(b, "\n%s    StepCount: %d\n%s}", ind, c.StepCount, ind)
 }
 func renderCPValue(b *strings.Builder, v interpret.FlowCheckpointValue) {
-	fmt.Fprintf(b, "FlowCheckpointValue { Kind: %q Dimension: %q Int: %d Float: %g Bool: %t String: %q Array: [", v.Kind, v.Dimension, v.Int, v.Float, v.Bool, v.String)
-	for i, e := range v.Array {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		renderCPValue(b, e)
+	payload, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("marshal FLOW checkpoint value: %v", err))
 	}
-	b.WriteString("] }")
+	fmt.Fprintf(b, "FlowCheckpointValue { JSON: %q }", string(payload))
 }
 
 func loadMakeFlowCheckpoint(path string) (makeFlowCheckpointFile, error) {
@@ -2480,6 +2478,14 @@ func parseCPValue(s string) interpret.FlowCheckpointValue {
 	if i >= 0 {
 		s = s[i:]
 	}
+	if payload := fieldString(s, "JSON"); payload != "" {
+		var value interpret.FlowCheckpointValue
+		if json.Unmarshal([]byte(payload), &value) == nil {
+			return value
+		}
+	}
+	// Version 2 scalar checkpoints remain readable for deliberate invalidation
+	// and diagnostics; version validation prevents resuming them as version 3.
 	return interpret.FlowCheckpointValue{Kind: fieldString(s, "Kind"), Dimension: fieldString(s, "Dimension"), Int: fieldInt(s, "Int"), Float: fieldFloat(s, "Float"), Bool: fieldBool(s, "Bool"), String: fieldString(s, "String")}
 }
 func fieldFloat(s, field string) float64 {

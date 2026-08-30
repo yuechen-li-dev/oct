@@ -189,7 +189,7 @@ fn Main() -> Int { return 0 }
 	beforeHistory := append([]string(nil), inst.StateHistory...)
 	binding, _ := inst.RootEnv.lookup("board")
 	record := binding.value
-	record.Record.Fields["Count"] = Value{Kind: ValueRecord, Record: RecordValue{TypeName: "Unsupported"}}
+	record.Record.Fields["Count"] = Value{Kind: ValueFunc}
 	assignBindingValue(inst.RootEnv, "board", record)
 	_, err := ExportFlowCheckpoint(inst, FlowCheckpointOptions{})
 	requireCheckpointReason(t, err, FlowCheckpointUnsupportedValueType)
@@ -293,6 +293,73 @@ fn Main() -> Int { return 0 }
 	}
 	if len(inst.DirtyBoardFields) != 0 {
 		t.Fatalf("dirty board fields not cleared: %#v", inst.DirtyBoardFields)
+	}
+}
+
+func TestFlowCheckpointRoundTripsAllPersistentAggregateKinds(t *testing.T) {
+	program := checkpointProgram(t, `package Main
+record Leaf { Count: Int Samples: Float[] }
+record Nested { Current: Leaf History: Leaf[] }
+enum Mode { Idle Active(Leaf) }
+flow Durable() -> Int {
+    board {
+        NestedValue: Nested
+        ModeValue: Mode
+        Grid: Int[][]
+        Direction: Vector<Float>
+        Transform: Matrix<Float>
+    }
+    state Run {
+        board.NestedValue = Nested {
+            Current: Leaf { Count: 3 Samples: [1.5, 2.5] }
+            History: [Leaf { Count: 3 Samples: [1.5, 2.5] }]
+        }
+        board.ModeValue = Mode.Active(Leaf { Count: 3 Samples: [1.5, 2.5] })
+        board.Grid = [[1, 2], [3, 4]]
+        board.Direction = vector[5.0, 6.0]
+        board.Transform = matrix[[7.0, 8.0] [9.0, 10.0]]
+        suspend
+        board.Grid[0, 0] = 99
+        return board.NestedValue.Current.Count + board.Grid[1][1]
+    }
+}
+fn Main() -> Int { return 0 }
+`)
+	first, err := RunFlowToSuspensionWithOptions(program, "Main", "Durable", 20, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("run to suspend: %v", err)
+	}
+	checkpoint, err := first.ExportCheckpoint(FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatalf("export aggregate checkpoint: %v", err)
+	}
+	restored, err := InstantiateFlowFromCheckpoint(program, "Main", "Durable", checkpoint, FlowRestoreOptions{})
+	if err != nil {
+		t.Fatalf("restore aggregate checkpoint: %v", err)
+	}
+	board, ok := restored.RootEnv.lookup("board")
+	if !ok || board.value.Kind != ValueRecord {
+		t.Fatalf("restored board = %#v", board.value)
+	}
+	fields := board.value.Record.Fields
+	if fields["NestedValue"].Record.Fields["Current"].Record.Fields["Count"].Int != 3 {
+		t.Fatalf("nested record did not round trip: %#v", fields["NestedValue"])
+	}
+	if fields["ModeValue"].Enum.Variant != "Active" || fields["ModeValue"].Enum.Payload == nil || fields["ModeValue"].Enum.Payload.Record.Fields["Count"].Int != 3 {
+		t.Fatalf("payload enum did not round trip: %#v", fields["ModeValue"])
+	}
+	if len(fields["Direction"].Vector) != 2 || fields["Direction"].Vector[1].Float != 6.0 {
+		t.Fatalf("vector did not round trip: %#v", fields["Direction"])
+	}
+	if fields["Transform"].Matrix.Rows != 2 || fields["Transform"].Matrix.Cols != 2 || fields["Transform"].Matrix.Elements[2].Float != 9.0 {
+		t.Fatalf("matrix did not round trip: %#v", fields["Transform"])
+	}
+	resumed, err := RunFlowToCompletionFromCheckpointWithOptions(program, "Main", "Durable", checkpoint, 20, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("continue restored aggregate checkpoint: %v", err)
+	}
+	if !resumed.Completed || resumed.Result.Kind != ValueInt || resumed.Result.Int != 7 {
+		t.Fatalf("restored result = %#v completed=%v, want Int(7)", resumed.Result, resumed.Completed)
 	}
 }
 

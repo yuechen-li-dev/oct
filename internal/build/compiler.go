@@ -436,6 +436,19 @@ type MIRFlowIfExpr struct {
 
 func (MIRFlowIfExpr) mirFlowExpr() {}
 
+// MIRFlowSharedExpr is an ordinary compiled-expression computation embedded in
+// a FLOW activation. Its blocks and locals are the same MIR used by ordinary
+// functions; FLOW contributes only binding expressions such as f.board.X and
+// the surrounding machine-control statement.
+type MIRFlowSharedExpr struct {
+	Type     string
+	Fallible bool
+	Locals   []MIRField
+	Blocks   []MIRBlock
+}
+
+func (MIRFlowSharedExpr) mirFlowExpr() {}
+
 type MIRField struct {
 	Name string
 	Type string
@@ -950,11 +963,12 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 				}
 				module.Records = append(module.Records, snapshot)
 			}
-			mirFlow, err := lowerFlow(program, pkgName, flow, pkg)
+			mirFlow, expressionFunctions, err := lowerFlow(program, pkgName, flow, pkg)
 			if err != nil {
 				return MIRModule{}, fmt.Errorf("flow %s.%s: %w", pkgName, flow.Name, err)
 			}
 			module.Flows = append(module.Flows, mirFlow)
+			module.Functions = append(module.Functions, expressionFunctions...)
 			if options.selectedReachableOnly {
 				for _, call := range collectFlowUserCalls(mirFlow) {
 					targetPkg := pkgName
@@ -3964,6 +3978,20 @@ func (c *lowerCtx) lookupRecordFieldType(recordType, fieldName string) (string, 
 	if !ok {
 		return "", false
 	}
+	if strings.HasPrefix(typeName, "__flow_board_") {
+		flowName := strings.TrimPrefix(typeName, "__flow_board_")
+		for _, flow := range pkg.Flows {
+			if flow.Name != flowName {
+				continue
+			}
+			for _, field := range flow.Board {
+				if field.Name == fieldName {
+					return typeRefStringForPackage(pkgName, field.Type), true
+				}
+			}
+			return "", false
+		}
+	}
 	for _, record := range pkg.Records {
 		isTableRow := record.IsTable && "__oct_table_row_"+record.Name == typeName
 		if record.Name != typeName && !isTableRow {
@@ -5640,6 +5668,20 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 
 var flowLowerProgram project.Program
 
+// compiledExpressionContext carries the typed ordinary-lowering authority that
+// a FLOW activation needs without turning FLOW into a second expression
+// language. M1 initially routes anonymous function construction through this
+// seam; the remaining legacy MIRFlowExpr variants are tracked explicitly.
+type compiledExpressionContext struct {
+	program     project.Program
+	pkg         project.Package
+	flowName    string
+	anonymousID int
+	functions   []MIRFunction
+}
+
+var activeFlowExpressionContext *compiledExpressionContext
+
 func cloneStringMap(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
 	for k, v := range in {
@@ -5656,8 +5698,12 @@ func cloneBoolMap(in map[string]bool) map[string]bool {
 	return out
 }
 
-func lowerFlow(program project.Program, pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, error) {
+func lowerFlow(program project.Program, pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, []MIRFunction, error) {
 	flowLowerProgram = program
+	previousExpressionContext := activeFlowExpressionContext
+	expressionContext := &compiledExpressionContext{program: program, pkg: pkg, flowName: flow.Name}
+	activeFlowExpressionContext = expressionContext
+	defer func() { activeFlowExpressionContext = previousExpressionContext }()
 	env := map[string]string{}
 	locals := map[string]bool{}
 	boardFieldTypes := map[string]string{}
@@ -5695,11 +5741,11 @@ func lowerFlow(program project.Program, pkgName string, flow ast.FlowDecl, pkg p
 		stateLocals := cloneFlowLocals(locals)
 		lowered, err := lowerFlowBlock(st.Body, stateEnv, stateLocals, pkg.Name, boardFieldTypes)
 		if err != nil {
-			return MIRFlow{}, fmt.Errorf("state %s: %w", st.Name, err)
+			return MIRFlow{}, nil, fmt.Errorf("state %s: %w", st.Name, err)
 		}
 		out.States = append(out.States, MIRFlowState{Name: st.Name, Statements: lowered})
 	}
-	return out, nil
+	return out, expressionContext.functions, nil
 }
 
 func cloneFlowEnv(env map[string]string) map[string]string {
@@ -6006,6 +6052,9 @@ func lowerFlowExprTyped(expr ast.Expr, env map[string]string, locals map[string]
 	if err != nil {
 		return nil, "", false, err
 	}
+	if shared, ok := v.(MIRFlowSharedExpr); ok {
+		return v, shared.Type, shared.Fallible, nil
+	}
 	t, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
 	if err != nil {
 		return nil, "", false, err
@@ -6029,6 +6078,13 @@ func lowerFlowExprTyped(expr ast.Expr, env map[string]string, locals map[string]
 }
 
 func lowerFallibleFlowCall(call ast.CallExpr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, string, error) {
+	if sharedExpr, err := lowerSharedFlowExpression(call, env, locals); err == nil {
+		shared := sharedExpr.(MIRFlowSharedExpr)
+		if !shared.Fallible {
+			return nil, "", fmt.Errorf("operator '!' requires fallible expression")
+		}
+		return shared, shared.Type, nil
+	}
 	callee, ret, builtinCall, fallible, err := resolveFlowCall(call.Callee, pkg)
 	if err != nil {
 		return nil, "", err
@@ -6054,6 +6110,16 @@ func lowerFallibleFlowCall(call ast.CallExpr, env map[string]string, locals map[
 }
 
 func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, error) {
+	switch expression := expr.(type) {
+	case ast.UtilityWhenExpr:
+		// Controller-bound utility selection owns persistent FLOW policy state.
+		// Its ordinary child expressions still route through this shared seam.
+		_ = expression
+	case ast.PropagateExpr:
+		return nil, fmt.Errorf("error propagation with '?' requires a fallible FLOW result contract; handle the error with match or use '!'")
+	default:
+		return lowerSharedFlowExpression(expr, env, locals)
+	}
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
 		return MIRFlowLiteralExpr{Value: e.Value}, nil
@@ -6071,6 +6137,8 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			return nil, fmt.Errorf("unknown identifier '%s'", e.Name)
 		}
 		return MIRFlowIdentifierExpr{Name: e.Name, IsLocal: locals[e.Name]}, nil
+	case ast.FunctionExpr:
+		return lowerSharedFlowExpression(e, env, locals)
 	case ast.BinaryExpr:
 		l, err := lowerFlowExpr(e.Left, env, locals, pkg, boardFieldTypes)
 		if err != nil {
@@ -6502,6 +6570,58 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 	}
 }
 
+func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals map[string]bool) (MIRFlowExpr, error) {
+	shared := activeFlowExpressionContext
+	if shared == nil {
+		return nil, fmt.Errorf("internal error: missing compiled FLOW expression context")
+	}
+	ordinaryLocals := make(map[string]string, len(env))
+	goNames := make(map[string]string, len(env))
+	for name, typ := range env {
+		ordinaryLocals[name] = typ
+		switch {
+		case flowLocals[name]:
+			goNames[name] = goIdent(name)
+		case name == "board":
+			goNames[name] = "f.board"
+		default:
+			goNames[name] = "f." + goIdent(name)
+		}
+	}
+	ctx := &lowerCtx{
+		pkg:         shared.pkg,
+		program:     shared.program,
+		locals:      ordinaryLocals,
+		goNames:     goNames,
+		blocks:      []MIRBlock{{Label: "entry"}},
+		cur:         0,
+		retType:     "Void",
+		fn:          ast.FunctionDecl{Name: shared.flowName + "_state_expression"},
+		anonymousID: shared.anonymousID,
+		einTerms:    map[string]einsteinTermMeta{},
+	}
+	value, typ, fallible, err := ctx.lowerExpr(expr)
+	if err != nil {
+		return nil, err
+	}
+	if fallible {
+		return nil, fmt.Errorf("anonymous function construction unexpectedly produced a fallible value")
+	}
+	ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: value}
+	shared.anonymousID = ctx.anonymousID
+	shared.functions = append(shared.functions, ctx.extra...)
+
+	resultLocals := make([]MIRField, 0)
+	for name, localType := range ctx.locals {
+		if _, external := env[name]; external {
+			continue
+		}
+		resultLocals = append(resultLocals, MIRField{Name: ctx.goLocalName(name), Type: localType})
+	}
+	sort.Slice(resultLocals, func(i, j int) bool { return resultLocals[i].Name < resultLocals[j].Name })
+	return MIRFlowSharedExpr{Type: typ, Fallible: fallible, Locals: resultLocals, Blocks: ctx.blocks}, nil
+}
+
 func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFieldTypes map[string]string) (string, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
@@ -6518,6 +6638,16 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 			return "", fmt.Errorf("unknown identifier '%s'", e.Name)
 		}
 		return t, nil
+	case ast.FunctionExpr:
+		parameters := make([]string, 0, len(e.Parameters))
+		for _, parameter := range e.Parameters {
+			parameters = append(parameters, typeRefStringForPackage(pkg, parameter.Type))
+		}
+		functionType := "fn(" + strings.Join(parameters, ", ") + ") -> " + typeRefStringForPackage(pkg, e.ReturnType)
+		if e.IsFallible {
+			functionType += " ! Error"
+		}
+		return functionType, nil
 	case ast.UnaryExpr:
 		if e.Operator == "not" {
 			return "Bool", nil
@@ -7004,6 +7134,8 @@ func dumpFlowWhenAction(action MIRFlowWhenAction) string {
 
 func dumpFlowExpr(expr MIRFlowExpr) string {
 	switch e := expr.(type) {
+	case MIRFlowSharedExpr:
+		return fmt.Sprintf("ordinary-mir[%s,fallible=%t]:%#v", e.Type, e.Fallible, e.Blocks)
 	case MIRFlowLiteralExpr:
 		return e.Value
 	case MIRFlowIdentifierExpr:
@@ -7067,6 +7199,23 @@ func analyzeGoSupportFeatures(module MIRModule, usedBuiltins map[string]bool) go
 		for _, field := range append(append([]MIRField{}, flow.Parameters...), flow.Board...) {
 			features.NeedsRange = features.NeedsRange || compiledTypeNeedsRange(field.Type)
 		}
+		for _, field := range flow.Board {
+			features.NeedsClone = features.NeedsClone || compiledValueNeedsClone(field.Type)
+		}
+		walkFlowSharedStatements(flow, func(statement MIRStmt) {
+			if mirStatementContains(statement, "__octClone(") {
+				features.NeedsClone = true
+			}
+			if mirStatementContains(statement, "__octRange{") {
+				features.NeedsRange = true
+			}
+			if mirStatementContains(statement, "__octIntArrayToFloat(") {
+				features.NeedsArrayCoercion = true
+			}
+			if _, ok := statement.(MIRRowAssign); ok {
+				features.NeedsRowAssign, features.NeedsClone = true, true
+			}
+		})
 	}
 	for _, function := range module.Functions {
 		features.NeedsRange = features.NeedsRange || compiledTypeNeedsRange(function.Return)
@@ -7223,6 +7372,21 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	for _, flow := range m.Flows {
 		flowResultTypes[flow.Return] = struct{}{}
 		collectFlowBuiltins(flow, usedBuiltins)
+		walkFlowSharedStatements(flow, func(statement MIRStmt) {
+			switch node := statement.(type) {
+			case MIRCall:
+				if node.Builtin && node.Callee == "LoadOctagon" {
+					loadTypes[node.RetType], resultTypes[node.RetType] = struct{}{}, struct{}{}
+				}
+			case MIRBatchMap:
+				resultTypes[node.ResultType+"[]"] = struct{}{}
+			case MIRGenericOctxiliaryCall:
+				usesGenericOctxiliary = true
+				if node.Fallible {
+					resultTypes[node.RetType] = struct{}{}
+				}
+			}
+		})
 	}
 	for _, fn := range m.Functions {
 		if fn.UsesUtilityWhen {
@@ -7791,6 +7955,14 @@ func collectFlowUserCalls(flow MIRFlow) []string {
 	var visitAction func(MIRFlowWhenAction)
 	visitExpr = func(expr MIRFlowExpr) {
 		switch e := expr.(type) {
+		case MIRFlowSharedExpr:
+			for _, block := range e.Blocks {
+				for _, statement := range block.Statements {
+					if call, ok := statement.(MIRCall); ok && !call.Builtin && !call.FunctionValue {
+						seen[call.Callee] = struct{}{}
+					}
+				}
+			}
 		case MIRFlowCallExpr:
 			if !e.Builtin && !e.FunctionValueLocal {
 				seen[e.Callee] = struct{}{}
@@ -8000,6 +8172,19 @@ func collectFlowBuiltinsWhenAction(action MIRFlowWhenAction, usedBuiltins map[st
 
 func collectFlowBuiltinsExpr(expr MIRFlowExpr, usedBuiltins map[string]bool) {
 	switch e := expr.(type) {
+	case MIRFlowSharedExpr:
+		for _, block := range e.Blocks {
+			for _, statement := range block.Statements {
+				switch node := statement.(type) {
+				case MIRCall:
+					if node.Builtin {
+						usedBuiltins[node.Callee] = true
+					}
+				case MIRBatchMap:
+					usedBuiltins["BatchMap"] = true
+				}
+			}
+		}
 	case MIRFlowBinaryExpr:
 		collectFlowBuiltinsExpr(e.Left, usedBuiltins)
 		collectFlowBuiltinsExpr(e.Right, usedBuiltins)
@@ -8057,6 +8242,103 @@ func collectFlowBuiltinsExpr(expr MIRFlowExpr, usedBuiltins map[string]bool) {
 		collectFlowBuiltinsExpr(e.Condition, usedBuiltins)
 		collectFlowBuiltinsExpr(e.Then, usedBuiltins)
 		collectFlowBuiltinsExpr(e.Else, usedBuiltins)
+	}
+}
+
+func walkFlowSharedStatements(flow MIRFlow, visit func(MIRStmt)) {
+	var walkExpr func(MIRFlowExpr)
+	var walkStmt func(MIRFlowStmt)
+	var walkAction func(MIRFlowWhenAction)
+	walkExpr = func(expr MIRFlowExpr) {
+		switch node := expr.(type) {
+		case MIRFlowSharedExpr:
+			for _, block := range node.Blocks {
+				for _, statement := range block.Statements {
+					visit(statement)
+				}
+			}
+		case MIRFlowUtilityWhenExpr:
+			walkExpr(node.Hysteresis)
+			walkExpr(node.MinCommit)
+			walkExpr(node.Else)
+			for _, candidate := range node.Cases {
+				walkExpr(candidate.Value)
+				walkExpr(candidate.Condition)
+				walkExpr(candidate.Score)
+			}
+		}
+	}
+	walkAction = func(action MIRFlowWhenAction) {
+		switch node := action.(type) {
+		case MIRFlowWhenReturn:
+			if node.Value != nil {
+				walkExpr(node.Value)
+			}
+		case MIRFlowWhenBlock:
+			for _, statement := range node.Statements {
+				walkStmt(statement)
+			}
+		}
+	}
+	walkStmt = func(statement MIRFlowStmt) {
+		switch node := statement.(type) {
+		case MIRFlowLetStmt:
+			walkExpr(node.Value)
+		case MIRFlowLocalAssign:
+			walkExpr(node.Value)
+		case MIRFlowFieldAssign:
+			walkExpr(node.Value)
+		case MIRFlowFieldIndexAssign:
+			for _, index := range node.Indices {
+				walkExpr(index)
+			}
+			walkExpr(node.Value)
+		case MIRFlowReturn:
+			if node.Value != nil {
+				walkExpr(node.Value)
+			}
+		case MIRFlowYield:
+			walkExpr(node.Value)
+		case MIRFlowIf:
+			walkExpr(node.Condition)
+			for _, nested := range node.Then {
+				walkStmt(nested)
+			}
+			for _, nested := range node.Else {
+				walkStmt(nested)
+			}
+		case MIRFlowWhile:
+			walkExpr(node.Condition)
+			for _, nested := range node.Body {
+				walkStmt(nested)
+			}
+		case MIRFlowFor:
+			walkExpr(node.Start)
+			walkExpr(node.End)
+			walkExpr(node.Step)
+			for _, nested := range node.Body {
+				walkStmt(nested)
+			}
+		case MIRFlowFallibleMatch:
+			walkExpr(node.Subject)
+			for _, nested := range node.OkBody {
+				walkStmt(nested)
+			}
+			for _, nested := range node.ErrBody {
+				walkStmt(nested)
+			}
+		case MIRFlowWhen:
+			for _, candidate := range node.Cases {
+				walkExpr(candidate.Condition)
+				walkAction(candidate.Action)
+			}
+			walkAction(node.Else)
+		}
+	}
+	for _, state := range flow.States {
+		for _, statement := range state.Statements {
+			walkStmt(statement)
+		}
 	}
 }
 
@@ -10060,7 +10342,7 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	} else {
 		fmt.Fprintf(b, "\treturn %s_%sBoardSnapshot{\n", flow.Package, flow.Name)
 		for _, field := range flow.Board {
-			fmt.Fprintf(b, "\t\t%s: f.board.%s,\n", field.Name, field.Name)
+			fmt.Fprintf(b, "\t\t%s: %s,\n", field.Name, cloneCompiledValueExpr("f.board."+field.Name, field.Type))
 		}
 		b.WriteString("\t}, true\n}\n\n")
 	}
@@ -10088,7 +10370,7 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	} else {
 		fmt.Fprintf(b, "\tif !f.started { f.started = true; f.currentState = %d; f.instruction = 0 }\n", entryID)
 	}
-	b.WriteString("\tfor {\n\t\tswitch f.currentState {\n")
+	b.WriteString("__octFlowMachine:\n\tfor {\n\t\tif false { break __octFlowMachine }\n\t\tswitch f.currentState {\n")
 	stateIDs := map[string]int{}
 	for idx, state := range flow.States {
 		stateIDs[state.Name] = idx
@@ -10453,9 +10735,9 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 			return "", fmt.Errorf("unknown goto target %s", s.Target)
 		}
 		if features.NeedsHistory {
-			return fmt.Sprintf("f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q); continue", target, s.Target), nil
+			return fmt.Sprintf("f.currentState = %d; f.instruction = 0; f.history = append(f.history, %q); continue __octFlowMachine", target, s.Target), nil
 		}
-		return fmt.Sprintf("f.currentState = %d; f.instruction = 0; continue", target), nil
+		return fmt.Sprintf("f.currentState = %d; f.instruction = 0; continue __octFlowMachine", target), nil
 	case MIRFlowSuspend:
 		return "f.instruction++\nreturn", nil
 	case MIRFlowYield:
@@ -10471,7 +10753,7 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		if features.NeedsHistory {
 			resume += "\nf.history = append(f.history, f.__octStateName(__resumeTarget))"
 		}
-		return resume + "\ncontinue", nil
+		return resume + "\ncontinue __octFlowMachine", nil
 	case MIRFlowFieldAssign:
 		v, err := emitGoFlowExpr(s.Value, pkg)
 		if err != nil {
@@ -10657,8 +10939,58 @@ func emitGoFlowInlineStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int,
 			return "", err
 		}
 		return fmt.Sprintf("%s = %s", s.Name, v), nil
+	case MIRFlowRemember:
+		return "f.hasResumeTarget = true\nf.resumeTarget = f.currentState", nil
 	case MIRFlowIf:
-		return emitGoFlowStmt(s, pkg, stateIDs, resultType, features)
+		condition, err := emitGoFlowExpr(s.Condition, pkg)
+		if err != nil {
+			return "", err
+		}
+		thenSource, err := emitGoFlowInlineBlock(s.Then, pkg, stateIDs, resultType, features)
+		if err != nil {
+			return "", err
+		}
+		out := "if " + condition + " {\n" + thenSource + "\n}"
+		if len(s.Else) > 0 {
+			elseSource, err := emitGoFlowInlineBlock(s.Else, pkg, stateIDs, resultType, features)
+			if err != nil {
+				return "", err
+			}
+			out += " else {\n" + elseSource + "\n}"
+		}
+		return out, nil
+	case MIRFlowWhile:
+		condition, err := emitGoFlowExpr(s.Condition, pkg)
+		if err != nil {
+			return "", err
+		}
+		body, err := emitGoFlowInlineBlock(s.Body, pkg, stateIDs, resultType, features)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("for %s {\n%s\n}", condition, body), nil
+	case MIRFlowFor:
+		start, err := emitGoFlowExpr(s.Start, pkg)
+		if err != nil {
+			return "", err
+		}
+		end, err := emitGoFlowExpr(s.End, pkg)
+		if err != nil {
+			return "", err
+		}
+		step, err := emitGoFlowExpr(s.Step, pkg)
+		if err != nil {
+			return "", err
+		}
+		body, err := emitGoFlowInlineBlock(s.Body, pkg, stateIDs, resultType, features)
+		if err != nil {
+			return "", err
+		}
+		comparison, update := "<", "+="
+		if s.Descending {
+			comparison, update = ">", "-="
+		}
+		return fmt.Sprintf("for %s := %s; %s %s %s; %s %s %s {\n%s\n}", s.Name, start, s.Name, comparison, end, s.Name, update, step, body), nil
 	default:
 		return emitGoFlowStmt(s, pkg, stateIDs, resultType, features)
 	}
@@ -10675,7 +11007,7 @@ func emitGoFlowWhenAction(action MIRFlowWhenAction, pkg string, stateIDs map[str
 		if features.NeedsHistory {
 			transition += fmt.Sprintf("\nf.history = append(f.history, %q)", a.Target)
 		}
-		return transition + "\ncontinue", nil
+		return transition + "\ncontinue __octFlowMachine", nil
 	case MIRFlowWhenSuspend:
 		return "f.instruction++\nreturn", nil
 	case MIRFlowWhenReturn:
@@ -10729,7 +11061,7 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 		if features.NeedsHistory {
 			transition += fmt.Sprintf("\nf.history = append(f.history, %q)", s.Target)
 		}
-		return transition + "\ncontinue", nil
+		return transition + "\ncontinue __octFlowMachine", nil
 	case MIRFlowSuspend:
 		return "f.instruction++\nreturn", nil
 	case MIRFlowYield:
@@ -10743,7 +11075,7 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 		if features.NeedsHistory {
 			resume += "\nf.history = append(f.history, f.__octStateName(__resumeTarget))"
 		}
-		return resume + "\ncontinue", nil
+		return resume + "\ncontinue __octFlowMachine", nil
 	case MIRFlowReturn:
 		if s.Value == nil {
 			if resultType == "Void" {
@@ -10763,6 +11095,8 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 
 func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 	switch e := expr.(type) {
+	case MIRFlowSharedExpr:
+		return emitGoSharedExpression(e)
 	case MIRFlowLiteralExpr:
 		return e.Value, nil
 	case MIRFlowIdentifierExpr:
@@ -11002,6 +11336,60 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 	default:
 		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
 	}
+}
+
+func emitGoSharedExpression(expr MIRFlowSharedExpr) (string, error) {
+	if len(expr.Blocks) == 0 {
+		return "", fmt.Errorf("shared compiled expression has no MIR blocks")
+	}
+	var b strings.Builder
+	resultType := goType(expr.Type)
+	if expr.Fallible {
+		resultType = goResultTypeName(expr.Type)
+	}
+	fmt.Fprintf(&b, "func() %s {\n", resultType)
+	for _, local := range expr.Locals {
+		localType := goType(local.Type)
+		if local.Type == "Void" {
+			localType = "__octVoid"
+		}
+		fmt.Fprintf(&b, "var %s %s\n", local.Name, localType)
+		if local.Name != "_" {
+			fmt.Fprintf(&b, "_ = %s\n", local.Name)
+		}
+	}
+	labels := make(map[string]int, len(expr.Blocks))
+	for index, block := range expr.Blocks {
+		labels[block.Label] = index
+	}
+	pc := internalName(internalProgramCounter, -1)
+	fmt.Fprintf(&b, "%s := 0\nfor {\nswitch %s {\n", pc, pc)
+	for index, block := range expr.Blocks {
+		fmt.Fprintf(&b, "case %d:\n", index)
+		for _, statement := range block.Statements {
+			source, err := goStmt(statement)
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(source)
+			b.WriteByte('\n')
+		}
+		terminator := block.Terminator
+		if terminator == nil {
+			if index+1 >= len(expr.Blocks) {
+				return "", fmt.Errorf("shared compiled expression final block %s has no terminator", block.Label)
+			}
+			terminator = MIRJump{Target: expr.Blocks[index+1].Label}
+		}
+		source, err := goTerminator(terminator, labels, pc)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(source)
+		b.WriteByte('\n')
+	}
+	b.WriteString("}\n}\n}()")
+	return b.String(), nil
 }
 
 func emitGoStringFromAssign(target string, args []string, argTypes []string) (string, error) {

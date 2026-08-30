@@ -5377,7 +5377,7 @@ func flowBoardSnapshotValue(instance *FlowRuntimeInstance) (Value, bool) {
 	fields := make(map[string]Value, len(board.Record.Fields))
 	order := make([]string, 0, len(board.Record.FieldOrder))
 	for _, name := range board.Record.FieldOrder {
-		fields[name] = board.Record.Fields[name]
+		fields[name] = cloneValue(board.Record.Fields[name])
 		order = append(order, name)
 	}
 	return Value{Kind: ValueRecord, Record: RecordValue{TypeName: instance.Decl.Name + "BoardSnapshot", Fields: fields, FieldOrder: order}}, true

@@ -45,7 +45,7 @@ func compilePersistentPolicySpecimen(t *testing.T) string {
 	if len(pkg.Flows) != 1 {
 		t.Fatalf("expected one specimen flow, got %d", len(pkg.Flows))
 	}
-	flow, err := lowerFlow(program, program.Entry, pkg.Flows[0], pkg)
+	flow, _, err := lowerFlow(program, program.Entry, pkg.Flows[0], pkg)
 	if err != nil {
 		t.Fatal(err)
 	}

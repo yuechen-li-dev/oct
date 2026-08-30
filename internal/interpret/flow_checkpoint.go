@@ -14,7 +14,9 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/project"
 )
 
-const FlowCheckpointVersion = 2
+// Version 3 adds deterministic aggregate value payloads (records, enums,
+// vectors, and matrices) to the logical checkpoint schema.
+const FlowCheckpointVersion = 3
 
 const FlowCheckpointCursorTopLevelNext = "top-level-statement-next"
 
@@ -169,7 +171,7 @@ func (i interpreter) instantiateFlowFromCheckpoint(pkg string, flowName string, 
 	if !ok {
 		return nil, checkpointErr(FlowCheckpointFlowMismatch, "missing flow "+key)
 	}
-	arguments, err := restoreFlowConstructionCheckpoint(flow, checkpoint.Construction)
+	arguments, err := i.restoreFlowConstructionCheckpoint(pkg, flow, checkpoint.Construction)
 	if err != nil {
 		return nil, err
 	}
@@ -200,14 +202,14 @@ func (i interpreter) instantiateFlowFromCheckpoint(pkg string, flowName string, 
 			return nil, checkpointErr(FlowCheckpointStateHistoryInvalid, historyState)
 		}
 	}
-	if err := restoreFlowBoardCheckpoint(inst, checkpoint.Board); err != nil {
+	if err := i.restoreFlowBoardCheckpoint(inst, checkpoint.Board); err != nil {
 		return nil, err
 	}
 	if checkpoint.YieldType != "" {
 		if flow.YieldType == nil || checkpoint.YieldType != expectedTypeString(*flow.YieldType) {
 			return nil, checkpointErr(FlowCheckpointYieldSchemaMismatch, fmt.Sprintf("checkpoint %q", checkpoint.YieldType))
 		}
-		lastYield, err := restoreCheckpointValue(checkpoint.LastYield, *flow.YieldType)
+		lastYield, err := i.restoreCheckpointValue(checkpoint.LastYield, *flow.YieldType, pkg)
 		if err != nil {
 			return nil, checkpointErr(FlowCheckpointYieldSchemaMismatch, err.Error())
 		}
@@ -285,13 +287,22 @@ type FlowCheckpointField struct {
 }
 
 type FlowCheckpointValue struct {
-	Kind      string
-	Dimension string
-	Int       int64
-	Float     float64
-	Bool      bool
-	String    string
-	Array     []FlowCheckpointValue
+	Kind       string
+	Dimension  string
+	Int        int64
+	Float      float64
+	Bool       bool
+	String     string
+	Array      []FlowCheckpointValue
+	RecordType string
+	Fields     []FlowCheckpointField
+	EnumType   string
+	Variant    string
+	Payload    *FlowCheckpointValue
+	Vector     []FlowCheckpointValue
+	MatrixRows int
+	MatrixCols int
+	Matrix     []FlowCheckpointValue
 }
 
 func (inst *FlowRuntimeInstance) ExportCheckpoint(opts FlowCheckpointOptions) (FlowCheckpoint, error) {
@@ -374,7 +385,7 @@ func exportFlowConstructionCheckpoint(inst *FlowRuntimeInstance) ([]FlowCheckpoi
 	return fields, nil
 }
 
-func restoreFlowConstructionCheckpoint(flow ast.FlowDecl, fields []FlowCheckpointField) ([]Value, error) {
+func (i interpreter) restoreFlowConstructionCheckpoint(pkg string, flow ast.FlowDecl, fields []FlowCheckpointField) ([]Value, error) {
 	if len(fields) != len(flow.Parameters) {
 		return nil, checkpointErr(FlowCheckpointConstructionParameterMismatch, fmt.Sprintf("parameter count %d want %d", len(fields), len(flow.Parameters)))
 	}
@@ -385,7 +396,7 @@ func restoreFlowConstructionCheckpoint(flow ast.FlowDecl, fields []FlowCheckpoin
 		if field.Name != parameter.Name || field.Type != expected {
 			return nil, checkpointErr(FlowCheckpointConstructionParameterMismatch, fmt.Sprintf("parameter %d checkpoint %s:%s want %s:%s", index, field.Name, field.Type, parameter.Name, expected))
 		}
-		value, err := restoreCheckpointValue(field.Value, parameter.Type)
+		value, err := i.restoreCheckpointValue(field.Value, parameter.Type, pkg)
 		if err != nil {
 			return nil, checkpointErr(FlowCheckpointConstructionParameterMismatch, parameter.Name+": "+err.Error())
 		}
@@ -476,6 +487,46 @@ func checkpointValue(value Value) (FlowCheckpointValue, error) {
 			out = append(out, cv)
 		}
 		return FlowCheckpointValue{Kind: string(ValueArray), Array: out}, nil
+	case ValueVector:
+		out := make([]FlowCheckpointValue, len(value.Vector))
+		for idx, element := range value.Vector {
+			cv, err := checkpointValue(element)
+			if err != nil {
+				return FlowCheckpointValue{}, fmt.Errorf("vector[%d]: %w", idx, err)
+			}
+			out[idx] = cv
+		}
+		return FlowCheckpointValue{Kind: string(ValueVector), Vector: out}, nil
+	case ValueMatrix:
+		out := make([]FlowCheckpointValue, len(value.Matrix.Elements))
+		for idx, element := range value.Matrix.Elements {
+			cv, err := checkpointValue(element)
+			if err != nil {
+				return FlowCheckpointValue{}, fmt.Errorf("matrix[%d]: %w", idx, err)
+			}
+			out[idx] = cv
+		}
+		return FlowCheckpointValue{Kind: string(ValueMatrix), MatrixRows: value.Matrix.Rows, MatrixCols: value.Matrix.Cols, Matrix: out}, nil
+	case ValueRecord:
+		fields := make([]FlowCheckpointField, 0, len(value.Record.FieldOrder))
+		for _, name := range value.Record.FieldOrder {
+			cv, err := checkpointValue(value.Record.Fields[name])
+			if err != nil {
+				return FlowCheckpointValue{}, fmt.Errorf("record field %s: %w", name, err)
+			}
+			fields = append(fields, FlowCheckpointField{Name: name, Value: cv})
+		}
+		return FlowCheckpointValue{Kind: string(ValueRecord), RecordType: value.Record.TypeName, Fields: fields}, nil
+	case ValueEnum:
+		out := FlowCheckpointValue{Kind: string(ValueEnum), EnumType: value.Enum.TypeName, Variant: value.Enum.Variant}
+		if value.Enum.Payload != nil {
+			payload, err := checkpointValue(*value.Enum.Payload)
+			if err != nil {
+				return FlowCheckpointValue{}, fmt.Errorf("enum payload: %w", err)
+			}
+			out.Payload = &payload
+		}
+		return out, nil
 	default:
 		return FlowCheckpointValue{}, fmt.Errorf("%s", value.Kind)
 	}
@@ -510,6 +561,54 @@ func restoreCheckpointValueWithoutType(checkpoint FlowCheckpointValue) (Value, e
 			values[index] = value
 		}
 		return Value{Kind: ValueArray, Array: values}, nil
+	case string(ValueVector):
+		values := make([]Value, len(checkpoint.Vector))
+		for index, element := range checkpoint.Vector {
+			value, err := restoreCheckpointValueWithoutType(element)
+			if err != nil {
+				return Value{}, fmt.Errorf("vector[%d]: %w", index, err)
+			}
+			values[index] = value
+		}
+		return Value{Kind: ValueVector, Vector: values}, nil
+	case string(ValueMatrix):
+		values := make([]Value, len(checkpoint.Matrix))
+		for index, element := range checkpoint.Matrix {
+			value, err := restoreCheckpointValueWithoutType(element)
+			if err != nil {
+				return Value{}, fmt.Errorf("matrix[%d]: %w", index, err)
+			}
+			values[index] = value
+		}
+		if checkpoint.MatrixRows < 0 || checkpoint.MatrixCols < 0 || checkpoint.MatrixRows*checkpoint.MatrixCols != len(values) {
+			return Value{}, fmt.Errorf("invalid matrix shape %dx%d for %d elements", checkpoint.MatrixRows, checkpoint.MatrixCols, len(values))
+		}
+		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: checkpoint.MatrixRows, Cols: checkpoint.MatrixCols, Elements: values}}, nil
+	case string(ValueRecord):
+		fields := make(map[string]Value, len(checkpoint.Fields))
+		order := make([]string, 0, len(checkpoint.Fields))
+		for _, field := range checkpoint.Fields {
+			if _, duplicate := fields[field.Name]; duplicate {
+				return Value{}, fmt.Errorf("duplicate record field %s", field.Name)
+			}
+			value, err := restoreCheckpointValueWithoutType(field.Value)
+			if err != nil {
+				return Value{}, fmt.Errorf("record field %s: %w", field.Name, err)
+			}
+			fields[field.Name] = value
+			order = append(order, field.Name)
+		}
+		return Value{Kind: ValueRecord, Record: RecordValue{TypeName: checkpoint.RecordType, Fields: fields, FieldOrder: order}}, nil
+	case string(ValueEnum):
+		out := Value{Kind: ValueEnum, Enum: EnumValue{TypeName: checkpoint.EnumType, Variant: checkpoint.Variant}}
+		if checkpoint.Payload != nil {
+			payload, err := restoreCheckpointValueWithoutType(*checkpoint.Payload)
+			if err != nil {
+				return Value{}, fmt.Errorf("enum payload: %w", err)
+			}
+			out.Enum.Payload = &payload
+		}
+		return out, nil
 	default:
 		return Value{}, fmt.Errorf("unsupported kind %s", checkpoint.Kind)
 	}
@@ -543,7 +642,7 @@ func stateBodyFingerprint(state ast.StateDecl) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func restoreFlowBoardCheckpoint(inst *FlowRuntimeInstance, checkpoint FlowBoardCheckpoint) error {
+func (i interpreter) restoreFlowBoardCheckpoint(inst *FlowRuntimeInstance, checkpoint FlowBoardCheckpoint) error {
 	if len(inst.Decl.Board) == 0 {
 		if checkpoint.TypeName != "" || len(checkpoint.Fields) != 0 {
 			return checkpointErr(FlowCheckpointBoardSchemaMismatch, "boardless flow cannot accept board checkpoint data")
@@ -569,7 +668,7 @@ func restoreFlowBoardCheckpoint(inst *FlowRuntimeInstance, checkpoint FlowBoardC
 		if cpField.Name != declField.Name || cpField.Type != expectedType {
 			return checkpointErr(FlowCheckpointBoardSchemaMismatch, fmt.Sprintf("field %d checkpoint %s:%s want %s:%s", idx, cpField.Name, cpField.Type, declField.Name, expectedType))
 		}
-		value, err := restoreCheckpointValue(cpField.Value, declField.Type)
+		value, err := i.restoreCheckpointValue(cpField.Value, declField.Type, inst.Package)
 		if err != nil {
 			return checkpointErr(FlowCheckpointBoardValueTypeMismatch, cpField.Name+": "+err.Error())
 		}
@@ -583,7 +682,7 @@ func restoreFlowBoardCheckpoint(inst *FlowRuntimeInstance, checkpoint FlowBoardC
 	return nil
 }
 
-func restoreCheckpointValue(checkpoint FlowCheckpointValue, expected ast.TypeRef) (Value, error) {
+func (i interpreter) restoreCheckpointValue(checkpoint FlowCheckpointValue, expected ast.TypeRef, currentPkg string) (Value, error) {
 	if expected.IsArray || expected.ArrayDepth > 0 {
 		if checkpoint.Kind != string(ValueArray) {
 			return Value{}, fmt.Errorf("kind %s is not Array", checkpoint.Kind)
@@ -597,13 +696,44 @@ func restoreCheckpointValue(checkpoint FlowCheckpointValue, expected ast.TypeRef
 		}
 		out := make([]Value, 0, len(checkpoint.Array))
 		for idx, element := range checkpoint.Array {
-			value, err := restoreCheckpointValue(element, elementType)
+			value, err := i.restoreCheckpointValue(element, elementType, currentPkg)
 			if err != nil {
 				return Value{}, fmt.Errorf("array[%d]: %w", idx, err)
 			}
 			out = append(out, value)
 		}
 		return Value{Kind: ValueArray, Array: out}, nil
+	}
+	if expected.VectorOf != nil {
+		if checkpoint.Kind != string(ValueVector) {
+			return Value{}, fmt.Errorf("kind %s is not Vector", checkpoint.Kind)
+		}
+		out := make([]Value, len(checkpoint.Vector))
+		for idx, element := range checkpoint.Vector {
+			value, err := i.restoreCheckpointValue(element, *expected.VectorOf, currentPkg)
+			if err != nil {
+				return Value{}, fmt.Errorf("vector[%d]: %w", idx, err)
+			}
+			out[idx] = value
+		}
+		return Value{Kind: ValueVector, Vector: out}, nil
+	}
+	if expected.MatrixOf != nil {
+		if checkpoint.Kind != string(ValueMatrix) {
+			return Value{}, fmt.Errorf("kind %s is not Matrix", checkpoint.Kind)
+		}
+		if checkpoint.MatrixRows < 0 || checkpoint.MatrixCols < 0 || checkpoint.MatrixRows*checkpoint.MatrixCols != len(checkpoint.Matrix) {
+			return Value{}, fmt.Errorf("invalid matrix shape %dx%d for %d elements", checkpoint.MatrixRows, checkpoint.MatrixCols, len(checkpoint.Matrix))
+		}
+		out := make([]Value, len(checkpoint.Matrix))
+		for idx, element := range checkpoint.Matrix {
+			value, err := i.restoreCheckpointValue(element, *expected.MatrixOf, currentPkg)
+			if err != nil {
+				return Value{}, fmt.Errorf("matrix[%d]: %w", idx, err)
+			}
+			out[idx] = value
+		}
+		return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: checkpoint.MatrixRows, Cols: checkpoint.MatrixCols, Elements: out}}, nil
 	}
 	switch expected.Name {
 	case "Bool":
@@ -633,6 +763,60 @@ func restoreCheckpointValue(checkpoint FlowCheckpointValue, expected ast.TypeRef
 		}
 		return Value{Kind: ValueFloat, Float: checkpoint.Float, Dimension: expected.Dimension}, nil
 	default:
+		if recordDecl, resolved, ok := i.lookupRecordDecl(currentPkg, expectedTypeString(expected)); ok {
+			if checkpoint.Kind != string(ValueRecord) {
+				return Value{}, fmt.Errorf("kind %s is not Record", checkpoint.Kind)
+			}
+			if checkpoint.RecordType != resolved && checkpoint.RecordType != expected.Name && checkpoint.RecordType != expectedTypeString(expected) {
+				return Value{}, fmt.Errorf("record type %s want %s", checkpoint.RecordType, expectedTypeString(expected))
+			}
+			if len(checkpoint.Fields) != len(recordDecl.Fields) {
+				return Value{}, fmt.Errorf("record field count %d want %d", len(checkpoint.Fields), len(recordDecl.Fields))
+			}
+			fields := make(map[string]Value, len(recordDecl.Fields))
+			order := make([]string, 0, len(recordDecl.Fields))
+			for idx, declared := range recordDecl.Fields {
+				encoded := checkpoint.Fields[idx]
+				if encoded.Name != declared.Name {
+					return Value{}, fmt.Errorf("record field %d is %s want %s", idx, encoded.Name, declared.Name)
+				}
+				value, err := i.restoreCheckpointValue(encoded.Value, declared.Type, currentPkg)
+				if err != nil {
+					return Value{}, fmt.Errorf("record field %s: %w", declared.Name, err)
+				}
+				fields[declared.Name] = value
+				order = append(order, declared.Name)
+			}
+			return Value{Kind: ValueRecord, Record: RecordValue{TypeName: checkpoint.RecordType, Fields: fields, FieldOrder: order}}, nil
+		}
+		if enumDecl, resolved, ok := i.lookupEnumDecl(currentPkg, expectedTypeString(expected)); ok {
+			if checkpoint.Kind != string(ValueEnum) {
+				return Value{}, fmt.Errorf("kind %s is not Enum", checkpoint.Kind)
+			}
+			if checkpoint.EnumType != resolved && checkpoint.EnumType != expected.Name && checkpoint.EnumType != expectedTypeString(expected) {
+				return Value{}, fmt.Errorf("enum type %s want %s", checkpoint.EnumType, expectedTypeString(expected))
+			}
+			variant, ok := lookupEnumVariant(enumDecl, checkpoint.Variant)
+			if !ok {
+				return Value{}, fmt.Errorf("enum %s has no variant %s", expectedTypeString(expected), checkpoint.Variant)
+			}
+			out := Value{Kind: ValueEnum, Enum: EnumValue{TypeName: checkpoint.EnumType, Variant: checkpoint.Variant}}
+			if variant.Payload == nil {
+				if checkpoint.Payload != nil {
+					return Value{}, fmt.Errorf("enum variant %s does not accept payload", checkpoint.Variant)
+				}
+			} else {
+				if checkpoint.Payload == nil {
+					return Value{}, fmt.Errorf("enum variant %s requires payload", checkpoint.Variant)
+				}
+				payload, err := i.restoreCheckpointValue(*checkpoint.Payload, *variant.Payload, currentPkg)
+				if err != nil {
+					return Value{}, fmt.Errorf("enum payload: %w", err)
+				}
+				out.Enum.Payload = &payload
+			}
+			return out, nil
+		}
 		return Value{}, fmt.Errorf("unsupported board type %s", expectedTypeString(expected))
 	}
 }

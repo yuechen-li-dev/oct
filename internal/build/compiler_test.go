@@ -155,6 +155,86 @@ fn Main() -> Int {
 	}
 }
 
+func TestFlowOrdinaryExpressionsUseSharedOrdinaryMIR(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.oct")
+	src := `package Main
+record Pair { Left: Int Right: Int }
+flow Shared(limit: Int) -> Int {
+    board { Count: Int }
+    state Run {
+        let pair = Pair { Left: 2 Right: 3 }
+        let threshold = limit
+        let predicate = fn(value: Int) -> Bool with { threshold: threshold } { return value >= threshold }
+        let values = [pair.Left, pair.Right]
+        if predicate(values[1]) {
+            board.Count = values[0] + values[1]
+        }
+        return board.Count
+    }
+}
+fn Main() -> Int { let machine = Shared(3) Step(machine) return Result(machine)! }
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	module, generated, err := inspectProgram(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(module.Flows) != 1 {
+		t.Fatalf("flows = %d, want 1", len(module.Flows))
+	}
+	sharedCount := 0
+	var visitStmt func(MIRFlowStmt)
+	visitExpr := func(expr MIRFlowExpr) {
+		if _, ok := expr.(MIRFlowSharedExpr); !ok {
+			t.Fatalf("ordinary FLOW expression retained legacy MIR %T", expr)
+		}
+		sharedCount++
+	}
+	visitStmt = func(statement MIRFlowStmt) {
+		switch node := statement.(type) {
+		case MIRFlowLetStmt:
+			visitExpr(node.Value)
+		case MIRFlowFieldAssign:
+			visitExpr(node.Value)
+		case MIRFlowReturn:
+			if node.Value != nil {
+				visitExpr(node.Value)
+			}
+		case MIRFlowIf:
+			visitExpr(node.Condition)
+			for _, nested := range node.Then {
+				visitStmt(nested)
+			}
+			for _, nested := range node.Else {
+				visitStmt(nested)
+			}
+		}
+	}
+	for _, state := range module.Flows[0].States {
+		for _, statement := range state.Statements {
+			visitStmt(statement)
+		}
+	}
+	if sharedCount < 7 {
+		t.Fatalf("shared expression count = %d, want broad ordinary surface", sharedCount)
+	}
+	foundCaptureHelper := false
+	for _, function := range module.Functions {
+		if len(function.CaptureEnv) == 1 && function.CaptureEnv[0].Name == "threshold" {
+			foundCaptureHelper = true
+		}
+	}
+	if !foundCaptureHelper {
+		t.Fatalf("shared FLOW lowering did not register ordinary capture helper:\n%s", dumpMIR(module))
+	}
+	if !strings.Contains(generated, "func() func(int) bool") || strings.Contains(generated, "map[string]") {
+		t.Fatalf("generated FLOW capture did not use ordinary typed closure representation:\n%s", generated)
+	}
+}
+
 func TestConceptsAndTrueRequireEraseToConcreteGo(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "main.oct")

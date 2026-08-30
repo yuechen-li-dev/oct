@@ -36,6 +36,7 @@ flow Controller() -> Int {
         Transform: Matrix<Float>
         Nested: NestedMemory
         Status: Status
+        Values: Int[]
     }
 
     state Run {
@@ -51,12 +52,14 @@ flow Controller() -> Int {
             LastMode: board.Mode
         }
         board.Status = Status.Reading(board.Memory)
+        board.Values = [1, 2, 3]
         suspend
         board.Memory = board.Memory with {
             Count: board.Memory.Count + 1
         }
         board.Direction = vector[5.0, 6.0]
         board.Transform = matrix[[7.0, 8.0] [9.0, 10.0]]
+        board.Values[0] = 99
         return board.Memory.Count
     }
 }
@@ -72,12 +75,14 @@ fn RecordAndEnumBoardValuesPersistWithoutSnapshotAliasing() -> Void {
     Assert.Equal(3.0, before.Transform[1, 0], "matrix board field should retain ordinary indexing")
     Assert.Equal(1, before.Nested.Current.Count, "nested persistent record should preserve fields")
     Assert.Equal(1, StatusCount(before.Status), "payload enum should preserve its record payload")
+    Assert.Equal(1, before.Values[0], "compiled snapshot should detach slice-backed board values")
     Step(machine)
     let after = BoardSnapshot(machine)!
     Assert.Equal(2, after.Memory.Count, "record with update should persist on board")
     Assert.Equal(1, before.Memory.Count, "earlier board snapshot must not alias later mutation")
     Assert.Equal(2.0, before.Direction[1], "replaced vector must not change earlier snapshot")
     Assert.Equal(3.0, before.Transform[1, 0], "replaced matrix must not change earlier snapshot")
+    Assert.Equal(1, before.Values[0], "indexed board mutation must not alias an earlier snapshot")
     Assert.Equal(2, Result(machine)!, "flow should complete with updated record field")
     Assert.Equal("Run", StateHistory(machine)[0], "history remains coherent with aggregate board values")
 }

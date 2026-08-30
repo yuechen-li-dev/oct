@@ -1,0 +1,73 @@
+package Main
+
+flow NestedGoto(values: Int[][]) -> Int {
+    board { Seen: Int }
+
+    state Scan {
+        for i in 0 .. Len(values) {
+            for j in 0 .. Len(values[i]) {
+                if values[i][j] > 5 {
+                    board.Seen = values[i][j]
+                    goto Found
+                }
+            }
+            board.Seen = -100
+        }
+        board.Seen = -1
+        return board.Seen
+    }
+
+    state Found {
+        return board.Seen
+    }
+}
+
+flow NestedSuspend(values: Int[]) -> Int {
+    board { Seen: Int }
+
+    state Scan {
+        for i in 0 .. Len(values) {
+            if values[i] > 5 {
+                board.Seen = values[i]
+                suspend
+            }
+        }
+        return board.Seen
+    }
+}
+
+flow NestedRememberGoto(trigger: Bool) -> Int {
+    board { Count: Int }
+
+    state Run {
+        if trigger {
+            board.Count = 4
+            remember
+            goto Detour
+        }
+        return 0
+    }
+
+    state Detour {
+        return board.Count
+    }
+}
+
+[Fact]
+fn NestedMachineTransfersExitOrdinaryControlImmediately() -> Void {
+    let gotoMachine = NestedGoto([[1, 2], [7, 9]])
+    Step(gotoMachine)
+    Assert.Equal(7, Result(gotoMachine)!, "code after nested goto must not overwrite the selected value")
+
+    let suspended = NestedSuspend([1, 8, 9])
+    Step(suspended)
+    Assert.Equal("Scan", Active(suspended), "suspend inside a loop should leave the activation")
+    Assert.False(Complete(suspended), "nested suspend should not complete the machine")
+    Step(suspended)
+    Assert.Equal(8, Result(suspended)!, "resuming after nested suspend should continue after the containing statement")
+
+    let remembered = NestedRememberGoto(true)
+    Step(remembered)
+    Assert.Equal("Run", ResumeTarget(remembered), "remember inside a nested branch should snapshot the source state")
+    Assert.Equal(4, Result(remembered)!, "nested transfer should preserve prior board writes")
+}

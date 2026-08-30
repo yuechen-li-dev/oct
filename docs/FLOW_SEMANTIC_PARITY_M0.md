@@ -1,5 +1,11 @@
 # FLOW semantic parity M0
 
+> Superseded in part by `FLOW_SHARED_EXPRESSION_M1.md`. M1 routes ordinary
+> compiled FLOW values through ordinary MIR lowering, adds activation-local
+> anonymous capture construction, deep compiled snapshots, aggregate logical
+> checkpoints, and structured nested machine transfer. M0 remains the baseline
+> audit and the source of the deliberate `?` and function-board exclusions.
+
 Outcome: **C — bounded parity improvement**.
 
 FLOW's language contract is ordinary Oct computation plus explicit resumable

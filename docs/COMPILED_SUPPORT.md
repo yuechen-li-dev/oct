@@ -127,6 +127,12 @@ Still deferred after M24: Complex support, Einstein/tensor notation, broad callb
 
 Re-audited using `go run ./cmd/oct test ... --execution interpreted|compiled|auto` on August 30, 2026. The semantic contract is now summarized in `docs/FLOW_SEMANTIC_PARITY_M0.md`; this table remains implementation evidence, not a language whitelist.
 
+FLOW shared-expression M1 routes ordinary state expressions through ordinary
+compiled MIR blocks. The remaining value-shaped FLOW MIR is controller-bound
+utility policy state; legacy `MIRFlowExpr` variant declarations still await
+physical deletion and therefore M1 records Outcome C rather than claiming full
+architectural closure. See `docs/FLOW_SHARED_EXPRESSION_M1.md`.
+
 | Feature | Interpreted support | Compiled support | Fixture evidence | Limitations |
 | --- | --- | --- | --- | --- |
 | flow declaration lowering | Supported | Supported | `OctomataCompiledBoundary/valid/compiled_boundary_core.octest` | No contradiction found between MIR flow lowering and Go emission paths. |
@@ -137,9 +143,9 @@ Re-audited using `go run ./cmd/oct test ... --execution interpreted|compiled|aut
 | remember | Supported | Supported | `OctomataResumeM57/runtime/valid/single_slot_resume_behaviors.octest` | Single-slot semantics only; latest remember overwrites prior slot. |
 | when policy / utility when | Supported | Supported | `OctomataCoreB` + `OctomataUtilityWhen` suites | Must satisfy existing utility-when shape/type constraints. |
 | board declarations | Supported | Supported | `OctomataBlackboardM6/valid/flow_declared_board_surface.octest` | Placement/type rules still enforced by invalid fixtures. |
-| deterministic persistent board values | Supported | Supported for scalars, arrays, vectors, matrices, records, nested records, plain/payload enums composed from persistent values | `OctomataBoardAggregatesM0/valid/board_record_enum_persistence.octest`; `OctomataBoardIndexedAssignment` | Function-valued fields remain deliberately excluded. Logical checkpoint serialization still has a narrower aggregate codec than live `BoardSnapshot`. |
-| flow-state local `let`, `var`, assignment, and bounded loops | Supported | Supported (state/block scoped, non-persistent) | `OctomataCoreA/valid/ordinary_oct_inside_state.octest`; `OctomataFlowLocals` | Locals do not persist across state/turn boundaries. Control transfer nested directly inside compiled loops remains explicit implementation debt rather than silently falling back. |
-| ordinary synchronous calls and function values | Supported | Supported for ordinary user functions, builtins, function-valued parameters, returned callables, and early-specialized generic consumers | `OctomataFlowUnsupportedCall`; `Libraries/Algorithms/Algorithms.Core.octest` | No cheapness/purity-name allowlist applies to user functions. Wrapper/resource operations remain governed by their actual compiled backend and lifetime contract. |
+| deterministic persistent board values | Supported | Supported for scalars, arrays, vectors, matrices, records, nested records, plain/payload enums composed from persistent values | `OctomataBoardAggregatesM0/valid/board_record_enum_persistence.octest`; interpreter aggregate checkpoint roundtrip | Snapshots deep-clone slice-backed aggregates and checkpoint schema v3 round-trips all admitted classes. Function-valued fields remain deliberately excluded. |
+| flow-state local `let`, `var`, assignment, and bounded loops | Supported | Supported (state/block scoped, non-persistent) | `OctomataCoreA/valid/ordinary_oct_inside_state.octest`; `OctomataFlowNestedTransferM1` | Locals do not persist across state/turn boundaries. Nested goto/suspend/remember transfer exits through the labeled machine-control loop. |
+| ordinary synchronous calls and function values | Supported | Supported for ordinary user functions, builtins, function-valued parameters, returned callables, activation-created anonymous callables, explicit captures, and early-specialized generic consumers | `OctomataFlowUnsupportedCall`; `Libraries/Algorithms/Algorithms.Core.octest` | Ordinary expressions use shared compiled MIR lowering. No cheapness/purity-name allowlist applies to user functions. |
 | fallible calls | Supported | `!` and local statement `match` supported; unhandled calls rejected; `?` deliberately rejected | `OctomataFallibilityM0` | `?` requires an explicit fallible-FLOW terminal contract and is not part of M0. |
 | flow expression indexing | Supported | Arrays, nested arrays, vectors, and matrices supported with ordinary Int indices | `OctomataFlowIndexExpr`; `OctomataBoardAggregatesM0` | String indexing follows the ordinary language/backend status and is not newly introduced here. |
 | board array fields over supported scalar element types | Supported | Supported | `OctomataBoardIndexedAssignment/valid/board_indexed_assignment.octest` | Covers Bool, String, Int/Int&lt;D&gt;, Float/Float&lt;D&gt;, nested arrays, indexed writes, and snapshots. |
@@ -238,14 +244,14 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 3. Isolate and clear remaining M2/M2b compiled blockers with focused fixtures.
 4. Expand compiled sweep fixtures only after each newly-green surface is measured.
 
-| BoardSnapshot(machine) | Supported | Supported (supported scalar and scalar-array board fields, including dimensioned numeric elements) | `OctomataBoardSnapshot`; `OctomataBoardIndexedAssignment`; `DimensionedScalarBoardProbe`; `Experiments.FmBrownNoiseKalman.M3.FlowSmoke` | Compiled support returns detached/read-only snapshots. Vectors, matrices, records, enums, and other board aggregates remain unsupported. |
+| BoardSnapshot(machine) | Supported | Supported for every admitted persistent board value | `OctomataBoardSnapshot`; `OctomataBoardIndexedAssignment`; `OctomataBoardAggregatesM0` | Compiled and interpreted snapshots recursively detach slice-backed aggregates. |
 
 ## 2026-06-12 F6 SI board and BaseUnit release contract
 
 - Compiled mode supports `BaseUnit(Float<D>) -> Float` and dimensionless `BaseUnit(Float) -> Float`; the lowering erases only the static dimension and leaves the numeric value unchanged. `BaseValue` remains accepted as the older spelling.
 - Compiled Octomata board fields support `Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`, and arrays (including nested arrays) of those scalar types.
 - Compiled `BoardSnapshot(machine)!` preserves exact dimensioned scalar and array element types in the generated snapshot record.
-- Board arrays, vectors, matrices, records, enums, and non-scalar runtime values remain outside the compiled board snapshot contract.
+- Arrays, vectors, matrices, records, and enums composed from persistent values are inside the compiled board snapshot and checkpoint contract as of FLOW shared-expression M1.
 
 ## 2026-05-23 SmartGreenhouse compiled convergence pass 2
 

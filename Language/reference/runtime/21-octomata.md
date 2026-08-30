@@ -37,7 +37,7 @@ Octomata and records are complementary:
 - Flow `when` actions are only `goto`, `suspend`, or `return`.
 - `board { Field: Type ... }` declares flow-local board memory with a fixed field shape.
 - Board fields must be declared up front and are not dynamically extensible.
-- Board fields may be deterministic persistent values composed from `Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`, arrays, vectors, matrices, records, and enums. Function values remain excluded because capture-environment identity, checkpoint representation, and history semantics are not part of M0.
+- Board fields may be deterministic persistent values composed from `Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`, arrays, vectors, matrices, records, and enums. Function values remain excluded because capture-environment identity, checkpoint representation, and history semantics require a separate persistence contract.
 - Board fields are default-initialized recursively from their declared type (scalars use their zero value, collections are empty, records default each field, and enums use their first declared variant with a defaulted payload when present).
 - Board writes are valid only inside flow state bodies (including nested `if`/`when` inside a state body).
 - Controller utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
@@ -62,7 +62,7 @@ Octomata and records are complementary:
 - `ResumeTarget(flow)` reports the current remembered target or `""` when slot is empty.
 - `StateHistory(flow)` returns state-entry history as `String[]`.
 - Builtins `Step`, `DidYield`, `Yielded`, `Active`, `Complete`, `Result`, `ResumeTarget`, `StateHistory`, and `BoardSnapshot` require a flow instance argument.
-- `BoardSnapshot(flow)` returns a fallible, read-only typed record snapshot of current board fields when the flow declares a board. Ordinary value semantics apply: records/enums are copied by value and interpreted collection values are deeply detached. Compiled aggregate replacement is also detached; indexed mutation of collection fields retains the existing generated-Go snapshot limitations documented in `docs/FLOW_SEMANTIC_PARITY_M0.md`.
+- `BoardSnapshot(flow)` returns a fallible, read-only typed record snapshot of current board fields when the flow declares a board. One recursive persistent-value clone semantic detaches arrays, nested arrays, vectors, matrices, records, and enum payloads in interpreted and compiled execution. Later indexed board mutation cannot change an earlier snapshot.
 
 ## Ordinary computation inside a state
 
@@ -72,6 +72,13 @@ the FLOW expression context; they do not define a secondary expression
 language. Ordinary synchronous user functions and function values may be
 called. `!` has its ordinary fatal-unwrap meaning, and a fallible call may be
 handled locally with statement `match`.
+
+The compiled backend routes ordinary state expressions through the ordinary
+compiled MIR lowering context. FLOW adds typed bindings for construction
+parameters, turn input, board values, and activation locals; it does not add a
+reduced expression language. Controller-bound `when policy` remains a
+FLOW-specific persistent decision operation, and machine transfers remain
+FLOW-specific control MIR.
 
 `?` is deliberately rejected until FLOW declares an explicit fallible terminal
 contract. The diagnostic directs authors to local `match` or `!`; M0 does not
@@ -139,6 +146,10 @@ must be represented in construction state, the private board, resume slot, or
 utility policy state. Generated checkpoint bytes are deterministic typed JSON
 for the experimental host boundary; that byte encoding and generated naming
 are not a permanent Oct 1.0 ABI and may change across compiler revisions.
+Logical checkpoint schema version 3 adds deterministic typed recursive values
+for records, nested records, plain and payload enums, arrays, vectors, and
+matrices. Older logical checkpoint versions are rejected rather than silently
+reinterpreted.
 
 
 ### Dimensioned scalar and array board fields
