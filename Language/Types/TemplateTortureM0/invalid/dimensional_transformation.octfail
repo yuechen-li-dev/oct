@@ -1,0 +1,11 @@
+expect error: "function expects Float<m>, but return is Float<m^2>"
+
+package TemplateTortureDimensionalInvalid
+
+template fn SquareSameType<T>(value: T) -> T {
+    return value * value
+}
+
+fn Main() -> Float<m> {
+    return SquareSameType<Float<m>>(2.0m)
+}

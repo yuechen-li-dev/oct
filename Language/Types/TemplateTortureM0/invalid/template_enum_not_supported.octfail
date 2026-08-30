@@ -1,0 +1,8 @@
+expect error: "expected 'record', 'fn', 'flow', or 'query' after 'template'"
+
+package TemplateTortureEnumInvalid
+
+template enum Option<T> {
+    None
+    Some(T)
+}

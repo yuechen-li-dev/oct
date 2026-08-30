@@ -1,0 +1,5 @@
+package TemplateTortureValid
+
+fn Increment(value: Int) -> Int {
+    return value + 1
+}

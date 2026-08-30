@@ -1,0 +1,5 @@
+package TemplateTortureValid
+
+template fn ChainA<T>(value: T) -> T {
+    return ChainB<T>(value)
+}

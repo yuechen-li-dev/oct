@@ -1,9 +1,13 @@
-expect error: "infinite template instantiation detected"
+expect error: "possible infinite type-growth specialization"
 
 package ParametricsM0InvalidRecursion
 
+template record Box<T> {
+    Value: T
+}
+
 template fn Recur<T>(value: T) -> T {
-    return Recur<T>(value)
+    return Recur<Box<T>>(Box<T> {Value: value}).Value
 }
 
 fn Main() -> Int {

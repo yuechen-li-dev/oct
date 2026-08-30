@@ -1,0 +1,5 @@
+package TemplateTortureProvenance
+
+template fn DimensionallyInvalid<T>(value: T) -> T {
+    return value * value
+}

@@ -182,6 +182,10 @@ type TemplateOrigin struct {
 	Package       string
 	Declaration   string
 	TypeArguments []TypeRef
+	// InstantiationChain is diagnostic-only provenance from the outermost
+	// request through this concrete specialization. It is erased with the
+	// rest of TemplateOrigin before runtime.
+	InstantiationChain []string
 }
 
 type FunctionTypeRef struct {

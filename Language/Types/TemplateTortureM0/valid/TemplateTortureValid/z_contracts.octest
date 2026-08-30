@@ -1,0 +1,111 @@
+package TemplateTortureValid
+
+concept PositiveLength = Float<m> {
+    Require(Self > 0.0m, "length must be positive")
+}
+
+template fn Preserve<T>(value: T) -> T {
+    return value
+}
+
+[Fact]
+fn SamePackageIsOneTemplateUniverse() -> Void {
+    Assert.Equal(12, CallsDouble2CrossFile<Int>(6), "template calls sibling template")
+    Assert.Equal(7, CallsSiblingOrdinary<Int>(6), "template resolves sibling ordinary function")
+    Assert.Equal(9, ParameterShadowsRecordName<Int>(9), "type parameter follows lexical shadowing")
+    Assert.Equal(8, ChainA<Int>(4), "three-file chain is order independent")
+    Assert.Equal(7, BoxValue<Int>(7).Value, "function returns sibling template record")
+    let nested = PairBoxes<Int, String>(5, "five")
+    Assert.Equal(5, nested.First.Value, "nested record specialization")
+    Assert.Equal("five", nested.Second.Second, "two-parameter nested record")
+}
+
+[Fact]
+fn DimensionsArePreservedByConcreteSpecialization() -> Void {
+    Assert.Equal(2.0m, Midpoint<Float<m>>(1.0m, 3.0m), "length")
+    Assert.Equal(3.0s, Midpoint<Float<s>>(2.0s, 4.0s), "time")
+    Assert.Equal(300.0K, Midpoint<Float<K>>(200.0K, 400.0K), "temperature")
+    Assert.Equal(15.0kg/m/s^2, Midpoint<Float<kg/m/s^2>>(10.0kg/m/s^2, 20.0kg/m/s^2), "pressure")
+    Assert.Equal(2.0, Midpoint<Float>(1.0, 3.0), "dimensionless")
+    Assert.Equal(2.0m, Mean<Float<m>>([1.0m, 2.0m, 3.0m]), "array mean preserves length")
+    Assert.Equal(3.0s, Mean<Float<s>>([2.0s, 4.0s]), "array mean preserves time")
+    let positive: PositiveLength = 2.0m
+    Assert.True(Preserve<PositiveLength>(positive) == positive, "refinement and dimension survive")
+    let boxed = Box<PositiveLength> {Value: positive}
+    Assert.True(boxed.Value == positive, "template record field retains Concept admission")
+    let conceptMachine = ConceptBoardMachine<PositiveLength>(positive)
+    Step(conceptMachine)
+    Assert.True(Result(conceptMachine)! == positive, "template FLOW board retains Concept admission")
+}
+
+[Fact]
+fn ScientificCompositionFindsTheTypedBoundary() -> Void {
+    Assert.Equal(7.0m, EulerStep<Float<m>, Float<m/s>, Float<s>>(1.0m, 3.0m/s, 2.0s), "ODE state plus derivative times time")
+
+    let scaled = ScaleVector<Float<m>>(vector[1.0m, 2.0m], 2.0)
+    Assert.Equal(2.0m, scaled[0], "generic vector transform preserves units")
+    Assert.Equal(4.0m, scaled[1], "generic vector transform preserves shape")
+
+    let target = 3.0
+    let objective = fn(candidate: Candidate) -> Float with {
+        target: target
+    } {
+        let residual = candidate.X - target
+        return residual * residual
+    }
+    Assert.Equal(4.0, EvaluateObjective<Candidate>(Candidate {X: 5.0}, objective), "captured optimization objective")
+
+    let initial = LengthStatistics {Count: 0 Total: 0.0m}
+    let statistics = FoldWith<Float<m>, LengthStatistics>([1.0m, 2.0m, 3.0m], initial, AddLength)
+    Assert.Equal(3, statistics.Count, "record accumulator count")
+    Assert.Equal(6.0m, statistics.Total, "record accumulator preserves dimension")
+
+    let shifted = MapLocal<Complex, Complex>([Complex(1.0, 2.0)], fn(value: Complex) -> Complex {
+        return value + Complex(2.0, -1.0)
+    })
+    Assert.Equal(3.0, Real(shifted[0]), "generic signal-like transform supports Complex")
+    Assert.Equal(1.0, Imag(shifted[0]), "complex imaginary component")
+}
+
+[Fact]
+fn CallablesCapturesConsumersAndAccumulatorsCompose() -> Void {
+    let scale = MakeScale<Int>(3)
+    Assert.Equal(12, scale(4), "template returns escaped captured callable")
+    let mapped = MapWithScale<Int>([2, 4], 3)
+    Assert.Equal(6, mapped[0], "generic Map consumes template capture")
+    Assert.Equal(12, mapped[1], "generic Map retains order")
+    let appendDigit = fn(accumulator: Int, value: Int) -> Int {
+        return accumulator * 10 + value
+    }
+    Assert.Equal(123, FoldWith<Int, Int>([1, 2, 3], 0, appendDigit), "two-parameter accumulator")
+}
+
+[Fact]
+fn RecordsVectorsMatricesAndFlowAreConcrete() -> Void {
+    let bundle = ScientificBundle<Float> {
+        Samples: [1.0, 2.0]
+        Direction: vector[3.0, 4.0]
+        Transform: matrix[[1.0, 0.0] [0.0, 1.0]]
+    }
+    Assert.Equal(2.0, bundle.Samples[1], "array field")
+    Assert.Equal(4.0, bundle.Direction[1], "vector field")
+    Assert.Equal(1.0, bundle.Transform[1, 1], "matrix field")
+
+    let machine = Machine<Int>(6)
+    Step(machine)
+    let snapshot = BoardSnapshot(machine)!
+    Assert.Equal(12, snapshot.State.Value, "specialized aggregate board survives suspend")
+    Step(machine)
+    Assert.Equal(12, Result(machine)!, "template FLOW uses template record and function")
+
+    let capturedMachine = CapturedConsumerMachine<Int>(4, 3)
+    Step(capturedMachine)
+    Assert.Equal(12, Result(capturedMachine)!, "template FLOW composes capture and generic consumer")
+}
+
+[Fact]
+fn RuntimeRecursionReusesOneSpecialization() -> Void {
+    Assert.Equal(120, Factorial<Int>(5), "ordinary recursion does not create an infinite specialization")
+}
+
+fn Main() -> Void {}

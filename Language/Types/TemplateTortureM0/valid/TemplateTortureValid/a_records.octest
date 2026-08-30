@@ -1,0 +1,34 @@
+package TemplateTortureValid
+
+template record Box<T> {
+    Value: T
+}
+
+template record Pair<A, B> {
+    First: A
+    Second: B
+}
+
+template record Memory<T> {
+    Value: T
+    History: T[]
+}
+
+template record CallableBox<T, U> {
+    Transform: fn(T) -> U
+}
+
+template record ScientificBundle<T> {
+    Samples: T[]
+    Direction: Vector<T>
+    Transform: Matrix<T>
+}
+
+record LengthStatistics {
+    Count: Int
+    Total: Float<m>
+}
+
+record Candidate {
+    X: Float
+}

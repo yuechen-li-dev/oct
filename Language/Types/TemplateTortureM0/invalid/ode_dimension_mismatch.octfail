@@ -1,0 +1,11 @@
+expect error: "cannot add m and m*s"
+
+package TemplateTortureODEInvalid
+
+template fn EulerStep<State, Derivative, Time>(state: State, derivative: Derivative, dt: Time) -> State {
+    return state + derivative * dt
+}
+
+fn Main() -> Float<m> {
+    return EulerStep<Float<m>, Float<m>, Float<s>>(1.0m, 3.0m, 2.0s)
+}

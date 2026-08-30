@@ -1,0 +1,11 @@
+expect error: "expects 2 type arguments, got 1"
+
+package TemplateTortureArityInvalid
+
+template fn Choose<T, U>(value: T, fallback: U) -> T {
+    return value
+}
+
+fn Main() -> Int {
+    return Choose<Int>(1, 2)
+}

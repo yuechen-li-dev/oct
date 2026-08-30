@@ -1,0 +1,11 @@
+expect error: "undefined variable: T"
+
+package TemplateTortureTypeParameterValueInvalid
+
+template fn TypeIsNotAValue<T>() -> Int {
+    return T
+}
+
+fn Main() -> Int {
+    return TypeIsNotAValue<Int>()
+}

@@ -3,6 +3,7 @@ package project
 import (
 	"crypto/sha256"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -32,18 +33,27 @@ func elaborateParametrics(program Program) (Program, error) {
 	if err := e.processConcreteDeclarations(); err != nil {
 		return Program{}, err
 	}
+	if err := e.assertClosedProgram(); err != nil {
+		return Program{}, err
+	}
 	program.Parametrics.ElaborationNanoseconds = time.Since(started).Nanoseconds()
 	return program, nil
 }
 
 type parametricElaborator struct {
-	program           *Program
-	recordTemplates   map[string]ast.RecordDecl
-	functionTemplates map[string]ast.FunctionDecl
-	flowTemplates     map[string]ast.FlowDecl
-	instantiations    map[string]string
-	selectors         map[string]string
+	program            *Program
+	recordTemplates    map[string]ast.RecordDecl
+	functionTemplates  map[string]ast.FunctionDecl
+	flowTemplates      map[string]ast.FlowDecl
+	instantiations     map[string]string
+	selectors          map[string]string
+	instantiationStack []string
 }
+
+const (
+	maximumSpecializationDepth   = 128
+	maximumUniqueSpecializations = 4096
+)
 
 func templateKey(pkg, name string) string { return pkg + "." + name }
 
@@ -403,22 +413,143 @@ func (e *parametricElaborator) instantiate(consumerPkg, originPkg, kind, name st
 		canonicalArgs[i] = canonicalType(args[i])
 	}
 	key := consumerPkg + "|" + kind + "|" + display + "<" + strings.Join(canonicalArgs, ",") + ">"
+	e.program.Parametrics.InstantiationRequests++
 	if concrete, ok := e.instantiations[key]; ok {
-		if concrete == "" {
-			return "", fmt.Errorf("infinite template instantiation detected while elaborating %s<%s>", display, strings.Join(canonicalArgs, ", "))
-		}
+		e.program.Parametrics.ReusedInstantiations++
 		return concrete, nil
 	}
 	concrete := concreteName(originPkg == consumerPkg, originPkg, name, args)
-	e.instantiations[key] = ""
+	request := display + "<" + strings.Join(canonicalArgs, ", ") + ">"
+	if len(e.instantiationStack) >= maximumSpecializationDepth {
+		chain := append(append([]string(nil), e.instantiationStack...), request)
+		return "", fmt.Errorf("template specialization depth exceeds %d; possible infinite type-growth specialization: %s", maximumSpecializationDepth, strings.Join(chain, " -> "))
+	}
+	if len(e.instantiations) >= maximumUniqueSpecializations {
+		return "", fmt.Errorf("template specialization count exceeds defensive budget of %d while instantiating %s", maximumUniqueSpecializations, request)
+	}
+	e.instantiations[key] = concrete
+	e.instantiationStack = append(e.instantiationStack, request)
+	if depth := len(e.instantiationStack); depth > e.program.Parametrics.MaximumSpecializationDepth {
+		e.program.Parametrics.MaximumSpecializationDepth = depth
+	}
+	defer func() { e.instantiationStack = e.instantiationStack[:len(e.instantiationStack)-1] }()
 	originArgs := append([]ast.TypeRef(nil), args...)
-	origin := &ast.TemplateOrigin{Package: originPkg, Declaration: name, TypeArguments: originArgs}
+	origin := &ast.TemplateOrigin{
+		Package:            originPkg,
+		Declaration:        name,
+		TypeArguments:      originArgs,
+		InstantiationChain: append([]string(nil), e.instantiationStack...),
+	}
 	if err := emit(concrete, subst, origin); err != nil {
 		delete(e.instantiations, key)
 		return "", fmt.Errorf("while instantiating %s<%s>: %w", display, joinDisplayTypes(args), err)
 	}
-	e.instantiations[key] = concrete
 	return concrete, nil
+}
+
+// assertClosedProgram enforces the early-specialization boundary before the
+// ordinary typechecker, interpreter, FLOW lowerer, or backend can observe an
+// authoring-time template declaration or one of its open type parameters.
+func (e *parametricElaborator) assertClosedProgram() error {
+	for pkgName, pkg := range e.program.Packages {
+		for _, decl := range pkg.Records {
+			if decl.IsTemplate || len(decl.TypeParameters) != 0 {
+				return fmt.Errorf("internal compiler error: template record %s.%s reached the concrete program", pkgName, decl.Name)
+			}
+			if err := e.assertClosedDeclaration(pkgName, decl.TemplateOrigin, decl); err != nil {
+				return err
+			}
+		}
+		for _, decl := range pkg.Functions {
+			if decl.IsTemplate || len(decl.TypeParameters) != 0 {
+				return fmt.Errorf("internal compiler error: template function %s.%s reached the concrete program", pkgName, decl.Name)
+			}
+			if err := e.assertClosedDeclaration(pkgName, decl.TemplateOrigin, decl); err != nil {
+				return err
+			}
+		}
+		for _, decl := range pkg.Flows {
+			if decl.IsTemplate || len(decl.TypeParameters) != 0 {
+				return fmt.Errorf("internal compiler error: template flow/query %s.%s reached the concrete program", pkgName, decl.Name)
+			}
+			if err := e.assertClosedDeclaration(pkgName, decl.TemplateOrigin, decl); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (e *parametricElaborator) assertClosedDeclaration(pkgName string, origin *ast.TemplateOrigin, declaration any) error {
+	if origin == nil {
+		return nil
+	}
+	open := map[string]struct{}{}
+	key := templateKey(origin.Package, origin.Declaration)
+	if decl, ok := e.recordTemplates[key]; ok {
+		for _, name := range decl.TypeParameters {
+			open[name] = struct{}{}
+		}
+	}
+	if decl, ok := e.functionTemplates[key]; ok {
+		for _, name := range decl.TypeParameters {
+			open[name] = struct{}{}
+		}
+	}
+	if decl, ok := e.flowTemplates[key]; ok {
+		for _, name := range decl.TypeParameters {
+			open[name] = struct{}{}
+		}
+	}
+	return e.assertClosedValue(pkgName, origin, open, reflect.ValueOf(declaration))
+}
+
+func (e *parametricElaborator) assertClosedValue(pkgName string, origin *ast.TemplateOrigin, open map[string]struct{}, value reflect.Value) error {
+	if !value.IsValid() {
+		return nil
+	}
+	if value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return nil
+		}
+		return e.assertClosedValue(pkgName, origin, open, value.Elem())
+	}
+	if value.Type() == reflect.TypeOf(ast.TypeRef{}) {
+		t := value.Interface().(ast.TypeRef)
+		if t.Package == "" && len(t.TypeArguments) == 0 && t.Function == nil && t.VectorOf == nil && t.MatrixOf == nil {
+			if _, unresolved := open[t.Name]; unresolved {
+				return fmt.Errorf("internal compiler error: unresolved type parameter %s remained after instantiating %s.%s<%s>", t.Name, origin.Package, origin.Declaration, joinDisplayTypes(origin.TypeArguments))
+			}
+		}
+	}
+	if value.Type() == reflect.TypeOf(ast.CallExpr{}) {
+		call := value.Interface().(ast.CallExpr)
+		if len(call.TypeArguments) > 0 {
+			calleePkg, calleeName, _ := directCallee(pkgName, call.Callee)
+			key := templateKey(calleePkg, calleeName)
+			if _, ok := e.functionTemplates[key]; ok {
+				return fmt.Errorf("internal compiler error: template call %s<...> remained after instantiating %s.%s<%s>", calleeName, origin.Package, origin.Declaration, joinDisplayTypes(origin.TypeArguments))
+			}
+			if _, ok := e.flowTemplates[key]; ok {
+				return fmt.Errorf("internal compiler error: template flow/query call %s<...> remained after instantiating %s.%s<%s>", calleeName, origin.Package, origin.Declaration, joinDisplayTypes(origin.TypeArguments))
+			}
+		}
+	}
+	switch value.Kind() {
+	case reflect.Struct:
+		for i := 0; i < value.NumField(); i++ {
+			if err := e.assertClosedValue(pkgName, origin, open, value.Field(i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < value.Len(); i++ {
+			if err := e.assertClosedValue(pkgName, origin, open, value.Index(i)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (e *parametricElaborator) rewriteBlock(pkgName string, block ast.Block, returnType ast.TypeRef, subst map[string]ast.TypeRef) (ast.Block, error) {

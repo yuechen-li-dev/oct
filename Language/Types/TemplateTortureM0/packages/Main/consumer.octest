@@ -1,0 +1,9 @@
+package Main
+
+import TemplateBridge
+
+[Fact]
+fn ImportedTemplateComposesAcrossThreePackages() -> Void {
+    let value = TemplateBridge.Compose<Int>(9)
+    Assert.Equal(18, value.Value, "origin template specializes through bridge into consumer")
+}

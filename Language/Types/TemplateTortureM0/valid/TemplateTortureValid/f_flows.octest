@@ -1,0 +1,34 @@
+package TemplateTortureValid
+
+template flow Machine<T>(initial: T) -> T {
+    board {
+        State: Memory<T>
+    }
+
+    state Run {
+        board.State = Memory<T> {
+            Value: Double2<T>(initial)
+            History: [initial]
+        }
+        suspend
+        return board.State.Value
+    }
+}
+
+template flow CapturedConsumerMachine<T>(value: T, factor: T) -> T {
+    state Run {
+        let transformed = MapLocal<T, T>([value], MakeScale<T>(factor))
+        return transformed[0]
+    }
+}
+
+template flow ConceptBoardMachine<T>(value: T) -> T {
+    board {
+        State: Box<T>
+    }
+
+    state Run {
+        board.State = Box<T> {Value: value}
+        return board.State.Value
+    }
+}

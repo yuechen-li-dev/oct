@@ -6484,7 +6484,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Abs"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["BaseUnit"] || usedBuiltins["FFT"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Real"] || usedBuiltins["Imag"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["BaseUnit"] || usedBuiltins["FFT"] {
 		importSet["math"] = struct{}{}
 	}
 	if usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Conj"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] {

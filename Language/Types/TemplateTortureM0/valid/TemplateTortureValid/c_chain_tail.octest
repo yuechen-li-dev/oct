@@ -1,0 +1,5 @@
+package TemplateTortureValid
+
+template fn ChainC<T>(value: T) -> T {
+    return CallsDouble2CrossFile<T>(value)
+}

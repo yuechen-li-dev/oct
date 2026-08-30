@@ -1,0 +1,11 @@
+expect error: "not defined for String and String"
+
+package TemplateTortureNonnumericInvalid
+
+template fn SquareSameType<T>(value: T) -> T {
+    return value * value
+}
+
+fn Main() -> String {
+    return SquareSameType<String>("bad")
+}

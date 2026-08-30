@@ -1,0 +1,109 @@
+package TemplateTortureValid
+
+template fn Double2<T>(x: T) -> T {
+    return x + x
+}
+
+template fn CallsDouble2CrossFile<T>(x: T) -> T {
+    return Double2<T>(x)
+}
+
+template fn CallsSiblingOrdinary<T>(value: T) -> T {
+    return Increment(value)
+}
+
+template fn ParameterShadowsRecordName<Candidate>(value: Candidate) -> Candidate {
+    return value
+}
+
+template fn BoxValue<T>(x: T) -> Box<T> {
+    return Box<T> {Value: x}
+}
+
+template fn PairBoxes<T, U>(first: T, second: U) -> Pair<Box<T>, Pair<T, U>> {
+    return Pair<Box<T>, Pair<T, U>> {
+        First: Box<T> {Value: first}
+        Second: Pair<T, U> {First: first Second: second}
+    }
+}
+
+template fn Midpoint<T>(a: T, b: T) -> T {
+    return (a + b) / 2.0
+}
+
+template fn Mean<T>(values: T[]) -> T {
+    var total = values[0]
+    for i in 1 .. Len(values) {
+        total = total + values[i]
+    }
+    let count: Float = Len(values)
+    return total / count
+}
+
+template fn EulerStep<State, Derivative, Time>(state: State, derivative: Derivative, dt: Time) -> State {
+    return state + derivative * dt
+}
+
+template fn ScaleVector<T>(values: Vector<T>, factor: Float) -> Vector<T> {
+    let entry = fn(index: Int) -> T with {
+        values: values
+        factor: factor
+    } {
+        return values[index] * factor
+    }
+    return Vector.tabulate(Len(values), entry)
+}
+
+template fn EvaluateObjective<T>(candidate: T, objective: fn(T) -> Float) -> Float {
+    return objective(candidate)
+}
+
+template fn MakeScale<T>(factor: T) -> fn(T) -> T {
+    return fn(value: T) -> T with {
+        factor: factor
+    } {
+        return value * factor
+    }
+}
+
+template fn MapLocal<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
+    var result: U[] = []
+    for i in 0 .. Len(values) {
+        result = Append(result, transform(values[i]))
+    }
+    return result
+}
+
+template fn FoldLocal<T, A>(values: T[], initial: A, reducer: fn(A, T) -> A) -> A {
+    var result = initial
+    for i in 0 .. Len(values) {
+        result = reducer(result, values[i])
+    }
+    return result
+}
+
+template fn MapWithScale<T>(values: T[], factor: T) -> T[] {
+    return MapLocal<T, T>(values, MakeScale<T>(factor))
+}
+
+template fn FoldWith<T, A>(values: T[], initial: A, reducer: fn(A, T) -> A) -> A {
+    return FoldLocal<T, A>(values, initial, reducer)
+}
+
+template fn Factorial<T>(value: T) -> T {
+    if value <= 1 {
+        return 1
+    }
+    return value * Factorial<T>(value - 1)
+}
+
+template fn DormantInvalidForSomeTypes<T>(value: T) -> T {
+    return value * value
+}
+
+fn AddLength(statistics: LengthStatistics, value: Float<m>) -> LengthStatistics {
+    return statistics with {
+        Count: statistics.Count + 1
+        Total: statistics.Total + value
+    }
+}

@@ -554,6 +554,9 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 
 	for _, record := range file.Records {
 		if err := c.registerRecord(record); err != nil {
+			if record.TemplateOrigin != nil {
+				return fmt.Errorf("%s: %w", templateInstantiationContext(record.TemplateOrigin, ""), err)
+			}
 			return err
 		}
 	}
@@ -645,15 +648,33 @@ func (c checker) registerFunctionSignatures(file ast.File) error {
 func (c checker) checkPackageFunctions(file ast.File) error {
 	for _, function := range file.Functions {
 		if err := c.checkFunction(function); err != nil {
+			if function.TemplateOrigin != nil {
+				return fmt.Errorf("%s: %w", templateInstantiationContext(function.TemplateOrigin, function.SourcePath), err)
+			}
 			return err
 		}
 	}
 	for _, flow := range file.Flows {
 		if err := c.checkFlow(flow); err != nil {
+			if flow.TemplateOrigin != nil {
+				return fmt.Errorf("%s: %w", templateInstantiationContext(flow.TemplateOrigin, ""), err)
+			}
 			return err
 		}
 	}
 	return nil
+}
+
+func templateInstantiationContext(origin *ast.TemplateOrigin, sourcePath string) string {
+	chain := strings.Join(origin.InstantiationChain, " -> ")
+	if chain == "" {
+		chain = origin.Package + "." + origin.Declaration
+	}
+	context := "instantiating " + chain
+	if sourcePath != "" {
+		context += " from " + sourcePath
+	}
+	return context
 }
 
 func (c checker) registerRecord(record ast.RecordDecl) error {
@@ -942,6 +963,9 @@ func (c checker) validatePersistentFlowBoardType(t Type, visiting map[string]boo
 		}
 		visiting[t.Name] = true
 		defer delete(visiting, t.Name)
+		if refinement, ok := c.lookupRefinement(t.Name); ok {
+			return c.validatePersistentFlowBoardType(refinement.base, visiting)
+		}
 		if record, ok := c.lookupRecord(t.Name); ok {
 			for _, field := range record.fields {
 				if err := c.validatePersistentFlowBoardType(field, visiting); err != nil {

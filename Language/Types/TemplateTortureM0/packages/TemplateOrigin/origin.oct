@@ -1,0 +1,9 @@
+package TemplateOrigin
+
+template record Box<T> {
+    Value: T
+}
+
+template fn Double<T>(value: T) -> T {
+    return value + value
+}

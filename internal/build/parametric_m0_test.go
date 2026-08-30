@@ -98,6 +98,45 @@ func TestParametricM0ErasesBeforeOrdinaryFlowAndGoLowering(t *testing.T) {
 	}
 }
 
+func TestTemplateTortureM0ErasesAndEmitsDeterministicGo(t *testing.T) {
+	program, err := project.LoadForTest("../../Language/Types/TemplateTortureM0/valid/TemplateTortureValid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	module, err := lowerProgram(program, compileOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated, err := emitGo(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(generated, "\"math\"") || !strings.Contains(generated, "__octComplexReal") {
+		t.Fatal("Complex helper emission must carry its math import")
+	}
+	for _, forbidden := range []string{"TemplateRuntime", "TypeParameters", "runtime type dictionary", "reflect.TypeOf((*T)"} {
+		if strings.Contains(generated, forbidden) {
+			t.Fatalf("generated Go retained forbidden template runtime shape %q", forbidden)
+		}
+	}
+	stats := program.Parametrics
+	t.Logf("template_torture_m0 templates=%d records=%d functions=%d flows=%d requests=%d reuse=%d max_depth=%d elaboration_ns=%d generated_declarations=%d generated_go_bytes=%d",
+		stats.TemplateRecords+stats.TemplateFunctions+stats.TemplateFlows,
+		stats.RecordInstantiations,
+		stats.FunctionInstantiations,
+		stats.FlowInstantiations,
+		stats.InstantiationRequests,
+		stats.ReusedInstantiations,
+		stats.MaximumSpecializationDepth,
+		stats.ElaborationNanoseconds,
+		len(module.Records)+len(module.Functions)+len(module.Flows),
+		len(generated),
+	)
+}
+
 func TestParametricM0QueryMIRMatchesHandwrittenConcreteShape(t *testing.T) {
 	program, err := project.Load("../../docs/internal/evidence/OCT_PARAMETRICS_M0/benchmarks/query_runtime.oct")
 	if err != nil {

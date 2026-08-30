@@ -1,0 +1,9 @@
+expect error: "does not accept type arguments"
+
+package TemplateTortureOrdinaryGenericInvalid
+
+fn Identity(value: Int) -> Int {return value}
+
+fn Main() -> Int {
+    return Identity<Int>(1)
+}

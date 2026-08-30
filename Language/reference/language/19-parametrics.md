@@ -26,8 +26,13 @@ let same = Identity<Job>(boxed.Value)
 - Applications provide all type arguments explicitly. General type inference is not part of M0.
 - Type parameters may occur in record fields, function parameters/results, arrays, exact function-value types, FLOW signatures, and query source/yield types.
 - A repeated identical application in one consumer package reuses one concrete specialization.
-- Direct or indirect infinite specialization is rejected with an instantiation diagnostic.
+- A runtime-recursive template function specializes once per semantic key and may call that concrete function recursively.
+- Specialization that keeps creating new semantic keys (for example `A<T>` -> `A<Box<T>>`) is rejected by a defensive depth/count budget with the instantiation chain.
 - Concrete names shown by low-level diagnostics are deterministic but are not a promised source-level ABI.
+
+## Package declaration authority
+
+The package, not an individual source file, is the template declaration universe. Template collection completes across loaded package sources before any concrete declaration is rewritten, so sibling-file forward references and multi-file template chains behave like co-located declarations. Explicit `.octest` selection still controls which test entry points execute; same-package template-bearing and declaration-only support sources remain available to compilation. This preserves isolated standalone fixture programs that intentionally reuse a package name while preventing test selection from hiding template authority.
 
 ## Typed selectors
 
@@ -97,9 +102,15 @@ Imported templates are instantiated deterministically in the consumer compilatio
 
 Existing transparent Concept aliases compose with type arguments and are expanded before specialization. Existing `Require` expressions inside a template are checked on each concrete declaration and erase through the ordinary proof path. M0 does not add trait bounds, typeclasses, implicit implementation search, or a `where` clause.
 
+Refined Concepts can therefore be used as concrete type arguments and retain admission and dimensional identity. They cannot currently constrain an arbitrary type parameter by required operators or structure. A template such as `SquareSameType<T>` is deliberately checked only after specialization: numeric dimensionless instantiations can succeed, dimensioned or nonnumeric instantiations can fail, and dormant unused declarations are tolerated. Behavioral/operator Concepts are a separate future design question.
+
+## Elaboration and diagnostics
+
+Template declarations receive syntax/basic declaration validation when parsed. Template bodies receive ordinary semantic checking only after a concrete application exists. Specialization diagnostics retain the outer-to-inner instantiation chain, concrete type arguments, and the template function source path. Before ordinary downstream phases run, the project elaborator structurally rejects any remaining template declaration, type-parameter list, open parameter reference in a specialization, or unresolved call to a known template.
+
 ## Explicit limits
 
-M0 does not provide higher-kinded types, variance, associated types, specialization ordering, const/value parameters, lifetimes, dependent types, type-level arithmetic, arbitrary compile-time loops/functions, filesystem/network/process access, quote/unquote, eval, AST/token macros, field enumeration, reflection over `T`, runtime dictionaries, or a template registry.
+M0 does not provide template enums, higher-kinded types, variance, associated types, specialization ordering, const/value parameters, lifetimes, dependent types, type-level arithmetic, generic transformed-dimension expressions such as `Square<T>`, behavioral/operator bounds, arbitrary compile-time loops/functions, filesystem/network/process access, quote/unquote, eval, AST/token macros, field enumeration, reflection over `T`, runtime dictionaries, or a template registry.
 
 ## Catalog convention
 

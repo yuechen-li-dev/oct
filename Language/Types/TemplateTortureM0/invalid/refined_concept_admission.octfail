@@ -1,0 +1,15 @@
+expect error: "invalid compile-time-known construction of refined concept PositiveLength"
+
+package TemplateTortureRefinementInvalid
+
+concept PositiveLength = Float<m> {
+    Require(Self > 0.0m, "length must be positive")
+}
+
+template fn Preserve<T>(value: T) -> T {
+    return value
+}
+
+fn Main() -> PositiveLength {
+    return Preserve<PositiveLength>(-1.0m)
+}

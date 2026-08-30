@@ -39,14 +39,17 @@ type Program struct {
 }
 
 type ParametricStats struct {
-	TemplateRecords        int
-	TemplateFunctions      int
-	TemplateFlows          int
-	RecordInstantiations   int
-	FunctionInstantiations int
-	FlowInstantiations     int
-	SelectorsResolved      int
-	ElaborationNanoseconds int64
+	TemplateRecords            int
+	TemplateFunctions          int
+	TemplateFlows              int
+	RecordInstantiations       int
+	FunctionInstantiations     int
+	FlowInstantiations         int
+	SelectorsResolved          int
+	InstantiationRequests      int
+	ReusedInstantiations       int
+	MaximumSpecializationDepth int
+	ElaborationNanoseconds     int64
 }
 
 func Load(path string) (Program, error) {
@@ -213,7 +216,7 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	b.visiting[packageName] = struct{}{}
 	defer delete(b.visiting, packageName)
 
-	files, err := loadPackageFiles(directory, b.includeTests, b.selectedFiles[packageName])
+	files, err := loadPackageFiles(directory, b.includeTests, b.selectedFiles[packageName], packageName)
 	if err != nil {
 		return err
 	}
@@ -324,7 +327,7 @@ func (b *builder) loadAllPackagesInRoot() error {
 			continue
 		}
 		dir := filepath.Join(b.root, entry.Name())
-		files, err := loadPackageFiles(dir, b.includeTests, b.selectedFiles[entry.Name()])
+		files, err := loadPackageFiles(dir, b.includeTests, b.selectedFiles[entry.Name()], entry.Name())
 		if err != nil {
 			return err
 		}
@@ -338,7 +341,7 @@ func (b *builder) loadAllPackagesInRoot() error {
 	return nil
 }
 
-func loadPackageFiles(directory string, includeTests bool, selected map[string]struct{}) ([]ast.File, error) {
+func loadPackageFiles(directory string, includeTests bool, selected map[string]struct{}, expectedPackage string) ([]ast.File, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -390,15 +393,18 @@ func loadPackageFiles(directory string, includeTests bool, selected map[string]s
 	if len(selected) > 0 {
 		filtered := make([]string, 0, len(files))
 		for _, candidate := range files {
-			if filepath.Ext(candidate) != ".octest" {
+			if filepath.Ext(candidate) != ".octest" || isExplicitlySelected(selected, candidate) {
 				filtered = append(filtered, candidate)
 				continue
 			}
-			absCandidate, err := filepath.Abs(candidate)
+			parsed, err := parseFile(candidate)
 			if err != nil {
 				return nil, err
 			}
-			if _, ok := selected[filepath.Clean(absCandidate)]; ok {
+			// Selection controls test execution, not the package declaration
+			// universe. Include sibling test sources from the same package while
+			// preserving intentional fixture isolation across package names.
+			if parsed.Package == expectedPackage && contributesSelectedPackageDeclarations(parsed) {
 				filtered = append(filtered, candidate)
 			}
 		}
@@ -432,6 +438,34 @@ func loadPackageFiles(directory string, includeTests bool, selected map[string]s
 		result = append(result, parsed)
 	}
 	return result, nil
+}
+
+func contributesSelectedPackageDeclarations(file ast.File) bool {
+	for _, record := range file.Records {
+		if record.IsTemplate {
+			return true
+		}
+	}
+	for _, function := range file.Functions {
+		if function.IsTemplate {
+			return true
+		}
+	}
+	for _, flow := range file.Flows {
+		if flow.IsTemplate {
+			return true
+		}
+	}
+	// A sibling .octest with no executable entry point is a support source,
+	// equivalent to an .oct file for declaration-universe purposes. Legacy
+	// standalone fixture programs commonly reuse package Main and remain
+	// isolated because they contain their own test/artifact entry points.
+	for _, function := range file.Functions {
+		if function.IsFact || function.IsTheory || function.IsArtifact || function.IsBenchmark {
+			return false
+		}
+	}
+	return len(file.Concepts)+len(file.Records)+len(file.Enums)+len(file.Functions)+len(file.Flows) > 0
 }
 
 func isGeneratedTestRunnerFile(name string) bool {
@@ -533,7 +567,7 @@ func (b *builder) resolveImportDirectory(packageName string, importName string) 
 	for _, searchRoot := range b.importSearchRoots() {
 		candidateDir := filepath.Join(searchRoot, importName)
 		searched = append(searched, candidateDir)
-		files, err := loadPackageFiles(candidateDir, b.includeTests, b.selectedFiles[importName])
+		files, err := loadPackageFiles(candidateDir, b.includeTests, b.selectedFiles[importName], importName)
 		if err != nil {
 			return "", err
 		}
@@ -570,7 +604,7 @@ func (b *builder) resolveImportDirectory(packageName string, importName string) 
 	}
 	if version != "" {
 		localDir := filepath.Join(b.root, pkgmgr.ProjectPackagesRelDir, importName, version)
-		files, err := loadPackageFiles(localDir, b.includeTests, b.selectedFiles[importName])
+		files, err := loadPackageFiles(localDir, b.includeTests, b.selectedFiles[importName], importName)
 		if err != nil {
 			return "", err
 		}
@@ -757,7 +791,7 @@ func detectManifestedRoot(root string) (bool, error) {
 }
 
 func detectSinglePackageName(root string, includeTests bool) (string, error) {
-	files, err := loadPackageFiles(root, includeTests, nil)
+	files, err := loadPackageFiles(root, includeTests, nil, "")
 	if err != nil {
 		return "", err
 	}
