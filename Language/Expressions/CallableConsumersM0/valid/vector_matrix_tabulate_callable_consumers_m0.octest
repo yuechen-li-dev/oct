@@ -1,0 +1,33 @@
+package Main
+
+[Fact]
+fn vector_tabulate_is_eager_indexed_and_capture_aware() -> Void {
+    let amplitude = 2.5
+    let generate = fn(index: Int) -> Float with {
+        amplitude: amplitude
+    } {
+        return amplitude * Float(index + 1)
+    }
+    let empty = Vector.tabulate(0, generate)
+    let values = Vector.tabulate(4, generate)
+    Assert.Equal(0, Len(empty), "zero length creates an empty vector")
+    Assert.Equal(4, Len(values), "requested vector length")
+    Assert.Near(2.5, values[0], 0.000001, "first callback index is zero")
+    Assert.Near(10.0, values[3], 0.000001, "last callback index is length minus one")
+}
+
+[Fact]
+fn matrix_tabulate_scientific_capture_is_row_major_by_index() -> Void {
+    let amplitude = 2.0
+    let generate = fn(row: Int, column: Int) -> Float with {
+        amplitude: amplitude
+    } {
+        return amplitude * Float(row * 10 + column)
+    }
+    let grid = Matrix.tabulate(2, 3, generate)
+    Assert.Equal(2, grid.rows, "grid rows")
+    Assert.Equal(3, grid.cols, "grid columns")
+    Assert.Near(0.0, grid[0, 0], 0.000001, "first row and column")
+    Assert.Near(22.0, grid[1, 1], 0.000001, "captured parameterized grid")
+    Assert.Near(24.0, grid[1, 2], 0.000001, "last row-major coordinate")
+}

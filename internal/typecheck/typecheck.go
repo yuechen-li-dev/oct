@@ -4754,6 +4754,46 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		return ExprType{ValueType: floatMatrix}, nil
 	}
 
+	if callee == "Vector.tabulate" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Vector.tabulate' does not accept type arguments")
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function 'Vector.tabulate' expects 2 arguments, got %d", len(arguments))
+		}
+		lengthType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if lengthType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if lengthType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'Vector.tabulate' argument 1 expects Int, got %s", lengthType.ValueType)
+		}
+		callbackType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if callbackType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if !callbackType.ValueType.IsFunction {
+			return ExprType{}, fmt.Errorf("function 'Vector.tabulate' argument 2 expects function (Int) -> T, got %s", callbackType.ValueType)
+		}
+		signature, ok := c.functionTypes[callbackType.ValueType.FunctionSignature]
+		if !ok {
+			return ExprType{}, fmt.Errorf("internal error: missing function type metadata for %s", callbackType.ValueType.FunctionSignature)
+		}
+		if len(signature.parameters) != 1 || signature.parameters[0] != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("function 'Vector.tabulate' argument 2 expects function (Int) -> T, got %s", callbackType.ValueType)
+		}
+		if !isNumericBaseType(signature.returnType.Base) || signature.returnType.IsArray || signature.returnType.IsVector || signature.returnType.IsMatrix || signature.returnType.IsFunction || signature.returnType.IsFlowInstance {
+			return ExprType{}, fmt.Errorf("function 'Vector.tabulate' callback must return numeric scalar value, got %s", signature.returnType)
+		}
+		return ExprType{ValueType: Type{Base: signature.returnType.Base, Dimension: signature.returnType.Dimension, IsVector: true}}, nil
+	}
+
 	if callee == "Matrix.tabulate" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Matrix.tabulate' does not accept type arguments")

@@ -2989,6 +2989,27 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				}
 			}
 			switch calleeName {
+			case "Vector.tabulate":
+				if len(e.Arguments) != 2 {
+					return "", "", false, fmt.Errorf("Vector.tabulate expects 2 arguments")
+				}
+				lengthArg, _, _, err := c.lowerExpr(e.Arguments[0])
+				if err != nil {
+					return "", "", false, err
+				}
+				callbackName, callbackType, callbackFallible, err := c.lowerExpr(e.Arguments[1])
+				if err != nil {
+					return "", "", false, err
+				}
+				callbackSignature, ok := parseCompiledFunctionType(callbackType)
+				if !ok || len(callbackSignature.Parameters) != 1 || callbackSignature.Parameters[0] != "Int" || callbackFallible || callbackSignature.Fallible {
+					return "", "", false, fmt.Errorf("Vector.tabulate callback must have type fn(Int) -> T")
+				}
+				callbackRet := callbackSignature.ReturnType
+				ret := "Vector<" + callbackRet + ">"
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Vector.tabulate", Args: []string{lengthArg, callbackName}, Builtin: true, RetType: ret})
+				return tmp, ret, false, nil
 			case "Matrix.tabulate":
 				if len(e.Arguments) != 3 {
 					return "", "", false, fmt.Errorf("Matrix.tabulate expects 3 arguments")
@@ -11106,6 +11127,14 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octDivVector(%s)", st.Target, st.Args[0]), nil
 			case "SymGrad":
 				return fmt.Sprintf("%s = __octSymGrad(%s)", st.Target, st.Args[0]), nil
+			case "Vector.tabulate":
+				elemType, ok := parseVectorElemType(st.RetType)
+				if !ok {
+					return "", fmt.Errorf("invalid Vector.tabulate return type %s", st.RetType)
+				}
+				goElemType := goType(elemType)
+				return fmt.Sprintf("%s = func() []%s { __length := int(%s); __v := make([]%s, __length); for __i := 0; __i < __length; __i++ { __v[__i] = %s(__i) }; return __v }()",
+					st.Target, goElemType, st.Args[0], goElemType, st.Args[1]), nil
 			case "Matrix.fill":
 				elemType, ok := parseMatrixElemType(st.RetType)
 				if !ok {

@@ -1,0 +1,12 @@
+expect error: "Vector.tabulate callback must have type fn(Int) -> T"
+
+package Main
+
+fn Cell(index: Int) -> Float ! Error {
+    if index < 0 { return error("negative") }
+    return Float(index)
+}
+
+fn Invalid() -> Vector<Float> {
+    return Vector.tabulate(4, Cell)
+}

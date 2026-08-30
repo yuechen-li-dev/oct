@@ -49,9 +49,9 @@ Append loop before appending to the matrix.
 
 ---
 
-## MEDIUM — fn(Float[]) -> X Parameters Broken in Interpreter
+## RESOLVED — fn(Float[]) -> X Parameters in Interpreter
 
-**Symptom:** When a function takes `fn(Float[]) -> Float` or
+**Historical symptom:** When a function took `fn(Float[]) -> Float` or
 `fn(Float[]) -> Float[]` or `fn(Float[], Float) -> Float` as a parameter and
 calls it internally, the interpreter raises:
 `runtime invariant violation: undefined function Package.paramName`
@@ -66,9 +66,10 @@ fn applyVec(f: fn(Float[]) -> Float, v: Float[]) -> Float {
 }
 ```
 
-**Workaround:** These functions work correctly in COMPILED mode. All tests in
-this library pass in compiled mode (40/40 compiled, 0 interpreted fallback).
-The interpreter fallback path is not triggered because compiled succeeds.
+**Resolution:** Function-typed locals and parameters now shadow package-level
+lookup, and captured or noncaptured function values use the same interpreter
+invocation path. Optimization's ordinary objectives now pass in interpreted
+and compiled execution.
 
 **Affected functions:** GradientDescent, GradientDescentMomentum,
 NelderMead (all calls to objective function f), ArmijoLineSearch,
@@ -78,10 +79,9 @@ GaussNewton, LevenbergMarquardt, FitCurve.
 interpreted. The issue is specific to `Float[]` in the parameter list of the
 function type.
 
-**Upstream task:** Fix interpreter's function call resolution for function-typed
-parameters. When calling `f(v)` and `f` is a local variable of function type,
-the interpreter should call the function value stored in `f`, not look up a
-global function named `f`.
+**Compatibility note:** The former contextual objective adapters remain public
+thin wrappers, but new code should capture context and use the canonical
+objective signatures directly.
 
 ---
 
@@ -119,12 +119,11 @@ let val = row[j]    // safe
 
 ---
 
-## LOW — fn(Float[]) -> Float[] Parameter Limitation (Future Work)
+## RESOLVED SEAM / DEFERRED API — multi-variable differentiation
 
-**Symptom:** `PartialDiff` and `Gradient` in Numerics.Differentiation were
-removed because `fn(Float[]) -> Float` function-typed parameters broke in
-the interpreter (see MEDIUM issue above). Once the interpreter fix lands,
-these can be added back.
+`fn(Float[]) -> Float` callable parameters now work in the interpreter and
+compiled backend. Reintroducing `PartialDiff` or `Gradient` remains a separate
+Numerics API decision and is not part of callable-consumers M0.
 
 **Impact:** Multi-variable differentiation requires manual implementation.
 Users can approximate ∂f/∂xᵢ by varying one component at a time using

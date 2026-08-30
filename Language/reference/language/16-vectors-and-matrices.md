@@ -39,6 +39,7 @@ Arrays are general ordered collection/storage values, while vectors and matrices
 
 Use constructors when matrix values are generated, repetitive, or large:
 
+- `Vector.tabulate(length, Fn)` where `Fn` is an infallible `fn(index: Int) -> T`.
 - `Matrix.tabulate(rows, cols, Fn)` where `Fn` is `fn(r: Int, c: Int) -> T`.
 - `Matrix.fill(rows, cols, value)` for constant matrices.
 - `Matrix.zeros<T>(rows, cols)` for typed zero matrices.
@@ -46,6 +47,12 @@ Use constructors when matrix values are generated, repetitive, or large:
 
 Use literals (`matrix[[...]]`) for small hand-authored constants where the literal is clearer.
 For benchmark/corpus-style setup, prefer constructors over giant literals.
+
+Tabulation callbacks are ordinary function values. Captured and noncaptured
+functions use the same exact callable type. `Vector.tabulate` invokes its
+callback once per ascending index. `Matrix.tabulate` invokes its callback once
+per coordinate in row-major order. Both constructors are eager, require
+non-negative dimensions, and accept infallible callbacks in this M0 surface.
 
 ## Concrete indexing
 

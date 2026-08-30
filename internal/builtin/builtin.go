@@ -206,6 +206,7 @@ var names = map[string]struct{}{
 	"Div":                      {},
 	"SymGrad":                  {},
 	"PrometheusMatMul":         {},
+	"Vector.tabulate":          {},
 	"Matrix.tabulate":          {},
 	"Matrix.zeros":             {},
 	"Matrix.fill":              {},

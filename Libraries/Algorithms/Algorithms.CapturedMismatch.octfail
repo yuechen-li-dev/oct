@@ -1,0 +1,18 @@
+expect error: "argument 2 expects fn(Int) -> Int, got fn(Int) -> Bool"
+
+package Algorithms
+
+template fn Consume<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
+    var result: U[] = []
+    return result
+}
+
+fn Invalid() -> Int[] {
+    let threshold = 2
+    let predicate = fn(value: Int) -> Bool with {
+        threshold: threshold
+    } {
+        return value > threshold
+    }
+    return Consume<Int, Int>([1, 2], predicate)
+}

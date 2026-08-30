@@ -4391,6 +4391,47 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: Value{Kind: ValueIndex, Text: nameResult.value.Text}}, nil
 	}
+	if callee == "Vector.tabulate" {
+		if len(argumentExprs) != 2 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Vector.tabulate expects 2 arguments")
+		}
+		lengthResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if lengthResult.hasError {
+			return evalResult{hasError: true, errorVal: lengthResult.errorVal}, nil
+		}
+		if lengthResult.value.Kind != ValueInt || !lengthResult.value.Dimension.IsDimensionless() {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Vector.tabulate expects Int length")
+		}
+		if lengthResult.value.Int < 0 {
+			return evalResult{}, fmt.Errorf("runtime error: Vector.tabulate length must be non-negative")
+		}
+		callbackResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+		if err != nil {
+			return evalResult{}, err
+		}
+		if callbackResult.hasError {
+			return evalResult{hasError: true, errorVal: callbackResult.errorVal}, nil
+		}
+		if callbackResult.value.Kind != ValueFunc {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Vector.tabulate expects callback function")
+		}
+		length := int(lengthResult.value.Int)
+		elements := make([]Value, length)
+		for index := 0; index < length; index++ {
+			callResult, err := i.invokeFunctionValue(callbackResult.value.Function, pkgName, []Value{{Kind: ValueInt, Int: int64(index)}})
+			if err != nil {
+				return evalResult{}, err
+			}
+			if callResult.hasError {
+				return evalResult{hasError: true, errorVal: callResult.errorVal}, nil
+			}
+			elements[index] = callResult.value
+		}
+		return evalResult{value: Value{Kind: ValueVector, Vector: elements}}, nil
+	}
 	if callee == "Matrix.tabulate" {
 		if len(argumentExprs) != 3 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Matrix.tabulate expects 3 arguments")

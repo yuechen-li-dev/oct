@@ -4,7 +4,7 @@
 
 `Optimization` is the canonical larger-solver package: multivariate objectives, gradient methods, line search, simplex search, and nonlinear least squares. `Numerics` remains the canonical home for transparent scalar reference methods, including golden-section and Brent bounded one-dimensional minimization. This distinction is compatibility-first; no working API was deleted or renamed.
 
-Mathematical optimization library for Oct. 40 tests, all compiled.
+Mathematical optimization library for Oct.
 
 ## Packages
 
@@ -30,6 +30,12 @@ let result = FitCurve(model, params0, xData, yData, rTol, maxIter)!
 let ls = DefaultArmijoLineSearch(x, d, f, fx, gd)!
 ```
 
+Objectives and gradients are ordinary exact function values. Local model data,
+targets, and tolerances should be supplied through explicit immutable captures.
+`NelderMeadWithContext` and `CoordinateDescentWithContext` remain thin
+compatibility adapters; new code should call `NelderMead` or
+`CoordinateDescent` with a captured `fn(Float[]) -> Float`.
+
 ## Dimensional Boundary
 
 All parameters are dimensionless `Float`. Strip units before passing,
@@ -39,5 +45,4 @@ restore after. This is explicit by design — see Core.oct comments.
 
 See `FRICTION.md` for upstream fixes needed:
 - Float[] assignment is reference copy (critical — requires deep copy fix in compiler)
-- fn(Float[]) -> X parameters broken in interpreter (works in compiled mode)
 - Nested index assignment not supported for board fields

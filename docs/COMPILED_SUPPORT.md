@@ -1,6 +1,6 @@
 # Compiled Support Tracker
 
-_Last updated: 2026-08-22._
+_Last updated: 2026-08-30._
 
 This is an implementation evidence tracker. The public Oct 1.0 compatibility
 contract is `docs/releases/OCT_1_0_CONTRACT.md`; a tracked stable surface is
@@ -26,6 +26,22 @@ Compiled programs are native operating-system executables. On Windows,
 `.lib`; Linux uses `.so`/`.a`; macOS uses `.dylib`/`.a`. The `.octbin`
 extension is reserved for a future portable, Oct-owned artifact format; this
 repository does not currently emit such a format.
+
+## CALLABLE-CONSUMERS-M0
+
+Compiled Go supports named, anonymous, captured, and escaped ordinary function
+values across exact typed consumer parameters. User-authored generic consumers
+specialize early into concrete functions, then invoke callbacks through the
+same function-valued MIR call regardless of whether the callback has a capture
+environment. `Algorithms.Map`, `MapIndexed`, `Filter`, `Any`, `All`,
+`FindIndex`, `CountWhere`, and `Fold` are compiled-green. `Vector.tabulate` and
+`Matrix.tabulate` accept the same ordinary infallible callback values; generated
+Go uses typed `func` values and eager deterministic loops.
+
+Captured callable environments remain outside OctGo transport. FLOW-specific
+redesign was not part of this milestone; a bounded probe of a function-valued
+flow parameter and a template consumer inside a flow passed interpreted and
+compiled execution.
 
 ## BATCH-SPECIALIZE-M0 homogeneous batch lowering
 

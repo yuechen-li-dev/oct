@@ -1,0 +1,14 @@
+expect error: "argument 2 expects fn(Int) -> Int, got fn(String) -> Int"
+
+package Algorithms
+
+template fn Consume<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
+    var result: U[] = []
+    return result
+}
+
+fn Wrong(value: String) -> Int { return Len(value) }
+
+fn Invalid() -> Int[] {
+    return Consume<Int, Int>([1, 2], Wrong)
+}

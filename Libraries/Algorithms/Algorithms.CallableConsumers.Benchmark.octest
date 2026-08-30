@@ -1,0 +1,194 @@
+package Algorithms
+
+fn BenchmarkValues(length: Int) -> Float[] {
+    var values: Float[] = []
+    for i in 0 .. length {
+        values = Append(values, Float(i))
+    }
+    return values
+}
+
+fn DirectMap(values: Float[], scale: Float) -> Float[] {
+    var result: Float[] = []
+    for i in 0 .. Len(values) {
+        result = Append(result, values[i] * scale)
+    }
+    return result
+}
+
+fn ScaleTwo(value: Float) -> Float { return value * 2.0 }
+
+fn DirectFilter(values: Float[], threshold: Float) -> Float[] {
+    var result: Float[] = []
+    for i in 0 .. Len(values) {
+        if values[i] >= threshold {
+            result = Append(result, values[i])
+        }
+    }
+    return result
+}
+
+fn AtLeastHalf(value: Float) -> Bool { return value >= 2048.0 }
+
+fn DirectFold(values: Float[]) -> Float {
+    var result = 0.0
+    for i in 0 .. Len(values) {
+        result = result + values[i]
+    }
+    return result
+}
+
+fn Sum(accumulator: Float, value: Float) -> Float { return accumulator + value }
+
+fn DirectMatrix(size: Int, amplitude: Float) -> Matrix<Float> {
+    var result = Matrix.zeros<Float>(size, size)
+    for row in 0 .. size {
+        for column in 0 .. size {
+            result[row, column] = amplitude * Float(row + column)
+        }
+    }
+    return result
+}
+
+fn MatrixCell(row: Int, column: Int) -> Float { return 2.0 * Float(row + column) }
+
+[Benchmark]
+fn CallableConsumersDirectMap() -> Void {
+    let values = BenchmarkValues(4096)
+    var last: Float[] = []
+    for iteration in 0 .. 500 {
+        last = DirectMap(values, 2.0)
+    }
+    Assert.Equal(8190.0, last[4095], "direct map result")
+}
+
+[Benchmark]
+fn CallableConsumersNoncapturingMap() -> Void {
+    let values = BenchmarkValues(4096)
+    var last: Float[] = []
+    for iteration in 0 .. 500 {
+        last = Map<Float, Float>(values, ScaleTwo)
+    }
+    Assert.Equal(8190.0, last[4095], "noncapturing map result")
+}
+
+[Benchmark]
+fn CallableConsumersCapturingMap() -> Void {
+    let values = BenchmarkValues(4096)
+    let scale = 2.0
+    let transform = fn(value: Float) -> Float with {
+        scale: scale
+    } {
+        return value * scale
+    }
+    var last: Float[] = []
+    for iteration in 0 .. 500 {
+        last = Map<Float, Float>(values, transform)
+    }
+    Assert.Equal(8190.0, last[4095], "capturing map result")
+}
+
+[Benchmark]
+fn CallableConsumersDirectFilter() -> Void {
+    let values = BenchmarkValues(4096)
+    var last: Float[] = []
+    for iteration in 0 .. 500 {
+        last = DirectFilter(values, 2048.0)
+    }
+    Assert.Equal(2048, Len(last), "direct filter result")
+}
+
+[Benchmark]
+fn CallableConsumersNoncapturingFilter() -> Void {
+    let values = BenchmarkValues(4096)
+    var last: Float[] = []
+    for iteration in 0 .. 500 {
+        last = Filter<Float>(values, AtLeastHalf)
+    }
+    Assert.Equal(2048, Len(last), "noncapturing filter result")
+}
+
+[Benchmark]
+fn CallableConsumersCapturingFilter() -> Void {
+    let values = BenchmarkValues(4096)
+    let threshold = 2048.0
+    let predicate = fn(value: Float) -> Bool with {
+        threshold: threshold
+    } {
+        return value >= threshold
+    }
+    var last: Float[] = []
+    for iteration in 0 .. 500 {
+        last = Filter<Float>(values, predicate)
+    }
+    Assert.Equal(2048, Len(last), "capturing filter result")
+}
+
+[Benchmark]
+fn CallableConsumersDirectFold() -> Void {
+    let values = BenchmarkValues(4096)
+    var last = 0.0
+    for iteration in 0 .. 1000 {
+        last = DirectFold(values)
+    }
+    Assert.Equal(8386560.0, last, "direct fold result")
+}
+
+[Benchmark]
+fn CallableConsumersNoncapturingFold() -> Void {
+    let values = BenchmarkValues(4096)
+    var last = 0.0
+    for iteration in 0 .. 1000 {
+        last = Fold<Float, Float>(values, 0.0, Sum)
+    }
+    Assert.Equal(8386560.0, last, "noncapturing fold result")
+}
+
+[Benchmark]
+fn CallableConsumersCapturingFold() -> Void {
+    let values = BenchmarkValues(4096)
+    let weight = 1.0
+    let reducer = fn(accumulator: Float, value: Float) -> Float with {
+        weight: weight
+    } {
+        return accumulator + value * weight
+    }
+    var last = 0.0
+    for iteration in 0 .. 1000 {
+        last = Fold<Float, Float>(values, 0.0, reducer)
+    }
+    Assert.Equal(8386560.0, last, "capturing fold result")
+}
+
+[Benchmark]
+fn CallableConsumersDirectMatrixTabulate() -> Void {
+    var last = Matrix.zeros<Float>(1, 1)
+    for iteration in 0 .. 200 {
+        last = DirectMatrix(96, 2.0)
+    }
+    Assert.Equal(380.0, last[95, 95], "direct matrix result")
+}
+
+[Benchmark]
+fn CallableConsumersNoncapturingMatrixTabulate() -> Void {
+    var last = Matrix.zeros<Float>(1, 1)
+    for iteration in 0 .. 200 {
+        last = Matrix.tabulate(96, 96, MatrixCell)
+    }
+    Assert.Equal(380.0, last[95, 95], "noncapturing matrix result")
+}
+
+[Benchmark]
+fn CallableConsumersCapturingMatrixTabulate() -> Void {
+    let amplitude = 2.0
+    let generator = fn(row: Int, column: Int) -> Float with {
+        amplitude: amplitude
+    } {
+        return amplitude * Float(row + column)
+    }
+    var last = Matrix.zeros<Float>(1, 1)
+    for iteration in 0 .. 200 {
+        last = Matrix.tabulate(96, 96, generator)
+    }
+    Assert.Equal(380.0, last[95, 95], "capturing matrix result")
+}

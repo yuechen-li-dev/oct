@@ -1,5 +1,151 @@
 package Algorithms
 
+fn MakeScale(factor: Float) -> fn(Float) -> Float {
+    return fn(value: Float) -> Float with {
+        factor: factor
+    } {
+        return value * factor
+    }
+}
+
+template fn MapThroughTemplate<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
+    return Map<T, U>(values, transform)
+}
+
+fn StopAfterTrue(value: Int) -> Bool {
+    if value == 1 {
+        return true
+    }
+    var unreachable: Int[] = []
+    return unreachable[0] == 0
+}
+
+fn StopAfterFalse(value: Int) -> Bool {
+    if value == 1 {
+        return false
+    }
+    var unreachable: Int[] = []
+    return unreachable[0] == 0
+}
+
+[Fact]
+fn MapCoversEmptySingletonCaptureAndEscapedCallable() -> Void {
+    let offset = 4
+    let addOffset = fn(value: Int) -> Int with {
+        offset: offset
+    } {
+        return value + offset
+    }
+    let empty: Int[] = []
+    Assert.Equal(0, Len(Map<Int, Int>(empty, addOffset)), "empty map stays empty")
+    Assert.Equal(7, Map<Int, Int>([3], addOffset)[0], "singleton map invokes capture")
+
+    let scaled = Map<Float, Float>([1.5, 2.0, 3.0], MakeScale(2.0))
+    Assert.Equal(3.0, scaled[0], "escaped callable maps first value")
+    Assert.Equal(6.0, scaled[2], "escaped callable maps last value")
+}
+
+[Fact]
+fn MapIndexedAndTemplateCapturePreserveAscendingIndices() -> Void {
+    let bias = 10
+    let indexed = fn(index: Int, value: Int) -> Int with {
+        bias: bias
+    } {
+        return bias + index * 100 + value
+    }
+    let result = MapIndexed<Int, Int>([5, 6, 7], indexed)
+    Assert.Equal(15, result[0], "first index is zero")
+    Assert.Equal(116, result[1], "second index is one")
+    Assert.Equal(217, result[2], "third index is two")
+
+    let factor = 3
+    let scale = fn(value: Int) -> Int with {
+        factor: factor
+    } {
+        return value * factor
+    }
+    let specialized = MapThroughTemplate<Int, Int>([2, 4], scale)
+    Assert.Equal(6, specialized[0], "template passes captured callable")
+    Assert.Equal(12, specialized[1], "specialized consumer keeps callable type")
+}
+
+[Fact]
+fn FilterCoversNoneAllMixedCaptureAndSourceIsolation() -> Void {
+    let threshold = 5
+    let atLeast = fn(value: Int) -> Bool with {
+        threshold: threshold
+    } {
+        return value >= threshold
+    }
+    Assert.Equal(0, Len(Filter<Int>([1, 2, 3], atLeast)), "none match")
+    Assert.Equal(3, Len(Filter<Int>([5, 6, 7], atLeast)), "all match")
+
+    var source = [2, 6, 4, 8]
+    var selected = Filter<Int>(source, atLeast)
+    Assert.Equal(2, Len(selected), "mixed filter count")
+    selected[0] = 99
+    Assert.Equal(6, source[1], "filtered result has independent storage")
+}
+
+[Fact]
+fn AnyAndAllDefineEmptyCaptureAndShortCircuitSemantics() -> Void {
+    let empty: Int[] = []
+    let threshold = 3
+    let above = fn(value: Int) -> Bool with {
+        threshold: threshold
+    } {
+        return value > threshold
+    }
+    Assert.False(Any<Int>(empty, above), "Any empty is false")
+    Assert.True(All<Int>(empty, above), "All empty is true")
+    Assert.True(Any<Int>([1, 4], above), "Any uses captured predicate")
+    Assert.False(All<Int>([4, 2], above), "All uses captured predicate")
+    Assert.True(Any<Int>([1, 2], StopAfterTrue), "Any stops at first true")
+    Assert.False(All<Int>([1, 2], StopAfterFalse), "All stops at first false")
+}
+
+[Fact]
+fn FindIndexAndCountWhereUseCapturedPredicates() -> Void {
+    let target = 8
+    let equalsTarget = fn(value: Int) -> Bool with {
+        target: target
+    } {
+        return value == target
+    }
+    Assert.Equal(0, FindIndex<Int>([8, 4, 8], equalsTarget), "finds first match")
+    Assert.Equal(1, FindIndex<Int>([4, 8, 9], equalsTarget), "finds middle match")
+    Assert.Equal(-1, FindIndex<Int>([1, 2], equalsTarget), "missing uses established -1 convention")
+    Assert.Equal(2, CountWhere<Int>([8, 1, 8], equalsTarget), "count predicate carries target")
+}
+
+[Fact]
+fn FoldIsLeftToRightAndSupportsCapturedReducer() -> Void {
+    let radix = 10
+    let appendDigit = fn(accumulator: Int, value: Int) -> Int with {
+        radix: radix
+    } {
+        return accumulator * radix + value
+    }
+    let empty: Int[] = []
+    Assert.Equal(42, Fold<Int, Int>(empty, 42, appendDigit), "empty fold returns initial")
+    Assert.Equal(123, Fold<Int, Int>([1, 2, 3], 0, appendDigit), "fold order is left to right")
+}
+
+[Fact]
+fn ScientificNormalizationUsesCapturedScale() -> Void {
+    let samples = [3.0, 4.0]
+    let norm = 5.0
+    let normalize = fn(value: Float) -> Float with {
+        norm: norm
+    } {
+        return value / norm
+    }
+    let normalized = Map<Float, Float>(samples, normalize)
+    Assert.Near(0.6, normalized[0], 0.000001, "normalized first sample")
+    Assert.Near(0.8, normalized[1], 0.000001, "normalized second sample")
+    Assert.Near(1.0, normalized[0] * normalized[0] + normalized[1] * normalized[1], 0.000001, "normalized magnitude")
+}
+
 fn IsEven(value: Int) -> Bool {return value % 2 == 0}
 fn IsLong(value: String) -> Bool {return Len(value) > 3}
 

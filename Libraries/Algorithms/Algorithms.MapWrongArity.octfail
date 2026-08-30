@@ -1,0 +1,14 @@
+expect error: "argument 2 expects fn(Int) -> Int, got fn(Int, Int) -> Int"
+
+package Algorithms
+
+template fn Consume<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
+    var result: U[] = []
+    return result
+}
+
+fn Wrong(left: Int, right: Int) -> Int { return left + right }
+
+fn Invalid() -> Int[] {
+    return Consume<Int, Int>([1, 2], Wrong)
+}

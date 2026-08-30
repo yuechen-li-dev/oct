@@ -1,0 +1,9 @@
+expect error: "function 'Vector.tabulate' argument 2 expects function (Int) -> T"
+
+package Main
+
+fn Wrong(left: Int, right: Int) -> Float { return Float(left + right) }
+
+fn Invalid() -> Vector<Float> {
+    return Vector.tabulate(4, Wrong)
+}

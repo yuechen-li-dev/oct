@@ -1,0 +1,9 @@
+expect error: "function 'Vector.tabulate' callback must return numeric scalar value, got String"
+
+package Main
+
+fn Cell(index: Int) -> String { return "cell" }
+
+fn Invalid() -> Vector<Float> {
+    return Vector.tabulate(4, Cell)
+}

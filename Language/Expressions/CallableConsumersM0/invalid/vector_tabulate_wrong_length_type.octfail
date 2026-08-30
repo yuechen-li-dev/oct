@@ -1,0 +1,9 @@
+expect error: "function 'Vector.tabulate' argument 1 expects Int, got Float"
+
+package Main
+
+fn Cell(index: Int) -> Float { return Float(index) }
+
+fn Invalid() -> Vector<Float> {
+    return Vector.tabulate(4.0, Cell)
+}

@@ -1,0 +1,14 @@
+expect error: "array element 0 expects String, got Int"
+
+package Algorithms
+
+template fn Consume<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
+    var result: U[] = []
+    return result
+}
+
+fn Identity(value: String) -> String { return value }
+
+fn Invalid() -> String[] {
+    return Consume<String, String>([1, 2], Identity)
+}

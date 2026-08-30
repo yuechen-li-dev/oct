@@ -1,8 +1,7 @@
 package Optimization
 
-// Objective: sum of squared residuals against a target curve packed
-// into `context` -- data that a plain fn(Float[]) -> Float could
-// never see, since Oct function values can't capture it.
+// Legacy objective shape retained only to verify the compatibility adapters.
+// New callers capture the target directly in an ordinary fn(Float[]) -> Float.
 fn SumOfSquaresAgainstContext(x: Float[], context: Float[]) -> Float {
     var sum = 0.0
     for i in 0 .. Len(x) {
@@ -49,4 +48,23 @@ fn CoordinateDescentWithContextRespectsActiveMask() -> Void ! Error {
     Assert.True(Abs(result.Point[0] - 3.0) < 0.01, "active coordinate 0 should move toward target")
     Assert.True(result.Point[1] == 0.0, "inactive coordinate 1 should stay fixed at its starting value")
     Assert.True(Abs(result.Point[2] - 2.25) < 0.01, "active coordinate 2 should move toward target")
+}
+
+[Fact]
+fn CoordinateDescentAcceptsCapturedObjectiveDirectly() -> Void ! Error {
+    let target = [3.0, 0.0 - 1.5, 2.25]
+    let objective = fn(x: Float[]) -> Float with {
+        target: target
+    } {
+        var sum = 0.0
+        for i in 0 .. Len(x) {
+            let residual = x[i] - target[i]
+            sum = sum + residual * residual
+        }
+        return sum
+    }
+    let result = CoordinateDescent(objective, [0.0, 0.0, 0.0], [true, false, true], 0.5, 8)?
+    Assert.True(Abs(result.Point[0] - 3.0) < 0.01, "captured objective moves active coordinate zero")
+    Assert.True(result.Point[1] == 0.0, "inactive coordinate remains pinned")
+    Assert.True(Abs(result.Point[2] - 2.25) < 0.01, "captured objective moves active coordinate two")
 }

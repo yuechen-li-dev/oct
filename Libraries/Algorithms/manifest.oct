@@ -18,9 +18,9 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Algorithms"
         Version: "0.1.0"
-        Description: "Readable generic, search, number-theory, and prime algorithms"
+        Description: "Eager typed callable consumers plus readable search, number-theory, and prime algorithms"
         Authors:["Codex"]
-        Date: "2026-08-23"
+        Date: "2026-08-30"
         Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
     }
 }
