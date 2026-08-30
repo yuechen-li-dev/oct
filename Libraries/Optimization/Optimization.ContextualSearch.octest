@@ -23,6 +23,23 @@ fn NelderMeadWithContextFindsTargetPackedInContext() -> Void ! Error {
 }
 
 [Fact]
+fn NelderMeadAcceptsExplicitlyCapturedScientificObjective() -> Void ! Error {
+    let target = [3.0, 0.0 - 1.5, 2.25]
+    let objective = fn(x: Float[]) -> Float with {
+        target: target
+    } {
+        var sum = 0.0
+        for i in 0 .. Len(x) {
+            let diff = x[i] - target[i]
+            sum = sum + diff * diff
+        }
+        return sum
+    }
+    let result = NelderMead(objective, [0.0, 0.0, 0.0], 0.0001, 0.0000001, 500)?
+    Assert.True(result.FMin < 0.0001, "captured target objective should converge")
+}
+
+[Fact]
 fn CoordinateDescentWithContextRespectsActiveMask() -> Void ! Error {
     let target = [3.0, 0.0 - 1.5, 2.25]
     // Only coordinate 0 and 2 are active -- coordinate 1 should stay

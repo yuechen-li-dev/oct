@@ -1,0 +1,10 @@
+expect error: "capture 'x' conflicts with parameter 'x'"
+
+package Main
+
+fn Main() -> Int {
+    let outer = 1
+    let f = fn(x: Int) -> Int with { x: outer } { return x }
+    return f(2)
+}
+

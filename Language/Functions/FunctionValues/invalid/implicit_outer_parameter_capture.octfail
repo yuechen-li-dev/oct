@@ -1,0 +1,10 @@
+expect error: "outer local 'offset' is not captured; add it to 'with { ... }'"
+
+package Main
+
+fn Make(offset: Int) -> fn(Int) -> Int {
+    return fn(value: Int) -> Int { return value + offset }
+}
+
+fn Main() -> Int { return 0 }
+

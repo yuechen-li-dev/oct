@@ -105,6 +105,56 @@ fn main() -> Int {
 	}
 }
 
+func TestExplicitCaptureLoweringRetainsTypedEnvironment(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.oct")
+	src := `package Main
+fn First() -> Int { return 2 }
+fn Second() -> Int { return 3 }
+fn Main() -> Int {
+    let scale = fn(value: Int) -> Int with { factor: First() bias: Second() } { return value * factor + bias }
+    return scale(4)
+}
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	module, generated, err := inspectProgram(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	var captureCalls []string
+	for _, function := range module.Functions {
+		if len(function.CaptureEnv) == 2 {
+			found = true
+			for _, capture := range function.CaptureEnv {
+				if capture.Type != "Int" {
+					t.Fatalf("capture type = %s, want Int", capture.Type)
+				}
+			}
+		}
+		if function.Name == "Main" {
+			for _, block := range function.Blocks {
+				for _, statement := range block.Statements {
+					if call, ok := statement.(MIRCall); ok && (call.Callee == "Main.First" || call.Callee == "Main.Second") {
+						captureCalls = append(captureCalls, call.Callee)
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("MIR lacks explicit capture environment:\n%s", dumpMIR(module))
+	}
+	if got := strings.Join(captureCalls, ","); got != "Main.First,Main.Second" {
+		t.Fatalf("capture construction call order = %q, want First then Second exactly once", got)
+	}
+	if strings.Contains(generated, "map[string]") || strings.Contains(generated, "interface{}") {
+		t.Fatalf("capture lowering used dynamic environment representation:\n%s", generated)
+	}
+}
+
 func TestConceptsAndTrueRequireEraseToConcreteGo(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "main.oct")

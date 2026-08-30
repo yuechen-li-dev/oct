@@ -55,7 +55,7 @@ func TestLoadInvalidFixtures(t *testing.T) {
 
 	expected := map[string]string{
 		"package_declaration.octagon":       "expected expression",
-		"function_declaration.octagon":      "expected expression",
+		"function_declaration.octagon":      "expected '(' after 'fn'",
 		"function_call.octagon":             ".octagon does not allow function calls",
 		"let_binding.octagon":               "expected expression",
 		"if_expression.octagon":             ".octagon does not allow if expressions",

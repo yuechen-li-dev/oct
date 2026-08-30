@@ -191,6 +191,32 @@ func TestBuildFileParsesRecordUpdateExpr(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesAnonymousFunctionCaptureEnvironment(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { let multiplier = 3 let scale = fn(x: Int) -> Int with { factor: multiplier bias: 1 } { return x * factor + bias } return scale(4) }")
+	letStmt := file.Functions[0].Body.Statements[1].(ast.LetStmt)
+	function, ok := letStmt.Value.(ast.FunctionExpr)
+	if !ok {
+		t.Fatalf("expected FunctionExpr, got %T", letStmt.Value)
+	}
+	if len(function.Parameters) != 1 || function.Parameters[0].Name != "x" || function.ReturnType.Name != "Int" {
+		t.Fatalf("unexpected anonymous signature: %#v", function)
+	}
+	if len(function.Captures) != 2 || function.Captures[0].Name != "factor" || function.Captures[1].Name != "bias" {
+		t.Fatalf("unexpected captures: %#v", function.Captures)
+	}
+}
+
+func TestBuildFileKeepsFunctionCaptureWithDistinctFromRecordUpdate(t *testing.T) {
+	file := parseSource(t, "record Model { Value: Int } fn Main() -> Int { let factor = 2 let f = fn(x: Int) -> Int with { factor: factor } { return x * factor } let m = Model { Value: 1 } let updated = m with { Value: 2 } return f(updated.Value) }")
+	body := file.Functions[0].Body.Statements
+	if _, ok := body[1].(ast.LetStmt).Value.(ast.FunctionExpr); !ok {
+		t.Fatalf("capture syntax did not produce FunctionExpr")
+	}
+	if _, ok := body[3].(ast.LetStmt).Value.(ast.RecordUpdateExpr); !ok {
+		t.Fatalf("record update syntax did not remain RecordUpdateExpr")
+	}
+}
+
 func TestBuildFileParsesFallibleFunctionCallsAndMatch(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int ! Error { let x = Safe()? match Safe() { ok(value) => { return value } err(e) => { return error(\"bad\") } } }")
 

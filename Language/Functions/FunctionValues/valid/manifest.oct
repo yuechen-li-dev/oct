@@ -3,6 +3,8 @@ package Manifest
 record PackageManifest {
     Name: String
     Version: String
+    Authors: String[]
+    Date: String
     Description: String
     Dependencies: Dependency[]
 }
@@ -16,7 +18,9 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "FunctionValuesValid"
         Version: "0.1.0"
-        Description: "Non-capturing named function values"
+        Authors: ["Codex"]
+        Date: "2026-08-30"
+        Description: "Named and anonymous function values with explicit immutable captures"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

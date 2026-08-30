@@ -1,0 +1,12 @@
+expect error: "cannot assign to captured value 'count'; captures are immutable snapshots"
+
+package Main
+
+fn Main() -> Int {
+    var outer = 1
+    let f = fn() -> Int with { count: outer } {
+        count = count + 1
+        return count
+    }
+    return f()
+}

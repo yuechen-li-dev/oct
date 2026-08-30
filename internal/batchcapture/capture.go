@@ -131,6 +131,12 @@ func collectBatchExprFree(expr ast.Expr, defined map[string]struct{}, free map[s
 		for _, argument := range node.Arguments {
 			collectBatchExprFree(argument, defined, free)
 		}
+	case ast.FunctionExpr:
+		for _, capture := range node.Captures {
+			collectBatchExprFree(capture.Value, defined, free)
+		}
+		// The anonymous body has its own lexical environment. Its explicit
+		// capture expressions above are the only dependencies of this scope.
 	case ast.IndexExpr:
 		collectBatchExprFree(node.Target, defined, free)
 		for _, index := range node.Indices {

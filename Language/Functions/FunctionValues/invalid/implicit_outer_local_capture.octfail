@@ -1,0 +1,10 @@
+expect error: "outer local 'offset' is not captured; add it to 'with { ... }'"
+
+package Main
+
+fn Main() -> Int {
+    let offset = 10
+    let add = fn(x: Int) -> Int { return x + offset }
+    return add(5)
+}
+

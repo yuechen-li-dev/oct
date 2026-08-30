@@ -190,7 +190,19 @@ type MatrixValue struct {
 }
 
 type FunctionValue struct {
-	Key string
+	Key       string
+	Anonymous *AnonymousFunctionValue
+}
+
+type AnonymousFunctionValue struct {
+	Expression ast.FunctionExpr
+	Package    string
+	Captures   []CapturedValue
+}
+
+type CapturedValue struct {
+	Name  string
+	Value Value
 }
 
 type FlowRuntimeInstance struct {
@@ -286,6 +298,9 @@ func (v Value) String() string {
 		}
 		return fmt.Sprintf("%s.%s(%s)", v.Enum.TypeName, v.Enum.Variant, v.Enum.Payload.String())
 	case ValueFunc:
+		if v.Function.Anonymous != nil {
+			return "<anonymous function>"
+		}
 		return v.Function.Key
 	case ValueFlow:
 		if v.Flow == nil {
@@ -825,6 +840,54 @@ func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, 
 		return callResult{hasError: true, errorVal: result.value}, nil
 	}
 	return callResult{value: result.value}, nil
+}
+
+func (i interpreter) executeAnonymousFunction(function *AnonymousFunctionValue, arguments []Value) (callResult, error) {
+	env := newEnvironment(nil)
+	for _, capture := range function.Captures {
+		env.define(capture.Name, cloneValue(capture.Value), false)
+	}
+	for index, parameter := range function.Expression.Parameters {
+		env.define(parameter.Name, arguments[index], false)
+	}
+	result, err := i.executeBlock(env, function.Package, function.Expression.Body)
+	if err != nil {
+		return callResult{}, err
+	}
+	if !result.returned {
+		if function.Expression.ReturnType.Name == "Void" {
+			return callResult{}, nil
+		}
+		return callResult{}, fmt.Errorf("runtime invariant violation: anonymous function completed without returning")
+	}
+	if function.Expression.IsFallible && result.value.Kind == ValueError {
+		return callResult{hasError: true, errorVal: result.value}, nil
+	}
+	return callResult{value: result.value}, nil
+}
+
+func (i interpreter) invokeFunctionValue(function FunctionValue, callerPackage string, arguments []Value) (callResult, error) {
+	if function.Anonymous != nil {
+		return i.executeAnonymousFunction(function.Anonymous, arguments)
+	}
+	declaration, ok := i.functions[function.Key]
+	if !ok {
+		return callResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", function.Key)
+	}
+	targetPackage := callerPackage
+	if dot := strings.Index(function.Key, "."); dot >= 0 {
+		targetPackage = function.Key[:dot]
+	}
+	if targetPackage != callerPackage {
+		for index := range arguments {
+			arguments[index] = dequalifyTargetPackageValue(arguments[index], targetPackage)
+		}
+	}
+	result, err := i.executeFunction(declaration, targetPackage, arguments)
+	if err == nil && targetPackage != callerPackage {
+		result.value = qualifyCrossPackageValue(result.value, targetPackage)
+	}
+	return result, err
 }
 
 func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, arguments []Value) *FlowRuntimeInstance {
@@ -1653,6 +1716,19 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			return evalResult{value: Value{Kind: ValueFunc, Function: FunctionValue{Key: functionKey}}}, nil
 		}
 		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Name)
+	case ast.FunctionExpr:
+		captures := make([]CapturedValue, 0, len(node.Captures))
+		for _, capture := range node.Captures {
+			value, err := i.evalExpr(env, pkgName, capture.Value)
+			if err != nil {
+				return evalResult{}, err
+			}
+			if value.hasError {
+				return evalResult{hasError: true, errorVal: value.errorVal}, nil
+			}
+			captures = append(captures, CapturedValue{Name: capture.Name, Value: cloneValue(value.value)})
+		}
+		return evalResult{value: Value{Kind: ValueFunc, Function: FunctionValue{Anonymous: &AnonymousFunctionValue{Expression: node, Package: pkgName, Captures: captures}}}}, nil
 	case ast.CallExpr:
 		return i.evalCallExpr(env, pkgName, node)
 	case ast.RecordLiteralExpr:
@@ -2493,12 +2569,14 @@ regularCall:
 	}
 
 	functionKey := ""
+	var anonymousFunction *AnonymousFunctionValue
 	if ident, ok := expr.Callee.(ast.IdentifierExpr); ok {
 		if binding, exists := env.lookup(ident.Name); exists && binding.value.Kind == ValueFunc {
 			functionKey = binding.value.Function.Key
+			anonymousFunction = binding.value.Function.Anonymous
 		}
 	}
-	if functionKey != "" {
+	if functionKey != "" || anonymousFunction != nil {
 		// Function-typed locals and parameters shadow package-level lookup.
 	} else if hasDirectName {
 		functionKey = calleeName
@@ -2517,6 +2595,7 @@ regularCall:
 			return evalResult{}, fmt.Errorf("runtime error: call target must be function value")
 		}
 		functionKey = calleeValue.value.Function.Key
+		anonymousFunction = calleeValue.value.Function.Anonymous
 	}
 	function, ok := i.functions[functionKey]
 
@@ -2530,6 +2609,16 @@ regularCall:
 			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
 		}
 		arguments = append(arguments, argument.value)
+	}
+	if anonymousFunction != nil {
+		result, err := i.executeAnonymousFunction(anonymousFunction, arguments)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if result.hasError {
+			return evalResult{hasError: true, errorVal: result.errorVal}, nil
+		}
+		return evalResult{value: result.value}, nil
 	}
 	if flowDecl, isFlow := i.flows[functionKey]; isFlow {
 		targetPkg := pkgName
@@ -4341,15 +4430,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		elements := make([]Value, rows*cols)
 		for r := 0; r < rows; r++ {
 			for cIdx := 0; cIdx < cols; cIdx++ {
-				callback, ok := i.functions[callbackResult.value.Function.Key]
-				if !ok {
-					return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", callbackResult.value.Function.Key)
-				}
-				callPkg := pkgName
-				if dot := strings.Index(callbackResult.value.Function.Key, "."); dot >= 0 {
-					callPkg = callbackResult.value.Function.Key[:dot]
-				}
-				callResult, err := i.executeFunction(callback, callPkg, []Value{
+				callResult, err := i.invokeFunctionValue(callbackResult.value.Function, pkgName, []Value{
 					{Kind: ValueInt, Int: int64(r)},
 					{Kind: ValueInt, Int: int64(cIdx)},
 				})

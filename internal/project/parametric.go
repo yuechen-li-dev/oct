@@ -672,6 +672,34 @@ func (e *parametricElaborator) rewriteExpr(pkgName string, expr ast.Expr, expect
 			x.Callee, err = e.rewriteExpr(pkgName, x.Callee, nil, subst)
 		}
 		return x, err
+	case ast.FunctionExpr:
+		x.Parameters = append([]ast.Parameter(nil), x.Parameters...)
+		for i := range x.Parameters {
+			x.Parameters[i].Type, err = e.rewriteType(pkgName, x.Parameters[i].Type, subst)
+			if err != nil {
+				return nil, err
+			}
+		}
+		x.ReturnType, err = e.rewriteType(pkgName, x.ReturnType, subst)
+		if err != nil {
+			return nil, err
+		}
+		if x.ErrorType != nil {
+			rewritten, rewriteErr := e.rewriteType(pkgName, *x.ErrorType, subst)
+			if rewriteErr != nil {
+				return nil, rewriteErr
+			}
+			x.ErrorType = &rewritten
+		}
+		x.Captures = append([]ast.CaptureBinding(nil), x.Captures...)
+		for i := range x.Captures {
+			x.Captures[i].Value, err = e.rewriteExpr(pkgName, x.Captures[i].Value, nil, subst)
+			if err != nil {
+				return nil, err
+			}
+		}
+		x.Body, err = e.rewriteBlock(pkgName, x.Body, x.ReturnType, subst)
+		return x, err
 	case ast.RecordLiteralExpr:
 		x.TypeArguments = append([]ast.TypeRef(nil), x.TypeArguments...)
 		x.Fields = append([]ast.RecordLiteralField(nil), x.Fields...)

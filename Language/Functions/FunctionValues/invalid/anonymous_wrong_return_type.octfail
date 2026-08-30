@@ -1,0 +1,8 @@
+expect error: "function expects Int, but return is Bool"
+
+package Main
+
+fn Main() -> Int {
+    let bad = fn() -> Int { return true }
+    return bad()
+}

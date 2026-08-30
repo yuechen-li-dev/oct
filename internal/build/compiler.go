@@ -381,10 +381,17 @@ type MIRField struct {
 	Type string
 }
 
+type MIRCapture struct {
+	Name      string
+	Parameter string
+	Type      string
+}
+
 type MIRFunction struct {
 	Package         string
 	Name            string
 	Params          []MIRField
+	CaptureEnv      []MIRCapture
 	Return          string
 	IsFallible      bool
 	ErrorType       string
@@ -713,6 +720,7 @@ type lowerCtx struct {
 	tempID            int
 	userID            int
 	batchID           int
+	anonymousID       int
 	batchDepth        int
 	retType           string
 	fn                ast.FunctionDecl
@@ -1278,6 +1286,21 @@ func collectExprCallsWithLocals(expr ast.Expr, functionValueLocals map[string]st
 		for _, arg := range e.Arguments {
 			calls = append(calls, collectExprCallsWithLocals(arg, functionValueLocals)...)
 		}
+	case ast.FunctionExpr:
+		for _, capture := range e.Captures {
+			calls = append(calls, collectExprCallsWithLocals(capture.Value, functionValueLocals)...)
+		}
+		bodyLocals := make(map[string]struct{}, len(functionValueLocals)+len(e.Parameters)+len(e.Captures))
+		for name := range functionValueLocals {
+			bodyLocals[name] = struct{}{}
+		}
+		for _, parameter := range e.Parameters {
+			bodyLocals[parameter.Name] = struct{}{}
+		}
+		for _, capture := range e.Captures {
+			bodyLocals[capture.Name] = struct{}{}
+		}
+		calls = append(calls, collectFunctionCallsWithLocals(e.Body, bodyLocals)...)
 	case ast.IdentifierExpr:
 		if _, isFunctionValueLocal := functionValueLocals[e.Name]; !isFunctionValueLocal {
 			calls = append(calls, [2]string{"", e.Name})
@@ -2178,6 +2201,7 @@ const (
 	internalBatchItem      internalSymbolKind = "batch_item"
 	internalBatchCapture   internalSymbolKind = "batch_capture"
 	internalBatchWorker    internalSymbolKind = "batch_worker"
+	internalAnonymous      internalSymbolKind = "anonymous"
 )
 
 // internalName is the sole emitted namespace for compiler-owned locals. Source
@@ -2428,6 +2452,8 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return symbol, signature, false, nil
 		}
 		return "", "", false, fmt.Errorf("unknown identifier '%s'", e.Name)
+	case ast.FunctionExpr:
+		return c.lowerFunctionExpr(e)
 	case ast.BinaryExpr:
 		if e.Operator == "and" || e.Operator == "or" {
 			return c.lowerLogicalBinaryExpr(e)
@@ -2975,10 +3001,15 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				if err != nil {
 					return "", "", false, err
 				}
-				callbackName, callbackRet, err := c.resolveMatrixTabulateCallback(e.Arguments[2])
+				callbackName, callbackType, callbackFallible, err := c.lowerExpr(e.Arguments[2])
 				if err != nil {
 					return "", "", false, err
 				}
+				callbackSignature, ok := parseCompiledFunctionType(callbackType)
+				if !ok || len(callbackSignature.Parameters) != 2 || callbackSignature.Parameters[0] != "Int" || callbackSignature.Parameters[1] != "Int" || callbackFallible || callbackSignature.Fallible {
+					return "", "", false, fmt.Errorf("Matrix.tabulate callback must have type fn(Int, Int) -> T")
+				}
+				callbackRet := callbackSignature.ReturnType
 				ret := "Matrix<" + callbackRet + ">"
 				tmp := c.temp(ret)
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.tabulate", Args: []string{rowsArg, colsArg, callbackName}, Builtin: true, RetType: ret})
@@ -3626,6 +3657,111 @@ func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error)
 	return value, resultType + "[]", false, nil
 }
 
+func (c *lowerCtx) lowerFunctionExpr(e ast.FunctionExpr) (string, string, bool, error) {
+	id := c.anonymousID
+	c.anonymousID++
+	name := goSafeName(c.fn.Name) + "_" + internalName(internalAnonymous, id)
+
+	captureFields := make([]MIRField, 0, len(e.Captures))
+	captureEnvironment := make([]MIRCapture, 0, len(e.Captures))
+	captureArgs := make([]string, 0, len(e.Captures))
+	workerLocals := make(map[string]string, len(e.Captures)+len(e.Parameters))
+	workerGoNames := make(map[string]string, len(e.Captures)+len(e.Parameters))
+	for index, capture := range e.Captures {
+		value, typ, fallible, err := c.lowerExpr(capture.Value)
+		if err != nil {
+			return "", "", false, err
+		}
+		if fallible {
+			return "", "", false, fmt.Errorf("capture '%s' must handle fallible value", capture.Name)
+		}
+		value = cloneCompiledValueExpr(value, typ)
+		tmp := c.temp(typ)
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: value})
+		goName := fmt.Sprintf("%s_%d", internalName(internalBatchCapture, id), index)
+		captureFields = append(captureFields, MIRField{Name: goName, Type: typ})
+		captureEnvironment = append(captureEnvironment, MIRCapture{Name: capture.Name, Parameter: goName, Type: typ})
+		captureArgs = append(captureArgs, tmp)
+		workerLocals[capture.Name] = typ
+		workerGoNames[capture.Name] = goName
+	}
+
+	params := append([]MIRField(nil), captureFields...)
+	functionParamNames := make([]string, 0, len(e.Parameters))
+	functionParamDecls := make([]string, 0, len(e.Parameters))
+	functionParamTypes := make([]string, 0, len(e.Parameters))
+	for index, parameter := range e.Parameters {
+		typ := typeRefStringForPackage(c.pkg.Name, parameter.Type)
+		goName := fmt.Sprintf("%s_param_%d", internalName(internalAnonymous, id), index)
+		workerLocals[parameter.Name] = typ
+		workerGoNames[parameter.Name] = goName
+		params = append(params, MIRField{Name: goName, Type: typ})
+		functionParamNames = append(functionParamNames, goName)
+		functionParamDecls = append(functionParamDecls, fmt.Sprintf("%s %s", goName, goType(typ)))
+		functionParamTypes = append(functionParamTypes, typ)
+	}
+	returnType := typeRefStringForPackage(c.pkg.Name, e.ReturnType)
+	decl := ast.FunctionDecl{Name: name, Parameters: e.Parameters, ReturnType: e.ReturnType, IsFallible: e.IsFallible}
+	if e.ErrorType != nil {
+		decl.ErrorType = *e.ErrorType
+	}
+	wctx := &lowerCtx{pkg: c.pkg, program: c.program, locals: workerLocals, goNames: workerGoNames, blocks: []MIRBlock{{Label: "entry"}}, cur: 0, retType: returnType, fn: decl, einTerms: map[string]einsteinTermMeta{}}
+	if err := wctx.lowerBlock(e.Body); err != nil {
+		return "", "", false, err
+	}
+	if wctx.blocks[wctx.cur].Terminator == nil {
+		if returnType == "Void" {
+			if e.IsFallible {
+				wctx.blocks[wctx.cur].Terminator = MIRReturn{Value: fallibleOkValue(returnType, "")}
+			} else {
+				wctx.blocks[wctx.cur].Terminator = MIRReturn{}
+			}
+		} else {
+			return "", "", false, fmt.Errorf("anonymous function missing return")
+		}
+	}
+	c.extra = append(c.extra, wctx.extra...)
+	worker := MIRFunction{Package: c.pkg.Name, Name: name, Params: params, CaptureEnv: captureEnvironment, Return: returnType, IsFallible: e.IsFallible, ErrorType: typeRefStringForPackage(c.pkg.Name, decl.ErrorType), Blocks: wctx.blocks, UsesUtilityWhen: wctx.usesUtilityWhen}
+	paramSet := make(map[string]struct{}, len(params))
+	for _, parameter := range params {
+		paramSet[parameter.Name] = struct{}{}
+	}
+	for sourceName, typ := range wctx.locals {
+		goName := wctx.goLocalName(sourceName)
+		if _, isParam := paramSet[goName]; !isParam {
+			worker.Locals = append(worker.Locals, MIRField{Name: goName, Type: typ})
+		}
+	}
+	sort.Slice(worker.Locals, func(i, j int) bool { return worker.Locals[i].Name < worker.Locals[j].Name })
+	c.extra = append(c.extra, worker)
+
+	functionType := "fn(" + strings.Join(functionParamTypes, ", ") + ") -> " + returnType
+	goReturn := goType(returnType)
+	if e.IsFallible {
+		functionType += " ! Error"
+		goReturn = goResultTypeName(returnType)
+	}
+	callArgs := append(append([]string(nil), captureArgs...), functionParamNames...)
+	workerSymbol := "fn_" + c.pkg.Name + "_" + name
+	body := fmt.Sprintf("return %s(%s)", workerSymbol, strings.Join(callArgs, ", "))
+	if goReturn == "" {
+		body = fmt.Sprintf("%s(%s)", workerSymbol, strings.Join(callArgs, ", "))
+	}
+	returnClause := ""
+	if goReturn != "" {
+		returnClause = " " + goReturn
+	}
+	closure := fmt.Sprintf("func(%s)%s { %s }", strings.Join(functionParamDecls, ", "), returnClause, body)
+	if len(captureFields) > 0 {
+		captureDecls := make([]string, 0, len(captureFields))
+		for _, field := range captureFields {
+			captureDecls = append(captureDecls, fmt.Sprintf("%s %s", field.Name, goType(field.Type)))
+		}
+		closure = fmt.Sprintf("func(%s) %s { return %s }(%s)", strings.Join(captureDecls, ", "), goType(functionType), closure, strings.Join(captureArgs, ", "))
+	}
+	return closure, functionType, false, nil
+}
+
 func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFunction, string, []string, error) {
 	name := c.internalBatchWorkerName()
 	c.batchID++
@@ -4080,34 +4216,95 @@ func (c *lowerCtx) resolveFunctionValueCall(callee ast.Expr) (string, compiledFu
 			}
 			return c.goLocalName(ident.Name), signature, true, nil
 		}
+		return "", compiledFunctionSignature{}, false, nil
 	}
-	return "", compiledFunctionSignature{}, false, nil
+	switch callee.(type) {
+	case ast.CallExpr, ast.FunctionExpr, ast.ParenExpr:
+	default:
+		return "", compiledFunctionSignature{}, false, nil
+	}
+	value, typ, fallible, err := c.lowerExpr(callee)
+	if err != nil {
+		return "", compiledFunctionSignature{}, false, err
+	}
+	if fallible {
+		return "", compiledFunctionSignature{}, false, fmt.Errorf("fallible expression cannot be called without handling")
+	}
+	signature, ok := parseCompiledFunctionType(typ)
+	return value, signature, ok, nil
 }
 
 func parseCompiledFunctionType(typ string) (compiledFunctionSignature, bool) {
 	if !strings.HasPrefix(typ, "fn(") {
 		return compiledFunctionSignature{}, false
 	}
-	arrowMarker := ") -> "
-	arrow := strings.LastIndex(typ, arrowMarker)
-	if arrow < 0 {
+	depth := 0
+	closeIndex := -1
+	for index := len("fn"); index < len(typ); index++ {
+		switch typ[index] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				closeIndex = index
+				index = len(typ)
+			}
+		}
+	}
+	if closeIndex < 0 || !strings.HasPrefix(typ[closeIndex:], ") -> ") {
 		return compiledFunctionSignature{}, false
 	}
-	paramsText := typ[len("fn("):arrow]
-	rest := typ[arrow+len(arrowMarker):]
+	paramsText := typ[len("fn("):closeIndex]
+	rest := typ[closeIndex+len(") -> "):]
 	fallible := false
 	returnType := rest
-	if bang := strings.Index(rest, " ! "); bang >= 0 {
+	if bang := topLevelFunctionBang(rest); bang >= 0 {
 		fallible = true
 		returnType = rest[:bang]
 	}
 	params := []string{}
 	if strings.TrimSpace(paramsText) != "" {
-		for _, part := range strings.Split(paramsText, ",") {
+		for _, part := range splitTopLevelTypes(paramsText) {
 			params = append(params, strings.TrimSpace(part))
 		}
 	}
 	return compiledFunctionSignature{Parameters: params, ReturnType: strings.TrimSpace(returnType), Fallible: fallible}, true
+}
+
+func topLevelFunctionBang(text string) int {
+	depth := 0
+	for index := 0; index+2 < len(text); index++ {
+		switch text[index] {
+		case '(', '<':
+			depth++
+		case ')', '>':
+			depth--
+		}
+		if depth == 0 && strings.HasPrefix(text[index:], " ! ") {
+			return index
+		}
+	}
+	return -1
+}
+
+func splitTopLevelTypes(text string) []string {
+	parts := []string{}
+	depth, start := 0, 0
+	for index := 0; index < len(text); index++ {
+		switch text[index] {
+		case '(', '<':
+			depth++
+		case ')', '>':
+			depth--
+		case ',':
+			if depth == 0 {
+				parts = append(parts, text[start:index])
+				start = index + 1
+			}
+		}
+	}
+	return append(parts, text[start:])
 }
 
 func (c *lowerCtx) resolveCallArgTypes(callee ast.Expr) []string {
@@ -4537,35 +4734,6 @@ func flattenDirectCallName(expr ast.Expr) (string, bool) {
 		return left.Name + "." + node.Field, true
 	default:
 		return "", false
-	}
-}
-
-func (c *lowerCtx) resolveMatrixTabulateCallback(expr ast.Expr) (string, string, error) {
-	switch fn := expr.(type) {
-	case ast.IdentifierExpr:
-		for _, declared := range c.pkg.Functions {
-			if declared.Name == fn.Name {
-				return "fn_" + strings.ReplaceAll(c.pkg.Name+"."+fn.Name, ".", "_"), typeRefStringForPackage(c.pkg.Name, declared.ReturnType), nil
-			}
-		}
-		return "", "", fmt.Errorf("Matrix.tabulate callback '%s' must be a named function", fn.Name)
-	case ast.FieldAccessExpr:
-		pkgIdent, ok := fn.Target.(ast.IdentifierExpr)
-		if !ok {
-			return "", "", fmt.Errorf("Matrix.tabulate callback must be a named function")
-		}
-		importPkg, ok := c.program.Packages[pkgIdent.Name]
-		if !ok {
-			return "", "", fmt.Errorf("unknown package '%s'", pkgIdent.Name)
-		}
-		for _, declared := range importPkg.Functions {
-			if declared.Name == fn.Field {
-				return "fn_" + strings.ReplaceAll(pkgIdent.Name+"."+fn.Field, ".", "_"), typeRefStringForPackage(pkgIdent.Name, declared.ReturnType), nil
-			}
-		}
-		return "", "", fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, fn.Field)
-	default:
-		return "", "", fmt.Errorf("Matrix.tabulate callback must be a named function")
 	}
 }
 
@@ -6359,6 +6527,16 @@ func dumpMIR(m MIRModule) string {
 	}
 	for _, fn := range m.Functions {
 		fmt.Fprintf(&b, "fn %s.%s", fn.Package, fn.Name)
+		if len(fn.CaptureEnv) > 0 {
+			b.WriteString(" capture-env{")
+			for i, capture := range fn.CaptureEnv {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(&b, "%s:%s", capture.Name, capture.Type)
+			}
+			b.WriteString("}")
+		}
 		fmt.Fprintf(&b, "(")
 		for i, p := range fn.Params {
 			if i > 0 {

@@ -1,0 +1,111 @@
+package FunctionValuesValid
+
+fn Apply(f: fn(Int) -> Int, value: Int) -> Int {
+    return f(value)
+}
+
+fn Triple(value: Int) -> Int {
+    return value * 3
+}
+
+fn ApplyFallible(f: fn(Int) -> Int ! Error, value: Int) -> Int ! Error {
+    return f(value)?
+}
+
+template fn MakeIdentity<T>() -> fn(T) -> T {
+    return fn(value: T) -> T { return value }
+}
+
+fn MakeAdder(offset: Int) -> fn(Int) -> Int {
+    return fn(x: Int) -> Int with {
+        offset: offset
+    } {
+        return x + offset
+    }
+}
+
+[Fact]
+fn AnonymousFunctionWithoutCaptures() -> Void {
+    let square = fn(x: Int) -> Int {
+        return x * x
+    }
+    Assert.Equal(25, square(5), "anonymous function is callable")
+}
+
+[Fact]
+fn ExplicitCaptureIsRenamedSnapshot() -> Void {
+    var multiplier = 3
+    let scale = fn(x: Int) -> Int with {
+        factor: multiplier
+    } {
+        return x * factor
+    }
+    multiplier = 10
+    Assert.Equal(12, Apply(scale, 4), "capture is evaluated by value at construction")
+}
+
+[Fact]
+fn ArrayCaptureSnapshotsAtConstruction() -> Void {
+    var factors = [2]
+    let scale = fn(value: Int) -> Int with {
+        factors: factors
+    } {
+        return value * factors[0]
+    }
+    factors[0] = 10
+    Assert.Equal(8, scale(4), "captured arrays are value snapshots, not shared cells")
+}
+
+[Fact]
+fn CapturedFunctionEscapesCreatorScope() -> Void {
+    let add10 = MakeAdder(10)
+    Assert.Equal(15, add10(5), "captured environment outlives creator invocation")
+}
+
+[Fact]
+fn NestedFunctionsCaptureExplicitlyAtEachLevel() -> Void {
+    let factor = 3
+    let outer = fn() -> fn(Int) -> Int with {
+        factor: factor
+    } {
+        return fn(x: Int) -> Int with {
+            factor: factor
+        } {
+            return x * factor
+        }
+    }
+    Assert.Equal(12, outer()(4), "nested environments are independently explicit")
+}
+
+[Fact]
+fn PackageFunctionsDoNotRequireCapture() -> Void {
+    let applyTriple = fn(value: Int) -> Int { return Triple(value) }
+    Assert.Equal(12, applyTriple(4), "package function remains globally resolvable")
+}
+
+[Fact]
+fn FallibleAnonymousFunctionMatchesFallibleFunctionType() -> Void ! Error {
+    let nonnegative = fn(value: Int) -> Int ! Error {
+        if value < 0 { return error("negative") }
+        return value
+    }
+    Assert.Equal(4, ApplyFallible(nonnegative, 4)?, "fallible anonymous function is callable")
+}
+
+[Fact]
+fn TemplateElaborationPreservesAnonymousFunction() -> Void {
+    let identity = MakeIdentity<Int>()
+    Assert.Equal(7, identity(7), "template-generated anonymous function works")
+}
+
+[Fact]
+fn CapturedFunctionWorksWithScientificMatrixCallback() -> Void {
+    let base = 10
+    let entry = fn(row: Int, column: Int) -> Int with {
+        base: base
+    } {
+        return base + row + column
+    }
+    let result = Matrix.tabulate(2, 2, entry)
+    Assert.Equal(12, result[1, 1], "captured callback composes with Matrix.tabulate")
+}

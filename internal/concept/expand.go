@@ -404,6 +404,20 @@ func expandExpr(expr ast.Expr, aliases map[string]ast.TypeRef, refinements map[s
 			e.Elements[i] = expandExpr(e.Elements[i], aliases, refinements)
 		}
 		return e
+	case ast.FunctionExpr:
+		for i := range e.Parameters {
+			e.Parameters[i].Type = mustExpand(e.Parameters[i].Type, aliases)
+		}
+		e.ReturnType = mustExpand(e.ReturnType, aliases)
+		if e.ErrorType != nil {
+			expanded := mustExpand(*e.ErrorType, aliases)
+			e.ErrorType = &expanded
+		}
+		for i := range e.Captures {
+			e.Captures[i].Value = expandExpr(e.Captures[i].Value, aliases, refinements)
+		}
+		e.Body = expandBlock(e.Body, aliases, refinements)
+		return e
 	case ast.VectorLiteralExpr:
 		for i := range e.Elements {
 			e.Elements[i] = expandExpr(e.Elements[i], aliases, refinements)

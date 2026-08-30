@@ -205,6 +205,14 @@ func validateContract(c *contract, report *Report) error {
 }
 
 func validateFunctionSignature(c contract, goFn FunctionModel, octFn ast.FunctionDecl) error {
+	for _, parameter := range octFn.Parameters {
+		if parameter.Type.Function != nil {
+			return fmt.Errorf("OctGo import %s cannot accept function-valued parameter '%s': captured anonymous functions require an environment, and the current OctGo bridge does not transport callable environments", octFn.Name, parameter.Name)
+		}
+	}
+	if octFn.ReturnType.Function != nil {
+		return fmt.Errorf("OctGo import %s cannot return a function value: the current OctGo bridge does not transport callable environments", octFn.Name)
+	}
 	if !goFn.Supported {
 		return fmt.Errorf("Go function %s.%s\nhas signature:\n    %s\nerror: %s", c.model.Package.Path, goFn.Name, goFn.Signature, goFn.UnsupportedReason)
 	}

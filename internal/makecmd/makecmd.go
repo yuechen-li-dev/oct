@@ -2155,6 +2155,11 @@ func walkExpr(expr ast.Expr, visitCall func(ast.CallExpr)) {
 		for _, arg := range e.Arguments {
 			walkExpr(arg, visitCall)
 		}
+	case ast.FunctionExpr:
+		for _, capture := range e.Captures {
+			walkExpr(capture.Value, visitCall)
+		}
+		walkBlock(e.Body, visitCall)
 	case ast.ArrayLiteralExpr:
 		for _, elem := range e.Elements {
 			walkExpr(elem, visitCall)

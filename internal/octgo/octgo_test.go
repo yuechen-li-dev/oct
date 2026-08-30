@@ -104,6 +104,16 @@ func TestSignatureMismatchReportsBothSidesBeforeExecution(t *testing.T) {
 	}
 }
 
+func TestFunctionValuedOctGoParameterHasExplicitEnvironmentDiagnostic(t *testing.T) {
+	directory := copySpecimen(t)
+	path := filepath.Join(directory, "specimen.contracts.oct")
+	replaceFile(t, path, "go fn StrictlyAbove(value: Int, threshold: Int) -> Bool", "go fn StrictlyAbove(value: fn(Int) -> Int, threshold: Int) -> Bool")
+	_, err := Check(directory, false)
+	if err == nil || !strings.Contains(err.Error(), "captured anonymous functions require an environment") {
+		t.Fatalf("unexpected function-value interop diagnostic: %v", err)
+	}
+}
+
 func TestUnsupportedShapeIsRejectedPrecisely(t *testing.T) {
 	directory := copySpecimen(t)
 	appendFile(t, filepath.Join(directory, "specimen.go"), "\nfunc Bad(values []int) int { return len(values) }\n")

@@ -20,7 +20,7 @@ fn Manifest() -> PackageManifest {
         Version: "0.2.0"
         Authors: ["Claude", "Codex"]
         Date: "2026-08-23"
-        Description: "Mathematical optimization library. Multivariate gradient descent with Armijo backtracking, Nelder-Mead derivative-free simplex, nonlinear least-squares via Gauss-Newton and Levenberg-Marquardt, line search utilities. All 40 tests pass in compiled mode. See FRICTION.md for known interpreter limitations and upstream fixes needed."
+        Description: "Mathematical optimization library. Multivariate gradient descent with Armijo backtracking, Nelder-Mead and coordinate-search objectives with explicit captures, nonlinear least-squares, and line search utilities."
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

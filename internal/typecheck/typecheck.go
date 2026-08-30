@@ -171,6 +171,7 @@ type functionContext struct {
 	board                   map[string]Type
 	yieldType               *Type
 	isRefinementConstructor bool
+	outerLocalScope         *scope
 }
 
 func Check(file ast.File) error {
@@ -406,6 +407,7 @@ type scope struct {
 type binding struct {
 	valueType Type
 	mutable   bool
+	captured  bool
 }
 
 func newScope(parent *scope) *scope {
@@ -426,6 +428,10 @@ func (s *scope) lookupConstant(name string) (constantValue, bool) {
 
 func (s *scope) define(name string, valueType Type, mutable bool) {
 	s.values[name] = binding{valueType: valueType, mutable: mutable}
+}
+
+func (s *scope) defineCapture(name string, valueType Type) {
+	s.values[name] = binding{valueType: valueType, captured: true}
 }
 
 func (s *scope) lookup(name string) (binding, bool) {
@@ -1133,6 +1139,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: unknown binding '%s'", ctx.name, node.Name)
 		}
 		if !target.mutable {
+			if target.captured {
+				return false, fmt.Errorf("function %s: cannot assign to captured value '%s'; captures are immutable snapshots", ctx.name, node.Name)
+			}
 			return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'; use `var %s = ...` for bindings that must be reassigned, or bind a new value with `let`", ctx.name, node.Name, node.Name)
 		}
 		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, &target.valueType)
@@ -1726,7 +1735,14 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			c.functionTypes[functionType.FunctionSignature] = signature
 			return ExprType{ValueType: functionType}, nil
 		}
+		if ctx.outerLocalScope != nil {
+			if _, exists := ctx.outerLocalScope.lookup(node.Name); exists {
+				return ExprType{}, fmt.Errorf("outer local '%s' is not captured; add it to 'with { ... }'", node.Name)
+			}
+		}
 		return ExprType{}, fmt.Errorf("undefined variable: %s", node.Name)
+	case ast.FunctionExpr:
+		return c.checkFunctionExpr(scope, node, ctx)
 	case ast.CallExpr:
 		return c.checkCallExpr(scope, node, ctx)
 	case ast.RecordLiteralExpr:
@@ -2079,6 +2095,86 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 	default:
 		return ExprType{}, fmt.Errorf("unsupported expression %T", expr)
 	}
+}
+
+func (c checker) checkFunctionExpr(outer *scope, expr ast.FunctionExpr, parent functionContext) (ExprType, error) {
+	parameters := make([]Type, 0, len(expr.Parameters))
+	bodyScope := newScope(nil)
+	parameterNames := make(map[string]struct{}, len(expr.Parameters))
+	for _, parameter := range expr.Parameters {
+		if _, exists := parameterNames[parameter.Name]; exists {
+			return ExprType{}, fmt.Errorf("duplicate parameter '%s'", parameter.Name)
+		}
+		parameterType, err := c.resolveNonReturnType(parameter.Type)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("anonymous function parameter %s: %w", parameter.Name, err)
+		}
+		parameterNames[parameter.Name] = struct{}{}
+		parameters = append(parameters, parameterType)
+		bodyScope.define(parameter.Name, parameterType, false)
+	}
+
+	captureNames := make(map[string]struct{}, len(expr.Captures))
+	for _, capture := range expr.Captures {
+		if _, exists := captureNames[capture.Name]; exists {
+			return ExprType{}, fmt.Errorf("duplicate capture '%s'", capture.Name)
+		}
+		if _, exists := parameterNames[capture.Name]; exists {
+			return ExprType{}, fmt.Errorf("capture '%s' conflicts with parameter '%s'", capture.Name, capture.Name)
+		}
+		capturedType, err := c.checkExpr(outer, capture.Value, parent)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("capture '%s': %w", capture.Name, err)
+		}
+		if capturedType.Fallible {
+			return ExprType{}, fmt.Errorf("capture '%s': %s", capture.Name, unhandledFallibleMessage(capture.Value))
+		}
+		if capturedType.ValueType.Base == BaseTypeVoid {
+			return ExprType{}, fmt.Errorf("capture '%s': Void result cannot be used as a value", capture.Name)
+		}
+		captureNames[capture.Name] = struct{}{}
+		bodyScope.defineCapture(capture.Name, capturedType.ValueType)
+	}
+
+	returnType, err := c.resolveReturnType(expr.ReturnType)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("anonymous function return type: %w", err)
+	}
+	if expr.IsFallible {
+		if expr.ErrorType == nil {
+			return ExprType{}, fmt.Errorf("fallible anonymous function must specify Error")
+		}
+		errorType, err := c.resolveNonReturnType(*expr.ErrorType)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if errorType != (Type{Base: BaseTypeError}) {
+			return ExprType{}, fmt.Errorf("fallible anonymous function must use Error")
+		}
+	}
+
+	name := parent.name + " anonymous function"
+	anonymousCtx := parent
+	anonymousCtx.name = name
+	anonymousCtx.returnType = returnType
+	anonymousCtx.isFallible = expr.IsFallible
+	anonymousCtx.outerLocalScope = outer
+	anonymousCtx.inFlow = false
+	anonymousCtx.inState = false
+	anonymousCtx.states = nil
+	anonymousCtx.board = nil
+	anonymousCtx.yieldType = nil
+	hasReturn, err := c.checkBlock(bodyScope, expr.Body, anonymousCtx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if returnType.Base != BaseTypeVoid && !hasReturn {
+		return ExprType{}, fmt.Errorf("function %s: missing return statement", name)
+	}
+
+	signature := functionSignature{parameters: parameters, returnType: returnType, isFallible: expr.IsFallible}
+	c.functionTypes[signature.String()] = signature
+	return ExprType{ValueType: signature.asType()}, nil
 }
 
 func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ctx functionContext) (ExprType, error) {
@@ -6944,9 +7040,6 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 }
 
 func (c checker) resolveReturnType(typeRef ast.TypeRef) (Type, error) {
-	if typeRef.Function != nil {
-		return Type{}, fmt.Errorf("function return types are not supported in M32")
-	}
 	return c.resolveType(typeRef, true)
 }
 
@@ -6986,9 +7079,6 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 
 	if typeRef.Function != nil {
 		functionRef := typeRef.Function
-		if functionRef.ReturnType.Function != nil {
-			return Type{}, fmt.Errorf("function types cannot return function types in M32")
-		}
 		parameters := make([]Type, 0, len(functionRef.Parameters))
 		for _, parameterRef := range functionRef.Parameters {
 			parameterType, err := c.resolveType(parameterRef, false)

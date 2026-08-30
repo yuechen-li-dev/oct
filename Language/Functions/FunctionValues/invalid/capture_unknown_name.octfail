@@ -1,0 +1,9 @@
+expect error: "capture 'value': undefined variable: unknownName"
+
+package Main
+
+fn Main() -> Int {
+    let f = fn() -> Int with { value: unknownName } { return value }
+    return f()
+}
+

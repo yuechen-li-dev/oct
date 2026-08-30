@@ -1965,7 +1965,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.Minus, lex.DotDot:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFn, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.Minus, lex.DotDot:
 		return true
 	default:
 		return false
@@ -2335,6 +2335,9 @@ func (p *parser) parseCallArguments() ([]ast.Expr, error) {
 }
 
 func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
+	if p.current().Kind == lex.KeywordFn {
+		return p.parseFunctionExpr()
+	}
 	token := p.current()
 	switch token.Kind {
 	case lex.Dot:
@@ -2439,6 +2442,69 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseFunctionExpr() (ast.Expr, error) {
+	fnToken, err := p.expect(lex.KeywordFn, "expected 'fn'")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.LeftParen, "expected '(' after 'fn'"); err != nil {
+		return nil, err
+	}
+	parameters, err := p.parseParameters()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.RightParen, "expected ')' after parameter list"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(lex.Arrow, "expected arrow before anonymous function return type"); err != nil {
+		return nil, err
+	}
+	returnType, err := p.parseTypeRef()
+	if err != nil {
+		return nil, err
+	}
+	function := ast.FunctionExpr{Parameters: parameters, ReturnType: returnType, Line: fnToken.Line, Column: fnToken.Column}
+	if p.match(lex.Bang) {
+		errorType, err := p.parseTypeRef()
+		if err != nil {
+			return nil, err
+		}
+		function.IsFallible = true
+		function.ErrorType = &errorType
+	}
+	if p.match(lex.KeywordWith) {
+		if _, err := p.expect(lex.LeftBrace, "expected '{' after anonymous function 'with'"); err != nil {
+			return nil, err
+		}
+		for p.current().Kind != lex.RightBrace {
+			if p.current().Kind == lex.EOF {
+				return nil, p.errorAtCurrent("expected '}' to close capture environment")
+			}
+			name, err := p.expectIdentifierLike("expected capture name")
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lex.Colon, "expected ':' after capture name"); err != nil {
+				return nil, err
+			}
+			value, err := p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			function.Captures = append(function.Captures, ast.CaptureBinding{Name: name.Lexeme, Value: value, Line: name.Line, Column: name.Column})
+			p.match(lex.Comma)
+		}
+		p.advance()
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	function.Body = body
+	return function, nil
 }
 
 func (p *parser) parseBatchExpr() (ast.Expr, error) {

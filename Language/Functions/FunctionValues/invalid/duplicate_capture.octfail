@@ -1,0 +1,11 @@
+expect error: "duplicate capture 'value'"
+
+package Main
+
+fn Main() -> Int {
+    let a = 1
+    let b = 2
+    let f = fn() -> Int with { value: a value: b } { return value }
+    return f()
+}
+

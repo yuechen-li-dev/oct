@@ -440,6 +440,28 @@ type CallExpr struct {
 
 func (CallExpr) exprNode() {}
 
+// FunctionExpr is an anonymous function value. Captures are an explicit,
+// ordered environment constructed when the expression is evaluated.
+type FunctionExpr struct {
+	Parameters []Parameter
+	ReturnType TypeRef
+	IsFallible bool
+	ErrorType  *TypeRef
+	Captures   []CaptureBinding
+	Body       Block
+	Line       int
+	Column     int
+}
+
+func (FunctionExpr) exprNode() {}
+
+type CaptureBinding struct {
+	Name   string
+	Value  Expr
+	Line   int
+	Column int
+}
+
 type IndexExpr struct {
 	Target  Expr
 	Indices []Expr
