@@ -235,6 +235,58 @@ fn Main() -> Int { let machine = Shared(3) Step(machine) return Result(machine)!
 	}
 }
 
+func TestFlowFallibleMatchSubjectUsesSharedOrdinaryMIR(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.oct")
+	src := `package Main
+fn ParsePositive(x: Int) -> Int ! Error {
+    if x <= 0 { return error("not positive") }
+    return x + 1
+}
+flow LoadHandled(x: Int) -> Int {
+    state Load {
+        match ParsePositive(x) {
+            ok(value) => { return value }
+            err(problem) => { return 0 }
+        }
+    }
+}
+fn Main() -> Int { let machine = LoadHandled(4) Step(machine) return Result(machine)! }
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	module, _, err := inspectProgram(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, flow := range module.Flows {
+		if flow.Name != "LoadHandled" {
+			continue
+		}
+		for _, state := range flow.States {
+			for _, statement := range state.Statements {
+				match, ok := statement.(MIRFlowFallibleMatch)
+				if !ok {
+					continue
+				}
+				shared, ok := match.Subject.(MIRFlowSharedExpr)
+				if !ok {
+					t.Fatalf("fallible FLOW match retained non-shared expression MIR %T", match.Subject)
+				}
+				if !shared.Fallible || shared.Type != "Int" {
+					t.Fatalf("fallible shared expression = type %q, fallible %t; want Int, true", shared.Type, shared.Fallible)
+				}
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("LoadHandled did not contain a fallible match subject")
+	}
+}
+
 func TestConceptsAndTrueRequireEraseToConcreteGo(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "main.oct")
@@ -305,10 +357,14 @@ fn main() -> Int {
 	}
 	mainStart := strings.Index(dump, "fn Main.main")
 	constructorStart := strings.Index(dump, "fn Main.__oct_refine_Channel")
-	if mainStart < 0 || constructorStart < mainStart {
+	if mainStart < 0 || constructorStart < 0 {
 		t.Fatalf("missing refined functions:\n%s", dump)
 	}
-	mainMIR := dump[mainStart:constructorStart]
+	mainEnd := len(dump)
+	if nextFunction := strings.Index(dump[mainStart+1:], "\nfn "); nextFunction >= 0 {
+		mainEnd = mainStart + 1 + nextFunction
+	}
+	mainMIR := dump[mainStart:mainEnd]
 	if strings.Contains(mainMIR, "channel low") || strings.Contains(mainMIR, "channel high") {
 		t.Fatalf("static proof or downstream use retained validation:\n%s", mainMIR)
 	}
@@ -2068,7 +2124,7 @@ fn main() -> Int {
 		t.Fatalf("inspect: %v", err)
 	}
 	text := dumpMIR(module)
-	if !strings.Contains(text, "when { case flag -> return 1; else -> return 0 }") {
+	if !strings.Contains(text, "when { case ordinary-mir[Bool,fallible=false]") || !strings.Contains(text, "-> return ordinary-mir[Int,fallible=false]") {
 		t.Fatalf("expected lowered ordered when in MIR dump, got:\n%s", text)
 	}
 	if strings.Contains(text, "shim") {
@@ -2137,10 +2193,10 @@ fn main() -> Int {
 		t.Fatalf("read MIR dump: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "board.Count = (board.Count + 1)") {
+	if !strings.Contains(text, `Value:"f.board.Count"`) || !strings.Contains(text, "board.Count = ordinary-mir[Int,fallible=false]") {
 		t.Fatalf("expected board field reads/writes in MIR dump, got:\n%s", text)
 	}
-	if !strings.Contains(text, "case input.HazardActive -> { remember; board.FaultLatched = true; board.Count = (board.Count + 1); goto Hold }") {
+	if !strings.Contains(text, "case ordinary-mir[Bool,fallible=false]") || !strings.Contains(text, "-> { remember; board.FaultLatched = ordinary-mir[Bool,fallible=false]") {
 		t.Fatalf("expected when action block in MIR dump, got:\n%s", text)
 	}
 	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
@@ -2222,6 +2278,43 @@ fn main() -> Int {
 `
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	module, _, err := inspectProgram(mainPath)
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	var assertExpressionSurface func(MIRFlowExpr)
+	assertExpressionSurface = func(expr MIRFlowExpr) {
+		switch value := expr.(type) {
+		case MIRFlowSharedExpr:
+		case MIRFlowUtilityWhenExpr:
+			assertExpressionSurface(value.Hysteresis)
+			assertExpressionSurface(value.MinCommit)
+			assertExpressionSurface(value.Else)
+			for _, candidate := range value.Cases {
+				assertExpressionSurface(candidate.Value)
+				assertExpressionSurface(candidate.Condition)
+				assertExpressionSurface(candidate.Score)
+			}
+		default:
+			t.Fatalf("FLOW expression surface contains %T; want shared ordinary MIR or controller policy", expr)
+		}
+	}
+	foundPolicy := false
+	for _, flow := range module.Flows {
+		for _, state := range flow.States {
+			for _, statement := range state.Statements {
+				returned, ok := statement.(MIRFlowReturn)
+				if !ok || returned.Value == nil {
+					continue
+				}
+				assertExpressionSurface(returned.Value)
+				_, foundPolicy = returned.Value.(MIRFlowUtilityWhenExpr)
+			}
+		}
+	}
+	if !foundPolicy {
+		t.Fatal("expected controller policy expression in FLOW MIR")
 	}
 	t.Setenv("OCT_MIR_DUMP", "1")
 	result, err := Compile(mainPath)

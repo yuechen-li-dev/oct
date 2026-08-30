@@ -288,97 +288,6 @@ func (MIRFlowWhenBlock) mirFlowWhenAction() {}
 
 type MIRFlowExpr interface{ mirFlowExpr() }
 
-type MIRFlowLiteralExpr struct {
-	Value string
-}
-
-func (MIRFlowLiteralExpr) mirFlowExpr() {}
-
-type MIRFlowIdentifierExpr struct {
-	Name    string
-	IsLocal bool
-}
-
-func (MIRFlowIdentifierExpr) mirFlowExpr() {}
-
-type MIRFlowFieldExpr struct {
-	Target  string
-	Field   string
-	IsLocal bool
-}
-
-func (MIRFlowFieldExpr) mirFlowExpr() {}
-
-type MIRFlowRecordFieldExpr struct {
-	Target    MIRFlowExpr
-	Field     string
-	FieldType string
-}
-
-func (MIRFlowRecordFieldExpr) mirFlowExpr() {}
-
-type MIRFlowBinaryExpr struct {
-	Left     MIRFlowExpr
-	Operator string
-	Right    MIRFlowExpr
-}
-
-func (MIRFlowBinaryExpr) mirFlowExpr() {}
-
-type MIRFlowUnaryExpr struct {
-	Operator string
-	Operand  MIRFlowExpr
-}
-
-func (MIRFlowUnaryExpr) mirFlowExpr() {}
-
-type MIRFlowUnwrapExpr struct {
-	Inner      MIRFlowExpr
-	ResultType string
-}
-
-func (MIRFlowUnwrapExpr) mirFlowExpr() {}
-
-type MIRFlowCallExpr struct {
-	Callee             string
-	Args               []MIRFlowExpr
-	ArgTypes           []string
-	Builtin            bool
-	FunctionValue      bool
-	FunctionValueLocal bool
-	RetType            string
-	Fallible           bool
-}
-
-func (MIRFlowCallExpr) mirFlowExpr() {}
-
-type MIRFlowIndexExpr struct {
-	Target      MIRFlowExpr
-	Index       MIRFlowExpr
-	ResultType  string
-	TableFields []string
-}
-
-func (MIRFlowIndexExpr) mirFlowExpr() {}
-
-type MIRFlowRecordLiteralExpr struct {
-	TypeName   string
-	FieldNames []string
-	FieldVals  []MIRFlowExpr
-	RetType    string
-}
-
-func (MIRFlowRecordLiteralExpr) mirFlowExpr() {}
-
-type MIRFlowRecordUpdateExpr struct {
-	Source     MIRFlowExpr
-	TypeName   string
-	FieldNames []string
-	FieldVals  []MIRFlowExpr
-}
-
-func (MIRFlowRecordUpdateExpr) mirFlowExpr() {}
-
 type MIRFlowUtilityWhenExpr struct {
 	SiteID          int
 	ControllerBound bool
@@ -396,45 +305,6 @@ type MIRFlowUtilityCase struct {
 	Condition MIRFlowExpr
 	Score     MIRFlowExpr
 }
-
-type MIRFlowSwitchExpr struct {
-	Subject    MIRFlowExpr
-	Cases      []MIRFlowSwitchCase
-	Else       MIRFlowExpr
-	ResultType string
-}
-
-func (MIRFlowSwitchExpr) mirFlowExpr() {}
-
-type MIRFlowSwitchCase struct {
-	Match MIRFlowExpr
-	Value MIRFlowExpr
-}
-
-type MIRFlowMatchExpr struct {
-	Subject     MIRFlowExpr
-	SubjectType string
-	Cases       []MIRFlowMatchCase
-	ResultType  string
-}
-
-func (MIRFlowMatchExpr) mirFlowExpr() {}
-
-type MIRFlowMatchCase struct {
-	Variant     string
-	Binding     string
-	BindingType string
-	Value       MIRFlowExpr
-}
-
-type MIRFlowIfExpr struct {
-	Condition  MIRFlowExpr
-	Then       MIRFlowExpr
-	Else       MIRFlowExpr
-	ResultType string
-}
-
-func (MIRFlowIfExpr) mirFlowExpr() {}
 
 // MIRFlowSharedExpr is an ordinary compiled-expression computation embedded in
 // a FLOW activation. Its blocks and locals are the same MIR used by ordinary
@@ -4968,30 +4838,6 @@ func lookupEnumVariantPayloadTypeForProgram(program project.Program, currentPkg 
 	return "", false
 }
 
-func lowerFlowEnumVariantExpr(program project.Program, currentPkg string, enumName string, variant string) (string, string, bool) {
-	enumPkg := currentPkg
-	localEnumName := enumName
-	if dot := strings.Index(enumName, "."); dot >= 0 {
-		enumPkg = enumName[:dot]
-		localEnumName = enumName[dot+1:]
-	}
-	pkg, ok := program.Packages[enumPkg]
-	if !ok {
-		return "", "", false
-	}
-	for _, enumDecl := range pkg.Enums {
-		if enumDecl.Name != localEnumName {
-			continue
-		}
-		for _, declaredVariant := range enumDecl.Variants {
-			if declaredVariant.Name == variant {
-				return fmt.Sprintf("%s_%s{Tag: %s_%s_tag}", enumPkg, localEnumName, localEnumName, variant), enumPkg + "." + localEnumName, true
-			}
-		}
-	}
-	return "", "", false
-}
-
 func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 	if t.Function != nil {
 		parts := make([]string, 0, len(t.Function.Parameters))
@@ -5666,12 +5512,10 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 	}
 }
 
-var flowLowerProgram project.Program
-
 // compiledExpressionContext carries the typed ordinary-lowering authority that
 // a FLOW activation needs without turning FLOW into a second expression
-// language. M1 initially routes anonymous function construction through this
-// seam; the remaining legacy MIRFlowExpr variants are tracked explicitly.
+// language. All ordinary value computation routes through this seam; FLOW-only
+// policy state remains outside it.
 type compiledExpressionContext struct {
 	program     project.Program
 	pkg         project.Package
@@ -5682,24 +5526,7 @@ type compiledExpressionContext struct {
 
 var activeFlowExpressionContext *compiledExpressionContext
 
-func cloneStringMap(in map[string]string) map[string]string {
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func cloneBoolMap(in map[string]bool) map[string]bool {
-	out := make(map[string]bool, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
 func lowerFlow(program project.Program, pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, []MIRFunction, error) {
-	flowLowerProgram = program
 	previousExpressionContext := activeFlowExpressionContext
 	expressionContext := &compiledExpressionContext{program: program, pkg: pkg, flowName: flow.Name}
 	activeFlowExpressionContext = expressionContext
@@ -6047,526 +5874,95 @@ func lowerFlowWhenAction(action ast.WhenAction, env map[string]string, locals ma
 	}
 }
 
+func flowExpressionType(expr MIRFlowExpr) (string, bool, error) {
+	switch value := expr.(type) {
+	case MIRFlowSharedExpr:
+		return value.Type, value.Fallible, nil
+	case MIRFlowUtilityWhenExpr:
+		return value.ResultType, false, nil
+	default:
+		return "", false, fmt.Errorf("internal error: unsupported FLOW expression representation %T", expr)
+	}
+}
+
 func lowerFlowExprTyped(expr ast.Expr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, string, bool, error) {
-	v, err := lowerFlowExpr(expr, env, locals, pkg, boardFieldTypes)
+	value, err := lowerFlowExpr(expr, env, locals, pkg, boardFieldTypes)
 	if err != nil {
 		return nil, "", false, err
 	}
-	if shared, ok := v.(MIRFlowSharedExpr); ok {
-		return v, shared.Type, shared.Fallible, nil
-	}
-	t, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
+	typ, fallible, err := flowExpressionType(value)
 	if err != nil {
 		return nil, "", false, err
 	}
-	fallible := false
-	if call, ok := expr.(ast.CallExpr); ok {
-		if calleeField, ok := call.Callee.(ast.FieldAccessExpr); ok {
-			if enumType, variant, ok := flattenFlowEnumValueExpr(calleeField); ok {
-				if _, _, enumFound := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, enumType, variant); enumFound {
-					return v, t, false, nil
-				}
-			}
-		}
-		_, _, _, isFallible, err := resolveFlowCall(call.Callee, pkg)
-		if err != nil {
-			return nil, "", false, err
-		}
-		fallible = isFallible
-	}
-	return v, t, fallible, nil
+	return value, typ, fallible, nil
 }
 
 func lowerFallibleFlowCall(call ast.CallExpr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, string, error) {
-	if sharedExpr, err := lowerSharedFlowExpression(call, env, locals); err == nil {
-		shared := sharedExpr.(MIRFlowSharedExpr)
-		if !shared.Fallible {
-			return nil, "", fmt.Errorf("operator '!' requires fallible expression")
-		}
-		return shared, shared.Type, nil
-	}
-	callee, ret, builtinCall, fallible, err := resolveFlowCall(call.Callee, pkg)
+	sharedExpr, err := lowerSharedFlowExpression(call, env, locals)
 	if err != nil {
 		return nil, "", err
 	}
-	if !fallible {
+	shared := sharedExpr.(MIRFlowSharedExpr)
+	if !shared.Fallible {
 		return nil, "", fmt.Errorf("operator '!' requires fallible expression")
 	}
-	args := make([]MIRFlowExpr, 0, len(call.Arguments))
-	argTypes := make([]string, 0, len(call.Arguments))
-	for _, arg := range call.Arguments {
-		argType, err := inferFlowExprType(arg, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, "", err
-		}
-		value, err := lowerFlowExpr(arg, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, "", err
-		}
-		args = append(args, value)
-		argTypes = append(argTypes, argType)
-	}
-	return MIRFlowCallExpr{Callee: callee, Args: args, ArgTypes: argTypes, Builtin: builtinCall, RetType: ret, Fallible: true}, ret, nil
+	return shared, shared.Type, nil
 }
 
 func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, error) {
 	switch expression := expr.(type) {
 	case ast.UtilityWhenExpr:
-		// Controller-bound utility selection owns persistent FLOW policy state.
-		// Its ordinary child expressions still route through this shared seam.
-		_ = expression
+		if expression.EnumTarget != nil && utilityWhenHasPayloadCandidate(expression) {
+			return nil, unsupported("compiled enum-targeted utility payload candidates require delayed payload lowering")
+		}
+		hysteresis, err := lowerFlowExpr(expression.Policy.Hysteresis, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		minCommit, err := lowerFlowExpr(expression.Policy.MinCommit, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		cases := make([]MIRFlowUtilityCase, 0, len(expression.Cases))
+		for _, candidate := range expression.Cases {
+			value, err := lowerFlowExpr(candidate.Value, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			condition, err := lowerFlowExpr(candidate.Condition, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			score, err := lowerFlowExpr(candidate.Score, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, MIRFlowUtilityCase{Value: value, Condition: condition, Score: score})
+		}
+		elseExpr, err := lowerFlowExpr(expression.Else, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		resultType, fallible, err := flowExpressionType(elseExpr)
+		if err != nil {
+			return nil, err
+		}
+		if fallible {
+			return nil, fmt.Errorf("utility when result cannot be fallible")
+		}
+		return MIRFlowUtilityWhenExpr{
+			SiteID:          expression.SiteID,
+			ControllerBound: expression.ControllerBound,
+			ResultType:      resultType,
+			Hysteresis:      hysteresis,
+			MinCommit:       minCommit,
+			Cases:           cases,
+			Else:            elseExpr,
+		}, nil
 	case ast.PropagateExpr:
 		return nil, fmt.Errorf("error propagation with '?' requires a fallible FLOW result contract; handle the error with match or use '!'")
 	default:
 		return lowerSharedFlowExpression(expr, env, locals)
-	}
-	switch e := expr.(type) {
-	case ast.IntegerLiteral:
-		return MIRFlowLiteralExpr{Value: e.Value}, nil
-	case ast.FloatLiteral:
-		return MIRFlowLiteralExpr{Value: e.Value}, nil
-	case ast.BoolLiteral:
-		if e.Value {
-			return MIRFlowLiteralExpr{Value: "true"}, nil
-		}
-		return MIRFlowLiteralExpr{Value: "false"}, nil
-	case ast.StringLiteralExpr:
-		return MIRFlowLiteralExpr{Value: fmt.Sprintf("%q", e.Value)}, nil
-	case ast.IdentifierExpr:
-		if _, ok := env[e.Name]; !ok {
-			return nil, fmt.Errorf("unknown identifier '%s'", e.Name)
-		}
-		return MIRFlowIdentifierExpr{Name: e.Name, IsLocal: locals[e.Name]}, nil
-	case ast.FunctionExpr:
-		return lowerSharedFlowExpression(e, env, locals)
-	case ast.BinaryExpr:
-		l, err := lowerFlowExpr(e.Left, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		r, err := lowerFlowExpr(e.Right, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		return MIRFlowBinaryExpr{Left: l, Operator: e.Operator, Right: r}, nil
-	case ast.UnaryExpr:
-		v, err := lowerFlowExpr(e.Operand, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		return MIRFlowUnaryExpr{Operator: e.Operator, Operand: v}, nil
-	case ast.UnwrapExpr:
-		call, ok := e.Inner.(ast.CallExpr)
-		if !ok {
-			return nil, unsupported("compiled FLOW fatal unwrap currently requires a direct fallible call")
-		}
-		inner, resultType, err := lowerFallibleFlowCall(call, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		return MIRFlowUnwrapExpr{Inner: inner, ResultType: resultType}, nil
-	case ast.CallExpr:
-		if calleeField, ok := e.Callee.(ast.FieldAccessExpr); ok {
-			if enumType, variant, ok := flattenFlowEnumValueExpr(calleeField); ok {
-				enumExpr, _, enumFound := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, enumType, variant)
-				if enumFound {
-					_, hasPayload := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, enumType, variant)
-					if !hasPayload {
-						if len(e.Arguments) != 0 {
-							return nil, fmt.Errorf("enum '%s' variant '%s' does not accept a payload", enumType, variant)
-						}
-						return MIRFlowLiteralExpr{Value: enumExpr}, nil
-					}
-					if len(e.Arguments) != 1 {
-						return nil, fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumType, variant)
-					}
-					payloadExpr, err := lowerFlowExpr(e.Arguments[0], env, locals, pkg, boardFieldTypes)
-					if err != nil {
-						return nil, err
-					}
-					payload, err := emitGoFlowExpr(payloadExpr, pkg)
-					if err != nil {
-						return nil, err
-					}
-					return MIRFlowLiteralExpr{Value: fmt.Sprintf("%s_%s{Tag: %s_%s_tag, Payload: %s}", enumPackageName(enumType, pkg), enumShortName(enumType), enumShortName(enumType), variant, payload)}, nil
-				}
-			}
-		}
-		callee, ret, builtin, fallible := "", "", false, false
-		functionValue, functionValueLocal := false, false
-		if ident, ok := e.Callee.(ast.IdentifierExpr); ok {
-			if signature, ok := parseCompiledFunctionType(env[ident.Name]); ok {
-				callee = ident.Name
-				ret = signature.ReturnType
-				functionValue = true
-				functionValueLocal = locals[ident.Name]
-			}
-		}
-		if !functionValue {
-			var err error
-			callee, ret, builtin, fallible, err = resolveFlowCall(e.Callee, pkg)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if fallible {
-			return nil, fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
-		}
-		args := make([]MIRFlowExpr, 0, len(e.Arguments))
-		argTypes := make([]string, 0, len(e.Arguments))
-		for _, arg := range e.Arguments {
-			argType, err := inferFlowExprType(arg, env, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			v, err := lowerFlowExpr(arg, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			args = append(args, v)
-			argTypes = append(argTypes, argType)
-		}
-		return MIRFlowCallExpr{Callee: callee, Args: args, ArgTypes: argTypes, Builtin: builtin, FunctionValue: functionValue, FunctionValueLocal: functionValueLocal, RetType: ret, Fallible: fallible}, nil
-	case ast.ArrayLiteralExpr:
-		elemType := "Int"
-		if len(e.Elements) > 0 {
-			inferred, err := inferFlowExprType(e.Elements[0], env, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			elemType = inferred
-		}
-		values := make([]string, 0, len(e.Elements))
-		for _, element := range e.Elements {
-			lowered, err := lowerFlowExpr(element, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			goValue, err := emitGoFlowExpr(lowered, pkg)
-			if err != nil {
-				return nil, err
-			}
-			values = append(values, goValue)
-		}
-		return MIRFlowLiteralExpr{Value: fmt.Sprintf("%s{%s}", goType(elemType+"[]"), strings.Join(values, ", "))}, nil
-	case ast.VectorLiteralExpr:
-		elemType := "Int"
-		values := make([]string, 0, len(e.Elements))
-		for index, element := range e.Elements {
-			if index == 0 {
-				inferred, err := inferFlowExprType(element, env, pkg, boardFieldTypes)
-				if err != nil {
-					return nil, err
-				}
-				elemType = inferred
-			}
-			lowered, err := lowerFlowExpr(element, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			goValue, err := emitGoFlowExpr(lowered, pkg)
-			if err != nil {
-				return nil, err
-			}
-			values = append(values, goValue)
-		}
-		return MIRFlowLiteralExpr{Value: fmt.Sprintf("%s{%s}", goType("Vector<"+elemType+">"), strings.Join(values, ", "))}, nil
-	case ast.MatrixLiteralExpr:
-		elemType := "Int"
-		rows := make([]string, 0, len(e.Rows))
-		for rowIndex, row := range e.Rows {
-			cells := make([]string, 0, len(row))
-			for cellIndex, cell := range row {
-				if rowIndex == 0 && cellIndex == 0 {
-					inferred, err := inferFlowExprType(cell, env, pkg, boardFieldTypes)
-					if err != nil {
-						return nil, err
-					}
-					elemType = inferred
-				}
-				lowered, err := lowerFlowExpr(cell, env, locals, pkg, boardFieldTypes)
-				if err != nil {
-					return nil, err
-				}
-				goValue, err := emitGoFlowExpr(lowered, pkg)
-				if err != nil {
-					return nil, err
-				}
-				cells = append(cells, goValue)
-			}
-			rows = append(rows, fmt.Sprintf("%s{%s}", goType("Vector<"+elemType+">"), strings.Join(cells, ", ")))
-		}
-		return MIRFlowLiteralExpr{Value: fmt.Sprintf("%s{%s}", goType("Matrix<"+elemType+">"), strings.Join(rows, ", "))}, nil
-	case ast.IndexExpr:
-		targetType, err := inferFlowExprType(e.Target, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		table, tablePkg, isTable := lookupFlowRecordTable(targetType, pkg)
-		vectorElem, isVector := parseVectorElemType(targetType)
-		matrixElem, isMatrix := parseMatrixElemType(targetType)
-		if !isTable && !strings.HasSuffix(targetType, "[]") && !isVector && !isMatrix {
-			return nil, unsupported(fmt.Sprintf("compiled flow expression indexing target type %q", targetType))
-		}
-		if isMatrix && len(e.Indices) != 2 {
-			return nil, fmt.Errorf("compiled FLOW matrix indexing requires exactly 2 Int indices")
-		}
-		if !isMatrix && len(e.Indices) != 1 {
-			return nil, fmt.Errorf("compiled FLOW indexing requires exactly 1 Int index")
-		}
-		idxType, err := inferFlowExprType(e.Indices[0], env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		if idxType != "Int" {
-			return nil, fmt.Errorf("compiled flow expression index must be Int, got %s", idxType)
-		}
-		target, err := lowerFlowExpr(e.Target, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		idx, err := lowerFlowExpr(e.Indices[0], env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		resultType := strings.TrimSuffix(targetType, "[]")
-		if isVector {
-			resultType = vectorElem
-		}
-		var tableFields []string
-		if isTable {
-			resultType = tablePkg + ".__oct_table_row_" + table.Name
-			for _, field := range table.Fields {
-				tableFields = append(tableFields, field.Name)
-			}
-		}
-		first := MIRFlowIndexExpr{
-			Target:      target,
-			Index:       idx,
-			ResultType:  resultType,
-			TableFields: tableFields,
-		}
-		if isMatrix {
-			secondType, err := inferFlowExprType(e.Indices[1], env, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			if secondType != "Int" {
-				return nil, fmt.Errorf("compiled FLOW matrix index must be Int, got %s", secondType)
-			}
-			second, err := lowerFlowExpr(e.Indices[1], env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			return MIRFlowIndexExpr{Target: first, Index: second, ResultType: matrixElem}, nil
-		}
-		return first, nil
-	case ast.RecordLiteralExpr:
-		typeName := e.TypeName
-		if !strings.Contains(typeName, ".") {
-			typeName = pkg + "." + typeName
-		}
-		fieldValues := make([]MIRFlowExpr, 0, len(e.Fields))
-		fieldNames := make([]string, 0, len(e.Fields))
-		for _, f := range e.Fields {
-			v, err := lowerFlowExpr(f.Value, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			fieldValues = append(fieldValues, v)
-			fieldNames = append(fieldNames, f.Name)
-		}
-		return MIRFlowRecordLiteralExpr{
-			TypeName:   typeName,
-			FieldNames: fieldNames,
-			FieldVals:  fieldValues,
-			RetType:    typeName,
-		}, nil
-	case ast.RecordUpdateExpr:
-		sourceType, err := inferFlowExprType(e.Source, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		source, err := lowerFlowExpr(e.Source, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		fieldNames := make([]string, 0, len(e.Fields))
-		fieldVals := make([]MIRFlowExpr, 0, len(e.Fields))
-		for _, field := range e.Fields {
-			value, err := lowerFlowExpr(field.Value, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			fieldNames = append(fieldNames, field.Name)
-			fieldVals = append(fieldVals, value)
-		}
-		return MIRFlowRecordUpdateExpr{Source: source, TypeName: sourceType, FieldNames: fieldNames, FieldVals: fieldVals}, nil
-	case ast.UtilityWhenExpr:
-		if e.EnumTarget != nil && utilityWhenHasPayloadCandidate(e) {
-			return nil, unsupported("compiled enum-targeted utility payload candidates require delayed payload lowering")
-		}
-		resultType, err := inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		h, err := lowerFlowExpr(e.Policy.Hysteresis, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		m, err := lowerFlowExpr(e.Policy.MinCommit, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		cases := make([]MIRFlowUtilityCase, 0, len(e.Cases))
-		for _, c := range e.Cases {
-			val, err := lowerFlowExpr(c.Value, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			cond, err := lowerFlowExpr(c.Condition, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			score, err := lowerFlowExpr(c.Score, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			cases = append(cases, MIRFlowUtilityCase{Value: val, Condition: cond, Score: score})
-		}
-		elseExpr, err := lowerFlowExpr(e.Else, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		return MIRFlowUtilityWhenExpr{
-			SiteID:          e.SiteID,
-			ControllerBound: e.ControllerBound,
-			ResultType:      resultType,
-			Hysteresis:      h,
-			MinCommit:       m,
-			Cases:           cases,
-			Else:            elseExpr,
-		}, nil
-	case ast.SwitchExpr:
-		resultType, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		var subject MIRFlowExpr
-		if e.Subject != nil {
-			subject, err = lowerFlowExpr(e.Subject, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-		}
-		cases := make([]MIRFlowSwitchCase, 0, len(e.Cases))
-		for _, switchCase := range e.Cases {
-			matchExpr, err := lowerFlowExpr(switchCase.Match, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			valueExpr, err := lowerFlowExpr(switchCase.Value, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			cases = append(cases, MIRFlowSwitchCase{Match: matchExpr, Value: valueExpr})
-		}
-		var elseExpr MIRFlowExpr
-		if e.Else != nil {
-			elseExpr, err = lowerFlowExpr(e.Else, env, locals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return MIRFlowSwitchExpr{Subject: subject, Cases: cases, Else: elseExpr, ResultType: resultType}, nil
-	case ast.MatchExpr:
-		resultType, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		subjectType, err := inferFlowExprType(e.Subject, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		subject, err := lowerFlowExpr(e.Subject, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		cases := make([]MIRFlowMatchCase, 0, len(e.Cases))
-		for _, matchCase := range e.Cases {
-			caseLocals := cloneBoolMap(locals)
-			caseEnv := cloneStringMap(env)
-			bindingType := ""
-			if matchCase.Binding != "" {
-				if t, ok := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, subjectType, matchCase.Variant); ok {
-					bindingType = t
-				} else {
-					bindingType = "any"
-				}
-				caseLocals[matchCase.Binding] = true
-				caseEnv[matchCase.Binding] = bindingType
-			}
-			valueExpr, err := lowerFlowExpr(matchCase.Value, caseEnv, caseLocals, pkg, boardFieldTypes)
-			if err != nil {
-				return nil, err
-			}
-			cases = append(cases, MIRFlowMatchCase{
-				Variant:     matchCase.Variant,
-				Binding:     matchCase.Binding,
-				BindingType: bindingType,
-				Value:       valueExpr,
-			})
-		}
-		return MIRFlowMatchExpr{Subject: subject, SubjectType: subjectType, Cases: cases, ResultType: resultType}, nil
-	case ast.IfExpr:
-		resultType, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		condition, err := lowerFlowExpr(e.Condition, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		thenExpr, err := lowerFlowExpr(e.ThenExpr, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		elseExpr, err := lowerFlowExpr(e.ElseExpr, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		return MIRFlowIfExpr{Condition: condition, Then: thenExpr, Else: elseExpr, ResultType: resultType}, nil
-	case ast.ParenExpr:
-		return lowerFlowExpr(e.Inner, env, locals, pkg, boardFieldTypes)
-	case ast.FieldAccessExpr:
-		if targetIdent, ok := e.Target.(ast.IdentifierExpr); ok {
-			if targetIdent.Name == "board" {
-				if _, ok := boardFieldTypes[e.Field]; !ok {
-					return nil, fmt.Errorf("board has no field '%s'", e.Field)
-				}
-			}
-			if _, ok := env[targetIdent.Name]; !ok {
-				if enumExpr, _, ok := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, targetIdent.Name, e.Field); ok {
-					return MIRFlowLiteralExpr{Value: enumExpr}, nil
-				}
-			}
-			return MIRFlowFieldExpr{Target: targetIdent.Name, Field: e.Field, IsLocal: locals[targetIdent.Name]}, nil
-		}
-		targetType, err := inferFlowExprType(e.Target, env, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		fieldType, ok := lookupFlowRecordFieldType(targetType, e.Field, pkg)
-		if !ok {
-			return nil, unsupported(fmt.Sprintf("flow field access %s.%s", targetType, e.Field))
-		}
-		target, err := lowerFlowExpr(e.Target, env, locals, pkg, boardFieldTypes)
-		if err != nil {
-			return nil, err
-		}
-		return MIRFlowRecordFieldExpr{Target: target, Field: e.Field, FieldType: fieldType}, nil
-	default:
-		return nil, unsupported(fmt.Sprintf("flow expression %T", expr))
 	}
 }
 
@@ -6604,9 +6000,6 @@ func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals 
 	if err != nil {
 		return nil, err
 	}
-	if fallible {
-		return nil, fmt.Errorf("anonymous function construction unexpectedly produced a fallible value")
-	}
 	ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: value}
 	shared.anonymousID = ctx.anonymousID
 	shared.functions = append(shared.functions, ctx.extra...)
@@ -6620,380 +6013,6 @@ func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals 
 	}
 	sort.Slice(resultLocals, func(i, j int) bool { return resultLocals[i].Name < resultLocals[j].Name })
 	return MIRFlowSharedExpr{Type: typ, Fallible: fallible, Locals: resultLocals, Blocks: ctx.blocks}, nil
-}
-
-func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFieldTypes map[string]string) (string, error) {
-	switch e := expr.(type) {
-	case ast.IntegerLiteral:
-		return "Int", nil
-	case ast.FloatLiteral:
-		return "Float", nil
-	case ast.BoolLiteral:
-		return "Bool", nil
-	case ast.StringLiteralExpr:
-		return "String", nil
-	case ast.IdentifierExpr:
-		t, ok := env[e.Name]
-		if !ok {
-			return "", fmt.Errorf("unknown identifier '%s'", e.Name)
-		}
-		return t, nil
-	case ast.FunctionExpr:
-		parameters := make([]string, 0, len(e.Parameters))
-		for _, parameter := range e.Parameters {
-			parameters = append(parameters, typeRefStringForPackage(pkg, parameter.Type))
-		}
-		functionType := "fn(" + strings.Join(parameters, ", ") + ") -> " + typeRefStringForPackage(pkg, e.ReturnType)
-		if e.IsFallible {
-			functionType += " ! Error"
-		}
-		return functionType, nil
-	case ast.UnaryExpr:
-		if e.Operator == "not" {
-			return "Bool", nil
-		}
-		return inferFlowExprType(e.Operand, env, pkg, boardFieldTypes)
-	case ast.UnwrapExpr:
-		call, ok := e.Inner.(ast.CallExpr)
-		if !ok {
-			return "", unsupported("compiled FLOW fatal unwrap currently requires a direct fallible call")
-		}
-		_, ret, _, fallible, err := resolveFlowCall(call.Callee, pkg)
-		if err != nil {
-			return "", err
-		}
-		if !fallible {
-			return "", fmt.Errorf("operator '!' requires fallible expression")
-		}
-		return ret, nil
-	case ast.BinaryExpr:
-		switch e.Operator {
-		case "==", "!=", "<", "<=", ">", ">=", "and", "or":
-			return "Bool", nil
-		default:
-			return inferFlowExprType(e.Left, env, pkg, boardFieldTypes)
-		}
-	case ast.CallExpr:
-		if calleeField, ok := e.Callee.(ast.FieldAccessExpr); ok {
-			if enumType, variant, ok := flattenFlowEnumValueExpr(calleeField); ok {
-				if _, resolvedType, enumFound := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, enumType, variant); enumFound {
-					payloadType, hasPayload := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, enumType, variant)
-					if !hasPayload {
-						if len(e.Arguments) != 0 {
-							return "", fmt.Errorf("enum '%s' variant '%s' does not accept a payload", enumType, variant)
-						}
-						return resolvedType, nil
-					}
-					if len(e.Arguments) != 1 {
-						return "", fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumType, variant)
-					}
-					argType, err := inferFlowExprType(e.Arguments[0], env, pkg, boardFieldTypes)
-					if err != nil {
-						return "", err
-					}
-					if argType != payloadType {
-						return "", fmt.Errorf("enum '%s' variant '%s' payload expects %s, got %s", enumType, variant, payloadType, argType)
-					}
-					return resolvedType, nil
-				}
-			}
-		}
-		_, ret, _, fallible, err := resolveFlowCall(e.Callee, pkg)
-		if err != nil {
-			return "", err
-		}
-		if fallible {
-			return "", fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
-		}
-		return ret, nil
-	case ast.ArrayLiteralExpr:
-		elemType := "Int"
-		if len(e.Elements) > 0 {
-			inferred, err := inferFlowExprType(e.Elements[0], env, pkg, boardFieldTypes)
-			if err != nil {
-				return "", err
-			}
-			elemType = inferred
-		}
-		return elemType + "[]", nil
-	case ast.VectorLiteralExpr:
-		elemType := "Int"
-		if len(e.Elements) > 0 {
-			inferred, err := inferFlowExprType(e.Elements[0], env, pkg, boardFieldTypes)
-			if err != nil {
-				return "", err
-			}
-			elemType = inferred
-		}
-		return "Vector<" + elemType + ">", nil
-	case ast.MatrixLiteralExpr:
-		elemType := "Int"
-		if len(e.Rows) > 0 && len(e.Rows[0]) > 0 {
-			inferred, err := inferFlowExprType(e.Rows[0][0], env, pkg, boardFieldTypes)
-			if err != nil {
-				return "", err
-			}
-			elemType = inferred
-		}
-		return "Matrix<" + elemType + ">", nil
-	case ast.IndexExpr:
-		targetType, err := inferFlowExprType(e.Target, env, pkg, boardFieldTypes)
-		if err != nil {
-			return "", err
-		}
-		if table, tablePkg, ok := lookupFlowRecordTable(targetType, pkg); ok {
-			if len(e.Indices) != 1 {
-				return "", unsupported("compiled flow record table indexing requires one index")
-			}
-			idxType, err := inferFlowExprType(e.Indices[0], env, pkg, boardFieldTypes)
-			if err != nil {
-				return "", err
-			}
-			if idxType != "Int" {
-				return "", fmt.Errorf("compiled flow record table index must be Int, got %s", idxType)
-			}
-			return tablePkg + ".__oct_table_row_" + table.Name, nil
-		}
-		if elem, ok := parseMatrixElemType(targetType); ok {
-			if len(e.Indices) != 2 {
-				return "", fmt.Errorf("compiled FLOW matrix indexing requires exactly 2 Int indices")
-			}
-			return elem, nil
-		}
-		if elem, ok := parseVectorElemType(targetType); ok {
-			if len(e.Indices) != 1 {
-				return "", fmt.Errorf("compiled FLOW vector indexing requires exactly 1 Int index")
-			}
-			return elem, nil
-		}
-		if !strings.HasSuffix(targetType, "[]") {
-			return "", unsupported(fmt.Sprintf("compiled flow expression indexing target type %q", targetType))
-		}
-		idxType, err := inferFlowExprType(e.Indices[0], env, pkg, boardFieldTypes)
-		if err != nil {
-			return "", err
-		}
-		if idxType != "Int" {
-			return "", fmt.Errorf("compiled flow expression index must be Int, got %s", idxType)
-		}
-		return strings.TrimSuffix(targetType, "[]"), nil
-	case ast.RecordLiteralExpr:
-		if strings.Contains(e.TypeName, ".") {
-			return e.TypeName, nil
-		}
-		return pkg + "." + e.TypeName, nil
-	case ast.RecordUpdateExpr:
-		return inferFlowExprType(e.Source, env, pkg, boardFieldTypes)
-	case ast.UtilityWhenExpr:
-		return inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
-	case ast.SwitchExpr:
-		var resultType string
-		for _, switchCase := range e.Cases {
-			caseType, err := inferFlowExprType(switchCase.Value, env, pkg, boardFieldTypes)
-			if err != nil {
-				return "", err
-			}
-			if resultType == "" {
-				resultType = caseType
-			}
-		}
-		if e.Else != nil {
-			elseType, err := inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
-			if err != nil {
-				return "", err
-			}
-			if resultType == "" {
-				resultType = elseType
-			}
-		}
-		return resultType, nil
-	case ast.MatchExpr:
-		subjectType, err := inferFlowExprType(e.Subject, env, pkg, boardFieldTypes)
-		if err != nil {
-			return "", err
-		}
-		var resultType string
-		for _, matchCase := range e.Cases {
-			caseEnv := cloneStringMap(env)
-			if matchCase.Binding != "" {
-				if t, ok := lookupEnumVariantPayloadTypeForProgram(flowLowerProgram, pkg, subjectType, matchCase.Variant); ok {
-					caseEnv[matchCase.Binding] = t
-				} else {
-					caseEnv[matchCase.Binding] = "any"
-				}
-			}
-			caseType, err := inferFlowExprType(matchCase.Value, caseEnv, pkg, boardFieldTypes)
-			if err != nil {
-				return "", err
-			}
-			if resultType == "" {
-				resultType = caseType
-			}
-		}
-		return resultType, nil
-	case ast.IfExpr:
-		thenType, err := inferFlowExprType(e.ThenExpr, env, pkg, boardFieldTypes)
-		if err != nil {
-			return "", err
-		}
-		if _, err := inferFlowExprType(e.Condition, env, pkg, boardFieldTypes); err != nil {
-			return "", err
-		}
-		if _, err := inferFlowExprType(e.ElseExpr, env, pkg, boardFieldTypes); err != nil {
-			return "", err
-		}
-		return thenType, nil
-	case ast.ParenExpr:
-		return inferFlowExprType(e.Inner, env, pkg, boardFieldTypes)
-	case ast.FieldAccessExpr:
-		if targetIdent, ok := e.Target.(ast.IdentifierExpr); ok && targetIdent.Name == "board" {
-			t, exists := boardFieldTypes[e.Field]
-			if !exists {
-				return "", fmt.Errorf("board has no field '%s'", e.Field)
-			}
-			return t, nil
-		}
-		if targetIdent, ok := e.Target.(ast.IdentifierExpr); ok {
-			if _, exists := env[targetIdent.Name]; !exists {
-				if _, enumType, found := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, targetIdent.Name, e.Field); found {
-					return enumType, nil
-				}
-			}
-		}
-		targetType, err := inferFlowExprType(e.Target, env, pkg, boardFieldTypes)
-		if err != nil {
-			return "", err
-		}
-		if fieldType, ok := lookupFlowRecordFieldType(targetType, e.Field, pkg); ok {
-			return fieldType, nil
-		}
-		if targetIdent, ok := e.Target.(ast.IdentifierExpr); ok {
-			if _, enumType, found := lowerFlowEnumVariantExpr(flowLowerProgram, pkg, targetIdent.Name, e.Field); found {
-				return enumType, nil
-			}
-		}
-		return "", unsupported(fmt.Sprintf("flow field access %s.%s", targetType, e.Field))
-	default:
-		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
-	}
-}
-
-func enumPackageName(enumType string, currentPkg string) string {
-	if dot := strings.Index(enumType, "."); dot >= 0 {
-		return enumType[:dot]
-	}
-	return currentPkg
-}
-
-func flattenFlowEnumValueExpr(expr ast.FieldAccessExpr) (string, string, bool) {
-	enumType, ok := flattenEnumTypeExpr(expr.Target)
-	if !ok {
-		return "", "", false
-	}
-	return enumType, expr.Field, true
-}
-
-func lookupFlowRecordTable(recordType string, currentPkg string) (ast.RecordDecl, string, bool) {
-	pkgName := currentPkg
-	typeName := recordType
-	if strings.Contains(typeName, ".") {
-		parts := strings.SplitN(typeName, ".", 2)
-		pkgName, typeName = parts[0], parts[1]
-	}
-	pkg, ok := flowLowerProgram.Packages[pkgName]
-	if !ok {
-		return ast.RecordDecl{}, "", false
-	}
-	for _, record := range pkg.Records {
-		if record.Name == typeName && record.IsTable {
-			return record, pkgName, true
-		}
-	}
-	return ast.RecordDecl{}, "", false
-}
-
-func lookupFlowRecordFieldType(recordType string, fieldName string, currentPkg string) (string, bool) {
-	pkgName := currentPkg
-	typeName := recordType
-	if strings.Contains(typeName, ".") {
-		parts := strings.SplitN(typeName, ".", 2)
-		pkgName, typeName = parts[0], parts[1]
-	}
-	pkg, ok := flowLowerProgram.Packages[pkgName]
-	if !ok {
-		return "", false
-	}
-	for _, record := range pkg.Records {
-		isTableRow := record.IsTable && typeName == "__oct_table_row_"+record.Name
-		if record.Name != typeName && !isTableRow {
-			continue
-		}
-		for _, field := range record.Fields {
-			if field.Name == fieldName {
-				fieldType := typeRefStringForPackage(pkgName, field.Type)
-				if record.IsTable && !isTableRow {
-					fieldType += "[]"
-				}
-				return fieldType, true
-			}
-		}
-	}
-	return "", false
-}
-
-func resolveFlowCall(callee ast.Expr, pkg string) (string, string, bool, bool, error) {
-	resolveBuiltin := func(name string) (string, string, bool, bool, error) {
-		switch name {
-		case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "BaseUnit", "Float", "Clamp01":
-			return name, "Float", true, false, nil
-		case "FloorToInt", "CeilToInt", "RoundToInt":
-			return name, "Int", true, false, nil
-		case "Len":
-			return name, "Int", true, false, nil
-		case "FormatFloat":
-			return name, "String", true, false, nil
-		default:
-			return "", "", false, false, unsupportedBuiltin(name)
-		}
-	}
-	resolvePkgFn := func(pkgName, fnName string) (string, string, bool, bool, error) {
-		declPkg, ok := flowLowerProgram.Packages[pkgName]
-		if !ok {
-			return "", "", false, false, fmt.Errorf("unknown package '%s'", pkgName)
-		}
-		for _, fn := range declPkg.Functions {
-			if fn.Name == fnName {
-				return pkgName + "." + fnName, typeRefStringForPackage(pkgName, fn.ReturnType), false, fn.IsFallible, nil
-			}
-		}
-		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgName, fnName)
-	}
-	switch x := callee.(type) {
-	case ast.IdentifierExpr:
-		if builtin.IsName(x.Name) {
-			return resolveBuiltin(x.Name)
-		}
-		resolved, ret, builtinCall, fallible, err := resolvePkgFn(pkg, x.Name)
-		if err != nil {
-			return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name)
-		}
-		return resolved, ret, builtinCall, fallible, nil
-	case ast.FieldAccessExpr:
-		pkgIdent, ok := x.Target.(ast.IdentifierExpr)
-		if !ok {
-			return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
-		}
-		qualified := pkgIdent.Name + "." + x.Field
-		if aliasName, mapped := builtin.ResolveNamespacedAlias(pkgIdent.Name, x.Field); mapped {
-			return resolveBuiltin(aliasName)
-		}
-		if builtin.IsName(qualified) {
-			return resolveBuiltin(qualified)
-		}
-		return resolvePkgFn(pkgIdent.Name, x.Field)
-	default:
-		return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
-	}
 }
 
 func dumpMIR(m MIRModule) string {
@@ -7136,36 +6155,8 @@ func dumpFlowExpr(expr MIRFlowExpr) string {
 	switch e := expr.(type) {
 	case MIRFlowSharedExpr:
 		return fmt.Sprintf("ordinary-mir[%s,fallible=%t]:%#v", e.Type, e.Fallible, e.Blocks)
-	case MIRFlowLiteralExpr:
-		return e.Value
-	case MIRFlowIdentifierExpr:
-		return e.Name
-	case MIRFlowFieldExpr:
-		return e.Target + "." + e.Field
-	case MIRFlowRecordFieldExpr:
-		return dumpFlowExpr(e.Target) + "." + e.Field
-	case MIRFlowBinaryExpr:
-		return fmt.Sprintf("(%s %s %s)", dumpFlowExpr(e.Left), e.Operator, dumpFlowExpr(e.Right))
-	case MIRFlowUnaryExpr:
-		return fmt.Sprintf("(%s%s)", e.Operator, dumpFlowExpr(e.Operand))
-	case MIRFlowUnwrapExpr:
-		return dumpFlowExpr(e.Inner) + "!"
-	case MIRFlowCallExpr:
-		args := make([]string, 0, len(e.Args))
-		for _, arg := range e.Args {
-			args = append(args, dumpFlowExpr(arg))
-		}
-		return fmt.Sprintf("%s(%s)", e.Callee, strings.Join(args, ", "))
-	case MIRFlowIndexExpr:
-		return fmt.Sprintf("%s[%s]", dumpFlowExpr(e.Target), dumpFlowExpr(e.Index))
-	case MIRFlowRecordLiteralExpr:
-		return fmt.Sprintf("%s{...}", e.TypeName)
-	case MIRFlowRecordUpdateExpr:
-		return fmt.Sprintf("%s with {...}", dumpFlowExpr(e.Source))
 	case MIRFlowUtilityWhenExpr:
 		return fmt.Sprintf("utility_when[site=%d,hysteresis=%s,min_commit=%s,cases=%d]", e.SiteID, dumpFlowExpr(e.Hysteresis), dumpFlowExpr(e.MinCommit), len(e.Cases))
-	case MIRFlowIfExpr:
-		return fmt.Sprintf("if %s { %s } else { %s }", dumpFlowExpr(e.Condition), dumpFlowExpr(e.Then), dumpFlowExpr(e.Else))
 	default:
 		return fmt.Sprintf("unsupported-flow-expr(%T)", expr)
 	}
@@ -7954,72 +6945,24 @@ func collectFlowUserCalls(flow MIRFlow) []string {
 	var visitStmt func(MIRFlowStmt)
 	var visitAction func(MIRFlowWhenAction)
 	visitExpr = func(expr MIRFlowExpr) {
-		switch e := expr.(type) {
+		switch value := expr.(type) {
 		case MIRFlowSharedExpr:
-			for _, block := range e.Blocks {
+			for _, block := range value.Blocks {
 				for _, statement := range block.Statements {
 					if call, ok := statement.(MIRCall); ok && !call.Builtin && !call.FunctionValue {
 						seen[call.Callee] = struct{}{}
 					}
 				}
 			}
-		case MIRFlowCallExpr:
-			if !e.Builtin && !e.FunctionValueLocal {
-				seen[e.Callee] = struct{}{}
-			}
-			for _, arg := range e.Args {
-				visitExpr(arg)
-			}
-		case MIRFlowBinaryExpr:
-			visitExpr(e.Left)
-			visitExpr(e.Right)
-		case MIRFlowUnaryExpr:
-			visitExpr(e.Operand)
-		case MIRFlowUnwrapExpr:
-			visitExpr(e.Inner)
-		case MIRFlowIndexExpr:
-			visitExpr(e.Target)
-			visitExpr(e.Index)
-		case MIRFlowRecordLiteralExpr:
-			for _, value := range e.FieldVals {
-				visitExpr(value)
-			}
-		case MIRFlowRecordFieldExpr:
-			visitExpr(e.Target)
-		case MIRFlowRecordUpdateExpr:
-			visitExpr(e.Source)
-			for _, value := range e.FieldVals {
-				visitExpr(value)
-			}
 		case MIRFlowUtilityWhenExpr:
-			visitExpr(e.Hysteresis)
-			visitExpr(e.MinCommit)
-			visitExpr(e.Else)
-			for _, c := range e.Cases {
-				visitExpr(c.Value)
-				visitExpr(c.Condition)
-				visitExpr(c.Score)
+			visitExpr(value.Hysteresis)
+			visitExpr(value.MinCommit)
+			visitExpr(value.Else)
+			for _, candidate := range value.Cases {
+				visitExpr(candidate.Value)
+				visitExpr(candidate.Condition)
+				visitExpr(candidate.Score)
 			}
-		case MIRFlowSwitchExpr:
-			if e.Subject != nil {
-				visitExpr(e.Subject)
-			}
-			for _, c := range e.Cases {
-				visitExpr(c.Match)
-				visitExpr(c.Value)
-			}
-			if e.Else != nil {
-				visitExpr(e.Else)
-			}
-		case MIRFlowMatchExpr:
-			visitExpr(e.Subject)
-			for _, c := range e.Cases {
-				visitExpr(c.Value)
-			}
-		case MIRFlowIfExpr:
-			visitExpr(e.Condition)
-			visitExpr(e.Then)
-			visitExpr(e.Else)
 		}
 	}
 	visitAction = func(action MIRFlowWhenAction) {
@@ -8185,34 +7128,6 @@ func collectFlowBuiltinsExpr(expr MIRFlowExpr, usedBuiltins map[string]bool) {
 				}
 			}
 		}
-	case MIRFlowBinaryExpr:
-		collectFlowBuiltinsExpr(e.Left, usedBuiltins)
-		collectFlowBuiltinsExpr(e.Right, usedBuiltins)
-	case MIRFlowUnaryExpr:
-		collectFlowBuiltinsExpr(e.Operand, usedBuiltins)
-	case MIRFlowUnwrapExpr:
-		collectFlowBuiltinsExpr(e.Inner, usedBuiltins)
-	case MIRFlowCallExpr:
-		if e.Builtin {
-			usedBuiltins[e.Callee] = true
-		}
-		for _, arg := range e.Args {
-			collectFlowBuiltinsExpr(arg, usedBuiltins)
-		}
-	case MIRFlowIndexExpr:
-		collectFlowBuiltinsExpr(e.Target, usedBuiltins)
-		collectFlowBuiltinsExpr(e.Index, usedBuiltins)
-	case MIRFlowRecordLiteralExpr:
-		for _, fieldVal := range e.FieldVals {
-			collectFlowBuiltinsExpr(fieldVal, usedBuiltins)
-		}
-	case MIRFlowRecordFieldExpr:
-		collectFlowBuiltinsExpr(e.Target, usedBuiltins)
-	case MIRFlowRecordUpdateExpr:
-		collectFlowBuiltinsExpr(e.Source, usedBuiltins)
-		for _, fieldVal := range e.FieldVals {
-			collectFlowBuiltinsExpr(fieldVal, usedBuiltins)
-		}
 	case MIRFlowUtilityWhenExpr:
 		collectFlowBuiltinsExpr(e.Hysteresis, usedBuiltins)
 		collectFlowBuiltinsExpr(e.MinCommit, usedBuiltins)
@@ -8221,26 +7136,6 @@ func collectFlowBuiltinsExpr(expr MIRFlowExpr, usedBuiltins map[string]bool) {
 			collectFlowBuiltinsExpr(c.Condition, usedBuiltins)
 			collectFlowBuiltinsExpr(c.Score, usedBuiltins)
 		}
-		collectFlowBuiltinsExpr(e.Else, usedBuiltins)
-	case MIRFlowSwitchExpr:
-		if e.Subject != nil {
-			collectFlowBuiltinsExpr(e.Subject, usedBuiltins)
-		}
-		for _, c := range e.Cases {
-			collectFlowBuiltinsExpr(c.Match, usedBuiltins)
-			collectFlowBuiltinsExpr(c.Value, usedBuiltins)
-		}
-		if e.Else != nil {
-			collectFlowBuiltinsExpr(e.Else, usedBuiltins)
-		}
-	case MIRFlowMatchExpr:
-		collectFlowBuiltinsExpr(e.Subject, usedBuiltins)
-		for _, c := range e.Cases {
-			collectFlowBuiltinsExpr(c.Value, usedBuiltins)
-		}
-	case MIRFlowIfExpr:
-		collectFlowBuiltinsExpr(e.Condition, usedBuiltins)
-		collectFlowBuiltinsExpr(e.Then, usedBuiltins)
 		collectFlowBuiltinsExpr(e.Else, usedBuiltins)
 	}
 }
@@ -10093,31 +8988,6 @@ func analyzeFlowFeatures(flow MIRFlow, usedBuiltins map[string]bool) flowFeature
 	var visitExpr func(MIRFlowExpr)
 	visitExpr = func(expr MIRFlowExpr) {
 		switch e := expr.(type) {
-		case MIRFlowBinaryExpr:
-			visitExpr(e.Left)
-			visitExpr(e.Right)
-		case MIRFlowUnaryExpr:
-			visitExpr(e.Operand)
-		case MIRFlowUnwrapExpr:
-			visitExpr(e.Inner)
-		case MIRFlowCallExpr:
-			for _, arg := range e.Args {
-				visitExpr(arg)
-			}
-		case MIRFlowIndexExpr:
-			visitExpr(e.Target)
-			visitExpr(e.Index)
-		case MIRFlowRecordLiteralExpr:
-			for _, value := range e.FieldVals {
-				visitExpr(value)
-			}
-		case MIRFlowRecordFieldExpr:
-			visitExpr(e.Target)
-		case MIRFlowRecordUpdateExpr:
-			visitExpr(e.Source)
-			for _, value := range e.FieldVals {
-				visitExpr(value)
-			}
 		case MIRFlowUtilityWhenExpr:
 			if e.ControllerBound && isDirectPolicyScalarType(e.ResultType) {
 				features.NeedsScalarUtility = true
@@ -10135,26 +9005,6 @@ func analyzeFlowFeatures(flow MIRFlow, usedBuiltins map[string]bool) flowFeature
 				visitExpr(candidate.Condition)
 				visitExpr(candidate.Score)
 			}
-			visitExpr(e.Else)
-		case MIRFlowSwitchExpr:
-			if e.Subject != nil {
-				visitExpr(e.Subject)
-			}
-			for _, c := range e.Cases {
-				visitExpr(c.Match)
-				visitExpr(c.Value)
-			}
-			if e.Else != nil {
-				visitExpr(e.Else)
-			}
-		case MIRFlowMatchExpr:
-			visitExpr(e.Subject)
-			for _, c := range e.Cases {
-				visitExpr(c.Value)
-			}
-		case MIRFlowIfExpr:
-			visitExpr(e.Condition)
-			visitExpr(e.Then)
 			visitExpr(e.Else)
 		}
 	}
@@ -11094,247 +9944,51 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 }
 
 func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
-	switch e := expr.(type) {
+	switch value := expr.(type) {
 	case MIRFlowSharedExpr:
-		return emitGoSharedExpression(e)
-	case MIRFlowLiteralExpr:
-		return e.Value, nil
-	case MIRFlowIdentifierExpr:
-		if e.IsLocal {
-			return e.Name, nil
-		}
-		return "f." + e.Name, nil
-	case MIRFlowFieldExpr:
-		if e.Target == "board" {
-			return "f.board." + e.Field, nil
-		}
-		if e.IsLocal {
-			return e.Target + "." + e.Field, nil
-		}
-		return "f." + e.Target + "." + e.Field, nil
-	case MIRFlowRecordFieldExpr:
-		target, err := emitGoFlowExpr(e.Target, pkg)
-		if err != nil {
-			return "", err
-		}
-		return target + "." + e.Field, nil
-	case MIRFlowBinaryExpr:
-		l, err := emitGoFlowExpr(e.Left, pkg)
-		if err != nil {
-			return "", err
-		}
-		r, err := emitGoFlowExpr(e.Right, pkg)
-		if err != nil {
-			return "", err
-		}
-		op := e.Operator
-		if op == "and" {
-			op = "&&"
-		}
-		if op == "or" {
-			op = "||"
-		}
-		return fmt.Sprintf("(%s %s %s)", l, op, r), nil
-	case MIRFlowUnaryExpr:
-		v, err := emitGoFlowExpr(e.Operand, pkg)
-		if err != nil {
-			return "", err
-		}
-		op := e.Operator
-		if op == "not" {
-			op = "!"
-		}
-		return fmt.Sprintf("(%s%s)", op, v), nil
-	case MIRFlowUnwrapExpr:
-		inner, err := emitGoFlowExpr(e.Inner, pkg)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("func() %s { r := %s; if r.IsErr { panic(\"unwrap failed: \" + r.Err) }; return r.Value }()", goType(e.ResultType), inner), nil
-	case MIRFlowCallExpr:
-		args := make([]string, 0, len(e.Args))
-		for _, arg := range e.Args {
-			v, err := emitGoFlowExpr(arg, pkg)
-			if err != nil {
-				return "", err
-			}
-			args = append(args, v)
-		}
-		if !e.Builtin {
-			if e.FunctionValue {
-				callee := "f." + e.Callee
-				if e.FunctionValueLocal {
-					callee = e.Callee
-				}
-				return fmt.Sprintf("%s(%s)", callee, strings.Join(args, ", ")), nil
-			}
-			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(e.Callee, ".", "_"), strings.Join(args, ", ")), nil
-		}
-		if e.Callee == "Len" && len(e.ArgTypes) == 1 {
-			if table, _, ok := lookupFlowRecordTable(e.ArgTypes[0], pkg); ok && len(table.Fields) > 0 {
-				return fmt.Sprintf("len(%s.%s)", args[0], table.Fields[0].Name), nil
-			}
-		}
-		return emitGoBuiltinCallExpr(e.Callee, args)
-	case MIRFlowIndexExpr:
-		target, err := emitGoFlowExpr(e.Target, pkg)
-		if err != nil {
-			return "", err
-		}
-		idx, err := emitGoFlowExpr(e.Index, pkg)
-		if err != nil {
-			return "", err
-		}
-		if len(e.TableFields) > 0 {
-			parts := make([]string, 0, len(e.TableFields))
-			for _, field := range e.TableFields {
-				parts = append(parts, fmt.Sprintf("%s: %s.%s[%s]", field, target, field, idx))
-			}
-			return fmt.Sprintf("%s{%s}", goType(e.ResultType), strings.Join(parts, ", ")), nil
-		}
-		return fmt.Sprintf("%s[%s]", target, idx), nil
-	case MIRFlowRecordLiteralExpr:
-		parts := make([]string, 0, len(e.FieldNames))
-		for i := range e.FieldNames {
-			v, err := emitGoFlowExpr(e.FieldVals[i], pkg)
-			if err != nil {
-				return "", err
-			}
-			parts = append(parts, fmt.Sprintf("%s: %s", e.FieldNames[i], v))
-		}
-		return fmt.Sprintf("%s{%s}", goType(e.TypeName), strings.Join(parts, ", ")), nil
-	case MIRFlowRecordUpdateExpr:
-		source, err := emitGoFlowExpr(e.Source, pkg)
-		if err != nil {
-			return "", err
-		}
-		updates := make([]string, 0, len(e.FieldNames))
-		for i, name := range e.FieldNames {
-			value, err := emitGoFlowExpr(e.FieldVals[i], pkg)
-			if err != nil {
-				return "", err
-			}
-			updates = append(updates, fmt.Sprintf("v.%s = %s", name, value))
-		}
-		return fmt.Sprintf("func() %s { v := %s; %s; return v }()", goType(e.TypeName), source, strings.Join(updates, "; ")), nil
+		return emitGoSharedExpression(value)
 	case MIRFlowUtilityWhenExpr:
-		h, err := emitGoFlowExpr(e.Hysteresis, pkg)
+		hysteresis, err := emitGoFlowExpr(value.Hysteresis, pkg)
 		if err != nil {
 			return "", err
 		}
-		m, err := emitGoFlowExpr(e.MinCommit, pkg)
+		minCommit, err := emitGoFlowExpr(value.MinCommit, pkg)
 		if err != nil {
 			return "", err
 		}
-		elseExpr, err := emitGoFlowExpr(e.Else, pkg)
+		elseExpr, err := emitGoFlowExpr(value.Else, pkg)
 		if err != nil {
 			return "", err
 		}
-		cases := make([]string, 0, len(e.Cases))
-		valueType := goType(e.ResultType)
-		for _, c := range e.Cases {
-			v, err := emitGoFlowExpr(c.Value, pkg)
+		cases := make([]string, 0, len(value.Cases))
+		valueType := goType(value.ResultType)
+		for _, candidate := range value.Cases {
+			candidateValue, err := emitGoFlowExpr(candidate.Value, pkg)
 			if err != nil {
 				return "", err
 			}
-			cond, err := emitGoFlowExpr(c.Condition, pkg)
+			condition, err := emitGoFlowExpr(candidate.Condition, pkg)
 			if err != nil {
 				return "", err
 			}
-			score, err := emitGoFlowExpr(c.Score, pkg)
+			score, err := emitGoFlowExpr(candidate.Score, pkg)
 			if err != nil {
 				return "", err
 			}
-			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", cond, v, score))
+			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", condition, candidateValue, score))
 		}
 		sites := "map[int]__octUtilitySiteState{}"
-		if e.ControllerBound {
-			if isDirectPolicyScalarType(e.ResultType) {
+		if value.ControllerBound {
+			if isDirectPolicyScalarType(value.ResultType) {
 				return fmt.Sprintf("__octUtilSelectScalar[%s](&f.utilitySite%d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
-					valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
+					valueType, value.SiteID, hysteresis, minCommit, valueType, strings.Join(cases, ", "), elseExpr), nil
 			}
 			sites = "f.utilitySites"
 		}
 		return fmt.Sprintf("__octUtilSelect[%s](%s, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
-			valueType, sites, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
-	case MIRFlowSwitchExpr:
-		ifChain := make([]string, 0, len(e.Cases))
-		subject := ""
-		if e.Subject != nil {
-			s, err := emitGoFlowExpr(e.Subject, pkg)
-			if err != nil {
-				return "", err
-			}
-			subject = s
-		}
-		for idx, c := range e.Cases {
-			match, err := emitGoFlowExpr(c.Match, pkg)
-			if err != nil {
-				return "", err
-			}
-			value, err := emitGoFlowExpr(c.Value, pkg)
-			if err != nil {
-				return "", err
-			}
-			cond := match
-			if subject != "" {
-				cond = fmt.Sprintf("(%s == %s)", subject, match)
-			}
-			keyword := "if"
-			if idx > 0 {
-				keyword = "else if"
-			}
-			ifChain = append(ifChain, fmt.Sprintf("%s %s { return %s }", keyword, cond, value))
-		}
-		body := strings.Join(ifChain, " ")
-		if e.Else != nil {
-			elseExpr, err := emitGoFlowExpr(e.Else, pkg)
-			if err != nil {
-				return "", err
-			}
-			if body != "" {
-				body += "; "
-			}
-			body += fmt.Sprintf("return %s", elseExpr)
-		}
-		return fmt.Sprintf("func() %s { %s }()", goType(e.ResultType), body), nil
-	case MIRFlowMatchExpr:
-		subject, err := emitGoFlowExpr(e.Subject, pkg)
-		if err != nil {
-			return "", err
-		}
-		subjectVar := "__oct_match_subject"
-		switchCases := make([]string, 0, len(e.Cases))
-		for _, c := range e.Cases {
-			body := ""
-			if c.Binding != "" {
-				body = fmt.Sprintf("%s := %s.Payload.(%s); _ = %s; ", c.Binding, subjectVar, goType(c.BindingType), c.Binding)
-			}
-			value, err := emitGoFlowExpr(c.Value, pkg)
-			if err != nil {
-				return "", err
-			}
-			body += fmt.Sprintf("return %s", value)
-			switchCases = append(switchCases, fmt.Sprintf("case %s_%s_tag: %s", enumShortName(e.SubjectType), c.Variant, body))
-		}
-		switchCases = append(switchCases, `default: panic("non-exhaustive match reached in compiled flow mode")`)
-		return fmt.Sprintf("func() %s { %s := %s; switch %s.Tag {\n%s\n} }()", goType(e.ResultType), subjectVar, subject, subjectVar, strings.Join(switchCases, "\n")), nil
-	case MIRFlowIfExpr:
-		condition, err := emitGoFlowExpr(e.Condition, pkg)
-		if err != nil {
-			return "", err
-		}
-		thenExpr, err := emitGoFlowExpr(e.Then, pkg)
-		if err != nil {
-			return "", err
-		}
-		elseExpr, err := emitGoFlowExpr(e.Else, pkg)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("func() %s { if %s { return %s }; return %s }()", goType(e.ResultType), condition, thenExpr, elseExpr), nil
+			valueType, sites, value.SiteID, hysteresis, minCommit, valueType, strings.Join(cases, ", "), elseExpr), nil
 	default:
-		return "", unsupported(fmt.Sprintf("flow expression %T", expr))
+		return "", fmt.Errorf("internal error: unsupported FLOW expression representation %T", expr)
 	}
 }
 

@@ -3,8 +3,10 @@
 > Superseded in part by `FLOW_SHARED_EXPRESSION_M1.md`. M1 routes ordinary
 > compiled FLOW values through ordinary MIR lowering, adds activation-local
 > anonymous capture construction, deep compiled snapshots, aggregate logical
-> checkpoints, and structured nested machine transfer. M0 remains the baseline
-> audit and the source of the deliberate `?` and function-board exclusions.
+> checkpoints, structured nested machine transfer, and has now deleted the
+> former parallel expression variants/inference/emitter. M0 remains the
+> historical baseline audit and source of the deliberate `?` and function-board
+> exclusions; its architecture tables describe the pre-M1 implementation.
 
 Outcome: **C — bounded parity improvement**.
 

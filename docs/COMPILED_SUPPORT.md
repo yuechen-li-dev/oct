@@ -128,10 +128,10 @@ Still deferred after M24: Complex support, Einstein/tensor notation, broad callb
 Re-audited using `go run ./cmd/oct test ... --execution interpreted|compiled|auto` on August 30, 2026. The semantic contract is now summarized in `docs/FLOW_SEMANTIC_PARITY_M0.md`; this table remains implementation evidence, not a language whitelist.
 
 FLOW shared-expression M1 routes ordinary state expressions through ordinary
-compiled MIR blocks. The remaining value-shaped FLOW MIR is controller-bound
-utility policy state; legacy `MIRFlowExpr` variant declarations still await
-physical deletion and therefore M1 records Outcome C rather than claiming full
-architectural closure. See `docs/FLOW_SHARED_EXPRESSION_M1.md`.
+compiled MIR blocks. The former parallel inference, call resolution, expression
+variants, and Go emitter cases have been deleted. The sole value-shaped FLOW
+MIR exception is controller-bound utility policy state, whose child
+computations are ordinary MIR. See `docs/FLOW_SHARED_EXPRESSION_M1.md`.
 
 | Feature | Interpreted support | Compiled support | Fixture evidence | Limitations |
 | --- | --- | --- | --- | --- |
@@ -177,18 +177,18 @@ Notes:
 | `ast.ParenExpr` | Yes | **Yes (added in this sweep)** | Yes | Implement now | Lower/type-infer now recurse into inner expression. |
 | `ast.CallExpr` | Yes | Yes | Yes | Ordinary call semantics | User functions, function values, returned callables, and specialized generic consumers are verified. |
 | `ast.IndexExpr` | Yes | Yes (array/vector/matrix verified) | Yes | Ordinary indexing | String indexing remains governed by ordinary backend support. |
-| `ast.FieldAccessExpr` | Yes | Partial (`board.<field>` + enum variant values/constructors) | Yes (M0 board + enum constructors) | Scoped support | Compiled flow now supports enum `Type.Variant` values and `Type.Variant(payload)` constructors in expression positions; arbitrary object/member field access remains unsupported. |
+| `ast.FieldAccessExpr` | Yes | Same ordinary compiled lowering | Yes | Ordinary semantics | FLOW supplies typed board/parameter/input/local bindings; field access itself is ordinary MIR. |
 | `ast.ArrayLiteralExpr` / vector / matrix literals | Yes | Yes | Yes | Implemented | Collection construction uses ordinary generated-Go value representations. |
 | `ast.RecordLiteralExpr` | Yes | Yes (record construction for flow return/value expressions) | Yes (named-field record construction) | Implemented | Compiled flow lowering now supports named-field record literals for direct value construction (including return paths). Imported/advanced record forms remain bounded by existing flow type resolution. |
 | `ast.RecordUpdateExpr` (`with`) | Yes | Yes | Yes | Implemented | Verified for local and board record values. |
 | `ast.IfExpr` / `ast.SwitchExpr` | Yes | `ast.IfExpr`: **Yes (M0)**, `ast.SwitchExpr`: Yes | Yes | Implemented for `IfExpr` | Compiled flow now supports expression `if { } else { }` with Bool condition and same-typed branches; `else if` syntax remains unsupported by language policy. |
-| `ast.UtilityWhenExpr` | Yes | Yes | Yes | Keep | Compiled flow has dedicated utility-when MIR node. |
+| `ast.UtilityWhenExpr` | Yes | Yes | Yes | FLOW policy state | The dedicated node stores controller commitment; all child value computations are ordinary MIR. |
 | `ast.UnwrapExpr` | Yes | Yes for direct fallible calls | Yes | Implemented | Same fatal failure behavior as ordinary compiled Oct. |
 | `ast.PropagateExpr` | Yes in fallible functions | No by design | No without contract | Explicit semantic exclusion | Diagnostic requires a fallible FLOW result contract and suggests `match` or `!`. |
 | `ast.MatchExpr` | Partial | **Yes (enum-tag/payload M0)** | Yes (enum-only) | Implemented | Compiled flow supports enum `match` with tag dispatch and optional single payload binding in arm scope. |
 | `ast.BatchExpr` / runtime-heavy expression forms | Yes (ordinary functions) | No | No | Keep ordinary support; defer flow placement | Ordinary compiled batch uses `MIRBatchMap` plus sequential/chunked specialization. It is still outside the current pure local flow-expression scope. |
 
-M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed. Later board work also made compiled `BoardSnapshot` green for supported scalar board fields and arrays of those scalar types.
+FLOW shared-expression M1 status: ordinary FLOW value computation has no parallel expression inference, resolver, or Go emitter. `MIRFlowSharedExpr` carries ordinary MIR; `MIRFlowUtilityWhenExpr` is the sole policy-state exception. Compiled `BoardSnapshot` recursively clones every admitted persistent aggregate type.
 
 ## Array cross-section
 

@@ -1,13 +1,13 @@
 # FLOW shared compiled-expression context M1
 
-Outcome: **C — partial consolidation with the runtime value path shared**.
+Outcome: **A — shared compiled expression architecture**.
 
-M1 answers the motivating execution question positively: compiled FLOW state
-value computation now enters `lowerCtx.lowerExpr`, produces ordinary `MIRBlock`
-and `MIRStmt` nodes, and uses the ordinary Go statement emitter. FLOW supplies
-typed binding expressions and retains state-machine statements. The source file
-still declares and contains dead legacy `MIRFlowExpr` variants and their old
-lowering/emission cases, so this report does not claim Success A or B.
+Compiled FLOW state value computation enters `lowerCtx.lowerExpr`, produces
+ordinary `MIRBlock` and `MIRStmt` nodes, and uses the ordinary Go statement
+emitter. FLOW supplies typed binding expressions and retains state-machine
+statements. The former literal/operator/call/index/record/match FLOW expression
+variants, inference switch, resolver helpers, and Go emission cases have been
+deleted.
 
 ## Architecture audit
 
@@ -29,12 +29,13 @@ stay local, while construction parameters and turn input resolve through `f`,
 and the synthetic board binding resolves through `f.board`. The context is
 typed; there is no dynamic environment map in generated Go.
 
-`MIRFlowSharedExpr` is the current bridge container. It contains ordinary MIR
-blocks and locals, not a second expression AST. Every ordinary state expression
-lowers to this representation. Controller-bound `MIRFlowUtilityWhenExpr` is the
-only live value-shaped FLOW-specific variant. Physical removal of the dormant
-literal/binary/call/index/record/match variants is the remaining architectural
-debt and the reason for Outcome C.
+`MIRFlowSharedExpr` is the bridge container. It contains ordinary MIR blocks and
+locals, not a second expression AST. Every ordinary state expression lowers to
+this representation. `MIRFlowUtilityWhenExpr` is the only FLOW-specific
+value-shaped variant because controller commitment is persistent machine state.
+Its hysteresis, commitment, candidates, guards, scores, and fallback are all
+`MIRFlowSharedExpr` computations. Fallible statement-match subjects also use
+fallible ordinary MIR; they no longer retain a legacy call node.
 
 ## Callable and capture result
 
@@ -103,9 +104,7 @@ No compiled interpreter bridge was introduced. The semicolon policy remains
 unchanged: semicolons are optional separators and never required.
 
 The truthful post-M1 description is: **ordinary Oct value computation through
-shared compiled MIR, plus explicit FLOW machine control and persistence, with
-dormant legacy expression declarations still awaiting deletion**.
+shared compiled MIR, plus explicit FLOW machine control and persistence**.
 
-One next milestone only: **delete the dormant legacy `MIRFlowExpr` variants,
-legacy inference switch, and legacy Go expression cases, leaving only the
-ordinary-MIR bridge and controller-policy value state.**
+The expression-architecture milestone is closed. Fallible FLOW propagation
+remains a separate semantic milestone and is not started here.
