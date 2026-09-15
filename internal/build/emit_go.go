@@ -99,12 +99,15 @@ func compiledTypeNeedsRange(typeName string) bool {
 }
 
 func mirStatementContains(statement MIRStmt, needle string) bool {
-	values := []string{}
+	values := []MIRValue{}
 	switch statement := statement.(type) {
 	case MIRAssign:
 		values = append(values, statement.Value)
 	case MIRRowAssign:
-		values = append(values, statement.Target, statement.Index, statement.Value)
+		values = append(values, statement.Index, statement.Value)
+	case MIRIndexAssign:
+		values = append(values, statement.Indices...)
+		values = append(values, statement.Value)
 	case MIRCall:
 		values = append(values, statement.Args...)
 	case MIRGenericOctxiliaryCall:
@@ -115,9 +118,12 @@ func mirStatementContains(statement MIRStmt, needle string) bool {
 		values = append(values, statement.FieldVals...)
 	case MIRConstructArray:
 		values = append(values, statement.Values...)
+	case MIRBatchMap:
+		values = append(values, statement.Input)
+		values = append(values, statement.Captures...)
 	}
 	for _, value := range values {
-		if strings.Contains(value, needle) {
+		if mirValueContains(value, needle) {
 			return true
 		}
 	}
@@ -127,11 +133,11 @@ func mirStatementContains(statement MIRStmt, needle string) bool {
 func mirTerminatorContains(terminator MIRTerminator, needle string) bool {
 	switch terminator := terminator.(type) {
 	case MIRReturn:
-		return strings.Contains(terminator.Value, needle)
+		return mirValueContains(terminator.Value, needle)
 	case MIRBranch:
-		return strings.Contains(terminator.Cond, needle)
+		return mirValueContains(terminator.Cond, needle)
 	case MIRFail:
-		return strings.Contains(terminator.Value, needle)
+		return mirValueContains(terminator.Value, needle)
 	default:
 		return false
 	}
@@ -1284,15 +1290,45 @@ func octxiliaryValueExtractExprWithTransport(t string, value string, transportTy
 func goStmt(s MIRStmt) (string, error) {
 	switch st := s.(type) {
 	case MIRAssign:
-		return fmt.Sprintf("%s = %s", st.Target, st.Value), nil
+		value, err := emitGoValue(st.Value)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s = %s", st.Target, value), nil
 	case MIRRowAssign:
-		return fmt.Sprintf("__octAssignRow(%s, %s, %s)", st.Target, st.Index, st.Value), nil
+		index, err := emitGoValue(st.Index)
+		if err != nil {
+			return "", err
+		}
+		value, err := emitGoValue(st.Value)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("__octAssignRow(%s, %s, %s)", st.Target, index, value), nil
+	case MIRIndexAssign:
+		indices, err := emitGoValues(st.Indices)
+		if err != nil {
+			return "", err
+		}
+		value, err := emitGoValue(st.Value)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s[%s] = %s", st.Target, strings.Join(indices, "]["), value), nil
 	case MIRConstructArray:
-		return fmt.Sprintf("%s = []%s{%s}", st.Target, goType(st.ElemType), strings.Join(st.Values, ", ")), nil
+		values, err := emitGoValues(st.Values)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s = []%s{%s}", st.Target, goType(st.ElemType), strings.Join(values, ", ")), nil
 	case MIRConstructRecord:
+		values, err := emitGoValues(st.FieldVals)
+		if err != nil {
+			return "", err
+		}
 		parts := make([]string, 0, len(st.FieldNames))
 		for i := range st.FieldNames {
-			parts = append(parts, fmt.Sprintf("%s: %s", st.FieldNames[i], st.FieldVals[i]))
+			parts = append(parts, fmt.Sprintf("%s: %s", st.FieldNames[i], values[i]))
 		}
 		statement := fmt.Sprintf("%s = %s{%s}", st.Target, goType(st.TypeName), strings.Join(parts, ", "))
 		if st.TemplateOrigin != "" {
@@ -1302,7 +1338,11 @@ func goStmt(s MIRStmt) (string, error) {
 	case MIRGenericOctxiliaryCall:
 		valueArgs := make([]string, 0, len(st.Args))
 		for i, arg := range st.Args {
-			valueExpr, err := octxiliaryValueExprWithTransportFamily(st.ArgTypes[i], arg, st.TransportTypes, st.Family)
+			emittedArg, err := emitGoValue(arg)
+			if err != nil {
+				return "", err
+			}
+			valueExpr, err := octxiliaryValueExprWithTransportFamily(st.ArgTypes[i], emittedArg, st.TransportTypes, st.Family)
 			if err != nil {
 				return "", err
 			}
@@ -1331,351 +1371,355 @@ func goStmt(s MIRStmt) (string, error) {
 		}
 		return fmt.Sprintf("%s = func() %s { __value, __err := %s; if __err != nil { panic(\"runtime error: \" + __err.Error()) }; return %s }()", st.Target, goType(st.RetType), call, extractExpr), nil
 	case MIRCall:
+		args, err := emitGoValues(st.Args)
+		if err != nil {
+			return "", err
+		}
 		if st.Builtin {
 			switch canonicalCompiledBuiltinName(st.Callee) {
 			case "Idx":
-				return fmt.Sprintf("%s = __octIdx(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octIdx(%s)", st.Target, args[0]), nil
 			case "EinMul":
-				return fmt.Sprintf("%s = __octEinMulMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+				return fmt.Sprintf("%s = __octEinMulMM(%s, %s, %s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3], args[4], args[5]), nil
 			case "EinAdd":
-				return fmt.Sprintf("%s = __octEinAddMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+				return fmt.Sprintf("%s = __octEinAddMM(%s, %s, %s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3], args[4], args[5]), nil
 			case "EinSub":
-				return fmt.Sprintf("%s = __octEinSubMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+				return fmt.Sprintf("%s = __octEinSubMM(%s, %s, %s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3], args[4], args[5]), nil
 			case "EinAddVV":
-				return fmt.Sprintf("%s = __octEinAddVV(%s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+				return fmt.Sprintf("%s = __octEinAddVV(%s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3]), nil
 			case "EinSubVV":
-				return fmt.Sprintf("%s = __octEinSubVV(%s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+				return fmt.Sprintf("%s = __octEinSubVV(%s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3]), nil
 			case "EinDotVV":
-				return fmt.Sprintf("%s = __octEinDotVV(%s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+				return fmt.Sprintf("%s = __octEinDotVV(%s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3]), nil
 			case "EinOuterVV":
-				return fmt.Sprintf("%s = __octEinOuterVV(%s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+				return fmt.Sprintf("%s = __octEinOuterVV(%s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3]), nil
 			case "EinMulMV":
-				return fmt.Sprintf("%s = __octEinMulMV(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+				return fmt.Sprintf("%s = __octEinMulMV(%s, %s, %s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3], args[4], args[5]), nil
 			case "EinMulVM":
-				return fmt.Sprintf("%s = __octEinMulVM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+				return fmt.Sprintf("%s = __octEinMulVM(%s, %s, %s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3], args[4], args[5]), nil
 			case "EinDoubleMM":
-				return fmt.Sprintf("%s = __octEinDoubleMM(%s, %s, %s, %s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Args[4], st.Args[5]), nil
+				return fmt.Sprintf("%s = __octEinDoubleMM(%s, %s, %s, %s, %s, %s)", st.Target, args[0], args[1], args[2], args[3], args[4], args[5]), nil
 			case "Len":
-				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = len(%s)", st.Target, args[0]), nil
 			case "Append":
-				value := st.Args[1]
+				value := args[1]
 				if len(st.ArgTypes) > 1 {
 					value = cloneCompiledValueExpr(value, st.ArgTypes[1])
 				}
-				return fmt.Sprintf("%s = append(%s, %s)", st.Target, st.Args[0], value), nil
+				return fmt.Sprintf("%s = append(%s, %s)", st.Target, args[0], value), nil
 			case "ArrayCrossSection", "Array.CrossSection":
-				return fmt.Sprintf("%s = __octArrayCrossSection(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octArrayCrossSection(%s, %s)", st.Target, args[0], args[1]), nil
 			case "ArrayWhere", "Array.Where":
-				return fmt.Sprintf("%s = __octArrayWhere(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octArrayWhere(%s, %s)", st.Target, args[0], args[1]), nil
 			case "Print":
-				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
+				return fmt.Sprintf("fmt.Println(%s); %s = 0", args[0], st.Target), nil
 			case "FormatFloat":
-				return fmt.Sprintf("%s = strconv.FormatFloat(%s, 'f', int(%s), 64)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strconv.FormatFloat(%s, 'f', int(%s), 64)", st.Target, args[0], args[1]), nil
 			case "Assert.True":
 				if st.Target == "_" {
-					return fmt.Sprintf("__octAssertionCount++; if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
+					return fmt.Sprintf("__octAssertionCount++; if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", args[0], args[1]), nil
 				}
-				return fmt.Sprintf("__octAssertionCount++; if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if !%s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", args[0], args[1], st.Target), nil
 			case "Assert.False":
 				if st.Target == "_" {
-					return fmt.Sprintf("__octAssertionCount++; if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
+					return fmt.Sprintf("__octAssertionCount++; if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", args[0], args[1]), nil
 				}
-				return fmt.Sprintf("__octAssertionCount++; if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", args[0], args[1], st.Target), nil
 			case "Assert.Equal":
 				if st.Target == "_" {
-					return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1], st.Args[2]), nil
+					return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", args[0], args[1], args[2]), nil
 				}
-				return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Args[2], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", args[0], args[1], args[2], st.Target), nil
 			case "Assert.Near":
 				if st.Target == "_" {
-					return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1], st.Args[2], st.Args[3]), nil
+					return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", args[0], args[1], args[2], args[3]), nil
 				}
-				return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Args[2], st.Args[3], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", args[0], args[1], args[2], args[3], st.Target), nil
 			case "Assert.Error":
 				if st.Target == "_" {
-					return fmt.Sprintf("__octAssertionCount++; if !%s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
+					return fmt.Sprintf("__octAssertionCount++; if !%s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", args[0], args[1]), nil
 				}
-				return fmt.Sprintf("__octAssertionCount++; if !%s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if !%s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", args[0], args[1], st.Target), nil
 			case "Assert.LGTM":
-				return fmt.Sprintf("__octAssertionCount++; if %s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\nunderlying error: %%s\\n\", %s, %s.Err); os.Exit(1) }; %s = %s.Value", st.Args[0], st.Args[1], st.Args[0], st.Target, st.Args[0]), nil
+				return fmt.Sprintf("__octAssertionCount++; if %s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\nunderlying error: %%s\\n\", %s, %s.Err); os.Exit(1) }; %s = %s.Value", args[0], args[1], args[0], st.Target, args[0]), nil
 			case "ToString":
-				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, args[0]), nil
 			case "Float":
-				return fmt.Sprintf("%s = float64(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = float64(%s)", st.Target, args[0]), nil
 			case "Clamp01":
-				return fmt.Sprintf("%s = func(__v float64) float64 { if __v < 0.0 { return 0.0 }; if __v > 1.0 { return 1.0 }; return __v }(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = func(__v float64) float64 { if __v < 0.0 { return 0.0 }; if __v > 1.0 { return 1.0 }; return __v }(%s)", st.Target, args[0]), nil
 			case "Complex":
-				return fmt.Sprintf("%s = complex(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = complex(float64(%s), float64(%s))", st.Target, args[0], args[1]), nil
 			case "ComplexPolar":
-				return fmt.Sprintf("%s = cmplx.Rect(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = cmplx.Rect(float64(%s), float64(%s))", st.Target, args[0], args[1]), nil
 			case "I":
 				return fmt.Sprintf("%s = complex(0, 1)", st.Target), nil
 			case "Real":
-				return fmt.Sprintf("%s = __octComplexReal(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octComplexReal(%s)", st.Target, args[0]), nil
 			case "Imag":
-				return fmt.Sprintf("%s = __octComplexImag(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octComplexImag(%s)", st.Target, args[0]), nil
 			case "Arg":
-				return fmt.Sprintf("%s = cmplx.Phase(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = cmplx.Phase(%s)", st.Target, args[0]), nil
 			case "Conj":
-				return fmt.Sprintf("%s = cmplx.Conj(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = cmplx.Conj(%s)", st.Target, args[0]), nil
 			case "Pi":
 				return fmt.Sprintf("%s = math.Pi", st.Target), nil
 			case "E":
 				return fmt.Sprintf("%s = math.E", st.Target), nil
 			case "Abs":
 				if len(st.ArgTypes) == 1 && isComplexScalarTypeString(st.ArgTypes[0]) {
-					return fmt.Sprintf("%s = __octComplexAbs(%s)", st.Target, st.Args[0]), nil
+					return fmt.Sprintf("%s = __octComplexAbs(%s)", st.Target, args[0]), nil
 				}
 				if isIntScalarTypeString(st.RetType) {
-					return fmt.Sprintf("%s = func(__v int) int { if __v < 0 { return -__v }; return __v }(%s)", st.Target, st.Args[0]), nil
+					return fmt.Sprintf("%s = func(__v int) int { if __v < 0 { return -__v }; return __v }(%s)", st.Target, args[0]), nil
 				}
 				if isFloatScalarTypeString(st.RetType) {
-					return fmt.Sprintf("%s = math.Abs(%s)", st.Target, st.Args[0]), nil
+					return fmt.Sprintf("%s = math.Abs(%s)", st.Target, args[0]), nil
 				}
 				return "", fmt.Errorf("compiled mode does not yet support builtin Abs for type %s", st.RetType)
 			case "Sqrt":
-				return fmt.Sprintf("%s = math.Sqrt(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Sqrt(float64(%s))", st.Target, args[0]), nil
 			case "Sin":
-				return fmt.Sprintf("%s = math.Sin(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Sin(float64(%s))", st.Target, args[0]), nil
 			case "Cos":
-				return fmt.Sprintf("%s = math.Cos(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Cos(float64(%s))", st.Target, args[0]), nil
 			case "Tan":
-				return fmt.Sprintf("%s = math.Tan(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Tan(float64(%s))", st.Target, args[0]), nil
 			case "Asin":
-				return fmt.Sprintf("%s = math.Asin(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Asin(float64(%s))", st.Target, args[0]), nil
 			case "Acos":
-				return fmt.Sprintf("%s = math.Acos(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Acos(float64(%s))", st.Target, args[0]), nil
 			case "Atan":
-				return fmt.Sprintf("%s = math.Atan(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Atan(float64(%s))", st.Target, args[0]), nil
 			case "Atan2":
-				return fmt.Sprintf("%s = math.Atan2(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = math.Atan2(float64(%s), float64(%s))", st.Target, args[0], args[1]), nil
 			case "Exp":
 				if isComplexScalarTypeString(st.RetType) {
-					return fmt.Sprintf("%s = cmplx.Exp(%s)", st.Target, st.Args[0]), nil
+					return fmt.Sprintf("%s = cmplx.Exp(%s)", st.Target, args[0]), nil
 				}
-				return fmt.Sprintf("%s = math.Exp(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Exp(float64(%s))", st.Target, args[0]), nil
 			case "Ln":
 				if isComplexScalarTypeString(st.RetType) {
-					return fmt.Sprintf("%s = cmplx.Log(%s)", st.Target, st.Args[0]), nil
+					return fmt.Sprintf("%s = cmplx.Log(%s)", st.Target, args[0]), nil
 				}
-				return fmt.Sprintf("%s = math.Log(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Log(float64(%s))", st.Target, args[0]), nil
 			case "Pow":
-				return fmt.Sprintf("%s = math.Pow(float64(%s), float64(%s))", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = math.Pow(float64(%s), float64(%s))", st.Target, args[0], args[1]), nil
 			case "Log10":
-				return fmt.Sprintf("%s = math.Log10(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Log10(float64(%s))", st.Target, args[0]), nil
 			case "Sinh":
-				return fmt.Sprintf("%s = math.Sinh(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Sinh(float64(%s))", st.Target, args[0]), nil
 			case "Cosh":
-				return fmt.Sprintf("%s = math.Cosh(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Cosh(float64(%s))", st.Target, args[0]), nil
 			case "Tanh":
-				return fmt.Sprintf("%s = math.Tanh(float64(%s))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = math.Tanh(float64(%s))", st.Target, args[0]), nil
 			case "FloorToInt", "Math.FloorToInt":
-				return fmt.Sprintf("%s = int(math.Floor(float64(%s)))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = int(math.Floor(float64(%s)))", st.Target, args[0]), nil
 			case "CeilToInt", "Math.CeilToInt":
-				return fmt.Sprintf("%s = int(math.Ceil(float64(%s)))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = int(math.Ceil(float64(%s)))", st.Target, args[0]), nil
 			case "RoundToInt":
-				return fmt.Sprintf("%s = int(math.Round(float64(%s)))", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = int(math.Round(float64(%s)))", st.Target, args[0]), nil
 			case "BaseValue", "BaseUnit":
-				return fmt.Sprintf("%s = float64(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = float64(%s)", st.Target, args[0]), nil
 			case "Contains":
-				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, args[0], args[1]), nil
 			case "StartsWith":
-				return fmt.Sprintf("%s = strings.HasPrefix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strings.HasPrefix(%s, %s)", st.Target, args[0], args[1]), nil
 			case "EndsWith":
-				return fmt.Sprintf("%s = strings.HasSuffix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strings.HasSuffix(%s, %s)", st.Target, args[0], args[1]), nil
 			case "Trim":
-				return fmt.Sprintf("%s = strings.TrimSpace(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = strings.TrimSpace(%s)", st.Target, args[0]), nil
 			case "Lower":
-				return fmt.Sprintf("%s = strings.ToLower(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = strings.ToLower(%s)", st.Target, args[0]), nil
 			case "Upper":
-				return fmt.Sprintf("%s = strings.ToUpper(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = strings.ToUpper(%s)", st.Target, args[0]), nil
 			case "Join":
-				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, args[0], args[1]), nil
 
 			case "StringByteLength":
-				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = len(%s)", st.Target, args[0]), nil
 			case "StringRuneCount":
-				return fmt.Sprintf("%s = utf8.RuneCountInString(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = utf8.RuneCountInString(%s)", st.Target, args[0]), nil
 			case "StringJoin":
-				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strings.Join(%s, %s)", st.Target, args[0], args[1]), nil
 			case "StringConcat":
-				return fmt.Sprintf("%s = strings.Join(%s, \"\")", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = strings.Join(%s, \"\")", st.Target, args[0]), nil
 			case "StringFrom":
-				return emitGoStringFromAssign(st.Target, st.Args, st.ArgTypes)
+				return emitGoStringFromAssign(st.Target, args, st.ArgTypes)
 			case "StringReplaceAll":
-				return fmt.Sprintf("%s = strings.ReplaceAll(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
+				return fmt.Sprintf("%s = strings.ReplaceAll(%s, %s, %s)", st.Target, args[0], args[1], args[2]), nil
 			case "StringContains":
-				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, args[0], args[1]), nil
 			case "StringStartsWith":
-				return fmt.Sprintf("%s = strings.HasPrefix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strings.HasPrefix(%s, %s)", st.Target, args[0], args[1]), nil
 			case "StringEndsWith":
-				return fmt.Sprintf("%s = strings.HasSuffix(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = strings.HasSuffix(%s, %s)", st.Target, args[0], args[1]), nil
 			case "StringTrim":
-				return fmt.Sprintf("%s = strings.TrimSpace(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = strings.TrimSpace(%s)", st.Target, args[0]), nil
 			case "StringSplitLines":
-				return fmt.Sprintf("%s = __octStringSplitLines(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octStringSplitLines(%s)", st.Target, args[0]), nil
 			case "StringEscapeJSON":
-				return fmt.Sprintf("%s = __octStringEscapeJSON(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octStringEscapeJSON(%s)", st.Target, args[0]), nil
 			case "StringQuoteJSON":
-				return fmt.Sprintf("%s = strconv.Quote(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = strconv.Quote(%s)", st.Target, args[0]), nil
 			case "MarkdownEscapeText":
-				return fmt.Sprintf("%s = __octMarkdownNormalizeInline(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octMarkdownNormalizeInline(%s)", st.Target, args[0]), nil
 			case "MarkdownEscapeTableCell":
-				return fmt.Sprintf("%s = __octMarkdownEscapeTableCell(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octMarkdownEscapeTableCell(%s)", st.Target, args[0]), nil
 			case "MarkdownH1":
-				return fmt.Sprintf("%s = []string{\"# \" + __octMarkdownNormalizeInline(%s)}", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = []string{\"# \" + __octMarkdownNormalizeInline(%s)}", st.Target, args[0]), nil
 			case "MarkdownH2":
-				return fmt.Sprintf("%s = []string{\"## \" + __octMarkdownNormalizeInline(%s)}", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = []string{\"## \" + __octMarkdownNormalizeInline(%s)}", st.Target, args[0]), nil
 			case "MarkdownH3":
-				return fmt.Sprintf("%s = []string{\"### \" + __octMarkdownNormalizeInline(%s)}", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = []string{\"### \" + __octMarkdownNormalizeInline(%s)}", st.Target, args[0]), nil
 			case "MarkdownParagraph":
-				return fmt.Sprintf("%s = []string{__octMarkdownNormalizeInline(%s)}", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = []string{__octMarkdownNormalizeInline(%s)}", st.Target, args[0]), nil
 			case "MarkdownBlank":
 				return fmt.Sprintf("%s = []string{\"\"}", st.Target), nil
 			case "MarkdownHorizontalRule":
 				return fmt.Sprintf("%s = []string{\"---\"}", st.Target), nil
 			case "MarkdownBullets":
-				return fmt.Sprintf("%s = __octMarkdownList(%s, false)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octMarkdownList(%s, false)", st.Target, args[0]), nil
 			case "MarkdownNumbered":
-				return fmt.Sprintf("%s = __octMarkdownList(%s, true)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octMarkdownList(%s, true)", st.Target, args[0]), nil
 			case "MarkdownCodeBlock":
-				return fmt.Sprintf("%s = __octMarkdownCodeBlock(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMarkdownCodeBlock(%s, %s)", st.Target, args[0], args[1]), nil
 			case "MarkdownCallout":
-				return fmt.Sprintf("%s = __octMarkdownCallout(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMarkdownCallout(%s, %s)", st.Target, args[0], args[1]), nil
 			case "MarkdownImage":
-				return fmt.Sprintf("%s = __octMarkdownImage(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMarkdownImage(%s, %s)", st.Target, args[0], args[1]), nil
 			case "MarkdownFigure":
-				return fmt.Sprintf("%s = __octMarkdownFigure(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMarkdownFigure(%s, %s)", st.Target, args[0], args[1]), nil
 			case "MarkdownKeyValueTable":
-				return fmt.Sprintf("%s = __octMarkdownKeyValueTable(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMarkdownKeyValueTable(%s, %s)", st.Target, args[0], args[1]), nil
 			case "MarkdownReport":
-				return fmt.Sprintf("%s = __octMarkdownFlattenBlocks(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octMarkdownFlattenBlocks(%s)", st.Target, args[0]), nil
 			case "MarkdownSection":
-				return fmt.Sprintf("%s = __octMarkdownSection(%s, %s, false)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMarkdownSection(%s, %s, false)", st.Target, args[0], args[1]), nil
 			case "MarkdownSubsection":
-				return fmt.Sprintf("%s = __octMarkdownSection(%s, %s, true)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMarkdownSection(%s, %s, true)", st.Target, args[0], args[1]), nil
 			case "MarkdownTable":
-				return fmt.Sprintf("%s = __octMarkdownTable(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octMarkdownTable(%s)", st.Target, args[0]), nil
 			case "MarkdownTableWithColumns":
-				return fmt.Sprintf("%s = __octMarkdownTableWithColumns(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMarkdownTableWithColumns(%s, %s)", st.Target, args[0], args[1]), nil
 			case "FFT":
-				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, args[0]), nil
 			case "WriteOctagon":
-				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil
+				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", args[0], args[1], st.Target), nil
 			case "LoadOctagon":
-				return fmt.Sprintf("%s = __octLoadOctagon_%s(%s)", st.Target, goSafeName(st.RetType), st.Args[0]), nil
+				return fmt.Sprintf("%s = __octLoadOctagon_%s(%s)", st.Target, goSafeName(st.RetType), args[0]), nil
 			case "JsonNormalize", "JsonParse", "JsonStringify":
-				return fmt.Sprintf("%s = __octJsonString(%q, %s)", st.Target, canonicalCompiledBuiltinName(st.Callee), st.Args[0]), nil
+				return fmt.Sprintf("%s = __octJsonString(%q, %s)", st.Target, canonicalCompiledBuiltinName(st.Callee), args[0]), nil
 			case "JsonLoad":
-				return fmt.Sprintf("%s = __octJsonString(%q, %s)", st.Target, "JsonLoad", st.Args[0]), nil
+				return fmt.Sprintf("%s = __octJsonString(%q, %s)", st.Target, "JsonLoad", args[0]), nil
 			case "JsonSave":
-				return fmt.Sprintf("%s = __octJsonSave(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octJsonSave(%s, %s)", st.Target, args[0], args[1]), nil
 			case "CsvRead", "CsvReadRows":
-				return fmt.Sprintf("%s = __octCsvReadRows(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octCsvReadRows(%s)", st.Target, args[0]), nil
 			case "CsvWrite", "CsvWriteRows":
-				return fmt.Sprintf("%s = __octCsvWriteRows(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octCsvWriteRows(%s, %s)", st.Target, args[0], args[1]), nil
 			case "CsvReadMatrix":
-				return fmt.Sprintf("%s = __octCsvReadMatrix(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octCsvReadMatrix(%s)", st.Target, args[0]), nil
 			case "CsvReadTable":
-				return fmt.Sprintf("%s = __octCsvReadTable(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octCsvReadTable(%s)", st.Target, args[0]), nil
 			case "FileReadText":
-				return fmt.Sprintf("%s = __octFileReadText(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octFileReadText(%s)", st.Target, args[0]), nil
 			case "FileWriteText":
-				return fmt.Sprintf("%s = __octFileWriteText(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octFileWriteText(%s, %s)", st.Target, args[0], args[1]), nil
 			case "FileReadBytes":
-				return fmt.Sprintf("%s = __octFileReadBytes(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octFileReadBytes(%s)", st.Target, args[0]), nil
 			case "FileWriteBytes":
-				return fmt.Sprintf("%s = __octFileWriteBytes(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octFileWriteBytes(%s, %s)", st.Target, args[0], args[1]), nil
 			case "FileReadLines":
-				return fmt.Sprintf("%s = __octFileReadLines(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octFileReadLines(%s)", st.Target, args[0]), nil
 			case "FileWriteLines":
-				return fmt.Sprintf("%s = __octFileWriteLines(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octFileWriteLines(%s, %s)", st.Target, args[0], args[1]), nil
 			case "FileExists":
-				return fmt.Sprintf("%s = func() bool { _, __err := os.Stat(%s); return __err == nil }()", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = func() bool { _, __err := os.Stat(%s); return __err == nil }()", st.Target, args[0]), nil
 			case "PathJoin":
-				return fmt.Sprintf("%s = filepath.Join(%s...)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = filepath.Join(%s...)", st.Target, args[0]), nil
 			case "PathBaseName":
-				return fmt.Sprintf("%s = filepath.Base(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = filepath.Base(%s)", st.Target, args[0]), nil
 			case "PathExtension":
-				return fmt.Sprintf("%s = filepath.Ext(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = filepath.Ext(%s)", st.Target, args[0]), nil
 			case "PathStem":
-				return fmt.Sprintf("%s = strings.TrimSuffix(filepath.Base(%s), filepath.Ext(filepath.Base(%s)))", st.Target, st.Args[0], st.Args[0]), nil
+				return fmt.Sprintf("%s = strings.TrimSuffix(filepath.Base(%s), filepath.Ext(filepath.Base(%s)))", st.Target, args[0], args[0]), nil
 			case "PathParent":
-				return fmt.Sprintf("%s = filepath.Dir(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = filepath.Dir(%s)", st.Target, args[0]), nil
 			case "PathClean":
-				return fmt.Sprintf("%s = filepath.Clean(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = filepath.Clean(%s)", st.Target, args[0]), nil
 			case "FileDelete":
-				return fmt.Sprintf("%s = __octFileDelete(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octFileDelete(%s)", st.Target, args[0]), nil
 			case "DirectoryList":
-				return fmt.Sprintf("%s = __octDirectoryList(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octDirectoryList(%s)", st.Target, args[0]), nil
 			case "DirectoryMake":
-				return fmt.Sprintf("%s = __octDirectoryMake(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octDirectoryMake(%s)", st.Target, args[0]), nil
 			case "DirectoryMakeAll":
-				return fmt.Sprintf("%s = __octDirectoryMakeAll(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octDirectoryMakeAll(%s)", st.Target, args[0]), nil
 			case "DirectoryRemoveAll":
-				return fmt.Sprintf("%s = __octDirectoryRemoveAll(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octDirectoryRemoveAll(%s)", st.Target, args[0]), nil
 			case "Step":
 				input := "nil"
-				if len(st.Args) == 2 {
-					input = st.Args[1]
+				if len(args) == 2 {
+					input = args[1]
 				}
-				return fmt.Sprintf("%s.__octStep(%s); %s = 0", st.Args[0], input, st.Target), nil
+				return fmt.Sprintf("%s.__octStep(%s); %s = 0", args[0], input, st.Target), nil
 			case "Active":
-				return fmt.Sprintf("%s = %s.__octActive()", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = %s.__octActive()", st.Target, args[0]), nil
 			case "Result":
 				return fmt.Sprintf("%s = func() %s { __value, __ok := %s.__octResult(); if !__ok { return %s{Err: \"Result() called before flow completion\", IsErr: true} }; return %s{Value: __value} }()",
-					st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
+					st.Target, goResultTypeName(st.RetType), args[0], goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "Complete":
-				return fmt.Sprintf("%s = %s.__octComplete()", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = %s.__octComplete()", st.Target, args[0]), nil
 			case "DidYield":
-				return fmt.Sprintf("%s = %s.__octDidYield()", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = %s.__octDidYield()", st.Target, args[0]), nil
 			case "Yielded":
-				return fmt.Sprintf("%s = func() %s { __value, __ok := %s.__octYielded(); if !__ok { return %s{Err: \"Yielded() called when the last turn did not yield\", IsErr: true} }; __typed, __typedOk := __value.(%s); if !__typedOk { return %s{Err: \"Yielded() flow yield type mismatch\", IsErr: true} }; return %s{Value: __typed} }()", st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
+				return fmt.Sprintf("%s = func() %s { __value, __ok := %s.__octYielded(); if !__ok { return %s{Err: \"Yielded() called when the last turn did not yield\", IsErr: true} }; __typed, __typedOk := __value.(%s); if !__typedOk { return %s{Err: \"Yielded() flow yield type mismatch\", IsErr: true} }; return %s{Value: __typed} }()", st.Target, goResultTypeName(st.RetType), args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "Query.First":
-				return fmt.Sprintf("%s = func() %s { for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { __value, __ok := %s.__octYielded(); if !__ok { continue }; __typed, __typedOk := __value.(%s); if !__typedOk { return %s{Err: \"Query.First flow yield type mismatch\", IsErr: true} }; return %s{Value: __typed} } }; return %s{Err: \"Query.First found no value\", IsErr: true} }()", st.Target, goResultTypeName(st.RetType), st.Args[0], st.Args[0], st.Args[0], st.Args[0], goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
+				return fmt.Sprintf("%s = func() %s { for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { __value, __ok := %s.__octYielded(); if !__ok { continue }; __typed, __typedOk := __value.(%s); if !__typedOk { return %s{Err: \"Query.First flow yield type mismatch\", IsErr: true} }; return %s{Value: __typed} } }; return %s{Err: \"Query.First found no value\", IsErr: true} }()", st.Target, goResultTypeName(st.RetType), args[0], args[0], args[0], args[0], goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "Query.Any":
-				return fmt.Sprintf("%s = func() bool { for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { return true } }; return false }()", st.Target, st.Args[0], st.Args[0], st.Args[0]), nil
+				return fmt.Sprintf("%s = func() bool { for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { return true } }; return false }()", st.Target, args[0], args[0], args[0]), nil
 			case "Query.Count":
-				return fmt.Sprintf("%s = func() int { __count := 0; for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { __count++ } }; return __count }()", st.Target, st.Args[0], st.Args[0], st.Args[0]), nil
+				return fmt.Sprintf("%s = func() int { __count := 0; for !%s.__octComplete() { %s.__octStep(nil); if %s.__octDidYield() { __count++ } }; return __count }()", st.Target, args[0], args[0], args[0]), nil
 			case "StateHistory":
-				return fmt.Sprintf("%s = %s.__octStateHistory()", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = %s.__octStateHistory()", st.Target, args[0]), nil
 			case "ResumeTarget":
-				return fmt.Sprintf("%s = %s.__octResumeTarget()", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = %s.__octResumeTarget()", st.Target, args[0]), nil
 			case "BoardSnapshot":
 				return fmt.Sprintf("%s = func() %s { __snap, __ok := %s.__octBoardSnapshot(); if !__ok { return %s{Err: \"BoardSnapshot() requires a flow with a declared board\", IsErr: true} }; __typed, __typedOk := __snap.(%s); if !__typedOk { return %s{Err: \"BoardSnapshot() flow snapshot type mismatch\", IsErr: true} }; return %s{Value: __typed} }()",
-					st.Target, goResultTypeName(st.RetType), st.Args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
+					st.Target, goResultTypeName(st.RetType), args[0], goResultTypeName(st.RetType), goType(st.RetType), goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil
 			case "MatMulMV":
-				return fmt.Sprintf("%s = __octMatMulMV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMatMulMV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "MatMulVM":
-				return fmt.Sprintf("%s = __octMatMulVM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMatMulVM(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecDot":
-				return fmt.Sprintf("%s = __octVecDot(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecDot(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinaryVV:+":
-				return fmt.Sprintf("%s = __octVecAddVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecAddVV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinaryVV:-":
-				return fmt.Sprintf("%s = __octVecSubVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecSubVV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinaryVV:*":
-				return fmt.Sprintf("%s = __octVecMulVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecMulVV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinaryVV:/":
-				return fmt.Sprintf("%s = __octVecDivVV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecDivVV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinaryVS:+":
-				return fmt.Sprintf("%s = __octVecAddVS(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecAddVS(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinaryVS:-":
-				return fmt.Sprintf("%s = __octVecSubVS(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecSubVS(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinaryVS:*":
-				return fmt.Sprintf("%s = __octVecMulVS(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecMulVS(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinaryVS:/":
-				return fmt.Sprintf("%s = __octVecDivVS(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecDivVS(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinarySV:+":
-				return fmt.Sprintf("%s = __octVecAddSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecAddSV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinarySV:-":
-				return fmt.Sprintf("%s = __octVecSubSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecSubSV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinarySV:*":
-				return fmt.Sprintf("%s = __octVecMulSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecMulSV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "VecBinarySV:/":
-				return fmt.Sprintf("%s = __octVecDivSV(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octVecDivSV(%s, %s)", st.Target, args[0], args[1]), nil
 			case "MatMulMM":
-				return fmt.Sprintf("%s = __octMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octMatMulMM(%s, %s)", st.Target, args[0], args[1]), nil
 			case "MatBinaryMM:+", "MatBinaryMM:-", "MatBinaryMM:*", "MatBinaryMM:/":
 				if len(st.ArgTypes) != 2 {
 					return "", fmt.Errorf("matrix-matrix binary lowering requires argument types")
@@ -1687,7 +1731,7 @@ func goStmt(s MIRStmt) (string, error) {
 					return "", fmt.Errorf("invalid matrix-matrix binary types %v -> %s", st.ArgTypes, st.RetType)
 				}
 				op := strings.TrimPrefix(st.Callee, "MatBinaryMM:")
-				return fmt.Sprintf("%s = __octMatBinaryMM[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(rightElem), goType(retElem), st.Args[0], st.Args[1], op), nil
+				return fmt.Sprintf("%s = __octMatBinaryMM[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(rightElem), goType(retElem), args[0], args[1], op), nil
 			case "MatBinaryMS:+", "MatBinaryMS:-", "MatBinaryMS:*", "MatBinaryMS:/":
 				if len(st.ArgTypes) != 2 {
 					return "", fmt.Errorf("matrix-scalar binary lowering requires argument types")
@@ -1698,7 +1742,7 @@ func goStmt(s MIRStmt) (string, error) {
 					return "", fmt.Errorf("invalid matrix-scalar binary types %v -> %s", st.ArgTypes, st.RetType)
 				}
 				op := strings.TrimPrefix(st.Callee, "MatBinaryMS:")
-				return fmt.Sprintf("%s = __octMatBinaryMS[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(st.ArgTypes[1]), goType(retElem), st.Args[0], st.Args[1], op), nil
+				return fmt.Sprintf("%s = __octMatBinaryMS[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(st.ArgTypes[1]), goType(retElem), args[0], args[1], op), nil
 			case "MatBinarySM:+", "MatBinarySM:-", "MatBinarySM:*", "MatBinarySM:/":
 				if len(st.ArgTypes) != 2 {
 					return "", fmt.Errorf("scalar-matrix binary lowering requires argument types")
@@ -1709,7 +1753,7 @@ func goStmt(s MIRStmt) (string, error) {
 					return "", fmt.Errorf("invalid scalar-matrix binary types %v -> %s", st.ArgTypes, st.RetType)
 				}
 				op := strings.TrimPrefix(st.Callee, "MatBinarySM:")
-				return fmt.Sprintf("%s = __octMatBinarySM[%s, %s, %s](%s, %s, %q)", st.Target, goType(st.ArgTypes[0]), goType(rightElem), goType(retElem), st.Args[0], st.Args[1], op), nil
+				return fmt.Sprintf("%s = __octMatBinarySM[%s, %s, %s](%s, %s, %q)", st.Target, goType(st.ArgTypes[0]), goType(rightElem), goType(retElem), args[0], args[1], op), nil
 			case "ArrayBinaryAS:+", "ArrayBinaryAS:-", "ArrayBinaryAS:*", "ArrayBinaryAS:/", "ArrayBinaryAS:==", "ArrayBinaryAS:!=", "ArrayBinaryAS:<", "ArrayBinaryAS:<=", "ArrayBinaryAS:>", "ArrayBinaryAS:>=":
 				leftElem, leftOK := parseArrayElemType(st.ArgTypes[0])
 				retElem, retOK := parseArrayElemType(st.RetType)
@@ -1720,7 +1764,7 @@ func goStmt(s MIRStmt) (string, error) {
 					return "", fmt.Errorf("invalid array-scalar binary types %v -> %s", st.ArgTypes, st.RetType)
 				}
 				op := strings.TrimPrefix(st.Callee, "ArrayBinaryAS:")
-				return fmt.Sprintf("%s = __octArrayBinaryAS[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(st.ArgTypes[1]), goType(retElem), st.Args[0], st.Args[1], op), nil
+				return fmt.Sprintf("%s = __octArrayBinaryAS[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(st.ArgTypes[1]), goType(retElem), args[0], args[1], op), nil
 			case "ArrayBinarySA:+", "ArrayBinarySA:-", "ArrayBinarySA:*", "ArrayBinarySA:/", "ArrayBinarySA:==", "ArrayBinarySA:!=", "ArrayBinarySA:<", "ArrayBinarySA:<=", "ArrayBinarySA:>", "ArrayBinarySA:>=":
 				rightElem, rightOK := parseArrayElemType(st.ArgTypes[1])
 				retElem, retOK := parseArrayElemType(st.RetType)
@@ -1731,23 +1775,23 @@ func goStmt(s MIRStmt) (string, error) {
 					return "", fmt.Errorf("invalid scalar-array binary types %v -> %s", st.ArgTypes, st.RetType)
 				}
 				op := strings.TrimPrefix(st.Callee, "ArrayBinarySA:")
-				return fmt.Sprintf("%s = __octArrayBinarySA[%s, %s, %s](%s, %s, %q)", st.Target, goType(st.ArgTypes[0]), goType(rightElem), goType(retElem), st.Args[0], st.Args[1], op), nil
+				return fmt.Sprintf("%s = __octArrayBinarySA[%s, %s, %s](%s, %s, %q)", st.Target, goType(st.ArgTypes[0]), goType(rightElem), goType(retElem), args[0], args[1], op), nil
 			case "PrometheusMatMulMM":
-				return fmt.Sprintf("%s = __octPrometheusMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octPrometheusMatMulMM(%s, %s)", st.Target, args[0], args[1]), nil
 			case "Trace":
-				return fmt.Sprintf("%s = __octTrace(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octTrace(%s)", st.Target, args[0]), nil
 			case "Grad":
 				if _, ok := parseMatrixElemType(st.RetType); ok {
-					return fmt.Sprintf("%s = __octGrad(%s)", st.Target, st.Args[0]), nil
+					return fmt.Sprintf("%s = __octGrad(%s)", st.Target, args[0]), nil
 				}
-				return fmt.Sprintf("%s = __octGradScalar(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octGradScalar(%s)", st.Target, args[0]), nil
 			case "Div":
 				if _, ok := parseVectorElemType(st.RetType); ok {
-					return fmt.Sprintf("%s = __octDiv(%s)", st.Target, st.Args[0]), nil
+					return fmt.Sprintf("%s = __octDiv(%s)", st.Target, args[0]), nil
 				}
-				return fmt.Sprintf("%s = __octDivVector(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octDivVector(%s)", st.Target, args[0]), nil
 			case "SymGrad":
-				return fmt.Sprintf("%s = __octSymGrad(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octSymGrad(%s)", st.Target, args[0]), nil
 			case "Vector.tabulate":
 				elemType, ok := parseVectorElemType(st.RetType)
 				if !ok {
@@ -1755,7 +1799,7 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				goElemType := goType(elemType)
 				return fmt.Sprintf("%s = func() []%s { __length := int(%s); __v := make([]%s, __length); for __i := 0; __i < __length; __i++ { __v[__i] = %s(__i) }; return __v }()",
-					st.Target, goElemType, st.Args[0], goElemType, st.Args[1]), nil
+					st.Target, goElemType, args[0], goElemType, args[1]), nil
 			case "Matrix.fill":
 				elemType, ok := parseMatrixElemType(st.RetType)
 				if !ok {
@@ -1763,7 +1807,7 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				goElemType := goType(elemType)
 				return fmt.Sprintf("%s = func() [][]%s { __rows := int(%s); __cols := int(%s); __m := make([][]%s, __rows); for __r := 0; __r < __rows; __r++ { __row := make([]%s, __cols); for __c := 0; __c < __cols; __c++ { __row[__c] = %s }; __m[__r] = __row }; return __m }()",
-					st.Target, goElemType, st.Args[0], st.Args[1], goElemType, goElemType, st.Args[2]), nil
+					st.Target, goElemType, args[0], args[1], goElemType, goElemType, args[2]), nil
 			case "Matrix.zeros":
 				elemType, ok := parseMatrixElemType(st.RetType)
 				if !ok {
@@ -1771,7 +1815,7 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				goElemType := goType(elemType)
 				return fmt.Sprintf("%s = func() [][]%s { __rows := int(%s); __cols := int(%s); __m := make([][]%s, __rows); for __r := 0; __r < __rows; __r++ { __m[__r] = make([]%s, __cols) }; return __m }()",
-					st.Target, goElemType, st.Args[0], st.Args[1], goElemType, goElemType), nil
+					st.Target, goElemType, args[0], args[1], goElemType, goElemType), nil
 			case "Matrix.identity":
 				elemType, ok := parseMatrixElemType(st.RetType)
 				if !ok {
@@ -1783,7 +1827,7 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				goElemType := goType(elemType)
 				return fmt.Sprintf("%s = func() [][]%s { __n := int(%s); __m := make([][]%s, __n); for __r := 0; __r < __n; __r++ { __row := make([]%s, __n); __row[__r] = %s; __m[__r] = __row }; return __m }()",
-					st.Target, goElemType, st.Args[0], goElemType, goElemType, one), nil
+					st.Target, goElemType, args[0], goElemType, goElemType, one), nil
 			case "Matrix.tabulate":
 				elemType, ok := parseMatrixElemType(st.RetType)
 				if !ok {
@@ -1791,25 +1835,25 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				goElemType := goType(elemType)
 				return fmt.Sprintf("%s = func() [][]%s { __rows := int(%s); __cols := int(%s); __m := make([][]%s, __rows); for __r := 0; __r < __rows; __r++ { __row := make([]%s, __cols); for __c := 0; __c < __cols; __c++ { __row[__c] = %s(__r, __c) }; __m[__r] = __row }; return __m }()",
-					st.Target, goElemType, st.Args[0], st.Args[1], goElemType, goElemType, st.Args[2]), nil
+					st.Target, goElemType, args[0], args[1], goElemType, goElemType, args[2]), nil
 			case "Random.RngSeed":
-				return fmt.Sprintf("%s = __octRandomRngSeed(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octRandomRngSeed(%s)", st.Target, args[0]), nil
 			case "Random.RandInt":
-				return fmt.Sprintf("%s = __octRandomRandInt(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
+				return fmt.Sprintf("%s = __octRandomRandInt(%s, %s, %s)", st.Target, args[0], args[1], args[2]), nil
 			case "Random.RandFloat01":
-				return fmt.Sprintf("%s = __octRandomRandFloat01(%s)", st.Target, st.Args[0]), nil
+				return fmt.Sprintf("%s = __octRandomRandFloat01(%s)", st.Target, args[0]), nil
 			case "Random.RandFloatRange":
-				return fmt.Sprintf("%s = __octRandomRandFloatRange(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
+				return fmt.Sprintf("%s = __octRandomRandFloatRange(%s, %s, %s)", st.Target, args[0], args[1], args[2]), nil
 			case "Random.RandBernoulli":
-				return fmt.Sprintf("%s = __octRandomRandBernoulli(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				return fmt.Sprintf("%s = __octRandomRandBernoulli(%s, %s)", st.Target, args[0], args[1]), nil
 			case "Random.RandNormal":
-				return fmt.Sprintf("%s = __octRandomRandNormal(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
+				return fmt.Sprintf("%s = __octRandomRandNormal(%s, %s, %s)", st.Target, args[0], args[1], args[2]), nil
 			case "Random.CryptoRandBytes":
 				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandBytes(%s); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
-					st.Target, goResultTypeName("Bytes"), st.Args[0], goResultTypeName("Bytes"), goResultTypeName("Bytes")), nil
+					st.Target, goResultTypeName("Bytes"), args[0], goResultTypeName("Bytes"), goResultTypeName("Bytes")), nil
 			case "Random.CryptoRandInt":
 				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandInt(%s, %s); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
-					st.Target, goResultTypeName("Int"), st.Args[0], st.Args[1], goResultTypeName("Int"), goResultTypeName("Int")), nil
+					st.Target, goResultTypeName("Int"), args[0], args[1], goResultTypeName("Int"), goResultTypeName("Int")), nil
 			case "Random.CryptoRandFloat01":
 				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandFloat01(); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
 					st.Target, goResultTypeName("Float"), goResultTypeName("Float"), goResultTypeName("Float")), nil
@@ -1819,15 +1863,19 @@ func goStmt(s MIRStmt) (string, error) {
 		}
 		if st.FunctionValue {
 			if st.Target == "_" && st.RetType == "Void" {
-				return fmt.Sprintf("%s(%s)", st.Callee, strings.Join(st.Args, ", ")), nil
+				return fmt.Sprintf("%s(%s)", st.Callee, strings.Join(args, ", ")), nil
 			}
-			return fmt.Sprintf("%s = %s(%s)", st.Target, st.Callee, strings.Join(st.Args, ", ")), nil
+			return fmt.Sprintf("%s = %s(%s)", st.Target, st.Callee, strings.Join(args, ", ")), nil
 		}
 		if st.Target == "_" && st.RetType == "Void" {
-			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
+			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(args, ", ")), nil
 		}
-		return fmt.Sprintf("%s = fn_%s(%s)", st.Target, strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
+		return fmt.Sprintf("%s = fn_%s(%s)", st.Target, strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(args, ", ")), nil
 	case MIRDestructureCall:
+		args, err := emitGoValues(st.Args)
+		if err != nil {
+			return "", err
+		}
 		if st.Builtin {
 			switch st.Callee {
 			case "TupleProbe":
@@ -1848,12 +1896,20 @@ func goStmt(s MIRStmt) (string, error) {
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
 		}
-		return fmt.Sprintf("%s = fn_%s(%s)", strings.Join(st.Targets, ", "), strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(st.Args, ", ")), nil
+		return fmt.Sprintf("%s = fn_%s(%s)", strings.Join(st.Targets, ", "), strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(args, ", ")), nil
 	case MIRBatchMap:
 		workerName := "fn_" + strings.ReplaceAll(st.Worker, ".", "_")
+		input, err := emitGoValue(st.Input)
+		if err != nil {
+			return "", err
+		}
+		captures, err := emitGoValues(st.Captures)
+		if err != nil {
+			return "", err
+		}
 		forwarderArgs := []string{"__item"}
 		forwarderParams := []string{fmt.Sprintf("__item %s", goType(st.InputType))}
-		for _, capture := range st.Captures {
+		for _, capture := range captures {
 			forwarderArgs = append(forwarderArgs, capture)
 		}
 		workerExpr := workerName
@@ -1863,7 +1919,7 @@ func goStmt(s MIRStmt) (string, error) {
 		return fmt.Sprintf("%s = func() %s { __vals, __err, __isErr := __octBatchRun(%s, %s, func(r %s) bool { return r.IsErr }, func(r %s) string { return r.Err }, func(r %s) %s { return r.Value }, %t); if __isErr { return %s{Err: __err, IsErr: true} }; return %s{Value: __vals} }()",
 			st.Target,
 			goType(fallibleType(st.ResultType+"[]")),
-			st.Input,
+			input,
 			workerExpr,
 			goResultTypeName(st.ResultType),
 			goResultTypeName(st.ResultType),
@@ -1880,16 +1936,28 @@ func goStmt(s MIRStmt) (string, error) {
 func goTerminator(t MIRTerminator, labels map[string]int, pcName string) (string, error) {
 	switch term := t.(type) {
 	case MIRReturn:
-		if term.Value == "" {
+		if term.Value == nil {
 			return "return", nil
 		}
-		return "return " + goReturnExpr(term.Value), nil
+		value, err := emitGoValue(term.Value)
+		if err != nil {
+			return "", err
+		}
+		return "return " + goReturnExpr(value), nil
 	case MIRJump:
 		return fmt.Sprintf("%s = %d; continue", pcName, labels[term.Target]), nil
 	case MIRBranch:
-		return fmt.Sprintf("if %s { %s = %d } else { %s = %d }; continue", term.Cond, pcName, labels[term.TrueTarget], pcName, labels[term.FalseTarget]), nil
+		cond, err := emitGoValue(term.Cond)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("if %s { %s = %d } else { %s = %d }; continue", cond, pcName, labels[term.TrueTarget], pcName, labels[term.FalseTarget]), nil
 	case MIRFail:
-		return "panic(" + term.Value + ")", nil
+		value, err := emitGoValue(term.Value)
+		if err != nil {
+			return "", err
+		}
+		return "panic(" + value + ")", nil
 	default:
 		return "", fmt.Errorf("unsupported MIR terminator %T", t)
 	}

@@ -726,9 +726,9 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 	if ctx.blocks[ctx.cur].Terminator == nil {
 		if mirFn.Return == "Void" {
 			if mirFn.IsFallible {
-				ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: fallibleOkValue(ctx.retType, "")}
+				ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: lowerMIRValue(fallibleOkValue(ctx.retType, ""), fallibleType(ctx.retType))}
 			} else {
-				ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: ""}
+				ctx.blocks[ctx.cur].Terminator = MIRReturn{}
 			}
 		} else {
 			return nil, fmt.Errorf("missing return")
@@ -777,9 +777,8 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				v = coerceExprToType(v, t, hint)
 				t = hint
 			}
-			v = cloneCompiledValueExpr(v, t)
 			c.declareLocal(s.Name, t)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: lowerMIRValueWithClone(v, t)})
 		case ast.VarStmt:
 			var v, t string
 			var err error
@@ -797,9 +796,8 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				v = coerceExprToType(v, t, hint)
 				t = hint
 			}
-			v = cloneCompiledValueExpr(v, t)
 			c.declareLocal(s.Name, t)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: lowerMIRValueWithClone(v, t)})
 		case ast.AssignStmt:
 			targetType, ok := c.locals[s.Name]
 			if !ok {
@@ -811,9 +809,10 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			}
 			v = coerceExprToType(v, t, targetType)
 			if !isSelfAppendAssign(s.Name, s.Value) {
-				v = cloneCompiledValueExpr(v, targetType)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: lowerMIRValueWithClone(v, targetType)})
+			} else {
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: lowerMIRValue(v, targetType)})
 			}
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.DestructureAssignStmt:
 			call, ok := s.Value.(ast.CallExpr)
 			if !ok {
@@ -850,7 +849,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRDestructureCall{
 				Targets:  goIdentList(s.Names),
 				Callee:   callee,
-				Args:     args,
+				Args:     lowerMIRValues(args, nil),
 				Builtin:  builtin,
 				RetTypes: retTypes,
 			})
@@ -875,9 +874,9 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			case isTwoDimensionalArrayType(targetType):
 				switch len(indexExprs) {
 				case 1:
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRRowAssign{Target: c.goLocalName(s.Target), Index: indexExprs[0], Value: val})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRRowAssign{Target: c.goLocalName(s.Target), Index: lowerMIRValue(indexExprs[0], "Int"), Value: lowerMIRValue(val, "")})
 				case 2:
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s][%s]", c.goLocalName(s.Target), indexExprs[0], indexExprs[1]), Value: val})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRIndexAssign{Target: c.goLocalName(s.Target), Indices: lowerMIRValues(indexExprs, []string{"Int", "Int"}), Value: lowerMIRValue(val, "")})
 				default:
 					return fmt.Errorf("nested array index assignment requires one row index or two element indices, got %d", len(indexExprs))
 				}
@@ -885,17 +884,17 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				if len(indexExprs) != 1 {
 					return fmt.Errorf("array index assignment requires exactly 1 index, got %d", len(indexExprs))
 				}
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", c.goLocalName(s.Target), indexExprs[0]), Value: val})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRIndexAssign{Target: c.goLocalName(s.Target), Indices: lowerMIRValues(indexExprs, []string{"Int"}), Value: lowerMIRValue(val, "")})
 			case strings.HasSuffix(targetType, "[][]") || strings.HasPrefix(targetType, "[][]") || strings.HasPrefix(targetType, "Matrix<"):
 				if len(indexExprs) != 2 {
 					return fmt.Errorf("matrix index assignment requires exactly 2 indices, got %d", len(indexExprs))
 				}
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s][%s]", c.goLocalName(s.Target), indexExprs[0], indexExprs[1]), Value: val})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRIndexAssign{Target: c.goLocalName(s.Target), Indices: lowerMIRValues(indexExprs, []string{"Int", "Int"}), Value: lowerMIRValue(val, "")})
 			case strings.HasPrefix(targetType, "[]"):
 				if len(indexExprs) != 1 {
 					return fmt.Errorf("array index assignment requires exactly 1 index, got %d", len(indexExprs))
 				}
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", c.goLocalName(s.Target), indexExprs[0]), Value: val})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRIndexAssign{Target: c.goLocalName(s.Target), Indices: lowerMIRValues(indexExprs, []string{"Int"}), Value: lowerMIRValue(val, "")})
 			default:
 				return fmt.Errorf("index assignment requires array or matrix local, got %s", targetType)
 			}
@@ -910,12 +909,12 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return err
 			}
 			if t != "Void" {
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: v})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: lowerMIRValue(v, t)})
 			}
 		case ast.ReturnStmt:
 			if s.Value == nil {
 				if c.fn.IsFallible {
-					c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleOkValue(c.retType, "")}
+					c.blocks[c.cur].Terminator = MIRReturn{Value: lowerMIRValue(fallibleOkValue(c.retType, ""), fallibleType(c.retType))}
 				} else {
 					c.blocks[c.cur].Terminator = MIRReturn{}
 				}
@@ -929,12 +928,12 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			c.lastRet = t
 			if c.fn.IsFallible {
 				if t == "Error" {
-					c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleErrValue(c.retType, v)}
+					c.blocks[c.cur].Terminator = MIRReturn{Value: lowerMIRValue(fallibleErrValue(c.retType, v), fallibleType(c.retType))}
 				} else {
-					c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleOkValue(c.retType, v)}
+					c.blocks[c.cur].Terminator = MIRReturn{Value: lowerMIRValue(fallibleOkValue(c.retType, v), fallibleType(c.retType))}
 				}
 			} else {
-				c.blocks[c.cur].Terminator = MIRReturn{Value: v}
+				c.blocks[c.cur].Terminator = MIRReturn{Value: lowerMIRValue(v, t)}
 			}
 		case ast.IfStmt:
 			if err := c.lowerIfStmt(s); err != nil {
@@ -1141,7 +1140,7 @@ func (c *lowerCtx) lowerIfStmt(s ast.IfStmt) error {
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", thenID)})
 	elseID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", elseID)})
-	c.blocks[c.cur].Terminator = MIRBranch{Cond: cond, TrueTarget: c.blocks[thenID].Label, FalseTarget: c.blocks[elseID].Label}
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(cond, "Bool"), TrueTarget: c.blocks[thenID].Label, FalseTarget: c.blocks[elseID].Label}
 
 	c.cur = thenID
 	if err := c.lowerBlock(s.ThenBody); err != nil {
@@ -1192,7 +1191,7 @@ func (c *lowerCtx) lowerWhileStmt(s ast.WhileStmt) error {
 		return err
 	}
 	c.blocks[c.cur].Terminator = MIRBranch{
-		Cond:        cond,
+		Cond:        lowerMIRValue(cond, "Bool"),
 		TrueTarget:  c.blocks[bodyID].Label,
 		FalseTarget: c.blocks[exitID].Label,
 	}
@@ -1276,9 +1275,9 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	endLocal := c.temp("Int")
 	stepLocal := c.temp("Int")
 	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements,
-		MIRAssign{Target: startLocal, Value: start},
-		MIRAssign{Target: endLocal, Value: end},
-		MIRAssign{Target: stepLocal, Value: step},
+		MIRAssign{Target: startLocal, Value: lowerMIRValue(start, "Int")},
+		MIRAssign{Target: endLocal, Value: lowerMIRValue(end, "Int")},
+		MIRAssign{Target: stepLocal, Value: lowerMIRValue(step, "Int")},
 	)
 
 	stepCheckID := -1
@@ -1308,7 +1307,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[stepCheckID].Label}
 		c.cur = stepCheckID
 		c.blocks[c.cur].Terminator = MIRBranch{
-			Cond:        fmt.Sprintf("(%s > 0)", stepLocal),
+			Cond:        MIRBinary{Op: ">", Left: mirLocal(stepLocal, "Int"), Right: mirInt("0"), Type: "Bool"},
 			TrueTarget:  c.blocks[rangeCheckID].Label,
 			FalseTarget: c.blocks[stepFailID].Label,
 		}
@@ -1322,7 +1321,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 		rangeCond = fmt.Sprintf("(%s >= %s)", startLocal, endLocal)
 	}
 	c.blocks[c.cur].Terminator = MIRBranch{
-		Cond:        rangeCond,
+		Cond:        lowerMIRValue(rangeCond, "Bool"),
 		TrueTarget:  c.blocks[condID].Label,
 		FalseTarget: c.blocks[rangeFailID].Label,
 	}
@@ -1339,14 +1338,14 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 		c.goNames[s.Name] = loopGoName
 	}
 
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: startLocal})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: mirLocal(startLocal, "Int")})
 	c.cur = condID
 	loopCond := fmt.Sprintf("(%s < %s)", loopGoName, endLocal)
 	if s.Direction == ast.ForDirectionDesc {
 		loopCond = fmt.Sprintf("(%s > %s)", loopGoName, endLocal)
 	}
 	c.blocks[c.cur].Terminator = MIRBranch{
-		Cond:        loopCond,
+		Cond:        lowerMIRValue(loopCond, "Bool"),
 		TrueTarget:  c.blocks[bodyID].Label,
 		FalseTarget: c.blocks[exitID].Label,
 	}
@@ -1364,7 +1363,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	if s.Direction == ast.ForDirectionDesc {
 		updateExpr = fmt.Sprintf("(%s - %s)", loopGoName, stepLocal)
 	}
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: updateExpr})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: lowerMIRValue(updateExpr, "Int")})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[condID].Label}
 
 	if hasExplicitStep {
@@ -1373,7 +1372,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 		if s.Direction == ast.ForDirectionDesc {
 			stepFailMessage = "runtime error: descending for loop requires positive descend step, got "
 		}
-		c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s)", stepFailMessage, stepLocal)}
+		c.blocks[c.cur].Terminator = MIRFail{Value: MIRBinary{Op: "+", Left: mirString(stepFailMessage), Right: MIRIntrinsicValue{Kind: "stringify", Type: "String", Args: []MIRValue{mirLocal(stepLocal, "Int")}}, Type: "String"}}
 	}
 
 	c.cur = rangeFailID
@@ -1381,7 +1380,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	if s.Direction == ast.ForDirectionDesc {
 		rangeFailMessage = "runtime error: descending range start must be greater than or equal to end, got "
 	}
-	c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s) + %q + fmt.Sprint(%s)", rangeFailMessage, startLocal, "..", endLocal)}
+	c.blocks[c.cur].Terminator = MIRFail{Value: MIRBinary{Op: "+", Left: MIRBinary{Op: "+", Left: MIRBinary{Op: "+", Left: mirString(rangeFailMessage), Right: MIRIntrinsicValue{Kind: "stringify", Type: "String", Args: []MIRValue{mirLocal(startLocal, "Int")}}, Type: "String"}, Right: mirString(".."), Type: "String"}, Right: MIRIntrinsicValue{Kind: "stringify", Type: "String", Args: []MIRValue{mirLocal(endLocal, "Int")}}, Type: "String"}}
 
 	c.cur = exitID
 	if bindLoopName && hadPrevious {
@@ -1403,12 +1402,12 @@ func (c *lowerCtx) lowerMatchStmt(s ast.MatchStmt) error {
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", okID)})
 	errID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", errID)})
-	c.blocks[c.cur].Terminator = MIRBranch{Cond: subject + ".IsErr", TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: MIRFieldAccess{Target: lowerMIRValue(subject, valType), Field: "IsErr", Type: "Bool"}, TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
 
 	c.cur = okID
 	c.locals[s.OkName] = valType
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.OkName, Value: subject + ".Value"})
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: s.OkName})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.OkName, Value: MIRFieldAccess{Target: lowerMIRValue(subject, valType), Field: "Value", Type: valType}})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: mirLocal(s.OkName, valType)})
 	if err := c.lowerBlock(s.OkBody); err != nil {
 		return err
 	}
@@ -1416,8 +1415,8 @@ func (c *lowerCtx) lowerMatchStmt(s ast.MatchStmt) error {
 
 	c.cur = errID
 	c.locals[s.ErrName] = "Error"
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.ErrName, Value: subject + ".Err"})
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: s.ErrName})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.ErrName, Value: MIRFieldAccess{Target: lowerMIRValue(subject, valType), Field: "Err", Type: "Error"}})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: mirLocal(s.ErrName, "Error")})
 	if err := c.lowerBlock(s.ErrBody); err != nil {
 		return err
 	}
@@ -1455,12 +1454,12 @@ func (c *lowerCtx) lowerPropagateExpr(e ast.PropagateExpr) (string, string, bool
 	mergeID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
 
-	c.blocks[c.cur].Terminator = MIRBranch{Cond: inner + ".IsErr", TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: MIRFieldAccess{Target: lowerMIRValue(inner, valueType), Field: "IsErr", Type: "Bool"}, TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
 	c.cur = okID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: inner + ".Value"})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: MIRFieldAccess{Target: lowerMIRValue(inner, valueType), Field: "Value", Type: valueType}})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	c.cur = errID
-	c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleErrValue(c.retType, inner+".Err")}
+	c.blocks[c.cur].Terminator = MIRReturn{Value: MIRResultValue{ResultType: c.retType, Error: MIRFieldAccess{Target: lowerMIRValue(inner, valueType), Field: "Err", Type: "Error"}, IsError: true}}
 	c.cur = mergeID
 	return out, valueType, false, nil
 }
@@ -1481,12 +1480,12 @@ func (c *lowerCtx) lowerUnwrapExpr(e ast.UnwrapExpr) (string, string, bool, erro
 	mergeID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
 
-	c.blocks[c.cur].Terminator = MIRBranch{Cond: inner + ".IsErr", TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: MIRFieldAccess{Target: lowerMIRValue(inner, valueType), Field: "IsErr", Type: "Bool"}, TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
 	c.cur = okID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: inner + ".Value"})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: MIRFieldAccess{Target: lowerMIRValue(inner, valueType), Field: "Value", Type: valueType}})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	c.cur = errID
-	c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("\"unwrap failed: \" + %s.Err", inner)}
+	c.blocks[c.cur].Terminator = MIRFail{Value: MIRBinary{Op: "+", Left: mirString("unwrap failed: "), Right: MIRFieldAccess{Target: lowerMIRValue(inner, valueType), Field: "Err", Type: "Error"}, Type: "String"}}
 	c.cur = mergeID
 	return out, valueType, false, nil
 }
@@ -1646,7 +1645,7 @@ func (c *lowerCtx) lowerLogicalBinaryExpr(e ast.BinaryExpr) (string, string, boo
 		shortValue = "true"
 		rightOnTrue = false
 	}
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: shortValue})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: lowerMIRValue(shortValue, "Bool")})
 
 	rightID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", rightID)})
@@ -1659,14 +1658,14 @@ func (c *lowerCtx) lowerLogicalBinaryExpr(e ast.BinaryExpr) (string, string, boo
 		trueTarget = c.blocks[mergeID].Label
 		falseTarget = c.blocks[rightID].Label
 	}
-	c.blocks[c.cur].Terminator = MIRBranch{Cond: left, TrueTarget: trueTarget, FalseTarget: falseTarget}
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(left, "Bool"), TrueTarget: trueTarget, FalseTarget: falseTarget}
 
 	c.cur = rightID
 	right, _, _, err := c.withExpectedType("", func() (string, string, bool, error) { return c.lowerExpr(e.Right) })
 	if err != nil {
 		return "", "", false, err
 	}
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: right})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: lowerMIRValue(right, "Bool")})
 	if c.blocks[c.cur].Terminator == nil {
 		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	}

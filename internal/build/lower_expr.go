@@ -90,13 +90,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					}
 					ret := "Vector<" + retElem + ">"
 					tmp := c.temp(ret)
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee + "VV", Args: []string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, Builtin: true, RetType: ret})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee + "VV", Args: lowerMIRValues([]string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, nil), Builtin: true, RetType: ret})
 					c.setEinTermMeta(tmp, leftTerm.Labels, 1, ret)
 					return tmp, ret, false, nil
 				}
 				ret := "Matrix<" + retElem + ">"
 				tmp := c.temp(ret)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: ret})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: lowerMIRValues([]string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, nil), Builtin: true, RetType: ret})
 				c.setEinTermMeta(tmp, leftTerm.Labels, 2, ret)
 				return tmp, ret, false, nil
 			case "*":
@@ -107,7 +107,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				if leftTerm.Rank == 2 && rightTerm.Rank == 2 {
 					if len(free) == 0 {
 						tmp := c.temp(retElem)
-						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinDoubleMM", Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: retElem})
+						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinDoubleMM", Args: lowerMIRValues([]string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, nil), Builtin: true, RetType: retElem})
 						return tmp, retElem, false, nil
 					}
 					if len(free) != 2 {
@@ -115,7 +115,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					}
 					ret := "Matrix<" + retElem + ">"
 					tmp := c.temp(ret)
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMul", Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, Builtin: true, RetType: ret})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMul", Args: lowerMIRValues([]string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], rightTerm.Labels[1]}, nil), Builtin: true, RetType: ret})
 					c.setEinTermMeta(tmp, free, 2, ret)
 					return tmp, ret, false, nil
 				}
@@ -125,13 +125,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					}
 					if len(free) == 0 {
 						tmp := c.temp(retElem)
-						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinDotVV", Args: []string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, Builtin: true, RetType: retElem})
+						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinDotVV", Args: lowerMIRValues([]string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, nil), Builtin: true, RetType: retElem})
 						return tmp, retElem, false, nil
 					}
 					if len(free) == 2 {
 						ret := "Matrix<" + retElem + ">"
 						tmp := c.temp(ret)
-						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinOuterVV", Args: []string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, Builtin: true, RetType: ret})
+						c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinOuterVV", Args: lowerMIRValues([]string{l, leftTerm.Labels[0], r, rightTerm.Labels[0]}, nil), Builtin: true, RetType: ret})
 						c.setEinTermMeta(tmp, free, 2, ret)
 						return tmp, ret, false, nil
 					}
@@ -142,7 +142,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					}
 					ret := "Vector<" + retElem + ">"
 					tmp := c.temp(ret)
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMulMV", Args: []string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], free[0]}, Builtin: true, RetType: ret})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMulMV", Args: lowerMIRValues([]string{l, leftTerm.Labels[0], leftTerm.Labels[1], r, rightTerm.Labels[0], free[0]}, nil), Builtin: true, RetType: ret})
 					c.setEinTermMeta(tmp, free, 1, ret)
 					return tmp, ret, false, nil
 				}
@@ -152,7 +152,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					}
 					ret := "Vector<" + retElem + ">"
 					tmp := c.temp(ret)
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMulVM", Args: []string{l, leftTerm.Labels[0], r, rightTerm.Labels[0], rightTerm.Labels[1], free[0]}, Builtin: true, RetType: ret})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "EinMulVM", Args: lowerMIRValues([]string{l, leftTerm.Labels[0], r, rightTerm.Labels[0], rightTerm.Labels[1], free[0]}, nil), Builtin: true, RetType: ret})
 					c.setEinTermMeta(tmp, free, 1, ret)
 					return tmp, ret, false, nil
 				}
@@ -174,7 +174,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 						Target:  tmp,
 						Callee:  "MatMulMV",
-						Args:    []string{l, r},
+						Args:    lowerMIRValues([]string{l, r}, nil),
 						Builtin: true,
 						RetType: ret,
 					})
@@ -191,7 +191,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 						Target:  tmp,
 						Callee:  callee,
-						Args:    []string{l, r},
+						Args:    lowerMIRValues([]string{l, r}, nil),
 						Builtin: true,
 						RetType: ret,
 					})
@@ -206,7 +206,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 						Target:  tmp,
 						Callee:  "MatMulVM",
-						Args:    []string{l, r},
+						Args:    lowerMIRValues([]string{l, r}, nil),
 						Builtin: true,
 						RetType: ret,
 					})
@@ -218,7 +218,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 						Target:  tmp,
 						Callee:  "VecDot",
-						Args:    []string{l, r},
+						Args:    lowerMIRValues([]string{l, r}, nil),
 						Builtin: true,
 						RetType: ret,
 					})
@@ -233,7 +233,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 					Target:  tmp,
 					Callee:  "VecBinaryVV:" + e.Operator,
-					Args:    []string{l, r},
+					Args:    lowerMIRValues([]string{l, r}, nil),
 					Builtin: true,
 					RetType: ret,
 				})
@@ -244,7 +244,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 					Target:  tmp,
 					Callee:  "VecBinaryVS:" + e.Operator,
-					Args:    []string{l, r},
+					Args:    lowerMIRValues([]string{l, r}, nil),
 					Builtin: true,
 					RetType: lt,
 				})
@@ -256,7 +256,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 				Target:  tmp,
 				Callee:  "VecBinarySV:" + e.Operator,
-				Args:    []string{l, r},
+				Args:    lowerMIRValues([]string{l, r}, nil),
 				Builtin: true,
 				RetType: "Vector<" + rightElem + ">",
 			})
@@ -270,7 +270,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 					Target:   tmp,
 					Callee:   "MatBinaryMM:" + e.Operator,
-					Args:     []string{l, r},
+					Args:     lowerMIRValues([]string{l, r}, nil),
 					ArgTypes: []string{lt, rt},
 					Builtin:  true,
 					RetType:  ret,
@@ -284,7 +284,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 					Target:   tmp,
 					Callee:   "MatBinaryMS:" + e.Operator,
-					Args:     []string{l, r},
+					Args:     lowerMIRValues([]string{l, r}, nil),
 					ArgTypes: []string{lt, rt},
 					Builtin:  true,
 					RetType:  ret,
@@ -299,7 +299,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 				Target:   tmp,
 				Callee:   "MatBinarySM:" + e.Operator,
-				Args:     []string{l, r},
+				Args:     lowerMIRValues([]string{l, r}, nil),
 				ArgTypes: []string{lt, rt},
 				Builtin:  true,
 				RetType:  ret,
@@ -310,24 +310,24 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			retElem := scalarBinaryResultTypeString(e.Operator, leftElem, rt)
 			ret := retElem + "[]"
 			tmp := c.temp(ret)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinaryAS:" + e.Operator, Args: []string{l, r}, ArgTypes: []string{lt, rt}, Builtin: true, RetType: ret})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinaryAS:" + e.Operator, Args: lowerMIRValues([]string{l, r}, nil), ArgTypes: []string{lt, rt}, Builtin: true, RetType: ret})
 			return tmp, ret, false, nil
 		}
 		if rightElem, ok := parseArrayElemType(rt); ok && !strings.HasSuffix(rightElem, "[]") && isLinearElementwiseOperatorString(e.Operator) && isNumericTypeString(lt) {
 			retElem := scalarBinaryResultTypeString(e.Operator, lt, rightElem)
 			ret := retElem + "[]"
 			tmp := c.temp(ret)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinarySA:" + e.Operator, Args: []string{l, r}, ArgTypes: []string{lt, rt}, Builtin: true, RetType: ret})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinarySA:" + e.Operator, Args: lowerMIRValues([]string{l, r}, nil), ArgTypes: []string{lt, rt}, Builtin: true, RetType: ret})
 			return tmp, ret, false, nil
 		}
 		if leftElem, ok := parseArrayElemType(lt); ok && !strings.HasSuffix(leftElem, "[]") && isComparisonOperatorString(e.Operator) && isNumericTypeString(rt) {
 			tmp := c.temp("Bool[]")
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinaryAS:" + e.Operator, Args: []string{l, r}, ArgTypes: []string{lt, rt}, Builtin: true, RetType: "Bool[]"})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinaryAS:" + e.Operator, Args: lowerMIRValues([]string{l, r}, nil), ArgTypes: []string{lt, rt}, Builtin: true, RetType: "Bool[]"})
 			return tmp, "Bool[]", false, nil
 		}
 		if rightElem, ok := parseArrayElemType(rt); ok && !strings.HasSuffix(rightElem, "[]") && isComparisonOperatorString(e.Operator) && isNumericTypeString(lt) {
 			tmp := c.temp("Bool[]")
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinarySA:" + e.Operator, Args: []string{l, r}, ArgTypes: []string{lt, rt}, Builtin: true, RetType: "Bool[]"})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinarySA:" + e.Operator, Args: lowerMIRValues([]string{l, r}, nil), ArgTypes: []string{lt, rt}, Builtin: true, RetType: "Bool[]"})
 			return tmp, "Bool[]", false, nil
 		}
 		ret := lt
@@ -369,7 +369,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if op == "%" {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{
 				Target: tmp,
-				Value:  fmt.Sprintf("func(__a int, __b int) int { if __b == 0 { panic(\"runtime error: modulo by zero\") }; __r := __a %% __b; if __r < 0 { if __b > 0 { __r += __b } else { __r -= __b } }; return __r }(%s, %s)", l, r),
+				Value:  MIRIntrinsicValue{Kind: "euclidean-modulo", Type: ret, Args: []MIRValue{lowerMIRValue(l, lt), lowerMIRValue(r, rt)}},
 			})
 			return tmp, ret, false, nil
 		}
@@ -378,14 +378,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			// zero divisor while compiling a non-selected switch arm, whereas Oct
 			// evaluates that arm lazily and reports division failure only if it is
 			// selected at runtime.
-			goRet := goType(ret)
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{
 				Target: tmp,
-				Value:  fmt.Sprintf("func(__a %s, __b %s) %s { return __a / __b }(%s, %s)", goRet, goRet, goRet, l, r),
+				Value:  MIRIntrinsicValue{Kind: "safe-divide", Type: ret, Args: []MIRValue{lowerMIRValue(l, ret), lowerMIRValue(r, ret)}},
 			})
 			return tmp, ret, false, nil
 		}
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("(%s %s %s)", l, op, r)})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRBinary{Op: op, Left: lowerMIRValue(l, lt), Right: lowerMIRValue(r, rt), Type: ret}})
 		return tmp, ret, false, nil
 	case ast.UnaryExpr:
 		v, t, _, err := c.lowerExpr(e.Operand)
@@ -398,7 +397,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if op == "not" {
 			op = "!"
 		}
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("(%s%s)", op, v)})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRUnary{Op: op, Value: lowerMIRValue(v, t), Type: t}})
 		return tmp, t, false, nil
 	case ast.CallExpr:
 		if calleeField, ok := e.Callee.(ast.FieldAccessExpr); ok {
@@ -432,7 +431,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				args = append(args, v)
 			}
 			tmp := c.temp("Int")
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "WriteOctagon", Args: args, Builtin: true, RetType: "Int"})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "WriteOctagon", Args: lowerMIRValues(args, nil), Builtin: true, RetType: "Int"})
 			return tmp, "Int", false, nil
 		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "LoadOctagon" {
@@ -446,7 +445,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			ret := typeRefStringForPackage(c.pkg.Name, e.TypeArguments[0])
 			tmp := c.temp(fallibleType(ret))
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "LoadOctagon", Args: args, Builtin: true, RetType: ret})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "LoadOctagon", Args: lowerMIRValues(args, nil), Builtin: true, RetType: ret})
 			return tmp, ret, true, nil
 		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "Result" {
@@ -462,7 +461,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				return "", "", false, fmt.Errorf("Result expects FlowInstance argument")
 			}
 			tmp := c.temp(fallibleType(resultType))
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Result", Args: []string{flowArg}, Builtin: true, RetType: resultType})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Result", Args: lowerMIRValues([]string{flowArg}, nil), Builtin: true, RetType: resultType})
 			return tmp, resultType, true, nil
 		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "Yielded" {
@@ -478,7 +477,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				return "", "", false, fmt.Errorf("Yielded expects a yielding FlowInstance")
 			}
 			tmp := c.temp(fallibleType(yieldType))
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Yielded", Args: []string{flowArg}, Builtin: true, RetType: yieldType})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Yielded", Args: lowerMIRValues([]string{flowArg}, nil), Builtin: true, RetType: yieldType})
 			return tmp, yieldType, true, nil
 		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok {
@@ -502,7 +501,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 					Target:  tmp,
 					Callee:  "PrometheusMatMulMM",
-					Args:    []string{leftArg, rightArg},
+					Args:    lowerMIRValues([]string{leftArg, rightArg}, nil),
 					Builtin: true,
 					RetType: "Matrix<Float>",
 				})
@@ -523,7 +522,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					return "", "", false, err
 				}
 				tmp := c.temp(ret)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: ident.Name, Args: args, ArgTypes: argTypes, Builtin: true, RetType: ret})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: ident.Name, Args: lowerMIRValues(args, nil), ArgTypes: argTypes, Builtin: true, RetType: ret})
 				return tmp, ret, false, nil
 			}
 		}
@@ -544,7 +543,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 					Target:  tmp,
 					Callee:  "Assert.LGTM",
-					Args:    []string{resultVar, messageVar},
+					Args:    lowerMIRValues([]string{resultVar, messageVar}, nil),
 					Builtin: true,
 					RetType: resultType,
 				})
@@ -561,19 +560,19 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				}
 				switch calleeName {
 				case "Assert.True":
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.True", Args: args, Builtin: true, RetType: "Void"})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.True", Args: lowerMIRValues(args, nil), Builtin: true, RetType: "Void"})
 					return "_", "Void", false, nil
 				case "Assert.False":
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.False", Args: args, Builtin: true, RetType: "Void"})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.False", Args: lowerMIRValues(args, nil), Builtin: true, RetType: "Void"})
 					return "_", "Void", false, nil
 				case "Assert.Equal":
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Equal", Args: args, Builtin: true, RetType: "Void"})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Equal", Args: lowerMIRValues(args, nil), Builtin: true, RetType: "Void"})
 					return "_", "Void", false, nil
 				case "Assert.Near":
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Near", Args: args, Builtin: true, RetType: "Void"})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Near", Args: lowerMIRValues(args, nil), Builtin: true, RetType: "Void"})
 					return "_", "Void", false, nil
 				case "Assert.Error":
-					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Error", Args: args, Builtin: true, RetType: "Void"})
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: "Assert.Error", Args: lowerMIRValues(args, nil), Builtin: true, RetType: "Void"})
 					return "_", "Void", false, nil
 				}
 			}
@@ -597,7 +596,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				callbackRet := callbackSignature.ReturnType
 				ret := "Vector<" + callbackRet + ">"
 				tmp := c.temp(ret)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Vector.tabulate", Args: []string{lengthArg, callbackName}, Builtin: true, RetType: ret})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Vector.tabulate", Args: lowerMIRValues([]string{lengthArg, callbackName}, nil), Builtin: true, RetType: ret})
 				return tmp, ret, false, nil
 			case "Matrix.tabulate":
 				if len(e.Arguments) != 3 {
@@ -622,7 +621,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				callbackRet := callbackSignature.ReturnType
 				ret := "Matrix<" + callbackRet + ">"
 				tmp := c.temp(ret)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.tabulate", Args: []string{rowsArg, colsArg, callbackName}, Builtin: true, RetType: ret})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.tabulate", Args: lowerMIRValues([]string{rowsArg, colsArg, callbackName}, nil), Builtin: true, RetType: ret})
 				return tmp, ret, false, nil
 			case "Matrix.fill":
 				if len(e.Arguments) != 3 {
@@ -642,7 +641,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				}
 				ret := "Matrix<" + elemType + ">"
 				tmp := c.temp(ret)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.fill", Args: args, Builtin: true, RetType: ret})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.fill", Args: lowerMIRValues(args, nil), Builtin: true, RetType: ret})
 				return tmp, ret, false, nil
 			case "Matrix.zeros":
 				if len(e.TypeArguments) != 1 {
@@ -662,7 +661,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				elemType := typeRefStringForPackage(c.pkg.Name, e.TypeArguments[0])
 				ret := "Matrix<" + elemType + ">"
 				tmp := c.temp(ret)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.zeros", Args: []string{rowsArg, colsArg}, Builtin: true, RetType: ret})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.zeros", Args: lowerMIRValues([]string{rowsArg, colsArg}, nil), Builtin: true, RetType: ret})
 				return tmp, ret, false, nil
 			case "Matrix.identity":
 				if len(e.TypeArguments) != 1 {
@@ -678,7 +677,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				elemType := typeRefStringForPackage(c.pkg.Name, e.TypeArguments[0])
 				ret := "Matrix<" + elemType + ">"
 				tmp := c.temp(ret)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.identity", Args: []string{sizeArg}, Builtin: true, RetType: ret})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "Matrix.identity", Args: lowerMIRValues([]string{sizeArg}, nil), Builtin: true, RetType: ret})
 				return tmp, ret, false, nil
 			}
 		}
@@ -707,7 +706,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				localType = fallibleType(signature.ReturnType)
 			}
 			tmp := c.temp(localType)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callTarget, Args: args, ArgTypes: argTypes, RetType: signature.ReturnType, FunctionValue: true})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callTarget, Args: lowerMIRValues(args, nil), ArgTypes: argTypes, RetType: signature.ReturnType, FunctionValue: true})
 			return tmp, signature.ReturnType, signature.Fallible, nil
 		}
 		callee, ret, builtin, fallible, err := c.resolveCall(e.Callee)
@@ -790,7 +789,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				localType = fallibleType(effectiveReturn)
 			}
 			tmp := c.temp(localType)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: args, ArgTypes: effectiveArgTypes, RetType: effectiveReturn, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: lowerMIRValues(args, nil), ArgTypes: effectiveArgTypes, RetType: effectiveReturn, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
 			return tmp, effectiveReturn, meta.Fallible, nil
 		}
 		if builtin && callee == "BoardSnapshot" {
@@ -818,7 +817,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if builtin && callee == "Len" && len(argTypes) == 1 {
 			if table, _, ok := c.lookupRecordTable(argTypes[0]); ok {
 				tmp := c.temp("Int")
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("len(%s.%s)", args[0], table.Fields[0].Name)})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRLength{Value: MIRFieldAccess{Target: lowerMIRValue(args[0], ""), Field: table.Fields[0].Name}}})
 				return tmp, "Int", false, nil
 			}
 		}
@@ -827,11 +826,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			localType = fallibleType(ret)
 		}
 		if !fallible && localType == "Void" {
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: callee, Args: args, ArgTypes: argTypes, Builtin: builtin, RetType: ret})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: "_", Callee: callee, Args: lowerMIRValues(args, nil), ArgTypes: argTypes, Builtin: builtin, RetType: ret})
 			return "", ret, false, nil
 		}
 		tmp := c.temp(localType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: args, ArgTypes: argTypes, Builtin: builtin, RetType: ret})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: lowerMIRValues(args, nil), ArgTypes: argTypes, Builtin: builtin, RetType: ret})
 		return tmp, ret, fallible, nil
 	case ast.ArrayLiteralExpr:
 		vals := []string{}
@@ -859,7 +858,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			vals = append(vals, v)
 		}
 		tmp := c.temp(typeName + "[]")
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: vals})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: lowerMIRValues(vals, nil)})
 		return tmp, typeName + "[]", false, nil
 	case ast.VectorLiteralExpr:
 		vals := make([]string, 0, len(e.Elements))
@@ -876,7 +875,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		vectorType := "Vector<" + elemType + ">"
 		tmp := c.temp(vectorType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: elemType, Values: vals})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: elemType, Values: lowerMIRValues(vals, nil)})
 		return tmp, vectorType, false, nil
 	case ast.MatrixLiteralExpr:
 		rows := make([]string, 0, len(e.Rows))
@@ -907,12 +906,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			rowType := "Vector<" + elemType + ">"
 			rowTmp := c.temp(rowType)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: rowTmp, ElemType: elemType, Values: rowVals})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: rowTmp, ElemType: elemType, Values: lowerMIRValues(rowVals, nil)})
 			rows = append(rows, rowTmp)
 		}
 		matrixType := "Matrix<" + elemType + ">"
 		tmp := c.temp(matrixType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: "Vector<" + elemType + ">", Values: rows})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: "Vector<" + elemType + ">", Values: lowerMIRValues(rows, nil)})
 		return tmp, matrixType, false, nil
 	case ast.FieldAccessExpr:
 		if enumType, variant, ok := c.flattenEnumVariantExpr(e); ok {
@@ -932,11 +931,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			switch e.Field {
 			case "rows":
 				tmp := c.temp("Int")
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("len(%s)", t)})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRLength{Value: lowerMIRValue(t, targetType)}})
 				return tmp, "Int", false, nil
 			case "cols":
 				tmp := c.temp("Int")
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("func() int { if len(%s) == 0 { return 0 }; return len(%s[0]) }()", t, t)})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRMatrixColumnCount{Value: lowerMIRValue(t, targetType)}})
 				return tmp, "Int", false, nil
 			}
 		}
@@ -945,7 +944,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			fieldType = resolvedType
 		}
 		tmp := c.temp(fieldType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s.%s", t, e.Field)})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRFieldAccess{Target: lowerMIRValue(t, ""), Field: e.Field, Type: fieldType}})
 		return tmp, fieldType, false, nil
 	case ast.IndexExpr:
 		target, targetType, _, err := c.lowerExpr(e.Target)
@@ -966,12 +965,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			if firstType == "Int" && secondType == "Int" {
 				tmp := c.temp(matrixElem)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("%s[%s][%s]", target, first, second)})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRIndex{Target: MIRIndex{Target: lowerMIRValue(target, targetType), Index: lowerMIRValue(first, firstType)}, Index: lowerMIRValue(second, secondType), Type: matrixElem}})
 				return tmp, matrixElem, false, nil
 			}
 			if firstType == "Index" && secondType == "Index" {
 				tmp := c.temp(targetType)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: target})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: lowerMIRValue(target, targetType)})
 				c.setEinTermMeta(tmp, []string{first, second}, 2, targetType)
 				return tmp, targetType, false, nil
 			}
@@ -995,7 +994,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			expr := fmt.Sprintf("func() %s { if %s < 0 || %s >= len(%s.%s) { panic(fmt.Sprintf(\"runtime error [OCT-RTBL005]: row index %%d out of bounds for record table '%s' of length %%d\", %s, len(%s.%s))) }; return %s{%s} }()", goType(rowType), idx, idx, target, table.Fields[0].Name, table.Name, idx, target, table.Fields[0].Name, goType(rowType), strings.Join(parts, ", "))
 			tmp := c.temp(rowType)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: expr})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRBackendValue{Backend: "go", Expression: expr, Type: rowType, Reason: "checked-record-table-index"}})
 			return tmp, rowType, false, nil
 		}
 		if len(e.Indices) != 1 {
@@ -1008,7 +1007,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if idxType == "Index" {
 			if _, ok := parseVectorElemType(targetType); ok {
 				tmp := c.temp(targetType)
-				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: target})
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: lowerMIRValue(target, targetType)})
 				c.setEinTermMeta(tmp, []string{idx}, 1, targetType)
 				return tmp, targetType, false, nil
 			}
@@ -1027,7 +1026,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			elemType = vectorElem
 		}
 		tmp := c.temp(elemType)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: valueExpr})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: lowerMIRValue(valueExpr, elemType)})
 		return tmp, elemType, false, nil
 	case ast.RecordLiteralExpr:
 		vals := []string{}
@@ -1085,10 +1084,10 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				lenCalls = append(lenCalls, "len("+value+")")
 			}
 			valueExpr := fmt.Sprintf("func() %s { if %s { panic(fmt.Sprintf(\"runtime error [OCT-RTBL003]: record table '%s' columns have inconsistent lengths: %s\", %s)) }; return %s{%s} }()", goType(typeName), guard, table.Name, strings.Join(formatParts, ", "), strings.Join(lenCalls, ", "), goType(typeName), strings.Join(literalParts, ", "))
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: valueExpr})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRBackendValue{Backend: "go", Expression: valueExpr, Type: typeName, Reason: "checked-record-table-construction"}})
 			return tmp, typeName, false, nil
 		}
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: typeName, FieldNames: names, FieldVals: vals})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: typeName, FieldNames: names, FieldVals: lowerMIRValues(vals, nil)})
 		return tmp, typeName, false, nil
 	case ast.RecordUpdateExpr:
 		source, sourceType, _, err := c.lowerExpr(e.Source)
@@ -1128,7 +1127,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				parts = append(parts, fmt.Sprintf("%s: %s", names[index], values[index]))
 			}
 			valueExpr := fmt.Sprintf("func() %s { %s; return %s{%s} }()", goType(sourceType), strings.Join(checks, "; "), goType(sourceType), strings.Join(parts, ", "))
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: valueExpr})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRBackendValue{Backend: "go", Expression: valueExpr, Type: sourceType, Reason: "checked-record-table-update"}})
 		} else {
 			overrideNames := make([]string, 0, len(e.Fields))
 			for _, field := range e.Fields {
@@ -1138,7 +1137,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				Target:              tmp,
 				TypeName:            sourceType,
 				FieldNames:          names,
-				FieldVals:           values,
+				FieldVals:           lowerMIRValues(values, nil),
 				TemplateOrigin:      c.recordTemplateOrigin(sourceType),
 				TemplateOverrideSet: overrideNames,
 			})
@@ -1237,11 +1236,11 @@ func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error)
 	raw := c.temp(fallibleType(resultType + "[]"))
 	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRBatchMap{
 		Target:     raw,
-		Input:      input,
+		Input:      lowerMIRValue(input, inputType),
 		Worker:     worker.Package + "." + worker.Name,
 		InputType:  itemType,
 		ResultType: resultType,
-		Captures:   captureNames,
+		Captures:   lowerMIRValues(captureNames, nil),
 		Nested:     c.batchDepth > 0,
 	})
 	value := c.temp(resultType + "[]")
@@ -1251,17 +1250,17 @@ func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", errID)})
 	mergeID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
-	c.blocks[c.cur].Terminator = MIRBranch{Cond: raw + ".IsErr", TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: MIRFieldAccess{Target: lowerMIRValue(raw, resultType), Field: "IsErr", Type: "Bool"}, TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
 
 	c.cur = okID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: value, Value: raw + ".Value"})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: value, Value: MIRFieldAccess{Target: lowerMIRValue(raw, resultType), Field: "Value", Type: resultType}})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 
 	c.cur = errID
 	if c.fn.IsFallible {
-		c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleErrValue(c.retType, raw+".Err")}
+		c.blocks[c.cur].Terminator = MIRReturn{Value: MIRResultValue{ResultType: c.retType, Error: MIRFieldAccess{Target: lowerMIRValue(raw, resultType), Field: "Err", Type: "Error"}, IsError: true}}
 	} else {
-		c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + %s.Err", "oct error: ", raw)}
+		c.blocks[c.cur].Terminator = MIRFail{Value: MIRBinary{Op: "+", Left: mirString("oct error: "), Right: MIRFieldAccess{Target: lowerMIRValue(raw, resultType), Field: "Err", Type: "Error"}, Type: "String"}}
 	}
 	c.cur = mergeID
 	return value, resultType + "[]", false, nil
@@ -1285,9 +1284,8 @@ func (c *lowerCtx) lowerFunctionExpr(e ast.FunctionExpr) (string, string, bool, 
 		if fallible {
 			return "", "", false, fmt.Errorf("capture '%s' must handle fallible value", capture.Name)
 		}
-		value = cloneCompiledValueExpr(value, typ)
 		tmp := c.temp(typ)
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: value})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: lowerMIRValueWithClone(value, typ)})
 		goName := fmt.Sprintf("%s_%d", internalName(internalBatchCapture, id), index)
 		captureFields = append(captureFields, MIRField{Name: goName, Type: typ})
 		captureEnvironment = append(captureEnvironment, MIRCapture{Name: capture.Name, Parameter: goName, Type: typ})
@@ -1322,7 +1320,7 @@ func (c *lowerCtx) lowerFunctionExpr(e ast.FunctionExpr) (string, string, bool, 
 	if wctx.blocks[wctx.cur].Terminator == nil {
 		if returnType == "Void" {
 			if e.IsFallible {
-				wctx.blocks[wctx.cur].Terminator = MIRReturn{Value: fallibleOkValue(returnType, "")}
+				wctx.blocks[wctx.cur].Terminator = MIRReturn{Value: lowerMIRValue(fallibleOkValue(returnType, ""), fallibleType(returnType))}
 			} else {
 				wctx.blocks[wctx.cur].Terminator = MIRReturn{}
 			}
@@ -1474,7 +1472,7 @@ func patchBatchReturnType(blocks []MIRBlock, from, to string) []MIRBlock {
 	for i, block := range blocks {
 		out[i] = block
 		if ret, ok := block.Terminator.(MIRReturn); ok {
-			ret.Value = strings.ReplaceAll(ret.Value, from, to)
+			ret.Value = rewriteMIRLocal(ret.Value, from, to)
 			out[i].Terminator = ret
 		}
 	}
@@ -1629,12 +1627,12 @@ func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, bool, error) {
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", elseID)})
 	mergeID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
-	c.blocks[c.cur].Terminator = MIRBranch{Cond: cond, TrueTarget: c.blocks[thenID].Label, FalseTarget: c.blocks[elseID].Label}
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(cond, "Bool"), TrueTarget: c.blocks[thenID].Label, FalseTarget: c.blocks[elseID].Label}
 	c.cur = thenID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: thenVal})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: lowerMIRValue(thenVal, thenType)})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	c.cur = elseID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: elseVal})
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: lowerMIRValue(elseVal, thenType)})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	c.cur = mergeID
 	return out, thenType, false, nil
@@ -1666,7 +1664,7 @@ func (c *lowerCtx) lowerSwitchExpr(e ast.SwitchExpr) (string, string, bool, erro
 			out = c.temp(valueType)
 			resultType = valueType
 		}
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: value})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: lowerMIRValue(value, valueType)})
 		return nil
 	}
 
@@ -1686,7 +1684,7 @@ func (c *lowerCtx) lowerSwitchExpr(e ast.SwitchExpr) (string, string, bool, erro
 			cond = c.temp("Bool")
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{
 				Target: cond,
-				Value:  fmt.Sprintf("(%s == %s)", subject, matchValue),
+				Value:  MIRBinary{Op: "==", Left: lowerMIRValue(subject, ""), Right: lowerMIRValue(matchValue, ""), Type: "Bool"},
 			})
 		}
 
@@ -1695,7 +1693,7 @@ func (c *lowerCtx) lowerSwitchExpr(e ast.SwitchExpr) (string, string, bool, erro
 		nextID := len(c.blocks)
 		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", nextID)})
 		c.blocks[c.cur].Terminator = MIRBranch{
-			Cond:        cond,
+			Cond:        lowerMIRValue(cond, "Bool"),
 			TrueTarget:  c.blocks[matchID].Label,
 			FalseTarget: c.blocks[nextID].Label,
 		}
@@ -1714,7 +1712,7 @@ func (c *lowerCtx) lowerSwitchExpr(e ast.SwitchExpr) (string, string, bool, erro
 		}
 		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	} else {
-		c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q", "non-exhaustive switch reached in compiled mode")}
+		c.blocks[c.cur].Terminator = MIRFail{Value: mirString("non-exhaustive switch reached in compiled mode")}
 	}
 
 	c.cur = mergeID
@@ -1736,8 +1734,8 @@ func (c *lowerCtx) lowerMatchExpr(e ast.MatchExpr) (string, string, bool, error)
 		fallthroughID := len(c.blocks)
 		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", fallthroughID)})
 		cond := c.temp("Bool")
-		c.blocks[nextID].Statements = append(c.blocks[nextID].Statements, MIRAssign{Target: cond, Value: fmt.Sprintf("(%s.Tag == %s_%s_tag)", subject, enumShortName(subjectType), matchCase.Variant)})
-		c.blocks[nextID].Terminator = MIRBranch{Cond: cond, TrueTarget: c.blocks[matchID].Label, FalseTarget: c.blocks[fallthroughID].Label}
+		c.blocks[nextID].Statements = append(c.blocks[nextID].Statements, MIRAssign{Target: cond, Value: MIRIntrinsicValue{Kind: "enum-is", Type: "Bool", Args: []MIRValue{lowerMIRValue(subject, subjectType)}, Metadata: []string{subjectType, matchCase.Variant}}})
+		c.blocks[nextID].Terminator = MIRBranch{Cond: mirLocal(cond, "Bool"), TrueTarget: c.blocks[matchID].Label, FalseTarget: c.blocks[fallthroughID].Label}
 		c.cur = matchID
 		if matchCase.Binding != "" {
 			bindingType, ok := c.lookupEnumVariantPayloadType(subjectType, matchCase.Variant)
@@ -1745,7 +1743,7 @@ func (c *lowerCtx) lowerMatchExpr(e ast.MatchExpr) (string, string, bool, error)
 				bindingType = "any"
 			}
 			c.locals[matchCase.Binding] = bindingType
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: matchCase.Binding, Value: fmt.Sprintf("%s.Payload.(%s)", subject, goType(bindingType))})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: matchCase.Binding, Value: MIREnumPayload{Value: lowerMIRValue(subject, subjectType), PayloadType: bindingType}})
 		}
 		value, valueType, _, err := c.lowerExpr(matchCase.Value)
 		if err != nil {
@@ -1755,11 +1753,11 @@ func (c *lowerCtx) lowerMatchExpr(e ast.MatchExpr) (string, string, bool, error)
 			out = c.temp(valueType)
 			resultType = valueType
 		}
-		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: value})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: lowerMIRValue(value, valueType)})
 		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 		nextID = fallthroughID
 		if i == len(e.Cases)-1 {
-			c.blocks[nextID].Terminator = MIRFail{Value: fmt.Sprintf("%q", "non-exhaustive match reached in compiled mode")}
+			c.blocks[nextID].Terminator = MIRFail{Value: mirString("non-exhaustive match reached in compiled mode")}
 		}
 	}
 	c.cur = mergeID

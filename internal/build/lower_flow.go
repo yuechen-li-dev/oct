@@ -491,7 +491,7 @@ func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals 
 	if err != nil {
 		return nil, err
 	}
-	ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: value}
+	ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: lowerMIRValue(value, typ)}
 	shared.anonymousID = ctx.anonymousID
 	shared.functions = append(shared.functions, ctx.extra...)
 

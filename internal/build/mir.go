@@ -107,14 +107,9 @@ type MIRBlock struct {
 
 type MIRStmt interface{ mirStmt() }
 
-// Backend-neutrality seam: ordinary values and assignment targets are still
-// represented as strings, and lowering currently permits some Go-shaped
-// expressions in those strings. A second backend should consume a future typed
-// MIR value/expression model here rather than parsing emitter-shaped text.
-// This cleanup deliberately preserves the existing representation and dumps.
 type MIRAssign struct {
 	Target string
-	Value  string
+	Value  MIRValue
 }
 
 func (MIRAssign) mirStmt() {}
@@ -124,16 +119,24 @@ func (MIRAssign) mirStmt() {}
 // and its row-specific runtime checks.
 type MIRRowAssign struct {
 	Target string
-	Index  string
-	Value  string
+	Index  MIRValue
+	Value  MIRValue
 }
 
 func (MIRRowAssign) mirStmt() {}
 
+type MIRIndexAssign struct {
+	Target  string
+	Indices []MIRValue
+	Value   MIRValue
+}
+
+func (MIRIndexAssign) mirStmt() {}
+
 type MIRCall struct {
 	Target        string
 	Callee        string
-	Args          []string
+	Args          []MIRValue
 	ArgTypes      []string
 	Builtin       bool
 	RetType       string
@@ -149,7 +152,7 @@ type MIRGenericOctxiliaryCall struct {
 	Family         string
 	WireName       string
 	SidecarCommand string
-	Args           []string
+	Args           []MIRValue
 	ArgTypes       []string
 	RetType        string
 	Fallible       bool
@@ -161,7 +164,7 @@ func (MIRGenericOctxiliaryCall) mirStmt() {}
 type MIRDestructureCall struct {
 	Targets  []string
 	Callee   string
-	Args     []string
+	Args     []MIRValue
 	Builtin  bool
 	RetTypes []string
 }
@@ -172,7 +175,7 @@ type MIRConstructRecord struct {
 	Target              string
 	TypeName            string
 	FieldNames          []string
-	FieldVals           []string
+	FieldVals           []MIRValue
 	TemplateOrigin      string
 	TemplateOverrideSet []string
 }
@@ -182,18 +185,18 @@ func (MIRConstructRecord) mirStmt() {}
 type MIRConstructArray struct {
 	Target   string
 	ElemType string
-	Values   []string
+	Values   []MIRValue
 }
 
 func (MIRConstructArray) mirStmt() {}
 
 type MIRBatchMap struct {
 	Target     string
-	Input      string
+	Input      MIRValue
 	Worker     string
 	InputType  string
 	ResultType string
-	Captures   []string
+	Captures   []MIRValue
 	Nested     bool
 }
 
@@ -201,7 +204,7 @@ func (MIRBatchMap) mirStmt() {}
 
 type MIRTerminator interface{ mirTerminator() }
 
-type MIRReturn struct{ Value string }
+type MIRReturn struct{ Value MIRValue }
 
 func (MIRReturn) mirTerminator() {}
 
@@ -209,10 +212,13 @@ type MIRJump struct{ Target string }
 
 func (MIRJump) mirTerminator() {}
 
-type MIRBranch struct{ Cond, TrueTarget, FalseTarget string }
+type MIRBranch struct {
+	Cond                    MIRValue
+	TrueTarget, FalseTarget string
+}
 
 func (MIRBranch) mirTerminator() {}
 
-type MIRFail struct{ Value string }
+type MIRFail struct{ Value MIRValue }
 
 func (MIRFail) mirTerminator() {}

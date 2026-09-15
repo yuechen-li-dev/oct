@@ -2193,7 +2193,7 @@ fn main() -> Int {
 		t.Fatalf("read MIR dump: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, `Value:"f.board.Count"`) || !strings.Contains(text, "board.Count = ordinary-mir[Int,fallible=false]") {
+	if !strings.Contains(text, `Field:"Count"`) || !strings.Contains(text, "board.Count = ordinary-mir[Int,fallible=false]") {
 		t.Fatalf("expected board field reads/writes in MIR dump, got:\n%s", text)
 	}
 	if !strings.Contains(text, "case ordinary-mir[Bool,fallible=false]") || !strings.Contains(text, "-> { remember; board.FaultLatched = ordinary-mir[Bool,fallible=false]") {

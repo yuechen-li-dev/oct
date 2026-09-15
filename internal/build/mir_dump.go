@@ -59,32 +59,42 @@ func dumpMIR(m MIRModule) string {
 			for _, s := range bb.Statements {
 				switch st := s.(type) {
 				case MIRAssign:
-					fmt.Fprintf(&b, "    %s = %s\n", st.Target, st.Value)
+					fmt.Fprintf(&b, "    %s = %s\n", st.Target, dumpMIRValue(st.Value))
 				case MIRRowAssign:
-					fmt.Fprintf(&b, "    row_assign %s[%s] = %s\n", st.Target, st.Index, st.Value)
+					fmt.Fprintf(&b, "    row_assign %s[%s] = %s\n", st.Target, dumpMIRValue(st.Index), dumpMIRValue(st.Value))
+				case MIRIndexAssign:
+					fmt.Fprintf(&b, "    index_assign %s[%s] = %s\n", st.Target, strings.Join(dumpMIRValues(st.Indices), "]["), dumpMIRValue(st.Value))
 				case MIRCall:
-					fmt.Fprintf(&b, "    %s = call %s(%s)\n", st.Target, st.Callee, strings.Join(st.Args, ", "))
+					fmt.Fprintf(&b, "    %s = call %s(%s)\n", st.Target, st.Callee, strings.Join(dumpMIRValues(st.Args), ", "))
 				case MIRConstructArray:
-					fmt.Fprintf(&b, "    %s = [%s]\n", st.Target, strings.Join(st.Values, ", "))
+					fmt.Fprintf(&b, "    %s = [%s]\n", st.Target, strings.Join(dumpMIRValues(st.Values), ", "))
 				case MIRConstructRecord:
 					fmt.Fprintf(&b, "    %s = %s{...}\n", st.Target, st.TypeName)
 				case MIRBatchMap:
-					fmt.Fprintf(&b, "    %s = batch_map %s with %s\n", st.Target, st.Input, st.Worker)
+					fmt.Fprintf(&b, "    %s = batch_map %s with %s\n", st.Target, dumpMIRValue(st.Input), st.Worker)
 				}
 			}
 			switch t := bb.Terminator.(type) {
 			case MIRReturn:
-				fmt.Fprintf(&b, "    return %s\n", t.Value)
+				fmt.Fprintf(&b, "    return %s\n", dumpMIRValue(t.Value))
 			case MIRJump:
 				fmt.Fprintf(&b, "    jump %s\n", t.Target)
 			case MIRBranch:
-				fmt.Fprintf(&b, "    branch %s ? %s : %s\n", t.Cond, t.TrueTarget, t.FalseTarget)
+				fmt.Fprintf(&b, "    branch %s ? %s : %s\n", dumpMIRValue(t.Cond), t.TrueTarget, t.FalseTarget)
 			case MIRFail:
-				fmt.Fprintf(&b, "    fail %s\n", t.Value)
+				fmt.Fprintf(&b, "    fail %s\n", dumpMIRValue(t.Value))
 			}
 		}
 	}
 	return b.String()
+}
+
+func dumpMIRValues(values []MIRValue) []string {
+	result := make([]string, len(values))
+	for i, value := range values {
+		result[i] = dumpMIRValue(value)
+	}
+	return result
 }
 
 func dumpFlowStmt(stmt MIRFlowStmt) string {
