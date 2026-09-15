@@ -350,10 +350,12 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			return MIRModule{}, err
 		}
 	}
-	if module.EntryFunc == "" {
+	if module.EntryFunc == "" && !options.allowNoEntry {
 		return MIRModule{}, fmt.Errorf("entry package '%s' is missing main/Main function", program.Entry)
 	}
-	module.EntryReturn, module.EntryFallible = lookupEntryFunctionShape(program, module.EntryPackage, module.EntryFunc)
+	if module.EntryFunc != "" {
+		module.EntryReturn, module.EntryFallible = lookupEntryFunctionShape(program, module.EntryPackage, module.EntryFunc)
+	}
 	return module, nil
 }
 
@@ -714,7 +716,7 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 	for _, p := range fn.Parameters {
 		t := typeRefStringForPackage(pkg.Name, p.Type)
 		goName := ctx.sourceName(p.Name)
-		mirFn.Params = append(mirFn.Params, MIRField{Name: goName, Type: t})
+		mirFn.Params = append(mirFn.Params, MIRField{Name: goName, SourceName: p.Name, Type: t})
 		ctx.locals[p.Name] = t
 		ctx.goNames[p.Name] = goName
 	}
@@ -745,7 +747,7 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 			}
 		}
 		if !isParam {
-			mirFn.Locals = append(mirFn.Locals, MIRField{Name: ctx.goLocalName(n), Type: t})
+			mirFn.Locals = append(mirFn.Locals, MIRField{Name: ctx.goLocalName(n), SourceName: n, Type: t})
 		}
 	}
 	sort.Slice(mirFn.Locals, func(i, j int) bool { return mirFn.Locals[i].Name < mirFn.Locals[j].Name })

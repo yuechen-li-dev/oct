@@ -21,6 +21,7 @@ type TransportTypeMetadata = pkgmgr.TransportTypeMetadata
 type Package struct {
 	Name      string
 	Directory string
+	Profile   string
 	Imports   []string
 	Concepts  []ast.ConceptDecl
 	Records   []ast.RecordDecl
@@ -35,6 +36,7 @@ type Program struct {
 	Entry       string
 	EntrySource string
 	Packages    map[string]Package
+	Profile     string
 	Parametrics ParametricStats
 }
 
@@ -140,7 +142,7 @@ func loadFromFileInPackage(path string, packageDir string, includeTests bool, ex
 	if err := builder.loadPackage(entryFile.Package, packageDir); err != nil {
 		return Program{}, err
 	}
-	return elaborateParametrics(Program{Root: root, Entry: entryFile.Package, EntrySource: path, Packages: builder.packages})
+	return finishProgram(Program{Root: root, Entry: entryFile.Package, EntrySource: path, Packages: builder.packages})
 }
 
 func loadFromDir(root string, includeTests bool) (Program, error) {
@@ -168,7 +170,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 				return Program{}, err
 			}
 		}
-		return elaborateParametrics(Program{Root: root, Entry: "Main", EntrySource: mainDir, Packages: builder.packages})
+		return finishProgram(Program{Root: root, Entry: "Main", EntrySource: mainDir, Packages: builder.packages})
 	}
 	packageName, err := detectSinglePackageName(root, includeTests)
 	if err != nil {
@@ -185,7 +187,33 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 			return Program{}, err
 		}
 	}
-	return elaborateParametrics(Program{Root: root, Entry: packageName, EntrySource: root, Packages: builder.packages})
+	return finishProgram(Program{Root: root, Entry: packageName, EntrySource: root, Packages: builder.packages})
+}
+
+func finishProgram(program Program) (Program, error) {
+	entry := program.Packages[program.Entry]
+	packageNames := make([]string, 0, len(program.Packages))
+	for name := range program.Packages {
+		packageNames = append(packageNames, name)
+	}
+	sort.Strings(packageNames)
+	if entry.Profile == "" {
+		for _, name := range packageNames {
+			pkg := program.Packages[name]
+			if pkg.Profile != "" {
+				return Program{}, fmt.Errorf("profile '%s' in package '%s' cannot select the backend; declare it once in entry package '%s'", pkg.Profile, name, program.Entry)
+			}
+		}
+	} else {
+		program.Profile = entry.Profile
+		for _, name := range packageNames {
+			pkg := program.Packages[name]
+			if name != program.Entry && pkg.Profile != "" {
+				return Program{}, fmt.Errorf("duplicate profile declaration '%s' in compilation unit; entry package '%s' is authoritative", pkg.Profile, program.Entry)
+			}
+		}
+	}
+	return elaborateParametrics(program)
 }
 
 type manifestValidationResult struct {
@@ -235,6 +263,15 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 	for _, file := range files {
 		if file.Package != packageName {
 			return fmt.Errorf("inconsistent package names in directory '%s': expected '%s', got '%s'", directory, packageName, file.Package)
+		}
+		if file.Profile != "" {
+			if pkg.Profile != "" {
+				if pkg.Profile == file.Profile {
+					return fmt.Errorf("duplicate profile declaration '%s' in package '%s'", file.Profile, packageName)
+				}
+				return fmt.Errorf("conflicting profile declarations '%s' and '%s' in package '%s'", pkg.Profile, file.Profile, packageName)
+			}
+			pkg.Profile = file.Profile
 		}
 		for _, imp := range file.Imports {
 			if imp == packageName {

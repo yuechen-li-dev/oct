@@ -79,6 +79,7 @@ type compileOptions struct {
 	selectedReachableOnly bool
 	testHarnessCases      []TestHarnessCase
 	testArtifactLayout    bool
+	allowNoEntry          bool
 }
 
 // TestHarnessCase is one already-lowered, zero-argument Oct helper function.
@@ -94,9 +95,37 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 		return Result{}, err
 	}
 
+	if program.Profile == "Verilog" {
+		options.allowNoEntry = true
+	}
 	module, err := lowerProgram(program, options)
 	if err != nil {
 		return Result{}, err
+	}
+	if program.Profile == "Verilog" {
+		if len(options.testHarnessCases) > 0 {
+			return Result{}, fmt.Errorf("Verilog profile does not support Octest harness compilation in M0")
+		}
+		if err := CheckSystemVerilogLegal(module); err != nil {
+			return Result{}, err
+		}
+		source, err := emitSystemVerilog(module)
+		if err != nil {
+			return Result{}, err
+		}
+		artifactPath := systemVerilogOutputPath(program.EntrySource)
+		if err := os.WriteFile(artifactPath, []byte(source), 0o644); err != nil {
+			return Result{}, fmt.Errorf("write generated SystemVerilog %s: %w", artifactPath, err)
+		}
+		res := Result{ArtifactPath: artifactPath, GeneratedSourcePath: artifactPath}
+		if os.Getenv("OCT_MIR_DUMP") != "" {
+			dumpPath := artifactPath + ".mir"
+			if err := os.WriteFile(dumpPath, []byte(dumpMIR(module)), 0o644); err != nil {
+				return Result{}, fmt.Errorf("write MIR dump %s: %w", dumpPath, err)
+			}
+			res.MIRDumpPath = dumpPath
+		}
+		return res, nil
 	}
 
 	goSrc, err := emitGo(module)
@@ -194,6 +223,15 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 		res.MIRDumpPath = dumpPath
 	}
 	return res, nil
+}
+
+func systemVerilogOutputPath(entrySource string) string {
+	if info, err := os.Stat(entrySource); err == nil && info.IsDir() {
+		clean := filepath.Clean(entrySource)
+		return filepath.Join(clean, filepath.Base(clean)+".sv")
+	}
+	ext := filepath.Ext(entrySource)
+	return strings.TrimSuffix(entrySource, ext) + ".sv"
 }
 
 func generatedBuildDir() (string, error) {

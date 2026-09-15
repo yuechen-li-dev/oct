@@ -11,6 +11,13 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
+func TestVerilogProfileIsNotExposedToOrdinaryExecution(t *testing.T) {
+	_, err := ExecuteMain(project.Program{Profile: "Verilog"}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "profile Verilog is compile-only") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestExecuteMainResumeWithEmptySlotFailsDeterministically(t *testing.T) {
 	t.Helper()
 

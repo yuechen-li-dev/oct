@@ -1,0 +1,8 @@
+expect error: "Verilog profile does not support branch/control-flow lowering in M0"
+
+profile Verilog
+
+fn Maximum(A: Int, B: Int) -> Int {
+    if A > B { return A }
+    return B
+}

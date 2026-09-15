@@ -77,7 +77,10 @@ type MIREnumVariant struct {
 
 type MIRField struct {
 	Name string
-	Type string
+	// SourceName preserves optional author-facing identity independently of
+	// the backend-safe local symbol used by existing lowering.
+	SourceName string
+	Type       string
 }
 
 type MIRCapture struct {

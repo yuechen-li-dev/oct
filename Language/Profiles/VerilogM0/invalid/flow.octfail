@@ -1,0 +1,11 @@
+expect error: "Verilog profile does not support FLOW in M0"
+
+profile Verilog
+
+flow Counter() -> Int {
+    state Start { return 1 }
+}
+
+fn Hardware() -> Int {
+    return 0
+}

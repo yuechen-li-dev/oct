@@ -9,13 +9,16 @@ type File struct {
 	Source     source.File
 	IsTest     bool
 	IsMakeFile bool
-	Package    string
-	Imports    []string
-	Concepts   []ConceptDecl
-	Records    []RecordDecl
-	Enums      []EnumDecl
-	Functions  []FunctionDecl
-	Flows      []FlowDecl
+	// Profile is compile-time compilation-unit metadata. M0 recognizes only
+	// "Verilog" and never exposes the declaration to runtime evaluation.
+	Profile   string
+	Package   string
+	Imports   []string
+	Concepts  []ConceptDecl
+	Records   []RecordDecl
+	Enums     []EnumDecl
+	Functions []FunctionDecl
+	Flows     []FlowDecl
 }
 
 // ConceptDecl is a transparent named value description. Record-shaped

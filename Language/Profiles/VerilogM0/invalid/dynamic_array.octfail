@@ -1,0 +1,7 @@
+expect error: "Verilog profile does not support dynamic array values"
+
+profile Verilog
+
+fn First(Values: Int[]) -> Int {
+    return Values[0]
+}

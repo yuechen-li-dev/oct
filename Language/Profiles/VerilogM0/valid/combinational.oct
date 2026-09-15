@@ -1,0 +1,30 @@
+profile Verilog
+
+fn Add(A: Int, B: Int) -> Int {
+    return A + B
+}
+
+fn Greater(A: Int, B: Int) -> Bool {
+    return A > B
+}
+
+fn Literal() -> Int {
+    return 42
+}
+
+fn Multiply(A: Int, B: Int) -> Int {
+    return A * B
+}
+
+fn Negate(Value: Bool) -> Bool {
+    return not Value
+}
+
+fn Subtract(A: Int, B: Int) -> Int {
+    return A - B
+}
+
+fn Temporary(A: Int, B: Int) -> Int {
+    let Sum = A + B
+    return Sum * 2
+}

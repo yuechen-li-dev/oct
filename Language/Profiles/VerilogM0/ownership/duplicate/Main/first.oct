@@ -1,0 +1,4 @@
+profile Verilog
+package Main
+
+fn First() -> Int { return 1 }

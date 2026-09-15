@@ -37,14 +37,23 @@ type parser struct {
 func (p *parser) parseFile(src source.File) (ast.File, error) {
 	p.docByLine = scanDocComments(src.Text)
 	file := ast.File{Source: src, IsTest: strings.HasSuffix(src.Path, ".octest"), IsMakeFile: filepath.Base(src.Path) == "Make.oct"}
-	if _, err := p.expect(lex.KeywordPackage, "missing package declaration"); err != nil {
+	if err := p.parseProfileDecl(&file); err != nil {
 		return ast.File{}, err
 	}
-	packageName, err := p.expect(lex.Identifier, "expected package name")
-	if err != nil {
+	if p.match(lex.KeywordPackage) {
+		packageName, err := p.expect(lex.Identifier, "expected package name")
+		if err != nil {
+			return ast.File{}, err
+		}
+		file.Package = packageName.Lexeme
+	} else if file.Profile == "Verilog" {
+		file.Package = "Main"
+	} else {
+		return ast.File{}, p.errorAtCurrent("missing package declaration")
+	}
+	if err := p.parseProfileDecl(&file); err != nil {
 		return ast.File{}, err
 	}
-	file.Package = packageName.Lexeme
 
 	seenImports := make(map[string]struct{})
 	for p.current().Kind == lex.KeywordImport {
@@ -76,6 +85,12 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	pendingMakeNoWhile := false
 	pendingRequiresMakeAuthority := false
 	for p.current().Kind != lex.EOF {
+		if p.current().Kind == lex.Identifier && p.current().Lexeme == "profile" {
+			if err := p.parseProfileDecl(&file); err != nil {
+				return ast.File{}, err
+			}
+			continue
+		}
 		if p.current().Kind == lex.LeftBracket {
 			if !file.IsTest && !file.IsMakeFile {
 				attrName := "attribute"
@@ -433,6 +448,28 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 	}
 	return file, nil
+}
+
+func (p *parser) parseProfileDecl(file *ast.File) error {
+	for p.current().Kind == lex.Identifier && p.current().Lexeme == "profile" {
+		profileToken := p.current()
+		p.advance()
+		name, err := p.expect(lex.Identifier, "expected profile name")
+		if err != nil {
+			return err
+		}
+		if file.Profile != "" {
+			if file.Profile == name.Lexeme {
+				return p.errorAtToken(profileToken, fmt.Sprintf("duplicate profile declaration '%s'", name.Lexeme))
+			}
+			return p.errorAtToken(profileToken, fmt.Sprintf("conflicting profile declarations '%s' and '%s'", file.Profile, name.Lexeme))
+		}
+		if name.Lexeme != "Verilog" {
+			return p.errorAtToken(name, fmt.Sprintf("unknown profile '%s'; M0 supports only 'Verilog'", name.Lexeme))
+		}
+		file.Profile = name.Lexeme
+	}
+	return nil
 }
 
 // parseQueryDecl recognizes the deliberately bounded QUERY-M0 authoring form

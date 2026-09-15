@@ -1,0 +1,4 @@
+profile Verilog
+package Main
+
+fn Add(A: Int, B: Int) -> Int { return A + B }

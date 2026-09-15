@@ -1,0 +1,6 @@
+expect error: "duplicate profile declaration 'Verilog'"
+
+profile Verilog
+profile Verilog
+
+fn Value() -> Int { return 1 }

@@ -1,0 +1,7 @@
+expect error: "Verilog profile does not support String values"
+
+profile Verilog
+
+fn Identity(Value: String) -> String {
+    return Value
+}

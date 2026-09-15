@@ -1,0 +1,7 @@
+expect error: "Verilog profile does not support builtin Abs in M0"
+
+profile Verilog
+
+fn Magnitude(Value: Int) -> Int {
+    return Abs(Value)
+}

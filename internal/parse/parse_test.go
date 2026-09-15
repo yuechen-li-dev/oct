@@ -75,6 +75,26 @@ func TestBuildFileParsesFunctionWithNoParameters(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesVerilogProfileWithImplicitMainPackage(t *testing.T) {
+	file := parseSource(t, "profile Verilog\nfn Add(A: Int, B: Int) -> Int { return A + B }")
+	if file.Profile != "Verilog" || file.Package != "Main" {
+		t.Fatalf("unexpected profile/package: profile=%q package=%q", file.Profile, file.Package)
+	}
+}
+
+func TestBuildFileParsesVerilogProfileAsTopLevelDeclaration(t *testing.T) {
+	file := parseSource(t, "fn Add(A: Int, B: Int) -> Int { return A + B }\nprofile Verilog")
+	if file.Profile != "Verilog" || file.Package != "Main" {
+		t.Fatalf("unexpected profile/package: profile=%q package=%q", file.Profile, file.Package)
+	}
+}
+
+func TestBuildFileRejectsInvalidProfileDeclarations(t *testing.T) {
+	assertParseErrorContains(t, "profile CUDA\nfn Main() -> Int { return 0 }", "unknown profile 'CUDA'")
+	assertParseErrorContains(t, "profile Verilog\nprofile Verilog\nfn Main() -> Int { return 0 }", "duplicate profile declaration 'Verilog'")
+	assertParseErrorContains(t, "profile Verilog\nprofile Go\nfn Main() -> Int { return 0 }", "conflicting profile declarations 'Verilog' and 'Go'")
+}
+
 func TestBuildFileParsesBodylessOctGoImportOnlyInCompanion(t *testing.T) {
 	file := parseSourceWithPath(t, "science.contracts.oct", "package Science\ngo fn StrictlyAbove(value: Int, threshold: Int) -> Bool\n")
 	if len(file.Functions) != 1 {
@@ -982,7 +1002,8 @@ func parseSource(t *testing.T, text string) ast.File {
 
 func parseSourceWithPath(t *testing.T, path string, text string) ast.File {
 	t.Helper()
-	if !strings.HasPrefix(strings.TrimSpace(text), "package ") {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasPrefix(trimmed, "package ") && !strings.HasPrefix(trimmed, "profile ") {
 		text = "package Main\n" + text
 	}
 
@@ -1004,7 +1025,8 @@ func assertParseErrorContains(t *testing.T, text string, want string) {
 
 func assertParseErrorContainsWithPath(t *testing.T, path string, text string, want string) {
 	t.Helper()
-	if !strings.HasPrefix(strings.TrimSpace(text), "package ") && !strings.Contains(want, "package declaration") {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasPrefix(trimmed, "package ") && !strings.HasPrefix(trimmed, "profile ") && !strings.Contains(want, "package declaration") {
 		text = "package Main\n" + text
 	}
 

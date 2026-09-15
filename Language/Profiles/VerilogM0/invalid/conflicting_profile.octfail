@@ -1,0 +1,6 @@
+expect error: "conflicting profile declarations 'Verilog' and 'Go'"
+
+profile Verilog
+profile Go
+
+fn Value() -> Int { return 1 }

@@ -1,0 +1,5 @@
+package Main
+
+fn Main() -> Int {
+    return 0
+}

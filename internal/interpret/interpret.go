@@ -630,6 +630,9 @@ func (i interpreter) checkCancelled() error {
 }
 
 func newInterpreter(program project.Program, stdout io.Writer) (interpreter, error) {
+	if program.Profile == "Verilog" {
+		return interpreter{}, fmt.Errorf("profile Verilog is compile-only; use oct build to emit SystemVerilog")
+	}
 	interp := interpreter{
 		functions:      make(map[string]ast.FunctionDecl),
 		records:        make(map[string]ast.RecordDecl),

@@ -1,0 +1,4 @@
+profile Verilog
+package Hardware
+
+fn Value() -> Int { return 1 }

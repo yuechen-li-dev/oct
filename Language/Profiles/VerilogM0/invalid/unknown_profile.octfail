@@ -1,0 +1,5 @@
+expect error: "unknown profile 'CUDA'"
+
+profile CUDA
+
+fn Value() -> Int { return 1 }

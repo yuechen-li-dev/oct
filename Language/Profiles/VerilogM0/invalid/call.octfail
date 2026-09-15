@@ -1,0 +1,6 @@
+expect error: "Verilog profile does not support inter-function calls in M0"
+
+profile Verilog
+
+fn AddOne(Value: Int) -> Int { return Value + 1 }
+fn Use(Value: Int) -> Int { return AddOne(Value) }

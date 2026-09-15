@@ -1,0 +1,4 @@
+profile Verilog
+package Main
+
+fn Second() -> Int { return 2 }

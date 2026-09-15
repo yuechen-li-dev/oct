@@ -1,0 +1,4 @@
+package Main
+import Hardware
+
+fn Main() -> Int { return Hardware.Value() }

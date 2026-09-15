@@ -1,0 +1,3 @@
+package Main
+
+fn Subtract(A: Int, B: Int) -> Int { return A - B }
