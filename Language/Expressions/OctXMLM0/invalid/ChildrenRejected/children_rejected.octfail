@@ -1,0 +1,6 @@
+expect error: "Leaf does not accept children"
+package ChildrenRejected
+
+record Node { Value: String }
+fn Leaf(value: String) -> Node { return Node {Value: value} }
+fn Main() -> Node { return <Leaf Value="x">unexpected</Leaf> }

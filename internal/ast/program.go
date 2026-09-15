@@ -431,6 +431,35 @@ type StringLiteralExpr struct {
 
 func (StringLiteralExpr) exprNode() {}
 
+// MarkupElementExpr is the parse-time Oct-XML representation. Project
+// elaboration removes every instance by producing ordinary CallExpr and
+// ArrayLiteralExpr nodes before type checking, interpretation, or MIR lowering.
+type MarkupElementExpr struct {
+	Tag             string
+	Attributes      []MarkupAttribute
+	Children        []MarkupChild
+	RawBody         string
+	StructuredError string
+	Line            int
+	Column          int
+}
+
+func (MarkupElementExpr) exprNode() {}
+
+type MarkupAttribute struct {
+	Name   string
+	Value  Expr
+	Line   int
+	Column int
+}
+
+type MarkupChild struct {
+	Text   string
+	Value  Expr
+	Line   int
+	Column int
+}
+
 type ArrayLiteralExpr struct {
 	Elements []Expr
 }

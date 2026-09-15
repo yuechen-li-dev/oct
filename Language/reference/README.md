@@ -32,6 +32,7 @@ Start with [00-overview.md](./00-overview.md).
 - [18 Concepts](./language/18-concepts.md)
 - [19 Parametric templates](./language/19-parametrics.md)
 - [20 Compilation profiles](./language/20-profiles.md)
+- [21 Oct-XML typed template markup](./language/21-oct-xml.md)
 - [Tensors](./tensors.md)
 
 ## Runtime

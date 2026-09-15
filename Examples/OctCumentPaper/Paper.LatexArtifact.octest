@@ -1,0 +1,9 @@
+package OctCumentPaper
+
+import Artifact
+import Document
+
+[Artifact]
+fn BuildOctXMLLatex() -> Void {
+    Artifact.Latex("paper.tex", Paper())
+}

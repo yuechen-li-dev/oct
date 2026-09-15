@@ -180,6 +180,7 @@ func normalize(src string, compact bool, withDiag bool) (string, DecisionDiagnos
 	src = strings.ReplaceAll(src, "\r\n", "\n")
 	lines := strings.Split(src, "\n")
 	indent := 0
+	markupDepth := 0
 	out := make([]string, 0, len(lines))
 	diags := DecisionDiagnostics{}
 	for _, raw := range lines {
@@ -188,15 +189,29 @@ func normalize(src string, compact bool, withDiag bool) (string, DecisionDiagnos
 			out = append(out, "")
 			continue
 		}
-		if strings.HasPrefix(trimmed, "}") && indent > 0 {
+		leadingMarkupClose := strings.HasPrefix(trimmed, "</")
+		if (strings.HasPrefix(trimmed, "}") || leadingMarkupClose) && indent > 0 {
 			indent--
+		}
+		if leadingMarkupClose && markupDepth > 0 {
+			markupDepth--
 		}
 		if strings.HasPrefix(trimmed, "//") {
 			out = append(out, strings.Repeat("    ", indent)+trimmed)
 			continue
 		}
 		code, comment := splitCodeAndComment(trimmed)
-		normCode := normalizeCode(code, compact)
+		normCode := code
+		if markupDepth == 0 && !containsOctXMLStart(code) {
+			normCode = normalizeCode(code, compact)
+		}
+		if containsOctXMLStart(code) || strings.Contains(code, "</") {
+			normCode = strings.ReplaceAll(normCode, "< / ", "</")
+			normCode = strings.ReplaceAll(normCode, "< ", "<")
+			normCode = strings.ReplaceAll(normCode, " / >", " />")
+			normCode = strings.ReplaceAll(normCode, " >", ">")
+			normCode = strings.ReplaceAll(normCode, " . ", ".")
+		}
 		if !compact {
 			line := strings.Repeat("    ", indent) + normCode
 			if comment != "" {
@@ -219,12 +234,44 @@ func normalize(src string, compact bool, withDiag bool) (string, DecisionDiagnos
 		if strings.HasSuffix(normCode, "{") {
 			indent++
 		}
+		opens, closes := markupTagCounts(normCode)
+		if leadingMarkupClose && closes > 0 {
+			closes--
+		}
+		indent += opens - closes
+		markupDepth += opens - closes
 	}
 	result := strings.Join(out, "\n")
 	if !strings.HasSuffix(result, "\n") {
 		result += "\n"
 	}
 	return result, diags, nil
+}
+
+var markupTagPattern = regexp.MustCompile(`</?[_[:alpha:]][_[:alnum:].]*(?:\s[^<>]*)?/?>`)
+
+func containsOctXMLStart(code string) bool {
+	trimmed := strings.TrimSpace(code)
+	if strings.HasPrefix(trimmed, "<") || strings.Contains(trimmed, "</") {
+		return true
+	}
+	for _, marker := range []string{"return <", "= <", "(<", "( <", ",<", ", <", "{<"} {
+		if strings.Contains(trimmed, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func markupTagCounts(code string) (opens int, closes int) {
+	for _, tag := range markupTagPattern.FindAllString(code, -1) {
+		if strings.HasPrefix(tag, "</") {
+			closes++
+		} else if !strings.HasSuffix(tag, "/>") {
+			opens++
+		}
+	}
+	return opens, closes
 }
 
 type callLayoutContext struct {

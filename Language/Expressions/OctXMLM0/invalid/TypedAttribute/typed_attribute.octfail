@@ -1,0 +1,6 @@
+expect error: "function 'Panel' argument 1 expects Int, got String"
+package TypedAttribute
+
+record Node { Value: String }
+fn Panel(count: Int) -> Node { return Node {Value: ToString(count)} }
+fn Main() -> Node { return <Panel Count="four" /> }

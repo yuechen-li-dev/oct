@@ -1,0 +1,19 @@
+package OctXMLM0Valid
+
+[Fact]
+fn TypedMarkupLowersToOrdinaryCalls() -> Void {
+    let suffix = Label("!")
+    let actual = <Panel Enabled={true} Count={4}>
+        Hello & <Label Text="world" />{suffix}
+    </Panel>
+    let expected = Panel(true, 4,[MarkupTextUiNode("Hello & "), Label("world"), suffix])
+    Assert.Equal(expected, actual, "Oct-XML is ordinary typed construction")
+    Assert.Equal(OrdinaryTree(), MarkupTree(), "ordinary and markup construction are equivalent")
+}
+
+[Fact]
+fn ComparisonsAndGenericSyntaxRemainOrdinary() -> Void {
+    Assert.True(1 < 2, "less-than remains an operator")
+}
+
+fn Main() -> Void {}

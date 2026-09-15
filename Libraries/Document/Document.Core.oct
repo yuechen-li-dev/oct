@@ -326,6 +326,18 @@ fn Text(value: String) -> Inline {
     return Inline.Text(value)
 }
 
+// Oct-XML text adapter for any callable whose final parameter is Inline[].
+// The compiler resolves this as an ordinary typed function call.
+fn MarkupTextInline(value: String) -> Inline {
+    return Text(value)
+}
+
+// Oct-XML text adapter for block containers. It intentionally means one
+// ordinary paragraph, preserving the existing Block/Inline authority.
+fn MarkupTextBlock(value: String) -> Block {
+    return P(value)
+}
+
 fn Strong(value: String) -> Inline {
     return Inline.Strong(value)
 }
@@ -521,6 +533,10 @@ fn Build(content: Block[]) -> Doc {
 
 fn BuildWith(metadata: Metadata, style: StyleSheet, layout: PageLayout, content: Block[]) -> Doc {
     return Doc {Metadata: metadata Style: style Layout: layout Content: content}
+}
+
+fn Content(children: Block[]) -> Block[] {
+    return children
 }
 
 template fn Instantiate<Parameters>(templateValue: Template<Parameters>, parameters: Parameters) -> Doc {

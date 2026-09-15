@@ -1,0 +1,28 @@
+package OctXMLM0Valid
+
+record UiNode {
+    Text: String
+    Enabled: Bool
+    Count: Int
+    Children: UiNode[]
+}
+
+fn MarkupTextUiNode(value: String) -> UiNode {
+    return UiNode {Text: value Enabled: true Count: 0 Children:[]}
+}
+
+fn Label(text: String) -> UiNode {
+    return UiNode {Text: text Enabled: true Count: 0 Children:[]}
+}
+
+fn Panel(enabled: Bool, count: Int, children: UiNode[]) -> UiNode {
+    return UiNode {Text: "panel" Enabled: enabled Count: count Children: children}
+}
+
+fn MarkupTree() -> UiNode {
+    return <Panel Enabled={true} Count={2}>Hello <Label Text="world" /></Panel>
+}
+
+fn OrdinaryTree() -> UiNode {
+    return Panel(true, 2,[MarkupTextUiNode("Hello "), Label("world")])
+}

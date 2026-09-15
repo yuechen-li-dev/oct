@@ -853,6 +853,8 @@ func (e *parametricElaborator) rewriteExpr(pkgName string, expr ast.Expr, expect
 	}
 	var err error
 	switch x := expr.(type) {
+	case ast.MarkupElementExpr:
+		return e.rewriteMarkupElement(pkgName, x, subst)
 	case ast.SelectorExpr:
 		if expected == nil || expected.SelectorOwner == nil || expected.SelectorResult == nil {
 			return nil, fmt.Errorf("selector .%s requires contextual type Selector<Record, FieldType>", x.Field)
@@ -1130,6 +1132,203 @@ func (e *parametricElaborator) rewriteExpr(pkgName string, expr ast.Expr, expect
 	default:
 		return expr, nil
 	}
+}
+
+func (e *parametricElaborator) rewriteMarkupElement(pkgName string, element ast.MarkupElementExpr, subst map[string]ast.TypeRef) (ast.Expr, error) {
+	targetPkg, targetName := splitSurfaceName(pkgName, element.Tag)
+	decl, ok := e.findMarkupFunction(targetPkg, targetName)
+	if !ok {
+		return nil, fmt.Errorf("unknown tag symbol %s", element.Tag)
+	}
+	attributes := make(map[string]ast.MarkupAttribute, len(element.Attributes))
+	for _, attribute := range element.Attributes {
+		matched := false
+		for _, parameter := range decl.Parameters {
+			if strings.EqualFold(attribute.Name, parameter.Name) {
+				attributes[strings.ToLower(parameter.Name)] = attribute
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return nil, fmt.Errorf("%s has no parameter '%s'", element.Tag, attribute.Name)
+		}
+	}
+
+	args := make([]ast.Expr, 0, len(decl.Parameters))
+	bodyUsed := false
+	for index, parameter := range decl.Parameters {
+		if attribute, exists := attributes[strings.ToLower(parameter.Name)]; exists {
+			value, err := e.rewriteExpr(pkgName, attribute.Value, &parameter.Type, subst)
+			if err != nil {
+				return nil, fmt.Errorf("%s parameter %s: %w", element.Tag, parameter.Name, err)
+			}
+			args = append(args, value)
+			continue
+		}
+		if index != len(decl.Parameters)-1 {
+			return nil, fmt.Errorf("%s is missing required parameter %s", element.Tag, parameter.Name)
+		}
+		body, used, err := e.lowerMarkupBody(pkgName, targetPkg, element, parameter, subst)
+		if err != nil {
+			return nil, err
+		}
+		if !used {
+			return nil, fmt.Errorf("%s is missing required parameter %s", element.Tag, parameter.Name)
+		}
+		args = append(args, body)
+		bodyUsed = true
+	}
+	if !bodyUsed && markupHasContent(element) {
+		return nil, fmt.Errorf("%s does not accept children", element.Tag)
+	}
+	callee := ast.Expr(ast.IdentifierExpr{Name: targetName})
+	if targetPkg != pkgName {
+		callee = ast.FieldAccessExpr{Target: ast.IdentifierExpr{Name: targetPkg}, Field: targetName}
+	}
+	return ast.CallExpr{Callee: callee, Arguments: args, Line: element.Line, Column: element.Column}, nil
+}
+
+func (e *parametricElaborator) lowerMarkupBody(pkgName, targetPkg string, element ast.MarkupElementExpr, parameter ast.Parameter, subst map[string]ast.TypeRef) (ast.Expr, bool, error) {
+	if strings.EqualFold(parameter.Name, "lines") && parameter.Type.IsArray && parameter.Type.Name == "String" {
+		lines := normalizeRawMarkupLines(element.RawBody)
+		values := make([]ast.Expr, len(lines))
+		for i, line := range lines {
+			values[i] = ast.StringLiteralExpr{Value: line}
+		}
+		return ast.ArrayLiteralExpr{Elements: values}, true, nil
+	}
+	if element.StructuredError != "" {
+		return nil, false, fmt.Errorf("%s has invalid structured children: %s", element.Tag, element.StructuredError)
+	}
+	if parameter.Type.Name == "String" && !parameter.Type.IsArray {
+		for _, child := range element.Children {
+			if child.Value != nil {
+				return nil, false, fmt.Errorf("%s expects textual body parameter %s; embedded or element children are not accepted", element.Tag, parameter.Name)
+			}
+		}
+		return ast.StringLiteralExpr{Value: normalizeMarkupScalarText(element.RawBody)}, true, nil
+	}
+	if !parameter.Type.IsArray || parameter.Type.ArrayDepth != 1 {
+		return nil, false, nil
+	}
+	elementType := parameter.Type
+	elementType.IsArray = false
+	elementType.ArrayDepth = 0
+	children := normalizeMarkupChildren(element.Children)
+	values := make([]ast.Expr, 0, len(children))
+	for _, child := range children {
+		if child.Value != nil {
+			value, err := e.rewriteExpr(pkgName, child.Value, &elementType, subst)
+			if err != nil {
+				return nil, false, fmt.Errorf("%s child: %w", element.Tag, err)
+			}
+			values = append(values, value)
+			continue
+		}
+		if child.Text == "" {
+			continue
+		}
+		adapterName := "MarkupText" + elementType.Name
+		if _, ok := e.findMarkupFunction(targetPkg, adapterName); !ok {
+			return nil, false, fmt.Errorf("%s expects %s[] children, but package %s does not declare fn %s(value: String) -> %s", element.Tag, displayType(elementType), targetPkg, adapterName, displayType(elementType))
+		}
+		callee := ast.Expr(ast.IdentifierExpr{Name: adapterName})
+		if targetPkg != pkgName {
+			callee = ast.FieldAccessExpr{Target: ast.IdentifierExpr{Name: targetPkg}, Field: adapterName}
+		}
+		values = append(values, ast.CallExpr{Callee: callee, Arguments: []ast.Expr{ast.StringLiteralExpr{Value: child.Text}}, Line: child.Line, Column: child.Column})
+	}
+	return ast.ArrayLiteralExpr{Elements: values}, true, nil
+}
+
+func (e *parametricElaborator) findMarkupFunction(pkgName, name string) (ast.FunctionDecl, bool) {
+	pkg, ok := e.program.Packages[pkgName]
+	if !ok {
+		return ast.FunctionDecl{}, false
+	}
+	for _, decl := range pkg.Functions {
+		if decl.Name == name {
+			return decl, true
+		}
+	}
+	return ast.FunctionDecl{}, false
+}
+
+func markupHasContent(element ast.MarkupElementExpr) bool {
+	if strings.TrimSpace(element.RawBody) != "" {
+		return true
+	}
+	for _, child := range element.Children {
+		if child.Value != nil || strings.TrimSpace(child.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeMarkupScalarText(value string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(value, "\r\n", "\n")), " ")
+}
+
+func normalizeMarkupChildren(children []ast.MarkupChild) []ast.MarkupChild {
+	out := make([]ast.MarkupChild, 0, len(children))
+	for _, child := range children {
+		if child.Value != nil {
+			out = append(out, child)
+			continue
+		}
+		fields := strings.Fields(strings.ReplaceAll(child.Text, "\r\n", "\n"))
+		if len(fields) == 0 {
+			continue
+		}
+		text := strings.Join(fields, " ")
+		if len(child.Text) > 0 {
+			first := child.Text[0]
+			leading := first == ' ' || first == '\t' || first == '\n' || first == '\r'
+			firstNonSpace := len(child.Text) - len(strings.TrimLeft(child.Text, " \t\r\n"))
+			if leading && !strings.ContainsAny(child.Text[:firstNonSpace], "\r\n") {
+				text = " " + text
+			}
+			last := child.Text[len(child.Text)-1]
+			if last == ' ' || last == '\t' || last == '\n' || last == '\r' {
+				text += " "
+			}
+		}
+		child.Text = text
+		out = append(out, child)
+	}
+	return out
+}
+
+func normalizeRawMarkupLines(value string) []string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	lines := strings.Split(value, "\n")
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	indent := -1
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		count := len(line) - len(strings.TrimLeft(line, " \t"))
+		if indent < 0 || count < indent {
+			indent = count
+		}
+	}
+	if indent > 0 {
+		for i := range lines {
+			if len(lines[i]) >= indent {
+				lines[i] = lines[i][indent:]
+			}
+		}
+	}
+	return lines
 }
 
 func (e *parametricElaborator) ensureSelector(pkgName string, owner, result ast.TypeRef, field string) (string, error) {

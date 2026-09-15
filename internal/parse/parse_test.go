@@ -56,6 +56,34 @@ func TestBuildFileParsesUnifiedArrowsWithEquivalentAst(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesOctXMLAsExplicitMarkupAST(t *testing.T) {
+	file := parseSource(t, `fn Main() -> Node { return <UI.Panel Enabled={true}><UI.Label Text="Hello" /> {Suffix()}</UI.Panel> }`)
+	ret := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	element, ok := ret.Value.(ast.MarkupElementExpr)
+	if !ok {
+		t.Fatalf("expected MarkupElementExpr, got %T", ret.Value)
+	}
+	if element.Tag != "UI.Panel" || len(element.Attributes) != 1 || len(element.Children) != 3 {
+		t.Fatalf("unexpected markup AST: %#v", element)
+	}
+	if _, ok := element.Children[0].Value.(ast.MarkupElementExpr); !ok {
+		t.Fatalf("expected nested markup child, got %T", element.Children[0].Value)
+	}
+	if _, ok := element.Children[2].Value.(ast.CallExpr); !ok {
+		t.Fatalf("expected embedded ordinary call, got %T", element.Children[2].Value)
+	}
+}
+
+func TestBuildFileKeepsLessThanAndGenericCallsOutOfMarkup(t *testing.T) {
+	file := parseSource(t, `template fn Identity<T>(value: T) -> T { return value }
+fn Main() -> Bool { let x = Identity<Int>(1) return x < 2 }`)
+	main := file.Functions[1]
+	ret := main.Body.Statements[1].(ast.ReturnStmt)
+	if _, ok := ret.Value.(ast.BinaryExpr); !ok {
+		t.Fatalf("expected less-than BinaryExpr, got %T", ret.Value)
+	}
+}
+
 func TestBuildFileParsesFunctionWithNoParameters(t *testing.T) {
 	file := parseSource(t, "fn Main() -> Int { return 0 }")
 

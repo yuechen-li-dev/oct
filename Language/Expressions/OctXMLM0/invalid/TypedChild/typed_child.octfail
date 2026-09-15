@@ -1,0 +1,6 @@
+expect error: "array element 0 expects Node, got Int"
+package TypedChild
+
+record Node { Value: String }
+fn Panel(children: Node[]) -> Node { return Node {Value: "panel"} }
+fn Main() -> Node { return <Panel>{1}</Panel> }

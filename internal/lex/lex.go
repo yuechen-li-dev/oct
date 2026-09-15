@@ -82,16 +82,20 @@ const (
 	Slash        TokenKind = "Slash"
 	Percent      TokenKind = "Percent"
 	At           TokenKind = "At"
+	Ampersand    TokenKind = "Ampersand"
+	Pipe         TokenKind = "Pipe"
 	EqualEqual   TokenKind = "EqualEqual"
 	LeftEqual    TokenKind = "LeftEqual"
 	RightEqual   TokenKind = "RightEqual"
 )
 
 type Token struct {
-	Kind   TokenKind
-	Lexeme string
-	Line   int
-	Column int
+	Kind      TokenKind
+	Lexeme    string
+	Line      int
+	Column    int
+	Offset    int
+	EndOffset int
 }
 
 type Result struct {
@@ -124,7 +128,7 @@ func (l *lexer) lexAll() ([]Token, error) {
 	for {
 		l.skipWhitespaceAndComments()
 		if l.atEnd() {
-			tokens = append(tokens, Token{Kind: EOF, Line: l.line, Column: l.column})
+			tokens = append(tokens, Token{Kind: EOF, Line: l.line, Column: l.column, Offset: l.offset, EndOffset: l.offset})
 			return tokens, nil
 		}
 
@@ -161,7 +165,12 @@ func (l *lexer) skipWhitespaceAndComments() {
 	}
 }
 
-func (l *lexer) nextToken() (Token, error) {
+func (l *lexer) nextToken() (token Token, err error) {
+	start := l.offset
+	defer func() {
+		token.Offset = start
+		token.EndOffset = l.offset
+	}()
 	line, column := l.line, l.column
 	r, _ := l.peekRune()
 
@@ -273,12 +282,14 @@ func (l *lexer) nextToken() (Token, error) {
 		if l.matchString("&&") {
 			return Token{}, fmt.Errorf("invalid token at %d:%d: '&&' is not an Oct operator; use 'and'", line, column)
 		}
-		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
+		l.advanceRune()
+		return Token{Kind: Ampersand, Lexeme: "&", Line: line, Column: column}, nil
 	case '|':
 		if l.matchString("||") {
 			return Token{}, fmt.Errorf("invalid token at %d:%d: '||' is not an Oct operator; use 'or'", line, column)
 		}
-		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
+		l.advanceRune()
+		return Token{Kind: Pipe, Lexeme: "|", Line: line, Column: column}, nil
 	default:
 		return Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
 	}

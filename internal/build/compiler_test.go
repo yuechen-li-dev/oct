@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -16,6 +17,40 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
+
+func TestOctXMLAndOrdinaryCallsHaveIdenticalMIR(t *testing.T) {
+	target := filepath.Join("..", "..", "Language", "Expressions", "OctXMLM0", "valid", "oct_xml_m0.octest")
+	program, err := project.LoadForTest(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	module, err := lowerProgram(program, compileOptions{allowNoEntry: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var markup, ordinary *MIRFunction
+	var names []string
+	for i := range module.Functions {
+		names = append(names, module.Functions[i].Package+"."+module.Functions[i].Name)
+		switch module.Functions[i].Name {
+		case "MarkupTree":
+			markup = &module.Functions[i]
+		case "OrdinaryTree":
+			ordinary = &module.Functions[i]
+		}
+	}
+	if markup == nil || ordinary == nil {
+		t.Fatalf("missing equivalence functions in MIR: %v", names)
+	}
+	markupCopy, ordinaryCopy := *markup, *ordinary
+	markupCopy.Name, ordinaryCopy.Name = "Tree", "Tree"
+	if !reflect.DeepEqual(markupCopy, ordinaryCopy) {
+		t.Fatalf("Oct-XML MIR differs from ordinary call MIR\nmarkup: %#v\nordinary: %#v", markupCopy, ordinaryCopy)
+	}
+}
 
 // inspectProgram proves lowering and generated-source structure without
 // crossing the native toolchain boundary. Executable tests call Compile

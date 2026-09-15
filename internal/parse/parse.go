@@ -16,6 +16,7 @@ import (
 func BuildFile(result lex.Result) (ast.File, error) {
 	parser := parser{
 		sourcePath: result.Source.Path,
+		sourceText: result.Source.Text,
 		tokens:     result.Tokens,
 	}
 
@@ -28,6 +29,7 @@ func BuildFile(result lex.Result) (ast.File, error) {
 
 type parser struct {
 	sourcePath            string
+	sourceText            string
 	tokens                []lex.Token
 	position              int
 	nextUtilityWhenSiteID int
@@ -2007,7 +2009,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFn, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.KeywordAwait, lex.Minus, lex.DotDot:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFn, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.LeftAngle, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.KeywordAwait, lex.Minus, lex.DotDot:
 		return true
 	default:
 		return false
@@ -2391,6 +2393,11 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	}
 	token := p.current()
 	switch token.Kind {
+	case lex.LeftAngle:
+		if p.peek(1).Kind != lex.Identifier {
+			return nil, p.errorAtCurrent("expected markup tag name after '<'")
+		}
+		return p.parseMarkupElement()
 	case lex.Dot:
 		p.advance()
 		field, err := p.expectIdentifierLike("expected selector field name after '.'")
@@ -2492,6 +2499,159 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return p.parseArrayLiteralExpr()
 	default:
 		return nil, p.errorAtCurrent("expected expression")
+	}
+}
+
+func (p *parser) parseMarkupElement() (ast.Expr, error) {
+	open := p.current()
+	p.advance()
+	tag, err := p.parseMarkupName("expected markup tag name")
+	if err != nil {
+		return nil, err
+	}
+	element := ast.MarkupElementExpr{Tag: tag, Line: open.Line, Column: open.Column}
+	seen := map[string]struct{}{}
+	for p.current().Kind != lex.RightAngle && !(p.current().Kind == lex.Slash && p.peek(1).Kind == lex.RightAngle) {
+		name, nameErr := p.expectIdentifierLike("expected markup attribute name")
+		if nameErr != nil {
+			return nil, nameErr
+		}
+		key := strings.ToLower(name.Lexeme)
+		if _, exists := seen[key]; exists {
+			return nil, p.errorAtToken(name, fmt.Sprintf("duplicate attribute %s", name.Lexeme))
+		}
+		seen[key] = struct{}{}
+		if _, err := p.expect(lex.Assign, "expected '=' after markup attribute name"); err != nil {
+			return nil, err
+		}
+		var value ast.Expr
+		if p.current().Kind == lex.StringLiteral {
+			value = ast.StringLiteralExpr{Value: p.current().Lexeme}
+			p.advance()
+		} else if p.match(lex.LeftBrace) {
+			value, err = p.parseExpression()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(lex.RightBrace, "expected '}' after markup attribute expression"); err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, p.errorAtCurrent("markup attribute value must be a string literal or '{ expression }'")
+		}
+		element.Attributes = append(element.Attributes, ast.MarkupAttribute{Name: name.Lexeme, Value: value, Line: name.Line, Column: name.Column})
+	}
+	if p.match(lex.Slash) {
+		if _, err := p.expect(lex.RightAngle, "expected '>' after '/' in self-closing markup tag"); err != nil {
+			return nil, err
+		}
+		return element, nil
+	}
+	endOpen, err := p.expect(lex.RightAngle, "expected '>' after markup tag")
+	if err != nil {
+		return nil, err
+	}
+	bodyStart := endOpen.EndOffset
+	structuredStart := p.position
+	children, closeStart, parseErr := p.parseMarkupChildren(tag, bodyStart)
+	if parseErr == nil {
+		element.Children = children
+		element.RawBody = p.sourceText[bodyStart:closeStart]
+		return element, nil
+	}
+
+	// A raw-body target is resolved only after all package declarations are
+	// known. Preserve the exact candidate here and defer the structured parse
+	// error; ordinary targets surface it during markup elaboration.
+	p.position = structuredStart
+	needle := "</" + tag + ">"
+	rel := strings.Index(p.sourceText[bodyStart:], needle)
+	if rel < 0 {
+		return nil, parseErr
+	}
+	closeStart = bodyStart + rel
+	closeEnd := closeStart + len(needle)
+	for p.current().Kind != lex.EOF && p.current().EndOffset <= closeEnd {
+		p.advance()
+	}
+	element.RawBody = p.sourceText[bodyStart:closeStart]
+	element.StructuredError = parseErr.Error()
+	return element, nil
+}
+
+func (p *parser) parseMarkupName(message string) (string, error) {
+	first, err := p.expect(lex.Identifier, message)
+	if err != nil {
+		return "", err
+	}
+	name := first.Lexeme
+	if p.match(lex.Dot) {
+		second, err := p.expectIdentifierLike("expected qualified markup tag name after '.'")
+		if err != nil {
+			return "", err
+		}
+		name += "." + second.Lexeme
+	}
+	return name, nil
+}
+
+func (p *parser) parseMarkupChildren(tag string, cursor int) ([]ast.MarkupChild, int, error) {
+	var children []ast.MarkupChild
+	for {
+		if p.current().Kind == lex.EOF {
+			return nil, 0, p.errorAtCurrent(fmt.Sprintf("missing closing tag </%s>", tag))
+		}
+		special := p.position
+		for p.peek(special-p.position).Kind != lex.EOF {
+			t := p.peek(special - p.position)
+			n := p.peek(special - p.position + 1)
+			if t.Kind == lex.LeftBrace || (t.Kind == lex.LeftAngle && (n.Kind == lex.Identifier || n.Kind == lex.Slash)) {
+				break
+			}
+			special++
+		}
+		textEnd := p.tokens[special].Offset
+		if textEnd > cursor {
+			children = append(children, ast.MarkupChild{Text: p.sourceText[cursor:textEnd]})
+		}
+		p.position = special
+		if p.current().Kind == lex.LeftBrace {
+			brace := p.current()
+			p.advance()
+			value, err := p.parseExpression()
+			if err != nil {
+				return nil, 0, err
+			}
+			end, err := p.expect(lex.RightBrace, "expected '}' after embedded markup expression")
+			if err != nil {
+				return nil, 0, err
+			}
+			children = append(children, ast.MarkupChild{Value: value, Line: brace.Line, Column: brace.Column})
+			cursor = end.EndOffset
+			continue
+		}
+		if p.peek(1).Kind == lex.Slash {
+			closeStart := p.current().Offset
+			p.advance()
+			p.advance()
+			closing, err := p.parseMarkupName("expected closing markup tag name")
+			if err != nil {
+				return nil, 0, err
+			}
+			if closing != tag {
+				return nil, 0, p.errorAtCurrent(fmt.Sprintf("mismatched closing tag: expected </%s>, got </%s>", tag, closing))
+			}
+			if _, err := p.expect(lex.RightAngle, "expected '>' after closing markup tag"); err != nil {
+				return nil, 0, err
+			}
+			return children, closeStart, nil
+		}
+		value, err := p.parseMarkupElement()
+		if err != nil {
+			return nil, 0, err
+		}
+		children = append(children, ast.MarkupChild{Value: value})
+		cursor = p.tokens[p.position-1].EndOffset
 	}
 }
 

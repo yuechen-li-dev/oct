@@ -169,3 +169,35 @@ fn AcademicSemanticsAndCrossReferencesM3() -> Void {
     Assert.True(StringContains(markdown, "$$\nE = mc^2\n$$"), "equation projects to display math")
     Assert.Equal(1, Len(ValidateFor(Build([Equation("x + \\input{outside}")]), Format.Latex)), "equation payload rejects document-level commands")
 }
+
+[Fact]
+fn OctXMLDocumentAdaptersAndRawBodyM0() -> Void {
+    let markup = <Content>
+        <Title>Typed Markup</Title>
+        <SectionIdentified Id="method" Title="Method">
+            <RichParagraph>Hello <EquationRef Target="energy" />.</RichParagraph>
+            <LabeledEquation Id="energy">E = mc^2</LabeledEquation>
+            <Code Language="oct">
+                fn Energy(mass: Float, c: Float) -> Float {
+                    return mass * c * c
+                }
+            </Code>
+        </SectionIdentified>
+    </Content>
+    let ordinary =[
+        Title("Typed Markup"),
+        SectionIdentified("method", "Method",[
+            RichParagraph([Text("Hello "), EquationRef("energy"), Text(".")]),
+            LabeledEquation("energy", "E = mc^2"),
+            Code("oct",[
+                "fn Energy(mass: Float, c: Float) -> Float {",
+                "    return mass * c * c",
+                "}"
+            ])
+        ])
+    ]
+    let markupRendered = StringJoin(ToMarkdown(Build(markup)), "\n")
+    let ordinaryRendered = StringJoin(ToMarkdown(Build(ordinary)), "\n")
+    Assert.Equal(ordinaryRendered, markupRendered, "markup adapters preserve ordinary Document rendering")
+    Assert.True(StringContains(markupRendered, "    return mass * c * c"), "raw body preserves internal indentation")
+}

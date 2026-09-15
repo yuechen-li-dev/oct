@@ -305,3 +305,19 @@ func TestParametricSyntaxKeepsTypeAnglesAndContextualSelectorReadable(t *testing
 		t.Fatalf("parametric angles formatted as comparisons:\n%s", out)
 	}
 }
+
+func TestOctXMLMarkupIndentationIsReadableAndIdempotent(t *testing.T) {
+	input := "package Main\nrecord Node{Text:String Children:Node[]}\nfn MarkupTextNode(value:String)->Node{return Node{Text:value Children:[]}}\nfn Panel(children:Node[])->Node{return Node{Text:\"\" Children:children}}\nfn Main()->Node{\nreturn <Panel>\nHello\n<Panel />\n</Panel>\n}\n"
+	first, err := FormatSource(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := FormatSource(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("Oct-XML formatting is not idempotent:\n%s", first)
+	}
+	mustContain(t, first, "        Hello\n        <Panel />\n    </Panel>")
+}

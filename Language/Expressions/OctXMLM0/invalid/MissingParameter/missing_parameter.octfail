@@ -1,0 +1,6 @@
+expect error: "Panel is missing required parameter title"
+package MissingParameter
+
+record Node { Value: String }
+fn Panel(title: String, children: Node[]) -> Node { return Node {Value: title} }
+fn Main() -> Node { return <Panel /> }

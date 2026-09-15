@@ -1,0 +1,5 @@
+expect error: "unknown tag symbol Missing"
+package UnknownTag
+
+record Node { Value: String }
+fn Main() -> Node { return <Missing /> }

@@ -1,0 +1,6 @@
+expect error: "duplicate attribute Width"
+package DuplicateAttribute
+
+record Node { Value: String }
+fn Panel(width: Int) -> Node { return Node {Value: "x"} }
+fn Main() -> Node { return <Panel Width={1} Width={2} /> }

@@ -14,63 +14,66 @@ fn Paper() -> Document.Doc {
         Size: Document.PageSize.A4
         Margins: Document.MarginsLTRB(54.0, 54.0, 60.0, 60.0)
     },
-    [
-    Document.Title("Semantic Authority in Reproducible Technical Publishing"),
-    Document.Subtitle("A deterministic OctCument M3 acceptance specimen"),
-    Document.HeaderFooter(
-    [Document.DocumentTitle()],
-    [Document.Text("Page "), Document.PageNumber()]
-    ),
-    Document.Abstract([
-    Document.P("This paper demonstrates one typed semantic document lowered to a clean LaTeX publishing artifact and materialized as PDF without a second PDF-native document model.")
-    ]),
-    Document.SectionIdentified("introduction", "Introduction",[
-    Document.RichParagraph([
-    Document.Text("Reproducible publishing benefits from a single semantic authority. Prior work motivates deterministic artifact construction "),
-    Document.Cite("smith2024"),
-    Document.Text(".")
-    ])
-    ]),
-    Document.SectionIdentified("method", "Method",[
-    Document.RichParagraph([
-    Document.Text("The governing relation is shown in "),
-    Document.EquationRef("energy"),
-    Document.Text(". The implementation retains ordinary typed Oct authoring.")
-    ]),
-    Document.LabeledEquation("energy", "E = mc^2"),
-    Document.Code("oct",[
-    "fn Energy(mass: Float, c: Float) -> Float {",
-    "    return mass * c * c",
-    "}"
-    ])
-    ]),
-    Document.SectionIdentified("results", "Results",[
-    Document.FigureIdentified(
-    "response",
-    "../OctCumentScientificReport/adaptive-flow.png",
-    "Adaptive response used as a deterministic scientific asset",
-    Document.WidthMM(118.0)
-    ),
-    Document.TableWithCaption(
-    "comparison",
-    "Cross-backend semantic reference witness",
-    ["Target", "Resolved text"],
-    [["Equation", "Equation 1"], ["Figure", "Figure 1"], ["Table", "Table 1"]]
-    ),
-    Document.RichParagraph([
-    Document.Text("The evidence appears in "),
-    Document.FigureRef("response"),
-    Document.Text(" and "),
-    Document.TableRef("comparison"),
-    Document.Text("; the method is "),
-    Document.SectionRef("method"),
-    Document.Text(".")
-    ]),
-    Document.Callout(Document.CalloutKind.Info,[
-    Document.Text("The generated paper.tex is intentionally readable, diffable, and independently compilable.")
-    ])
-    ]),
-    Document.Bibliography("references.bib")
-    ]
+    <Document.Content>
+        <Document.Title>
+            Semantic Authority in Reproducible Technical Publishing
+        </Document.Title>
+        <Document.Subtitle>
+            A deterministic OctCument M3 acceptance specimen
+        </Document.Subtitle>
+        {Document.HeaderFooter(
+        [Document.DocumentTitle()],
+        [Document.Text("Page "), Document.PageNumber()]
+        )}
+        <Document.Abstract>
+            This paper demonstrates one typed semantic document lowered to a clean
+            LaTeX publishing artifact and materialized as PDF without a second
+            PDF-native document model.
+        </Document.Abstract>
+        <Document.SectionIdentified Id="introduction" Title="Introduction">
+            <Document.RichParagraph>
+                Reproducible publishing benefits from a single semantic authority.
+                Prior work motivates deterministic artifact construction
+                <Document.Cite Key="smith2024" />.
+            </Document.RichParagraph>
+        </Document.SectionIdentified>
+        <Document.SectionIdentified Id="method" Title="Method">
+            <Document.RichParagraph>
+                The governing relation is shown in
+                <Document.EquationRef Target="energy" />. The implementation
+                retains ordinary typed Oct authoring.
+            </Document.RichParagraph>
+            <Document.LabeledEquation Id="energy">E = mc^2</Document.LabeledEquation>
+            <Document.Code Language="oct">
+                fn Energy(mass: Float, c: Float) -> Float {
+                    return mass * c * c
+                }
+            </Document.Code>
+        </Document.SectionIdentified>
+        <Document.SectionIdentified Id="results" Title="Results">
+            <Document.FigureIdentified
+            Id="response"
+            Source="../OctCumentScientificReport/adaptive-flow.png"
+            Caption="Adaptive response used as a deterministic scientific asset"
+            Placement={Document.WidthMM(118.0)}
+            />
+            {Document.TableWithCaption(
+            "comparison",
+            "Cross-backend semantic reference witness",
+            ["Target", "Resolved text"],
+            [["Equation", "Equation 1"], ["Figure", "Figure 1"], ["Table", "Table 1"]]
+            )}
+            <Document.RichParagraph>
+                The evidence appears in <Document.FigureRef Target="response" /> and
+                <Document.TableRef Target="comparison" />; the method is
+                <Document.SectionRef Target="method" />.
+            </Document.RichParagraph>
+            <Document.Callout Kind={Document.CalloutKind.Info}>
+                The generated paper.tex is intentionally readable, diffable, and
+                independently compilable.
+            </Document.Callout>
+        </Document.SectionIdentified>
+        <Document.Bibliography Source="references.bib" />
+    </Document.Content>
     )
 }

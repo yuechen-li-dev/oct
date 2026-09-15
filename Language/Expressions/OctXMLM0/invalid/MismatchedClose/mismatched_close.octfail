@@ -1,0 +1,6 @@
+expect error: "mismatched closing tag: expected </Panel>, got </Label>"
+package MismatchedClose
+
+record Node { Value: String }
+fn Panel(children: Node[]) -> Node { return Node {Value: "x"} }
+fn Main() -> Node { return <Panel></Label> }
