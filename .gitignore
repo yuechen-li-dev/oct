@@ -63,6 +63,7 @@ Thumbs.db
 *.bench.cpu.pprof
 *.gen.go
 *.mir
+!book/compiler-optimization-by-example/snapshots/*.mir
 
 # Dist / temp output
 dist/

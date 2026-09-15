@@ -1,0 +1,4 @@
+fn WasmCompute.Add(__oct_user_0:Int, __oct_user_1:Int) -> Int
+  entry:
+    __oct_internal_tmp_0 = (__oct_user_0 + __oct_user_1)
+    return __oct_internal_tmp_0

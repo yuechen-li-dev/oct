@@ -29,6 +29,27 @@ func TestCompilerOptimizationBookMIRSnapshots(t *testing.T) {
 	}
 }
 
+func TestCompilerOptimizationBookCFGSnapshots(t *testing.T) {
+	module := loadWasmComputeMIR(t)
+	for _, name := range []string{"Max", "SumTo"} {
+		t.Run(name, func(t *testing.T) {
+			got, err := DumpCFG(findMIRFunction(t, module, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join("..", "..", "book", "compiler-optimization-by-example", "snapshots", snapshotName(name)+".cfg")
+			wantBytes, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := strings.TrimSpace(strings.ReplaceAll(string(wantBytes), "\r\n", "\n")) + "\n"
+			if got != want {
+				t.Fatalf("%s is stale\n--- snapshot ---\n%s--- current CFG ---\n%s", path, want, got)
+			}
+		})
+	}
+}
+
 func functionFromMIRDump(t *testing.T, dump, qualifiedName string) string {
 	t.Helper()
 	marker := "fn " + qualifiedName + "("

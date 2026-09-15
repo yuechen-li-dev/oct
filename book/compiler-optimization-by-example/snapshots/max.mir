@@ -1,0 +1,10 @@
+fn WasmCompute.Max(__oct_user_0:Int, __oct_user_1:Int) -> Int
+  entry:
+    __oct_internal_tmp_0 = (__oct_user_0 > __oct_user_1)
+    branch __oct_internal_tmp_0 ? b1 : b2
+  b1:
+    return __oct_user_0
+  b2:
+    jump b3
+  b3:
+    return __oct_user_1
