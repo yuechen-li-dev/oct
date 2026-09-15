@@ -4,25 +4,37 @@ import Document
 
 fn BuildReport() -> Document.Doc {
     return Document.BuildWith(
-        Document.Metadata { Title: "Aetheris Build Report" Author: "Oct Make" Subject: "Structured build evidence" },
-        Document.ProfessionalStyle(),
-        Document.DefaultLayout(),
-        [
-            Document.Title("Aetheris Build Report"),
-            Document.Callout(Document.CalloutKind.Success, [Document.Text("Status: qualified for the bounded M0 lane.")]),
-            Document.Section("Build Identity", [
-                Document.KeyValueTable(["Target", "Configuration", "Commit", "Result"], ["Firmament", "Release", "4f09d2a", "PASS"])
-            ]),
-            Document.Section("Completed Checks", [
-                Document.Bullets(["Compiler completed without fallback.", "STEP topology validation passed.", "Artifact hashes matched the recorded manifest."])
-            ]),
-            Document.Section("Artifacts", [
-                Document.Table(["Artifact", "Kind", "Status"], [["bracket.step", "CAD", "validated"], ["build-report.json", "evidence", "written"], ["preview.png", "visual", "reviewed"]])
-            ]),
-            Document.Callout(Document.CalloutKind.Warning, [Document.Strong("Diagnostic: "), Document.Text("remote CI was not run; this report records local evidence only.")]),
-            Document.Section("Output", [
-                Document.Code("text", ["compile: PASS", "topology: 1 solid, 18 faces", "artifact-sha256: 7b99...e104"])
-            ])
-        ]
+    Document.Metadata {Title: "Aetheris Build Report" Author: "Oct Make" Subject: "Structured build evidence"},
+    Document.ProfessionalStyle(),
+    Document.DefaultLayout(),
+    [
+    Document.HeaderFooter(
+    [Document.DocumentTitle(), Document.Text(" — engineering evidence")],
+    [Document.Text("Page "), Document.PageNumber(), Document.Text(" | "), Document.DocumentAuthor()]
+    ),
+    Document.Title("Aetheris Build Report"),
+    Document.Callout(Document.CalloutKind.Success,[Document.Text("Status: qualified for the bounded M0 lane.")]),
+    Document.Section("Build Identity",[
+    Document.KeyValueTable(["Target", "Configuration", "Commit", "Result"],["Firmament", "Release", "4f09d2a", "PASS"])
+    ]),
+    Document.Section("Completed Checks",[
+    Document.Bullets(["Compiler completed without fallback.", "STEP topology validation passed.", "Artifact hashes matched the recorded manifest."])
+    ]),
+    Document.Section("Artifacts",[
+    Document.TableWithCaption("artifact-table", "Qualified build artifacts",["Artifact", "Kind", "Status"],[["bracket.step", "CAD", "validated"],["build-report.json", "evidence", "written"],["preview.png", "visual", "reviewed"]]),
+    Document.RichParagraph([Document.Text("The evidence inventory is summarized in "), Document.TableRef("artifact-table"), Document.Text(".")])
+    ]),
+    Document.AnchoredFigureIdentified(
+    "assembly-layout",
+    "assembly-layout.png",
+    "Assembly layout positioned by explicit page geometry",
+    Document.PageAnchor(20.0, 30.0, 120.0)
+    ),
+    Document.RichParagraph([Document.Text("The manual fallback in "), Document.FigureRef("assembly-layout"), Document.Text(" is anchored 20 mm from the left page edge and 30 mm from the top page edge.")]),
+    Document.Callout(Document.CalloutKind.Warning,[Document.Strong("Diagnostic: "), Document.Text("remote CI was not run; this report records local evidence only.")]),
+    Document.Section("Output",[
+    Document.Code("text",["compile: PASS", "topology: 1 solid, 18 faces", "artifact-sha256: 7b99...e104"])
+    ])
+    ]
     )
 }

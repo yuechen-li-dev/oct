@@ -1742,8 +1742,8 @@ func (c *lowerCtx) lowerMatchExpr(e ast.MatchExpr) (string, string, bool, error)
 			if !ok {
 				bindingType = "any"
 			}
-			c.locals[matchCase.Binding] = bindingType
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: matchCase.Binding, Value: MIREnumPayload{Value: lowerMIRValue(subject, subjectType), PayloadType: bindingType}})
+			c.declareLocal(matchCase.Binding, bindingType)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(matchCase.Binding), Value: MIREnumPayload{Value: lowerMIRValue(subject, subjectType), PayloadType: bindingType}})
 		}
 		value, valueType, _, err := c.lowerExpr(matchCase.Value)
 		if err != nil {

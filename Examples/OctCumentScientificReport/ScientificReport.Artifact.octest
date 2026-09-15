@@ -11,6 +11,9 @@ fn ScientificReportM1SemanticWitness() -> Void {
     Assert.Equal(Len(first), Len(second), "deterministic markdown line count")
     Assert.Equal(first[0], second[0], "deterministic markdown content")
     Assert.Equal("#1F4E79", doc.Style.Heading1.Text.Color.Hex, "scientific theme")
+    Assert.Equal(0, Len(Document.ValidateFor(doc, Document.Format.Docx)), "M2 figure and reference capability")
+    let markdown = Document.ToMarkdown(doc)
+    Assert.True(Len(markdown) > 20, "M2 figure content rendered")
 }
 
 [Artifact]

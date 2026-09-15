@@ -5,7 +5,7 @@ record TemplateParameters {
 }
 
 fn TemplateMetadata(parameters: TemplateParameters) -> Metadata {
-    return Metadata { Title: parameters.Title Author: "Oct" Subject: "M1" }
+    return Metadata {Title: parameters.Title Author: "Oct" Subject: "M1"}
 }
 
 fn TemplateStyle(parameters: TemplateParameters) -> StyleSheet {
@@ -17,7 +17,7 @@ fn TemplateLayout(parameters: TemplateParameters) -> PageLayout {
 }
 
 fn TemplateContent(parameters: TemplateParameters) -> Block[] {
-    return [Title(parameters.Title), RichParagraph(JoinInline([Texts(["ordinary", " Oct"]), [Strong(" document")]], []))]
+    return[Title(parameters.Title), RichParagraph(JoinInline([Texts(["ordinary", " Oct"]),[Strong(" document")]],[]))]
 }
 
 [Fact]
@@ -25,24 +25,24 @@ fn ConstructionStylesAndMarkdownM0() -> Void {
     let base = DefaultStyle()
     let styled = base with {
         Heading1: base.Heading1 with {
-            Text: base.Heading1.Text with { SizePt: 11.0 Color: Hex("#2F5597") }
+            Text: base.Heading1.Text with {SizePt: 11.0 Color: Hex("#2F5597")}
         }
     }
     let doc = BuildWith(
-        Metadata { Title: "Structured report" Author: "Oct" Subject: "M0" },
-        styled,
-        DefaultLayout() with { Size: PageSize.A4 Margins: Margins { TopPt: 48.0 BottomPt: 48.0 LeftPt: 54.0 RightPt: 54.0 } },
-        [
-            Title("Structured report"),
-            RichParagraph([Text("A "), Strong("backend-neutral"), Text(" document with "), Emphasis("semantic"), Text(" values and "), InlineCode("code"), Text(". See "), Link("Oct", "https://oct-lang.dev"), Text(".")]),
-            Bullets(["first", "second"]),
-            Numbered(["one", "two"]),
-            KeyValueTable(["Status"], ["Green"]),
-            Code("oct", ["```oct", "let x = 1", "```"]),
-            Callout(CalloutKind.Warning, [Text("Check the evidence.")]),
-            HorizontalRule(),
-            PageBreak()
-        ]
+    Metadata {Title: "Structured report" Author: "Oct" Subject: "M0"},
+    styled,
+    DefaultLayout() with {Size: PageSize.A4 Margins: Margins {TopPt: 48.0 BottomPt: 48.0 LeftPt: 54.0 RightPt: 54.0}},
+    [
+    Title("Structured report"),
+    RichParagraph([Text("A "), Strong("backend-neutral"), Text(" document with "), Emphasis("semantic"), Text(" values and "), InlineCode("code"), Text(". See "), Link("Oct", "https://oct-lang.dev"), Text(".")]),
+    Bullets(["first", "second"]),
+    Numbered(["one", "two"]),
+    KeyValueTable(["Status"],["Green"]),
+    Code("oct",["```oct", "let x = 1", "```"]),
+    Callout(CalloutKind.Warning,[Text("Check the evidence.")]),
+    HorizontalRule(),
+    PageBreak()
+    ]
     )
     Assert.True(doc.Style.Heading1.Text.SizePt == 11.0, "nested with update")
     Assert.Equal(PageSize.A4, doc.Layout.Size, "page size")
@@ -59,10 +59,10 @@ fn ConstructionStylesAndMarkdownM0() -> Void {
 [Fact]
 fn CapabilityDiagnosticsM0() -> Void {
     let invalid = Build([
-        StructuredTable(
-            Row { Cells: Cells(["A", "B"]) },
-            [Row { Cells: Cells(["only one"]) }]
-        )
+    StructuredTable(
+    Row {Cells: Cells(["A", "B"])},
+    [Row {Cells: Cells(["only one"])}]
+    )
     ])
     let diagnostics = ValidateFor(invalid, Format.Docx)
     Assert.Equal(1, Len(diagnostics), "bounded diagnostics")
@@ -72,14 +72,14 @@ fn CapabilityDiagnosticsM0() -> Void {
 fn StyleHelpersThemesAndTemplateM1() -> Void {
     let professional = ProfessionalStyle()
     let heading = WithAlignment(
-        WithSpacing(
-            WithColor(WithTextSize(professional.Heading1, 11.0), Hex("#123456")),
-            5.0,
-            2.0
-        ),
-        Alignment.Center
+    WithSpacing(
+    WithColor(WithTextSize(professional.Heading1, 11.0), Hex("#123456")),
+    5.0,
+    2.0
+    ),
+    Alignment.Center
     )
-    let style = professional with { Heading1: heading }
+    let style = professional with {Heading1: heading}
     Assert.True(style.Heading1.Text.SizePt == 11.0, "text size helper")
     Assert.Equal("#123456", style.Heading1.Text.Color.Hex, "color helper")
     Assert.True(style.Heading1.SpaceBeforePt == 5.0, "spacing helper")
@@ -96,8 +96,46 @@ fn StyleHelpersThemesAndTemplateM1() -> Void {
         Layout: TemplateLayout
         Content: TemplateContent
     }
-    let doc = Instantiate<TemplateParameters>(templateValue, TemplateParameters { Title: "M1 proof" })
+    let doc = Instantiate<TemplateParameters>(templateValue, TemplateParameters {Title: "M1 proof"})
     Assert.Equal("M1 proof", doc.Metadata.Title, "template metadata")
     Assert.Equal("ordinary Oct** document**", ToMarkdown(doc)[2], "rich inline helpers")
     Assert.Equal("#1F4E79", ScientificStyle().Heading1.Text.Color.Hex, "scientific theme")
+}
+
+[Fact]
+fn FiguresReferencesChromeAndMarkdownM2() -> Void {
+    let doc = BuildWith(
+    Metadata {Title: "M2 report" Author: "Oct" Subject: "figures"},
+    ScientificStyle(),
+    DefaultLayout(),
+    [
+    HeaderFooter([DocumentTitle()],[Text("Page "), PageNumber(), Text(" — "), DocumentAuthor()]),
+    FigureIdentified("stress", "stress.png", "Stress", WidthMM(120.0)),
+    TableWithCaption("results", "Results",["Case", "Value"],[["A", "42"]]),
+    RichParagraph([Text("See "), FigureRef("stress"), Text(" and "), TableRef("results"), Text(".")])
+    ]
+    )
+    Assert.Equal(0, Len(ValidateFor(doc, Format.Docx)), "M2 document validates")
+    let markdown = ToMarkdown(doc)
+    Assert.Equal("![Stress](stress.png)", markdown[0], "semantic image")
+    Assert.Equal("*Figure 1 — Stress*", markdown[2], "figure caption numbering")
+    Assert.Equal("*Table 1 — Results*", markdown[7], "table caption numbering")
+    Assert.Equal("See Figure 1 and Table 1.", markdown[9], "cross-reference resolution")
+    let anchored = AnchoredFigureIdentified("manual", "manual.png", "Manual", PageAnchor(20.0, 30.0, 120.0))
+    let anchoredMarkdown = ToMarkdown(Build([anchored]))
+    Assert.Equal("![Manual](manual.png)", anchoredMarkdown[0], "anchored geometry degrades to flow in Markdown")
+    Assert.Equal("<!-- anchored figure geometry omitted in Markdown -->", anchoredMarkdown[3], "anchored geometry loss is explicit")
+}
+
+[Fact]
+fn FigureReferenceDiagnosticsM2() -> Void {
+    let invalid = Build([
+    FigureIdentified("same", "a.png", "A", WidthMM(10.0)),
+    FigureIdentified("same", "b.png", "B", WidthMM(10.0)),
+    RichParagraph([TableRef("same"), FigureRef("missing")])
+    ])
+    let diagnostics = ValidateFor(invalid, Format.Docx)
+    Assert.Equal(3, Len(diagnostics), "duplicate, wrong-kind, and missing reference diagnostics")
+    let negative = Anchor(FigureAnchor.Page, MM(- 1.0), MM(0.0), FigureWidth(MM(10.0)), FigureWrap.TopBottom, 0)
+    Assert.Equal(1, Len(ValidateFor(Build([AnchoredFigure("a.png", "A", negative)]), Format.Docx)), "negative anchored coordinate")
 }

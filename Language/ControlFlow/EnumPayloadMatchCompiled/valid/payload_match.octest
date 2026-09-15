@@ -10,10 +10,25 @@ enum Status {
     Active
 }
 
+record SamplePayload {Value: Float}
+record MessagePayload {Value: String}
+
+enum MixedPayload {
+    Sample(SamplePayload)
+    Message(MessagePayload)
+}
+
+fn DescribeMixed(input: MixedPayload) -> String {
+    return match input {
+        case MixedPayload.Sample(value) -> ToString(value.Value)
+        case MixedPayload.Message(value) -> value.Value
+    }
+}
+
 fn Normalize(reading: Reading) -> Float {
     return match reading {
-        case Reading.Valid(v) => v
-        case Reading.Missing(reason) => 0.0
+        case Reading.Valid(v) -> v
+        case Reading.Missing(reason) -> 0.0
     }
 }
 
@@ -32,8 +47,14 @@ fn PayloadMatchArithmetic() -> Void {
 fn NonPayloadEnumMatch() -> Void {
     let status = Status.Active
     let code = match status {
-        case Status.Idle => 0
-        case Status.Active => 1
+        case Status.Idle -> 0
+        case Status.Active -> 1
     }
     Assert.Equal(code, 1, "code")
+}
+
+[Fact]
+fn MatchBindingsMayReuseOneSourceNameAcrossPayloadTypes() -> Void {
+    Assert.Equal("2", DescribeMixed(MixedPayload.Sample(SamplePayload {Value: 2.0})), "record payload")
+    Assert.Equal("ready", DescribeMixed(MixedPayload.Message(MessagePayload {Value: "ready"})), "different record payload")
 }

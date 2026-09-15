@@ -52,6 +52,30 @@ enum Format {
     Docx
 }
 
+enum Length {
+    Pt(Float)
+    Mm(Float)
+}
+
+enum FigureAnchor {
+    Page
+    Margin
+    Paragraph
+    Character
+}
+
+enum FigureWrap {
+    Square
+    TopBottom
+    BehindText
+    InFrontOfText
+}
+
+enum ReferenceKind {
+    Figure
+    Table
+}
+
 concept HeadingLevel = Int {
     Require(Self >= 1, "heading level must be at least 1")
     Require(Self <= 2, "heading level must be at most 2 in Document M0")
@@ -124,13 +148,60 @@ record LinkValue {
     Url: String
 }
 
+record Reference {
+    Target: String
+    Kind: ReferenceKind
+}
+
 enum Inline {
     Text(String)
     Strong(String)
     Emphasis(String)
     Code(String)
     Link(LinkValue)
+    Reference(Reference)
+    PageNumber
+    DocumentTitle
+    DocumentAuthor
     LineBreak
+}
+
+record ExactFigureSize {
+    Width: Length
+    Height: Length
+}
+
+enum FigureSize {
+    Width(Length)
+    Exact(ExactFigureSize)
+}
+
+record AutoFigurePlacement {
+    Alignment: Alignment
+    KeepWithCaption: Bool
+    Size: FigureSize
+}
+
+record AnchoredFigurePlacement {
+    Anchor: FigureAnchor
+    X: Length
+    Y: Length
+    Size: FigureSize
+    Wrap: FigureWrap
+    ZOrder: Int
+}
+
+enum FigurePlacement {
+    Auto(AutoFigurePlacement)
+    Anchored(AnchoredFigurePlacement)
+}
+
+record FigureBlock {
+    Id: String
+    Source: String
+    Caption: Inline[]
+    AltText: String
+    Placement: FigurePlacement
 }
 
 record HeadingBlock {
@@ -163,6 +234,17 @@ record TableBlock {
     Body: Row[]
 }
 
+record LabeledTableBlock {
+    Id: String
+    Caption: Inline[]
+    Table: TableBlock
+}
+
+record PageChrome {
+    Header: Inline[]
+    Footer: Inline[]
+}
+
 record CodeBlock {
     Language: String
     Lines: String[]
@@ -178,6 +260,9 @@ enum Block {
     Paragraph(ParagraphBlock)
     List(ListBlock)
     Table(TableBlock)
+    LabeledTable(LabeledTableBlock)
+    Figure(FigureBlock)
+    PageChrome(PageChrome)
     Code(CodeBlock)
     Callout(CalloutBlock)
     HorizontalRule
@@ -200,7 +285,7 @@ template record Template<Parameters> {
 }
 
 fn Hex(value: String) -> Color {
-    return Color { Hex: value }
+    return Color {Hex: value}
 }
 
 fn Text(value: String) -> Inline {
@@ -220,7 +305,31 @@ fn InlineCode(value: String) -> Inline {
 }
 
 fn Link(text: String, url: String) -> Inline {
-    return Inline.Link(LinkValue { Text: text Url: url })
+    return Inline.Link(LinkValue {Text: text Url: url})
+}
+
+fn Ref(target: String, kind: ReferenceKind) -> Inline {
+    return Inline.Reference(Reference {Target: target Kind: kind})
+}
+
+fn FigureRef(target: String) -> Inline {
+    return Ref(target, ReferenceKind.Figure)
+}
+
+fn TableRef(target: String) -> Inline {
+    return Ref(target, ReferenceKind.Table)
+}
+
+fn PageNumber() -> Inline {
+    return Inline.PageNumber
+}
+
+fn DocumentTitle() -> Inline {
+    return Inline.DocumentTitle
+}
+
+fn DocumentAuthor() -> Inline {
+    return Inline.DocumentAuthor
 }
 
 fn Break() -> Inline {
@@ -228,22 +337,22 @@ fn Break() -> Inline {
 }
 
 fn Texts(values: String[]) -> Inline[] {
-    var out: Inline[] = []
-    for i in 0..Len(values) {
+    var out: Inline[] =[]
+    for i in 0 .. Len(values) {
         out = Append(out, Text(values[i]))
     }
     return out
 }
 
 fn JoinInline(groups: Inline[][], separator: Inline[]) -> Inline[] {
-    var out: Inline[] = []
-    for i in 0..Len(groups) {
+    var out: Inline[] =[]
+    for i in 0 .. Len(groups) {
         if i > 0 {
-            for separatorIndex in 0..Len(separator) {
+            for separatorIndex in 0 .. Len(separator) {
                 out = Append(out, separator[separatorIndex])
             }
         }
-        for itemIndex in 0..Len(groups[i]) {
+        for itemIndex in 0 .. Len(groups[i]) {
             out = Append(out, groups[i][itemIndex])
         }
     }
@@ -261,7 +370,7 @@ fn DefaultTextStyle() -> TextStyle {
 }
 
 fn TextStyleFrom(fontFamily: String, sizePt: PositivePoint, weight: FontWeight, italic: Bool, color: Color) -> TextStyle {
-    return TextStyle { FontFamily: fontFamily SizePt: sizePt Weight: weight Italic: italic Color: color }
+    return TextStyle {FontFamily: fontFamily SizePt: sizePt Weight: weight Italic: italic Color: color}
 }
 
 fn ParagraphStyleFrom(text: TextStyle, alignment: Alignment, before: NonNegativePoint, after: NonNegativePoint, lineSpacing: PositiveLineSpacing) -> ParagraphStyle {
@@ -275,35 +384,35 @@ fn ParagraphStyleFrom(text: TextStyle, alignment: Alignment, before: NonNegative
 }
 
 fn WithTextSize(style: ParagraphStyle, sizePt: PositivePoint) -> ParagraphStyle {
-    return style with { Text: style.Text with { SizePt: sizePt } }
+    return style with {Text: style.Text with {SizePt: sizePt}}
 }
 
 fn WithColor(style: ParagraphStyle, color: Color) -> ParagraphStyle {
-    return style with { Text: style.Text with { Color: color } }
+    return style with {Text: style.Text with {Color: color}}
 }
 
 fn WithFont(style: ParagraphStyle, fontFamily: String) -> ParagraphStyle {
-    return style with { Text: style.Text with { FontFamily: fontFamily } }
+    return style with {Text: style.Text with {FontFamily: fontFamily}}
 }
 
 fn WithWeight(style: ParagraphStyle, weight: FontWeight) -> ParagraphStyle {
-    return style with { Text: style.Text with { Weight: weight } }
+    return style with {Text: style.Text with {Weight: weight}}
 }
 
 fn WithItalic(style: ParagraphStyle, italic: Bool) -> ParagraphStyle {
-    return style with { Text: style.Text with { Italic: italic } }
+    return style with {Text: style.Text with {Italic: italic}}
 }
 
 fn WithSpacing(style: ParagraphStyle, before: NonNegativePoint, after: NonNegativePoint) -> ParagraphStyle {
-    return style with { SpaceBeforePt: before SpaceAfterPt: after }
+    return style with {SpaceBeforePt: before SpaceAfterPt: after}
 }
 
 fn WithAlignment(style: ParagraphStyle, alignment: Alignment) -> ParagraphStyle {
-    return style with { Alignment: alignment }
+    return style with {Alignment: alignment}
 }
 
 fn WithLineSpacing(style: ParagraphStyle, lineSpacing: PositiveLineSpacing) -> ParagraphStyle {
-    return style with { LineSpacing: lineSpacing }
+    return style with {LineSpacing: lineSpacing}
 }
 
 fn DefaultStyle() -> StyleSheet {
@@ -311,13 +420,13 @@ fn DefaultStyle() -> StyleSheet {
     let body = ParagraphStyleFrom(bodyText, Alignment.Left, 0.0, 6.0, 1.08)
     return StyleSheet {
         Body: body
-        Title: ParagraphStyleFrom(bodyText with { SizePt: 20.0 Weight: FontWeight.Bold }, Alignment.Center, 0.0, 3.0, 1.0)
-        Subtitle: ParagraphStyleFrom(bodyText with { SizePt: 11.0 Weight: FontWeight.Medium Color: Hex("#4A4A4A") }, Alignment.Center, 0.0, 8.0, 1.0)
-        Heading1: ParagraphStyleFrom(bodyText with { SizePt: 13.0 Weight: FontWeight.Bold Color: Hex("#000000") }, Alignment.Left, 9.0, 3.0, 1.0)
-        Heading2: ParagraphStyleFrom(bodyText with { SizePt: 11.0 Weight: FontWeight.Bold }, Alignment.Left, 6.0, 2.0, 1.0)
-        Caption: ParagraphStyleFrom(bodyText with { SizePt: 9.0 Italic: true Color: Hex("#595959") }, Alignment.Center, 3.0, 6.0, 1.0)
-        Code: ParagraphStyleFrom(bodyText with { FontFamily: "Cascadia Mono" SizePt: 9.0 }, Alignment.Left, 3.0, 6.0, 1.0)
-        Small: ParagraphStyleFrom(bodyText with { SizePt: 9.0 Color: Hex("#595959") }, Alignment.Left, 0.0, 3.0, 1.0)
+        Title: ParagraphStyleFrom(bodyText with {SizePt: 20.0 Weight: FontWeight.Bold}, Alignment.Center, 0.0, 3.0, 1.0)
+        Subtitle: ParagraphStyleFrom(bodyText with {SizePt: 11.0 Weight: FontWeight.Medium Color: Hex("#4A4A4A")}, Alignment.Center, 0.0, 8.0, 1.0)
+        Heading1: ParagraphStyleFrom(bodyText with {SizePt: 13.0 Weight: FontWeight.Bold Color: Hex("#000000")}, Alignment.Left, 9.0, 3.0, 1.0)
+        Heading2: ParagraphStyleFrom(bodyText with {SizePt: 11.0 Weight: FontWeight.Bold}, Alignment.Left, 6.0, 2.0, 1.0)
+        Caption: ParagraphStyleFrom(bodyText with {SizePt: 9.0 Italic: true Color: Hex("#595959")}, Alignment.Center, 3.0, 6.0, 1.0)
+        Code: ParagraphStyleFrom(bodyText with {FontFamily: "Cascadia Mono" SizePt: 9.0}, Alignment.Left, 3.0, 6.0, 1.0)
+        Small: ParagraphStyleFrom(bodyText with {SizePt: 9.0 Color: Hex("#595959")}, Alignment.Left, 0.0, 3.0, 1.0)
     }
 }
 
@@ -344,24 +453,24 @@ fn DefaultLayout() -> PageLayout {
     return PageLayout {
         Size: PageSize.Letter
         Orientation: Orientation.Portrait
-        Margins: Margins { TopPt: 54.0 BottomPt: 54.0 LeftPt: 54.0 RightPt: 54.0 }
+        Margins: Margins {TopPt: 54.0 BottomPt: 54.0 LeftPt: 54.0 RightPt: 54.0}
     }
 }
 
 fn MarginsLTRB(top: NonNegativePoint, bottom: NonNegativePoint, left: NonNegativePoint, right: NonNegativePoint) -> Margins {
-    return Margins { TopPt: top BottomPt: bottom LeftPt: left RightPt: right }
+    return Margins {TopPt: top BottomPt: bottom LeftPt: left RightPt: right}
 }
 
 fn EmptyMetadata() -> Metadata {
-    return Metadata { Title: "" Author: "" Subject: "" }
+    return Metadata {Title: "" Author: "" Subject: ""}
 }
 
 fn Build(content: Block[]) -> Doc {
-    return Doc { Metadata: EmptyMetadata() Style: DefaultStyle() Layout: DefaultLayout() Content: content }
+    return Doc {Metadata: EmptyMetadata() Style: DefaultStyle() Layout: DefaultLayout() Content: content}
 }
 
 fn BuildWith(metadata: Metadata, style: StyleSheet, layout: PageLayout, content: Block[]) -> Doc {
-    return Doc { Metadata: metadata Style: style Layout: layout Content: content }
+    return Doc {Metadata: metadata Style: style Layout: layout Content: content}
 }
 
 template fn Instantiate<Parameters>(templateValue: Template<Parameters>, parameters: Parameters) -> Doc {
@@ -373,23 +482,23 @@ template fn Instantiate<Parameters>(templateValue: Template<Parameters>, paramet
 }
 
 fn Heading(level: HeadingLevel, role: ParagraphRole, content: Inline[]) -> Block {
-    return Block.Heading(HeadingBlock { Level: level Content: content Role: role })
+    return Block.Heading(HeadingBlock {Level: level Content: content Role: role})
 }
 
 fn Title(value: String) -> Block {
-    return Heading(1, ParagraphRole.Title, [Text(value)])
+    return Heading(1, ParagraphRole.Title,[Text(value)])
 }
 
 fn Subtitle(value: String) -> Block {
-    return Block.Paragraph(ParagraphBlock { Content: [Text(value)] Role: ParagraphRole.Subtitle })
+    return Block.Paragraph(ParagraphBlock {Content:[Text(value)] Role: ParagraphRole.Subtitle})
 }
 
 fn H1(value: String) -> Block {
-    return Heading(1, ParagraphRole.Heading1, [Text(value)])
+    return Heading(1, ParagraphRole.Heading1,[Text(value)])
 }
 
 fn H2(value: String) -> Block {
-    return Heading(2, ParagraphRole.Heading2, [Text(value)])
+    return Heading(2, ParagraphRole.Heading2,[Text(value)])
 }
 
 fn P(value: String) -> Block {
@@ -397,75 +506,169 @@ fn P(value: String) -> Block {
 }
 
 fn RichParagraph(content: Inline[]) -> Block {
-    return Block.Paragraph(ParagraphBlock { Content: content Role: ParagraphRole.Body })
+    return Block.Paragraph(ParagraphBlock {Content: content Role: ParagraphRole.Body})
 }
 
 fn SmallParagraph(content: Inline[]) -> Block {
-    return Block.Paragraph(ParagraphBlock { Content: content Role: ParagraphRole.Small })
+    return Block.Paragraph(ParagraphBlock {Content: content Role: ParagraphRole.Small})
 }
 
 fn InlineItems(items: String[]) -> Inline[][] {
-    var out: Inline[][] = []
-    for i in 0..Len(items) {
-        out = Append(out, [Text(items[i])])
+    var out: Inline[][] =[]
+    for i in 0 .. Len(items) {
+        out = Append(out,[Text(items[i])])
     }
     return out
 }
 
 fn Bullets(items: String[]) -> Block {
-    return Block.List(ListBlock { Kind: ListKind.Bullet Items: InlineItems(items) })
+    return Block.List(ListBlock {Kind: ListKind.Bullet Items: InlineItems(items)})
 }
 
 fn Numbered(items: String[]) -> Block {
-    return Block.List(ListBlock { Kind: ListKind.Numbered Items: InlineItems(items) })
+    return Block.List(ListBlock {Kind: ListKind.Numbered Items: InlineItems(items)})
 }
 
 fn RichBullets(items: Inline[][]) -> Block {
-    return Block.List(ListBlock { Kind: ListKind.Bullet Items: items })
+    return Block.List(ListBlock {Kind: ListKind.Bullet Items: items})
 }
 
 fn RichNumbered(items: Inline[][]) -> Block {
-    return Block.List(ListBlock { Kind: ListKind.Numbered Items: items })
+    return Block.List(ListBlock {Kind: ListKind.Numbered Items: items})
 }
 
 fn Cells(values: String[]) -> Cell[] {
-    var out: Cell[] = []
-    for i in 0..Len(values) {
-        out = Append(out, Cell { Content: [Text(values[i])] Alignment: Alignment.Left })
+    var out: Cell[] =[]
+    for i in 0 .. Len(values) {
+        out = Append(out, Cell {Content:[Text(values[i])] Alignment: Alignment.Left})
     }
     return out
 }
 
 fn Rows(values: String[][]) -> Row[] {
-    var out: Row[] = []
-    for i in 0..Len(values) {
-        out = Append(out, Row { Cells: Cells(values[i]) })
+    var out: Row[] =[]
+    for i in 0 .. Len(values) {
+        out = Append(out, Row {Cells: Cells(values[i])})
     }
     return out
 }
 
 fn Table(headers: String[], rows: String[][]) -> Block {
-    return Block.Table(TableBlock { Header: Row { Cells: Cells(headers) } Body: Rows(rows) })
+    return Block.Table(TableBlock {Header: Row {Cells: Cells(headers)} Body: Rows(rows)})
+}
+
+fn TableWithCaption(id: String, caption: String, headers: String[], rows: String[][]) -> Block {
+    return Block.LabeledTable(LabeledTableBlock {
+        Id: id
+        Caption:[Text(caption)]
+        Table: TableBlock {Header: Row {Cells: Cells(headers)} Body: Rows(rows)}
+    })
 }
 
 fn StructuredTable(header: Row, body: Row[]) -> Block {
-    return Block.Table(TableBlock { Header: header Body: body })
+    return Block.Table(TableBlock {Header: header Body: body})
+}
+
+fn Pt(value: Float) -> Length {
+    return Length.Pt(value)
+}
+
+fn MM(value: Float) -> Length {
+    return Length.Mm(value)
+}
+
+fn FigureWidth(width: Length) -> FigureSize {
+    return FigureSize.Width(width)
+}
+
+fn FigureExact(width: Length, height: Length) -> FigureSize {
+    return FigureSize.Exact(ExactFigureSize {Width: width Height: height})
+}
+
+fn FigureAuto() -> FigurePlacement {
+    return FigurePlacement.Auto(AutoFigurePlacement {
+        Alignment: Alignment.Center
+        KeepWithCaption: true
+        Size: FigureSize.Width(MM(120.0))
+    })
+}
+
+fn WidthMM(width: Float) -> FigurePlacement {
+    return FigurePlacement.Auto(AutoFigurePlacement {
+        Alignment: Alignment.Center
+        KeepWithCaption: true
+        Size: FigureSize.Width(MM(width))
+    })
+}
+
+fn WidthPt(width: Float) -> FigurePlacement {
+    return FigurePlacement.Auto(AutoFigurePlacement {
+        Alignment: Alignment.Center
+        KeepWithCaption: true
+        Size: FigureSize.Width(Pt(width))
+    })
+}
+
+fn ExactMM(width: Float, height: Float) -> FigurePlacement {
+    return FigurePlacement.Auto(AutoFigurePlacement {
+        Alignment: Alignment.Center
+        KeepWithCaption: true
+        Size: FigureExact(MM(width), MM(height))
+    })
+}
+
+fn Anchor(anchor: FigureAnchor, x: Length, y: Length, size: FigureSize, wrap: FigureWrap, zOrder: Int) -> FigurePlacement {
+    return FigurePlacement.Anchored(AnchoredFigurePlacement {
+        Anchor: anchor X: x Y: y Size: size Wrap: wrap ZOrder: zOrder
+    })
+}
+
+fn PageAnchor(xMM: Float, yMM: Float, widthMM: Float) -> FigurePlacement {
+    return Anchor(FigureAnchor.Page, MM(xMM), MM(yMM), FigureWidth(MM(widthMM)), FigureWrap.Square, 1)
+}
+
+fn MarginAnchor(xMM: Float, yMM: Float, widthMM: Float) -> FigurePlacement {
+    return Anchor(FigureAnchor.Margin, MM(xMM), MM(yMM), FigureWidth(MM(widthMM)), FigureWrap.Square, 1)
+}
+
+fn Figure(source: String, caption: String, placement: FigurePlacement) -> Block {
+    return FigureWithCaption("", source, caption,[Text(caption)], placement)
+}
+
+fn FigureIdentified(id: String, source: String, caption: String, placement: FigurePlacement) -> Block {
+    return FigureWithCaption(id, source, caption,[Text(caption)], placement)
+}
+
+fn FigureWithCaption(id: String, source: String, altText: String, caption: Inline[], placement: FigurePlacement) -> Block {
+    return Block.Figure(FigureBlock {Id: id Source: source Caption: caption AltText: altText Placement: placement})
+}
+
+fn AnchoredFigure(source: String, caption: String, placement: FigurePlacement) -> Block {
+    return Figure(source, caption, placement)
+}
+
+fn AnchoredFigureIdentified(id: String, source: String, caption: String, placement: FigurePlacement) -> Block {
+    return FigureIdentified(id, source, caption, placement)
+}
+
+fn HeaderFooter(header: Inline[], footer: Inline[]) -> Block {
+    return Block.PageChrome(PageChrome {Header: header Footer: footer})
 }
 
 fn KeyValueTable(keys: String[], values: String[]) -> Block {
-    var rows: String[][] = []
-    for i in 0..Len(keys) {
-        rows = Append(rows, [keys[i], values[i]])
+    var rows: String[][] =[]
+    for i in 0 .. Len(keys) {
+        rows = Append(rows,[keys[i], values[i]])
     }
     return Table(["Key", "Value"], rows)
 }
 
 fn Code(language: String, lines: String[]) -> Block {
-    return Block.Code(CodeBlock { Language: language Lines: lines })
+    return Block.Code(CodeBlock {Language: language Lines: lines})
 }
 
 fn Callout(kind: CalloutKind, content: Inline[]) -> Block {
-    return Block.Callout(CalloutBlock { Kind: kind Content: content })
+    return Block.Callout(CalloutBlock {Kind: kind Content: content})
 }
 
 fn HorizontalRule() -> Block {
@@ -481,49 +684,209 @@ fn Group(blocks: Block[]) -> Block {
 }
 
 fn Section(title: String, blocks: Block[]) -> Block {
-    var content: Block[] = [H1(title)]
-    for i in 0..Len(blocks) {
+    var content: Block[] =[H1(title)]
+    for i in 0 .. Len(blocks) {
         content = Append(content, blocks[i])
     }
     return Group(content)
 }
 
 fn Subsection(title: String, blocks: Block[]) -> Block {
-    var content: Block[] = [H2(title)]
-    for i in 0..Len(blocks) {
+    var content: Block[] =[H2(title)]
+    for i in 0 .. Len(blocks) {
         content = Append(content, blocks[i])
     }
     return Group(content)
 }
 
+record Numbering {
+    Ids: String[]
+    Kinds: ReferenceKind[]
+    Numbers: Int[]
+    FigureCount: Int
+    TableCount: Int
+    Diagnostics: String[]
+}
+
+record ResolveBlocksResult {
+    Blocks: Block[]
+    FigureCount: Int
+    TableCount: Int
+}
+
+fn EmptyNumbering() -> Numbering {
+    return Numbering {Ids:[] Kinds:[] Numbers:[] FigureCount: 0 TableCount: 0 Diagnostics:[]}
+}
+
+fn FindIdentifier(ids: String[], target: String) -> Int {
+    for i in 0 .. Len(ids) {
+        if ids[i] == target {
+            return i
+        }
+    }
+    return - 1
+}
+
+fn RegisterIdentifier(state: Numbering, id: String, kind: ReferenceKind, number: Int) -> Numbering {
+    if id == "" {
+        return state
+    }
+    if FindIdentifier(state.Ids, id) >= 0 {
+        return state with {Diagnostics: Append(state.Diagnostics, "Document identifier is duplicated: " + id)}
+    }
+    return state with {
+        Ids: Append(state.Ids, id)
+        Kinds: Append(state.Kinds, kind)
+        Numbers: Append(state.Numbers, number)
+    }
+}
+
+fn CollectNumbering(blocks: Block[], initial: Numbering) -> Numbering {
+    var state = initial
+    for i in 0 .. Len(blocks) {
+        state = CollectNumberingBlock(blocks[i], state)
+    }
+    return state
+}
+
+fn CollectNumberingBlock(block: Block, state: Numbering) -> Numbering {
+    return match block {
+        case Block.Figure(figureValue) -> RegisterIdentifier(state with {FigureCount: state.FigureCount + 1}, figureValue.Id, ReferenceKind.Figure, state.FigureCount + 1)
+        case Block.LabeledTable(tableValue) -> RegisterIdentifier(state with {TableCount: state.TableCount + 1}, tableValue.Id, ReferenceKind.Table, state.TableCount + 1)
+        case Block.Group(children) -> CollectNumbering(children, state)
+        case Block.Heading(headingValue) -> state
+        case Block.Paragraph(paragraphValue) -> state
+        case Block.List(listValue) -> state
+        case Block.Table(tableValue) -> state
+        case Block.PageChrome(chromeValue) -> state
+        case Block.Code(codeValue) -> state
+        case Block.Callout(calloutValue) -> state
+        case Block.HorizontalRule -> state
+        case Block.PageBreak -> state
+    }
+}
+
 fn ValidateFor(doc: Doc, format: Format) -> String[] {
-    var diagnostics: String[] = []
-    for i in 0..Len(doc.Content) {
-        diagnostics = ValidateBlock(doc.Content[i], format, diagnostics)
+    let numbering = CollectNumbering(doc.Content, EmptyNumbering())
+    return ValidateBlocks(doc.Content, format, numbering, numbering.Diagnostics)
+}
+
+fn ValidateBlock(block: Block, format: Format, numbering: Numbering, diagnostics: String[]) -> String[] {
+    return match block {
+        case Block.Heading(headingValue) -> ValidateInlines(headingValue.Content, numbering, ValidateHeading(headingValue, diagnostics))
+        case Block.Paragraph(paragraphValue) -> ValidateInlines(paragraphValue.Content, numbering, diagnostics)
+        case Block.List(listValue) -> ValidateInlineGroups(listValue.Items, numbering, diagnostics)
+        case Block.Table(tableValue) -> ValidateTableInlines(tableValue, numbering, ValidateTable(tableValue, diagnostics))
+        case Block.LabeledTable(tableValue) -> ValidateTableInlines(tableValue.Table, numbering, ValidateInlines(tableValue.Caption, numbering, ValidateTable(tableValue.Table, diagnostics)))
+        case Block.Figure(figureValue) -> ValidateFigure(figureValue, numbering, diagnostics)
+        case Block.PageChrome(chromeValue) -> ValidateInlines(chromeValue.Footer, numbering, ValidateInlines(chromeValue.Header, numbering, diagnostics))
+        case Block.Code(codeValue) -> diagnostics
+        case Block.Callout(calloutValue) -> ValidateInlines(calloutValue.Content, numbering, diagnostics)
+        case Block.HorizontalRule -> diagnostics
+        case Block.PageBreak -> diagnostics
+        case Block.Group(children) -> ValidateBlocks(children, format, numbering, diagnostics)
+    }
+}
+
+fn ValidateBlocks(blocks: Block[], format: Format, numbering: Numbering, diagnostics: String[]) -> String[] {
+    var out = diagnostics
+    for i in 0 .. Len(blocks) {
+        out = ValidateBlock(blocks[i], format, numbering, out)
+    }
+    return out
+}
+
+fn ValidateInlines(content: Inline[], numbering: Numbering, diagnostics: String[]) -> String[] {
+    var out = diagnostics
+    for i in 0 .. Len(content) {
+        out = match content[i] {
+            case Inline.Reference(referenceValue) -> ValidateReference(referenceValue, numbering, out)
+            case Inline.Text(textValue) -> out
+            case Inline.Strong(strongValue) -> out
+            case Inline.Emphasis(emphasisValue) -> out
+            case Inline.Code(codeValue) -> out
+            case Inline.Link(linkValue) -> out
+            case Inline.PageNumber -> out
+            case Inline.DocumentTitle -> out
+            case Inline.DocumentAuthor -> out
+            case Inline.LineBreak -> out
+        }
+    }
+    return out
+}
+
+fn ValidateInlineGroups(groups: Inline[][], numbering: Numbering, diagnostics: String[]) -> String[] {
+    var out = diagnostics
+    for i in 0 .. Len(groups) {
+        out = ValidateInlines(groups[i], numbering, out)
+    }
+    return out
+}
+
+fn ValidateTableInlines(table: TableBlock, numbering: Numbering, diagnostics: String[]) -> String[] {
+    var out = ValidateRowInlines(table.Header, numbering, diagnostics)
+    for i in 0 .. Len(table.Body) {
+        out = ValidateRowInlines(table.Body[i], numbering, out)
+    }
+    return out
+}
+
+fn ValidateRowInlines(row: Row, numbering: Numbering, diagnostics: String[]) -> String[] {
+    var out = diagnostics
+    for i in 0 .. Len(row.Cells) {
+        out = ValidateInlines(row.Cells[i].Content, numbering, out)
+    }
+    return out
+}
+
+fn ValidateReference(referenceValue: Reference, numbering: Numbering, diagnostics: String[]) -> String[] {
+    let index = FindIdentifier(numbering.Ids, referenceValue.Target)
+    if index < 0 {
+        return Append(diagnostics, "Document reference target not found: " + referenceValue.Target)
+    }
+    if numbering.Kinds[index] != referenceValue.Kind {
+        return Append(diagnostics, "Document reference kind mismatch for " + referenceValue.Target)
     }
     return diagnostics
 }
 
-fn ValidateBlock(block: Block, format: Format, diagnostics: String[]) -> String[] {
-    return match block {
-        case Block.Heading(headingValue) => ValidateHeading(headingValue, diagnostics)
-        case Block.Paragraph(paragraphValue) => diagnostics
-        case Block.List(listValue) => diagnostics
-        case Block.Table(tableValue) => ValidateTable(tableValue, diagnostics)
-        case Block.Code(codeValue) => diagnostics
-        case Block.Callout(calloutValue) => diagnostics
-        case Block.HorizontalRule => diagnostics
-        case Block.PageBreak => diagnostics
-        case Block.Group(children) => ValidateBlocks(children, format, diagnostics)
+fn LengthValue(length: Length) -> Float {
+    return match length {
+        case Length.Pt(value) -> value
+        case Length.Mm(value) -> value
     }
 }
 
-fn ValidateBlocks(blocks: Block[], format: Format, diagnostics: String[]) -> String[] {
-    var out = diagnostics
-    for i in 0..Len(blocks) {
-        out = ValidateBlock(blocks[i], format, out)
+fn ValidateFigureSize(size: FigureSize, diagnostics: String[]) -> String[] {
+    return match size {
+        case FigureSize.Width(width) -> if LengthValue(width) > 0.0 {diagnostics} else {Append(diagnostics, "Document figure width must be positive")}
+        case FigureSize.Exact(exact) -> if LengthValue(exact.Width) > 0.0 and LengthValue(exact.Height) > 0.0 {diagnostics} else {Append(diagnostics, "Document figure width and height must be positive")}
     }
-    return out
+}
+
+fn ValidateFigure(figureValue: FigureBlock, numbering: Numbering, diagnostics: String[]) -> String[] {
+    var out = ValidateInlines(figureValue.Caption, numbering, diagnostics)
+    if figureValue.Source == "" {
+        out = Append(out, "Document figure source must not be empty")
+    }
+    if figureValue.AltText == "" {
+        out = Append(out, "Document figure alt text must not be empty")
+    }
+    return match figureValue.Placement {
+        case FigurePlacement.Auto(autoValue) -> ValidateFigureSize(autoValue.Size, out)
+        case FigurePlacement.Anchored(anchorValue) -> ValidateAnchoredFigure(anchorValue, out)
+    }
+}
+
+fn ValidateAnchoredFigure(anchorValue: AnchoredFigurePlacement, diagnostics: String[]) -> String[] {
+    var out = diagnostics
+    if LengthValue(anchorValue.X) < 0.0 or LengthValue(anchorValue.Y) < 0.0 {
+        out = Append(out, "Document anchored figure coordinates must be non-negative")
+    }
+    if anchorValue.ZOrder<0 {
+        out = Append(out, "Document anchored figure z-order must be non-negative")
+    }
+    return ValidateFigureSize(anchorValue.Size, out)
 }
 
 fn ValidateHeading(heading: HeadingBlock, diagnostics: String[]) -> String[] {
@@ -536,7 +899,7 @@ fn ValidateTable(table: TableBlock, diagnostics: String[]) -> String[] {
         return Append(diagnostics, "Document table header must contain at least one cell")
     }
     var out = diagnostics
-    for i in 0..Len(table.Body) {
+    for i in 0 .. Len(table.Body) {
         if Len(table.Body[i].Cells) != columns {
             out = Append(out, "Document table rows must match the header cell count")
         }
@@ -544,15 +907,131 @@ fn ValidateTable(table: TableBlock, diagnostics: String[]) -> String[] {
     return out
 }
 
+fn Resolve(doc: Doc) -> Doc {
+    let numbering = CollectNumbering(doc.Content, EmptyNumbering())
+    let resolved = ResolveBlocks(doc.Content, numbering, doc.Metadata, 0, 0)
+    return doc with {Content: resolved.Blocks}
+}
+
+fn ResolveBlocks(blocks: Block[], numbering: Numbering, metadata: Metadata, figureCount: Int, tableCount: Int) -> ResolveBlocksResult {
+    var out: Block[] =[]
+    var figures = figureCount
+    var tables = tableCount
+    for i in 0 .. Len(blocks) {
+        let resolved = ResolveBlock(blocks[i], numbering, metadata, figures, tables)
+        out = Append(out, resolved.Blocks[0])
+        figures = resolved.FigureCount
+        tables = resolved.TableCount
+    }
+    return ResolveBlocksResult {Blocks: out FigureCount: figures TableCount: tables}
+}
+
+fn ResolveBlock(block: Block, numbering: Numbering, metadata: Metadata, figureCount: Int, tableCount: Int) -> ResolveBlocksResult {
+    return match block {
+        case Block.Heading(value) -> OneResolved(Block.Heading(value with {Content: ResolveInlines(value.Content, numbering, metadata)}), figureCount, tableCount)
+        case Block.Paragraph(value) -> OneResolved(Block.Paragraph(value with {Content: ResolveInlines(value.Content, numbering, metadata)}), figureCount, tableCount)
+        case Block.List(value) -> OneResolved(Block.List(value with {Items: ResolveInlineGroups(value.Items, numbering, metadata)}), figureCount, tableCount)
+        case Block.Table(value) -> OneResolved(Block.Table(ResolveTableReferences(value, numbering, metadata)), figureCount, tableCount)
+        case Block.LabeledTable(value) -> OneResolved(Block.LabeledTable(value with {Caption: NumberedCaption("Table", tableCount + 1, ResolveInlines(value.Caption, numbering, metadata)) Table: ResolveTableReferences(value.Table, numbering, metadata)}), figureCount, tableCount + 1)
+        case Block.Figure(value) -> OneResolved(Block.Figure(value with {Caption: NumberedCaption("Figure", figureCount + 1, ResolveInlines(value.Caption, numbering, metadata))}), figureCount + 1, tableCount)
+        case Block.PageChrome(value) -> OneResolved(Block.PageChrome(value with {Header: ResolveInlines(value.Header, numbering, metadata) Footer: ResolveInlines(value.Footer, numbering, metadata)}), figureCount, tableCount)
+        case Block.Code(value) -> OneResolved(block, figureCount, tableCount)
+        case Block.Callout(value) -> OneResolved(Block.Callout(value with {Content: ResolveInlines(value.Content, numbering, metadata)}), figureCount, tableCount)
+        case Block.HorizontalRule -> OneResolved(block, figureCount, tableCount)
+        case Block.PageBreak -> OneResolved(block, figureCount, tableCount)
+        case Block.Group(children) -> ResolveGroup(children, numbering, metadata, figureCount, tableCount)
+    }
+}
+
+fn OneResolved(block: Block, figureCount: Int, tableCount: Int) -> ResolveBlocksResult {
+    return ResolveBlocksResult {Blocks:[block] FigureCount: figureCount TableCount: tableCount}
+}
+
+fn ResolveGroup(children: Block[], numbering: Numbering, metadata: Metadata, figureCount: Int, tableCount: Int) -> ResolveBlocksResult {
+    let nested = ResolveBlocks(children, numbering, metadata, figureCount, tableCount)
+    return ResolveBlocksResult {Blocks:[Block.Group(nested.Blocks)] FigureCount: nested.FigureCount TableCount: nested.TableCount}
+}
+
+fn NumberedCaption(kind: String, number: Int, caption: Inline[]) -> Inline[] {
+    if Len(caption) == 0 {
+        return caption
+    }
+    var out: Inline[] =[Text(kind + " " + ToString(number) + " — ")]
+    for i in 0 .. Len(caption) {
+        out = Append(out, caption[i])
+    }
+    return out
+}
+
+fn ResolveInlines(content: Inline[], numbering: Numbering, metadata: Metadata) -> Inline[] {
+    var out: Inline[] =[]
+    for i in 0 .. Len(content) {
+        out = Append(out, ResolveInline(content[i], numbering, metadata))
+    }
+    return out
+}
+
+fn ResolveInline(inline: Inline, numbering: Numbering, metadata: Metadata) -> Inline {
+    return match inline {
+        case Inline.Reference(value) -> Text(ReferenceText(value, numbering))
+        case Inline.DocumentTitle -> Text(metadata.Title)
+        case Inline.DocumentAuthor -> Text(metadata.Author)
+        case Inline.Text(value) -> inline
+        case Inline.Strong(value) -> inline
+        case Inline.Emphasis(value) -> inline
+        case Inline.Code(value) -> inline
+        case Inline.Link(value) -> inline
+        case Inline.PageNumber -> inline
+        case Inline.LineBreak -> inline
+    }
+}
+
+fn ReferenceText(referenceValue: Reference, numbering: Numbering) -> String {
+    let index = FindIdentifier(numbering.Ids, referenceValue.Target)
+    if index < 0 or numbering.Kinds[index] != referenceValue.Kind {
+        return "??"
+    }
+    let kind = switch referenceValue.Kind {
+        case ReferenceKind.Figure -> "Figure"
+        case ReferenceKind.Table -> "Table"
+    }
+    return kind + " " + ToString(numbering.Numbers[index])
+}
+
+fn ResolveInlineGroups(groups: Inline[][], numbering: Numbering, metadata: Metadata) -> Inline[][] {
+    var out: Inline[][] =[]
+    for i in 0 .. Len(groups) {
+        out = Append(out, ResolveInlines(groups[i], numbering, metadata))
+    }
+    return out
+}
+
+fn ResolveTableReferences(table: TableBlock, numbering: Numbering, metadata: Metadata) -> TableBlock {
+    var body: Row[] =[]
+    for i in 0 .. Len(table.Body) {
+        body = Append(body, ResolveRowReferences(table.Body[i], numbering, metadata))
+    }
+    return table with {Header: ResolveRowReferences(table.Header, numbering, metadata) Body: body}
+}
+
+fn ResolveRowReferences(row: Row, numbering: Numbering, metadata: Metadata) -> Row {
+    var cells: Cell[] =[]
+    for i in 0 .. Len(row.Cells) {
+        cells = Append(cells, row.Cells[i] with {Content: ResolveInlines(row.Cells[i].Content, numbering, metadata)})
+    }
+    return row with {Cells: cells}
+}
+
 fn ToMarkdown(doc: Doc) -> String[] {
-    var out: String[] = []
-    for i in 0..Len(doc.Content) {
-        let rendered = RenderMarkdownBlock(doc.Content[i])
+    let resolvedDoc = Resolve(doc)
+    var out: String[] =[]
+    for i in 0 .. Len(resolvedDoc.Content) {
+        let rendered = RenderMarkdownBlock(resolvedDoc.Content[i])
         if Len(rendered) > 0 {
             if Len(out) > 0 {
                 out = Append(out, "")
             }
-            for lineIndex in 0..Len(rendered) {
+            for lineIndex in 0 .. Len(rendered) {
                 out = Append(out, rendered[lineIndex])
             }
         }
@@ -562,27 +1041,35 @@ fn ToMarkdown(doc: Doc) -> String[] {
 
 fn RenderMarkdownBlock(block: Block) -> String[] {
     return match block {
-        case Block.Heading(headingValue) => RenderMarkdownHeading(headingValue)
-        case Block.Paragraph(paragraphValue) => [RenderMarkdownInlines(paragraphValue.Content)]
-        case Block.List(listValue) => RenderMarkdownList(listValue)
-        case Block.Table(tableValue) => RenderMarkdownTable(tableValue)
-        case Block.Code(codeValue) => MarkdownCodeBlock(codeValue.Language, codeValue.Lines)
-        case Block.Callout(calloutValue) => MarkdownCallout(CalloutName(calloutValue.Kind), [RenderMarkdownInlines(calloutValue.Content)])
-        case Block.HorizontalRule => ["---"]
-        case Block.PageBreak => ["<!-- pagebreak -->"]
-        case Block.Group(children) => RenderMarkdownBlocks(children)
+        case Block.Heading(headingValue) -> RenderMarkdownHeading(headingValue)
+        case Block.Paragraph(paragraphValue) ->[RenderMarkdownInlines(paragraphValue.Content)]
+        case Block.List(listValue) -> RenderMarkdownList(listValue)
+        case Block.Table(tableValue) -> RenderMarkdownTable(tableValue)
+        case Block.LabeledTable(tableValue) -> RenderMarkdownLabeledTable(tableValue)
+        case Block.Figure(figureValue) -> RenderMarkdownFigure(figureValue)
+        case Block.PageChrome(chromeValue) -> EmptyMarkdownLines()
+        case Block.Code(codeValue) -> MarkdownCodeBlock(codeValue.Language, codeValue.Lines)
+        case Block.Callout(calloutValue) -> MarkdownCallout(CalloutName(calloutValue.Kind),[RenderMarkdownInlines(calloutValue.Content)])
+        case Block.HorizontalRule ->["---"]
+        case Block.PageBreak ->["<!-- pagebreak -->"]
+        case Block.Group(children) -> RenderMarkdownBlocks(children)
     }
 }
 
+fn EmptyMarkdownLines() -> String[] {
+    var out: String[] =[]
+    return out
+}
+
 fn RenderMarkdownBlocks(blocks: Block[]) -> String[] {
-    var out: String[] = []
-    for i in 0..Len(blocks) {
+    var out: String[] =[]
+    for i in 0 .. Len(blocks) {
         let rendered = RenderMarkdownBlock(blocks[i])
         if Len(rendered) > 0 {
             if Len(out) > 0 {
                 out = Append(out, "")
             }
-            for lineIndex in 0..Len(rendered) {
+            for lineIndex in 0 .. Len(rendered) {
                 out = Append(out, rendered[lineIndex])
             }
         }
@@ -592,14 +1079,14 @@ fn RenderMarkdownBlocks(blocks: Block[]) -> String[] {
 
 fn RenderMarkdownHeading(heading: HeadingBlock) -> String[] {
     if heading.Level == 1 {
-        return ["# " + RenderMarkdownInlines(heading.Content)]
+        return["# " + RenderMarkdownInlines(heading.Content)]
     }
-    return ["## " + RenderMarkdownInlines(heading.Content)]
+    return["## " + RenderMarkdownInlines(heading.Content)]
 }
 
 fn RenderMarkdownInlines(content: Inline[]) -> String {
-    var parts: String[] = []
-    for i in 0..Len(content) {
+    var parts: String[] =[]
+    for i in 0 .. Len(content) {
         parts = Append(parts, RenderMarkdownInline(content[i]))
     }
     return StringConcat(parts)
@@ -607,12 +1094,16 @@ fn RenderMarkdownInlines(content: Inline[]) -> String {
 
 fn RenderMarkdownInline(inline: Inline) -> String {
     return match inline {
-        case Inline.Text(textValue) => MarkdownInlineText(textValue)
-        case Inline.Strong(strongValue) => "**" + MarkdownInlineText(strongValue) + "**"
-        case Inline.Emphasis(emphasisValue) => "*" + MarkdownInlineText(emphasisValue) + "*"
-        case Inline.Code(codeValue) => "`" + codeValue + "`"
-        case Inline.Link(linkValue) => "[" + MarkdownInlineText(linkValue.Text) + "](" + linkValue.Url + ")"
-        case Inline.LineBreak => "  \n"
+        case Inline.Text(textValue) -> MarkdownInlineText(textValue)
+        case Inline.Strong(strongValue) -> "**" + MarkdownInlineText(strongValue) + "**"
+        case Inline.Emphasis(emphasisValue) -> "*" + MarkdownInlineText(emphasisValue) + "*"
+        case Inline.Code(codeValue) -> "`" + codeValue + "`"
+        case Inline.Link(linkValue) -> "[" + MarkdownInlineText(linkValue.Text) + "](" + linkValue.Url + ")"
+        case Inline.Reference(referenceValue) -> "??"
+        case Inline.PageNumber -> "{page}"
+        case Inline.DocumentTitle -> "{document-title}"
+        case Inline.DocumentAuthor -> "{document-author}"
+        case Inline.LineBreak -> "  \n"
     }
 }
 
@@ -621,12 +1112,12 @@ fn MarkdownInlineText(value: String) -> String {
 }
 
 fn RenderMarkdownList(list: ListBlock) -> String[] {
-    var out: String[] = []
+    var out: String[] =[]
     var index = 1
-    for i in 0..Len(list.Items) {
+    for i in 0 .. Len(list.Items) {
         let prefix = switch list.Kind {
-            case ListKind.Bullet => "- "
-            case ListKind.Numbered => ToString(index) + ". "
+            case ListKind.Bullet -> "- "
+            case ListKind.Numbered -> ToString(index) + ". "
         }
         out = Append(out, prefix + RenderMarkdownInlines(list.Items[i]))
         index = index + 1
@@ -635,22 +1126,40 @@ fn RenderMarkdownList(list: ListBlock) -> String[] {
 }
 
 fn RenderMarkdownTable(table: TableBlock) -> String[] {
-    var out: String[] = []
+    var out: String[] =[]
     out = Append(out, RenderMarkdownRow(table.Header))
     var separator = "|"
-    for i in 0..Len(table.Header.Cells) {
+    for i in 0 .. Len(table.Header.Cells) {
         separator = separator + " --- |"
     }
     out = Append(out, separator)
-    for i in 0..Len(table.Body) {
+    for i in 0 .. Len(table.Body) {
         out = Append(out, RenderMarkdownRow(table.Body[i]))
+    }
+    return out
+}
+
+fn RenderMarkdownLabeledTable(table: LabeledTableBlock) -> String[] {
+    let rendered = RenderMarkdownTable(table.Table)
+    return Append(rendered, "*" + RenderMarkdownInlines(table.Caption) + "*")
+}
+
+fn RenderMarkdownFigure(figureValue: FigureBlock) -> String[] {
+    var out: String[] =["![" + MarkdownInlineText(figureValue.AltText) + "](" + figureValue.Source + ")"]
+    if Len(figureValue.Caption) > 0 {
+        out = Append(out, "")
+        out = Append(out, "*" + RenderMarkdownInlines(figureValue.Caption) + "*")
+    }
+    out = match figureValue.Placement {
+        case FigurePlacement.Auto(autoValue) -> out
+        case FigurePlacement.Anchored(anchorValue) -> Append(out, "<!-- anchored figure geometry omitted in Markdown -->")
     }
     return out
 }
 
 fn RenderMarkdownRow(row: Row) -> String {
     var line = "|"
-    for i in 0..Len(row.Cells) {
+    for i in 0 .. Len(row.Cells) {
         line = line + " " + MarkdownEscapeTableCell(RenderMarkdownInlines(row.Cells[i].Content)) + " |"
     }
     return line
@@ -658,10 +1167,10 @@ fn RenderMarkdownRow(row: Row) -> String {
 
 fn CalloutName(kind: CalloutKind) -> String {
     return switch kind {
-        case CalloutKind.Note => "note"
-        case CalloutKind.Info => "info"
-        case CalloutKind.Warning => "warning"
-        case CalloutKind.Danger => "danger"
-        case CalloutKind.Success => "success"
+        case CalloutKind.Note -> "note"
+        case CalloutKind.Info -> "info"
+        case CalloutKind.Warning -> "warning"
+        case CalloutKind.Danger -> "danger"
+        case CalloutKind.Success -> "success"
     }
 }

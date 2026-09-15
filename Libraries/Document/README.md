@@ -1,4 +1,4 @@
-# Document Library (OctCument M1)
+# Document Library (OctCument M2)
 
 `Libraries/Document` is the canonical backend-neutral structured-document model.
 Documents are ordinary immutable Oct records, enums, arrays, and functions. Markdown
@@ -30,6 +30,38 @@ helpers should return `Document.Block`; the core has no resume/report domain blo
 `Texts` and `JoinInline` help compose explicit typed inline fragments without parsing
 Markdown-like strings.
 
+M2 adds first-class PNG/JPEG figures. `Figure(source, caption, placement)` is the
+concise flow API; `FigureIdentified` adds a stable cross-reference target.
+`WidthMM`, `WidthPt`, and `FigureAuto` create centered inline placements whose
+width preserves the source aspect ratio. `ExactMM` requests intentional exact
+width and height. Image paths are artifact-backed and resolved relative to the
+artifact entry source; the document library references images and does not process
+or rewrite them.
+
+`AnchoredFigure` and `AnchoredFigureIdentified` are the manual authority path.
+`PageAnchor(xMM, yMM, widthMM)` is the concise form, while `Anchor` accepts the
+public `FigureAnchor`, `Length`, `FigureSize`, `FigureWrap`, and z-order values.
+The coordinate contract is explicit: X increases rightward, Y increases downward,
+and both are measured from the declared reference. Page is the page edge, Margin
+is the page margin, Paragraph maps horizontal position to the containing column
+and vertical position to the paragraph, and Character maps to character/line.
+Coordinates and z-order are non-negative. Public lengths are only `Pt(Float)` and
+`Mm(Float)`; Word-native EMUs, twips, and half-points remain renderer-private.
+Supported anchored wraps are `Square`, `TopBottom`, `BehindText`, and
+`InFrontOfText`. The DOCX renderer honors the declared geometry or fails; it does
+not silently reinterpret it.
+
+Figure captions and `TableWithCaption` remain semantic inline content and use the
+existing Caption paragraph style. `FigureRef` and `TableRef` create typed semantic
+references. One document-order numbering pass walks nested `Group` blocks, numbers
+figures and labeled tables, resolves reference text identically for both renderers,
+and diagnoses duplicate IDs, missing targets, and wrong kinds before materialization.
+
+`HeaderFooter` adds modest page chrome without changing the M0/M1 `Doc` record.
+Headers and footers accept ordinary rich inline content plus `DocumentTitle`,
+`DocumentAuthor`, and the semantic `PageNumber` token. DOCX emits a real page-number
+field; Markdown omits page chrome because pages have no stable meaning there.
+
 `Document.Template<Parameters>` and `Document.Instantiate<Parameters>` provide the
 shared reusable template facade. Their function fields produce metadata, styles,
 layout, and semantic blocks from an application-owned parameter record. Instantiation
@@ -37,9 +69,11 @@ produces the same `Document.Doc`; it is not a macro, runtime generic object mode
 renderer template, or alternate document IR. The resume acceptance specimen proves
 the facade across the `Document` package boundary.
 
-`Document.ToMarkdown` deterministically projects the semantic model. Page breaks
+`Document.ToMarkdown` deterministically projects the resolved semantic model. Page breaks
 become `<!-- pagebreak -->`; page layout and typographic presentation hints are
-ignored because Markdown has no equivalent. Code fences harden against the longest
+ignored because Markdown has no equivalent. Anchored figures remain visible in
+normal flow and carry `<!-- anchored figure geometry omitted in Markdown -->`, so
+the lost geometry is explicit. Code fences harden against the longest
 backtick run in the code. `Artifact.Markdown(path, doc)` and
 `Artifact.Docx(path, doc)` materialize documents during `oct artifact`. Under the
 current language contract, the `[Artifact]` entry point lives in a sibling `.octest`
@@ -48,16 +82,20 @@ ordinary reusable document value. No suffix is special-cased.
 
 DOCX supports styled headings and paragraphs, inline bold/italic/code, hyperlinks,
 lists, tables, callouts, horizontal rules, real page breaks, page size/orientation,
-and margins. Its OOXML and ZIP details are renderer-private. Package entries,
+and margins. M2 adds DrawingML inline/anchored figures, content-addressed media,
+header/footer parts, and semantic page numbering. Its OOXML and ZIP details are renderer-private. Package entries,
 relationships, style order, IDs, metadata, and ZIP timestamps are canonicalized;
 equal documents produce byte-identical output.
 
 `Document.ValidateFor` returns deterministic diagnostics for invalid heading and
-table shapes. All current semantic block kinds are supported by both renderers.
+table shapes, invalid figure dimensions/coordinates, duplicate identifiers, and
+missing or wrong-kind references. Missing or invalid image files are diagnosed
+during artifact materialization, where filesystem authority exists.
 
 The existing `Markdown.*` string helpers remain compatibility APIs. They are legacy
 direct render helpers, not canonical document nodes; no Markdown parsing or reverse
 conversion is performed.
 
-Deferred beyond M1: figures, equations/OMML, headers/footers/page numbering, cell
-spans, bibliography/citations, parsing, and additional renderers.
+Deferred beyond M2: SVG, tight wrapping, section/equation references, equations/OMML,
+cell spans, bibliography/citations, parsing, and additional renderers. Absolute
+positioning remains figure-only; M2 is not a general page-layout engine.

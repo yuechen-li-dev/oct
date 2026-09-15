@@ -8,26 +8,42 @@ fn ScientificReport() -> Document.Doc {
         Body: Document.WithLineSpacing(theme.Body, 1.12)
     }
     return Document.BuildWith(
-        Document.Metadata { Title: "Adaptive Filter Experiment" Author: "Oct Research" Subject: "Deterministic experiment report" },
-        style,
-        Document.DefaultLayout() with { Size: Document.PageSize.A4 },
-        [
-            Document.Title("Adaptive Filter Experiment"),
-            Document.Subtitle("One semantic document, two deterministic renderers"),
-            Document.Section("Overview", [
-                Document.P("This bounded experiment compares a fixed estimator with an adaptive estimator under seeded noise."),
-                Document.KeyValueTable(["Seed", "Samples", "Execution"], ["42", "1200", "compiled"])
-            ]),
-            Document.Section("Results", [
-                Document.Table(
-                    ["Method", "Output SNR (dB)", "Status"],
-                    [["Fixed", "-9.8", "baseline"], ["Adaptive", "-8.1", "improved"]]
-                ),
-                Document.Callout(Document.CalloutKind.Info, [Document.Text("The adaptive lane improved the measured output SNR; it does not establish general recovery.")])
-            ]),
-            Document.Section("Reproduction", [
-                Document.Code("oct", ["let seed = 42", "let result = RunExperiment(seed)", "Assert.True(result.OutputSNR > baseline.OutputSNR, \"bounded comparison\")"])
-            ])
-        ]
+    Document.Metadata {Title: "Adaptive Filter Experiment" Author: "Oct Research" Subject: "Deterministic experiment report"},
+    style,
+    Document.DefaultLayout() with {Size: Document.PageSize.A4},
+    [
+    Document.HeaderFooter(
+    [Document.DocumentTitle()],
+    [Document.Text("Page "), Document.PageNumber(), Document.Text(" — "), Document.DocumentAuthor()]
+    ),
+    Document.Title("Adaptive Filter Experiment"),
+    Document.Subtitle("One semantic document, two deterministic renderers"),
+    Document.Section("Overview",[
+    Document.P("This bounded experiment compares a fixed estimator with an adaptive estimator under seeded noise."),
+    Document.KeyValueTable(["Seed", "Samples", "Execution"],["42", "1200", "compiled"])
+    ]),
+    Document.Section("Results",[
+    Document.FigureIdentified(
+    "adaptive-flow",
+    "adaptive-flow.png",
+    "Adaptive estimator response under seeded noise",
+    Document.WidthMM(105.0)
+    ),
+    Document.Table(
+    ["Method", "Output SNR (dB)", "Status"],
+    [["Fixed", "-9.8", "baseline"],["Adaptive", "-8.1", "improved"]]
+    ),
+    Document.Callout(Document.CalloutKind.Info,[Document.Text("The adaptive lane shown in "), Document.FigureRef("adaptive-flow"), Document.Text(" improved the measured output SNR; it does not establish general recovery.")])
+    ]),
+    Document.Section("Reproduction",[
+    Document.Code("oct",["let seed = 42", "let result = RunExperiment(seed)", "Assert.True(result.OutputSNR > baseline.OutputSNR, \"bounded comparison\")"]),
+    Document.AnchoredFigureIdentified(
+    "stress-map",
+    "stress-anchor.png",
+    "Explicit page-anchored stress map",
+    Document.PageAnchor(20.0, 30.0, 120.0)
+    )
+    ])
+    ]
     )
 }

@@ -3,6 +3,7 @@ package interpret
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
@@ -30,7 +31,19 @@ func (i *interpreter) evalArtifactDocumentMarkdownBuiltin(env *environment, pkgN
 }
 
 func (i *interpreter) evalArtifactDocumentDocxBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
-	return i.evalArtifactDocumentBuiltin(env, pkgName, callee, argumentExprs, ".docx", "document-docx", func(doc document.Doc, _ Value) ([]byte, error) {
+	return i.evalArtifactDocumentBuiltin(env, pkgName, callee, argumentExprs, ".docx", "document-docx", func(_ document.Doc, raw Value) ([]byte, error) {
+		resolved, err := i.invokeFunctionValue(FunctionValue{Key: "Document.Resolve"}, pkgName, []Value{raw})
+		if err != nil {
+			return nil, fmt.Errorf("Document.Resolve failed: %w", err)
+		}
+		if resolved.hasError {
+			return nil, fmt.Errorf("Document.Resolve failed: %s", resolved.errorVal.Error.Message)
+		}
+		doc, err := decodeDocument(resolved.value)
+		if err != nil {
+			return nil, err
+		}
+		doc.SourceRoot = filepath.Dir(i.artifactSourcePath)
 		return document.DOCX(doc)
 	})
 }
@@ -63,6 +76,9 @@ func (i *interpreter) evalArtifactDocumentBuiltin(env *environment, pkgName stri
 	doc, err := decodeDocument(docResult.value)
 	if err != nil {
 		return evalResult{}, err
+	}
+	if diagnostics := document.Validate(doc); len(diagnostics) > 0 {
+		return evalResult{}, fmt.Errorf("Document validation: %s", strings.Join(diagnostics, "; "))
 	}
 	payload, err := render(doc, docResult.value)
 	if err != nil {
@@ -367,6 +383,48 @@ func decodeDocumentBlock(value Value) (document.Block, error) {
 			return out, err
 		}
 		out.Table = table
+	case "LabeledTable":
+		r, err := documentRecord(*value.Enum.Payload, "LabeledTableBlock")
+		if err != nil {
+			return out, err
+		}
+		id, err := documentStringField(r, "Id")
+		if err != nil {
+			return out, err
+		}
+		caption, err := documentInlineField(r, "Caption")
+		if err != nil {
+			return out, err
+		}
+		tableValue, err := documentField(r, "Table")
+		if err != nil {
+			return out, err
+		}
+		table, err := decodeDocumentTable(tableValue)
+		if err != nil {
+			return out, err
+		}
+		out.LabeledTable = document.LabeledTable{ID: id, Caption: caption, Table: table}
+	case "Figure":
+		figure, err := decodeDocumentFigure(*value.Enum.Payload)
+		if err != nil {
+			return out, err
+		}
+		out.Figure = figure
+	case "PageChrome":
+		r, err := documentRecord(*value.Enum.Payload, "PageChrome")
+		if err != nil {
+			return out, err
+		}
+		header, err := documentInlineField(r, "Header")
+		if err != nil {
+			return out, err
+		}
+		footer, err := documentInlineField(r, "Footer")
+		if err != nil {
+			return out, err
+		}
+		out.PageChrome = document.PageChrome{Header: header, Footer: footer}
 	case "Code":
 		r, err := documentRecord(*value.Enum.Payload, "CodeBlock")
 		if err != nil {
@@ -440,6 +498,140 @@ func decodeDocumentTable(value Value) (document.Table, error) {
 	return document.Table{Header: header, Body: body}, nil
 }
 
+func decodeDocumentFigure(value Value) (document.Figure, error) {
+	r, err := documentRecord(value, "FigureBlock")
+	if err != nil {
+		return document.Figure{}, err
+	}
+	id, err := documentStringField(r, "Id")
+	if err != nil {
+		return document.Figure{}, err
+	}
+	source, err := documentStringField(r, "Source")
+	if err != nil {
+		return document.Figure{}, err
+	}
+	alt, err := documentStringField(r, "AltText")
+	if err != nil {
+		return document.Figure{}, err
+	}
+	caption, err := documentInlineField(r, "Caption")
+	if err != nil {
+		return document.Figure{}, err
+	}
+	pv, err := documentField(r, "Placement")
+	if err != nil {
+		return document.Figure{}, err
+	}
+	placement, err := decodeDocumentFigurePlacement(pv)
+	if err != nil {
+		return document.Figure{}, err
+	}
+	return document.Figure{ID: id, Source: source, AltText: alt, Caption: caption, Placement: placement}, nil
+}
+
+func decodeDocumentFigurePlacement(value Value) (document.FigurePlacement, error) {
+	if value.Kind != ValueEnum || !documentTypeNamed(value.Enum.TypeName, "FigurePlacement") || value.Enum.Payload == nil {
+		return document.FigurePlacement{}, fmt.Errorf("expected Document.FigurePlacement")
+	}
+	out := document.FigurePlacement{Kind: document.FigurePlacementKind(value.Enum.Variant)}
+	r, err := documentRecord(*value.Enum.Payload, value.Enum.Variant+"FigurePlacement")
+	if err != nil {
+		return out, err
+	}
+	sizeValue, err := documentField(r, "Size")
+	if err != nil {
+		return out, err
+	}
+	size, err := decodeDocumentFigureSize(sizeValue)
+	if err != nil {
+		return out, err
+	}
+	if value.Enum.Variant == "Auto" {
+		alignment, err := documentEnumField(r, "Alignment")
+		if err != nil {
+			return out, err
+		}
+		keepValue, err := documentField(r, "KeepWithCaption")
+		if err != nil {
+			return out, err
+		}
+		if keepValue.Kind != ValueBool {
+			return out, fmt.Errorf("Document.AutoFigurePlacement.KeepWithCaption expects Bool")
+		}
+		out.Auto = document.AutoFigurePlacement{Alignment: document.Alignment(alignment), KeepWithCaption: keepValue.Bool, Size: size}
+		return out, nil
+	}
+	anchor, err := documentEnumField(r, "Anchor")
+	if err != nil {
+		return out, err
+	}
+	xv, err := documentField(r, "X")
+	if err != nil {
+		return out, err
+	}
+	x, err := decodeDocumentLength(xv)
+	if err != nil {
+		return out, err
+	}
+	yv, err := documentField(r, "Y")
+	if err != nil {
+		return out, err
+	}
+	y, err := decodeDocumentLength(yv)
+	if err != nil {
+		return out, err
+	}
+	wrap, err := documentEnumField(r, "Wrap")
+	if err != nil {
+		return out, err
+	}
+	z, err := documentIntField(r, "ZOrder")
+	if err != nil {
+		return out, err
+	}
+	out.Anchored = document.AnchoredFigurePlacement{Anchor: document.FigureAnchor(anchor), X: x, Y: y, Size: size, Wrap: document.FigureWrap(wrap), ZOrder: int(z)}
+	return out, nil
+}
+
+func decodeDocumentFigureSize(value Value) (document.FigureSize, error) {
+	if value.Kind != ValueEnum || !documentTypeNamed(value.Enum.TypeName, "FigureSize") || value.Enum.Payload == nil {
+		return document.FigureSize{}, fmt.Errorf("expected Document.FigureSize")
+	}
+	if value.Enum.Variant == "Width" {
+		width, err := decodeDocumentLength(*value.Enum.Payload)
+		return document.FigureSize{Width: width}, err
+	}
+	r, err := documentRecord(*value.Enum.Payload, "ExactFigureSize")
+	if err != nil {
+		return document.FigureSize{}, err
+	}
+	wv, err := documentField(r, "Width")
+	if err != nil {
+		return document.FigureSize{}, err
+	}
+	width, err := decodeDocumentLength(wv)
+	if err != nil {
+		return document.FigureSize{}, err
+	}
+	hv, err := documentField(r, "Height")
+	if err != nil {
+		return document.FigureSize{}, err
+	}
+	height, err := decodeDocumentLength(hv)
+	if err != nil {
+		return document.FigureSize{}, err
+	}
+	return document.FigureSize{Width: width, Height: &height}, nil
+}
+
+func decodeDocumentLength(value Value) (document.Length, error) {
+	if value.Kind != ValueEnum || !documentTypeNamed(value.Enum.TypeName, "Length") || value.Enum.Payload == nil || value.Enum.Payload.Kind != ValueFloat {
+		return document.Length{}, fmt.Errorf("expected Document.Length")
+	}
+	return document.Length{Unit: document.LengthUnit(value.Enum.Variant), Value: value.Enum.Payload.Float}, nil
+}
+
 func decodeDocumentRow(value Value) (document.Row, error) {
 	r, err := documentRecord(value, "Row")
 	if err != nil {
@@ -495,6 +687,20 @@ func decodeDocumentInlines(value Value) ([]document.Inline, error) {
 				if e != nil {
 					return nil, e
 				}
+			} else if inlineValue.Enum.Variant == "Reference" {
+				reference, e := documentRecord(*inlineValue.Enum.Payload, "Reference")
+				if e != nil {
+					return nil, e
+				}
+				inline.Reference.Target, e = documentStringField(reference, "Target")
+				if e != nil {
+					return nil, e
+				}
+				kind, e := documentEnumField(reference, "Kind")
+				if e != nil {
+					return nil, e
+				}
+				inline.Reference.Kind = document.ReferenceKind(kind)
 			} else {
 				if inlineValue.Enum.Payload.Kind != ValueString {
 					return nil, fmt.Errorf("Document.%s payload expects String", inlineValue.Enum.Variant)

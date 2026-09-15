@@ -9,6 +9,8 @@ fn EngineeringReportM1SemanticWitness() -> Void {
     Assert.Equal("Aetheris Build Report", doc.Metadata.Title, "engineering metadata")
     Assert.True(doc.Style.Body.SpaceAfterPt == 4.0, "professional theme")
     Assert.Equal(0, Len(Document.ValidateFor(doc, Document.Format.Docx)), "docx capability")
+    let markdown = Document.ToMarkdown(doc)
+    Assert.True(Len(markdown) > 20, "engineering figure, caption, and references rendered")
 }
 
 [Artifact]
