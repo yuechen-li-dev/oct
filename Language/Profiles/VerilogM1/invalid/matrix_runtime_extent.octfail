@@ -1,0 +1,7 @@
+expect error: "Verilog profile does not support Matrix<Int> values"
+
+profile Verilog
+
+fn MatrixValue() -> Matrix<Int> {
+    return matrix[[1, 2] [3, 4]]
+}

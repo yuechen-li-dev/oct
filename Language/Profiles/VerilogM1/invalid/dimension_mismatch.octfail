@@ -1,0 +1,7 @@
+expect error: "function InvalidUnits: cannot add m and s"
+
+profile Verilog
+
+fn InvalidUnits(length: Int<m>, time: Int<s>) -> Int<m> {
+    return length + time
+}

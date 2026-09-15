@@ -3,5 +3,7 @@ expect error: "function Incomplete: missing return statement"
 profile Verilog
 
 fn Incomplete(condition: Bool, value: Int) -> Int {
-    if condition { return value }
+    if condition {
+        return value
+    }
 }

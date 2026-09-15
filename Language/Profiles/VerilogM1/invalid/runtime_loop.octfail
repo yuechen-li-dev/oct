@@ -1,0 +1,11 @@
+expect error: "runtime-dependent or cyclic loop is not legal combinational hardware"
+
+profile Verilog
+
+fn SumTo(limit: Int) -> Int {
+    var sum = 0
+    for i in 0..limit {
+        sum = sum + i
+    }
+    return sum
+}

@@ -1,0 +1,11 @@
+expect error: "Verilog profile rejects recursion: Main.First -> Main.Second -> Main.First"
+
+profile Verilog
+
+fn First(value: Int) -> Int {
+    return Second(value)
+}
+
+fn Second(value: Int) -> Int {
+    return First(value)
+}

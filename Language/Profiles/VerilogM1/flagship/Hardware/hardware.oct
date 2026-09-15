@@ -1,0 +1,49 @@
+package Hardware
+
+record Sensor {
+    Position: Int<m>
+    Limit: Int<m>
+}
+
+record CommandResult {
+    Requested: Int<m>
+    Safe: Int<m>
+    Limited: Bool
+}
+
+enum Command {
+    Hold
+    Offset(Int<m>)
+    Scale(Int)
+}
+
+fn RequestedPosition(sensor: Sensor, command: Command) -> Int<m> {
+    return match command {
+        case Command.Hold => sensor.Position
+        case Command.Offset(delta) => sensor.Position + delta
+        case Command.Scale(factor) => sensor.Position * factor
+    }
+}
+
+fn ClampDistance(value: Int<m>, limit: Int<m>) -> Int<m> {
+    if value > limit { return limit }
+    if value < -limit { return -limit }
+    return value
+}
+
+fn Evaluate(sensor: Sensor, command: Command) -> CommandResult {
+    let requested = RequestedPosition(sensor, command)
+    let initial = CommandResult { Requested: requested Safe: requested Limited: false }
+    if requested > sensor.Limit or requested < -sensor.Limit {
+        return initial with { Safe: ClampDistance(requested, sensor.Limit) Limited: true }
+    }
+    return initial
+}
+
+fn CalibrationSum() -> Int {
+    var sum = 0
+    for index in 0..8 {
+        sum = sum + index
+    }
+    return sum
+}

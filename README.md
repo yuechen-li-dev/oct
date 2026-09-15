@@ -8,7 +8,7 @@ It is designed for the point where notebooks and scripts stop being enough: when
 
 Oct is an early scientific programming language/toolchain for portable computation, reproducible research, and AI-assisted experimentation.
 
-Oct is built on Go as its systems substrate. Ordinary Oct programs compile through Go, build quickly, run as native binaries, and target the platforms Go targets. The experimental `profile Verilog` M0 path instead emits direct combinational SystemVerilog source from the same backend-neutral MIR. Existing Go libraries can be exposed to Oct through explicit Octxiliary wrappers, letting researchers keep a high-level scientific language without losing access to the Go ecosystem.
+Oct is built on Go as its systems substrate. Ordinary Oct programs compile through Go, build quickly, run as native binaries, and target the platforms Go targets. The experimental `profile Verilog` M1 path instead emits structured combinational SystemVerilog from the same backend-neutral MIR, including conditions, immutable records, payload enums and match, pure calls, integer SI dimensions, and literal-bounded loops. Existing Go libraries can be exposed to Oct through explicit Octxiliary wrappers, letting researchers keep a high-level scientific language without losing access to the Go ecosystem.
 
 The language includes first-class scientific features that are already represented in the repository's contracts and libraries: SI units, xUnit-style testing, arrays/vectors/matrices, native Einstein tensor notation, Octomata flow/state machines, utility scoring, fallible functions, package sync, optional `lock.octagon` reproducibility, and explicit native wrapper builds.
 

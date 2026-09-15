@@ -1,0 +1,7 @@
+expect error: "Verilog profile does not support Vector<Int> values"
+
+profile Verilog
+
+fn VectorValue() -> Vector<Int> {
+    return vector[1, 2, 3]
+}

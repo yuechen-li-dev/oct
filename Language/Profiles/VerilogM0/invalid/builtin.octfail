@@ -1,4 +1,4 @@
-expect error: "Verilog profile does not support builtin Abs in M0"
+expect error: "Verilog profile does not support builtin Abs"
 
 profile Verilog
 

@@ -1,0 +1,12 @@
+profile Verilog
+package Main
+
+import Hardware
+
+fn MotorCommand(sensor: Hardware.Sensor, command: Hardware.Command) -> Hardware.CommandResult {
+    return Hardware.Evaluate(sensor, command)
+}
+
+fn CalibrationSum() -> Int {
+    return Hardware.CalibrationSum()
+}

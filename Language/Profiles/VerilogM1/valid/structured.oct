@@ -1,0 +1,85 @@
+profile Verilog
+
+record Vector2 {
+    X: Int
+    Y: Int
+}
+
+record Segment {
+    Start: Vector2
+    End: Vector2
+}
+
+enum Operation {
+    Add
+    Subtract
+    Multiply(Int)
+}
+
+concept Distance = Int<m>
+
+fn Clamp(value: Int, limit: Int) -> Int {
+    if value > limit {
+        return limit
+    }
+    if value < -limit {
+        return -limit
+    }
+    return value
+}
+
+fn Maximum(left: Int, right: Int) -> Int {
+    if left > right {
+        return left
+    } else {
+        return right
+    }
+}
+
+fn Apply(a: Int, b: Int, operation: Operation) -> Int {
+    return match operation {
+        case Operation.Add => a + b
+        case Operation.Subtract => a - b
+        case Operation.Multiply(scale) => a * scale
+    }
+}
+
+fn MoveAndClamp(point: Vector2, delta: Int, limit: Int) -> Vector2 {
+    let moved = point with { X: point.X + delta }
+    return Vector2 {
+        X: Clamp(moved.X, limit)
+        Y: moved.Y
+    }
+}
+
+fn ShiftSegmentStart(segment: Segment, delta: Int) -> Segment {
+    return segment with {
+        Start: segment.Start with { X: segment.Start.X + delta }
+    }
+}
+
+fn DistanceWithinLimit(distance: Int<m>, limit: Int<m>) -> Bool {
+    return distance <= limit
+}
+
+fn ConceptDistanceWithinLimit(value: Distance, limit: Distance) -> Bool {
+    return value <= limit
+}
+
+fn SumEight() -> Int {
+    var sum = 0
+    for i in 0..8 {
+        sum = sum + i
+    }
+    return sum
+}
+
+fn ReservedNames(wire: Int, logic: Int) -> Int {
+    return wire + logic
+}
+
+fn AddEdge(left: Int, right: Int) -> Int { return left + right }
+fn SubtractEdge(left: Int, right: Int) -> Int { return left - right }
+fn MultiplyEdge(left: Int, right: Int) -> Int { return left * right }
+fn NegateEdge(value: Int) -> Int { return -value }
+fn LessEdge(left: Int, right: Int) -> Bool { return left < right }

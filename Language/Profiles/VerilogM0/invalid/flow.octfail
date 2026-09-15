@@ -1,4 +1,4 @@
-expect error: "Verilog profile does not support FLOW in M0"
+expect error: "Verilog profile does not support FLOW; M1 is combinational only"
 
 profile Verilog
 

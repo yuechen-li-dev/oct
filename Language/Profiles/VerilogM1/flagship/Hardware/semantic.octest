@@ -1,0 +1,25 @@
+package Hardware
+
+[Fact]
+fn StructuredCombinationalSemantics() -> Void {
+    let sensor = Sensor { Position: 7m Limit: 10m }
+    let held = Evaluate(sensor, Command.Hold)
+    let offset = Evaluate(sensor, Command.Offset(8m))
+    let scaled = Evaluate(sensor, Command.Scale(-2))
+
+    Assert.Equal(7m, held.Safe, "hold preserves the measured position")
+    Assert.False(held.Limited, "in-range command is not limited")
+    Assert.Equal(10m, offset.Safe, "positive command clamps at the limit")
+    Assert.True(offset.Limited, "positive clamp is visible")
+    Assert.Equal(-10m, scaled.Safe, "negative command clamps at the limit")
+    Assert.Equal(28, CalibrationSum(), "bounded reduction uses ordinary Oct semantics")
+}
+
+[Fact]
+fn SignedIntegerReferenceSemantics() -> Void {
+    let maximum = 9223372036854775807
+    let minimum = maximum + 1
+    Assert.True(minimum < 0, "Int addition wraps at signed 64-bit width")
+    Assert.Equal(minimum, -minimum, "negating minimum Int wraps to itself")
+    Assert.Equal(-21, -3 * 7, "signed multiplication is preserved")
+}

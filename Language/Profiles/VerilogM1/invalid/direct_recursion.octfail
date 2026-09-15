@@ -3,5 +3,6 @@ expect error: "Verilog profile rejects recursion: Main.Recurse -> Main.Recurse"
 profile Verilog
 
 fn Recurse(value: Int) -> Int {
-    return Recurse(value)
+    if value == 0 { return 0 }
+    return Recurse(value - 1)
 }

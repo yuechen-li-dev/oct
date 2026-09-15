@@ -1,5 +1,8 @@
 # Veril-Oct M0: direct combinational SystemVerilog
 
+> Historical M0 baseline. The implemented structured subset is documented in
+> `docs/internal/veril_oct_m1.md`.
+
 ## Status and architecture
 
 Veril-Oct M0 proves a second direct Oct backend:

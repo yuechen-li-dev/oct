@@ -82,10 +82,8 @@ func TestVerilogProfileFocusedCapabilityDiagnostics(t *testing.T) {
 	}{
 		{"string", "Verilog profile does not support String values"},
 		{"dynamic_array", "Verilog profile does not support dynamic array values"},
-		{"builtin", "Verilog profile does not support builtin Abs in M0"},
-		{"flow", "Verilog profile does not support FLOW in M0"},
-		{"branch", "Verilog profile does not support branch/control-flow lowering in M0"},
-		{"call", "Verilog profile does not support inter-function calls in M0"},
+		{"builtin", "Verilog profile does not support builtin Abs"},
+		{"flow", "Verilog profile does not support FLOW; M1 is combinational only"},
 		{"unknown_profile", "unknown profile 'CUDA'"},
 		{"duplicate_profile", "duplicate profile declaration 'Verilog'"},
 		{"conflicting_profile", "conflicting profile declarations 'Verilog' and 'Go'"},
@@ -110,6 +108,91 @@ func TestVerilogProfileFocusedCapabilityDiagnostics(t *testing.T) {
 				t.Fatalf("error = %v, want containing %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestVerilogM1StructuredCombinationalGolden(t *testing.T) {
+	fixture := filepath.Join("..", "..", "Language", "Profiles", "VerilogM1", "valid", "structured.oct")
+	sourcePath := copyVerilogFixture(t, fixture)
+	program, err := project.Load(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	module, err := lowerProgram(program, compileOptions{allowNoEntry: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckSystemVerilogLegal(module); err != nil {
+		t.Fatal(err)
+	}
+	first, err := emitSystemVerilog(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := emitSystemVerilog(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatal("M1 SystemVerilog output is nondeterministic")
+	}
+	want, err := os.ReadFile(filepath.Join("..", "..", "Language", "Profiles", "VerilogM1", "valid", "structured.golden.sv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != string(want) {
+		t.Fatalf("M1 SystemVerilog golden mismatch\nwant:\n%s\ngot:\n%s", want, first)
+	}
+	for _, fragment := range []string{
+		"module Apply(", "input  logic [65:0] operation", "operation[1:0] == 2'd2", "scale = operation[65:2]",
+		"module MoveAndClamp(", "point[63:0]", "{point[127:64]", "function automatic", "oct_fn_Main__Clamp",
+		"module Maximum(", "module ShiftSegmentStart(", "input  logic [255:0] segment", "segment[127:0]",
+		"module DistanceWithinLimit(", "module ConceptDistanceWithinLimit(", "module SumEight(", "for (i = 64'sd0",
+		"module ReservedNames(", "input  logic signed [63:0] oct_wire", "input  logic signed [63:0] oct_logic",
+	} {
+		if !strings.Contains(first, fragment) {
+			t.Errorf("missing M1 evidence %q", fragment)
+		}
+	}
+}
+
+func TestVerilogM1FlagshipUsesOrdinaryImportedLibrary(t *testing.T) {
+	root := filepath.Join("..", "..", "Language", "Profiles", "VerilogM1", "flagship")
+	program, err := project.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if program.Profile != "Verilog" {
+		t.Fatalf("profile = %q, want Verilog", program.Profile)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	module, err := lowerProgram(program, compileOptions{allowNoEntry: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckSystemVerilogLegal(module); err != nil {
+		t.Fatal(err)
+	}
+	got, err := emitSystemVerilog(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join(root, "Main", "Main.golden.sv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != string(want) {
+		t.Fatal("flagship generated RTL differs from checked-in compiler output")
+	}
+	for _, fragment := range []string{"module MotorCommand(", "oct_fn_Hardware__Evaluate", "oct_fn_Hardware__RequestedPosition", "module CalibrationSum(", "for (index = 64'sd0"} {
+		if !strings.Contains(got, fragment) {
+			t.Errorf("missing flagship evidence %q", fragment)
+		}
 	}
 }
 
