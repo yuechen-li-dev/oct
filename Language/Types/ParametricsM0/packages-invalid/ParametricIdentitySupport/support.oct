@@ -1,0 +1,8 @@
+package ParametricIdentitySupport
+
+template record Box<T> { Value: T }
+template record OtherBox<T> { Value: T }
+
+template fn ValueOf<T>(box: Box<T>) -> T {
+    return box.Value
+}

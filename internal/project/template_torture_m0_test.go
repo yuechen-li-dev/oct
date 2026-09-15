@@ -93,6 +93,26 @@ func TestTemplateTortureM0CrossFileErrorRetainsInstantiationChain(t *testing.T) 
 	}
 }
 
+func TestImportedTemplateFunctionRejectsDifferentSiblingTemplateRecordIdentity(t *testing.T) {
+	program, err := project.LoadForTest("../../Language/Types/ParametricsM0/packages-invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = typecheck.CheckProgram(program)
+	if err == nil {
+		t.Fatal("expected distinct imported template-record identities to be rejected")
+	}
+	message := err.Error()
+	for _, want := range []string{
+		"ParametricIdentitySupport__Box__Job",
+		"ParametricIdentitySupport__OtherBox__Job",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("diagnostic %q does not contain %q", message, want)
+		}
+	}
+}
+
 func concreteDeclarationNames(program project.Program) []string {
 	var names []string
 	for pkgName, pkg := range program.Packages {

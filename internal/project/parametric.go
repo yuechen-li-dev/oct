@@ -48,6 +48,8 @@ type parametricElaborator struct {
 	instantiations     map[string]string
 	selectors          map[string]string
 	instantiationStack []string
+	rewriteOriginStack []string
+	rewriteShadowStack []map[string]struct{}
 }
 
 const (
@@ -362,6 +364,11 @@ func (e *parametricElaborator) instantiateRecord(consumerPkg, originPkg, name st
 		e.program.Parametrics.RecordInstantiations++
 		clone := decl
 		clone.Name, clone.TypeParameters, clone.IsTemplate, clone.TemplateOrigin = concrete, nil, false, origin
+		if originPkg != consumerPkg {
+			for i := range clone.Fields {
+				clone.Fields[i].Type = e.qualifyOriginType(originPkg, clone.Fields[i].Type, subst)
+			}
+		}
 		var err error
 		clone, err = e.rewriteRecord(consumerPkg, clone, subst)
 		if err != nil {
@@ -380,7 +387,28 @@ func (e *parametricElaborator) instantiateFunction(consumerPkg, originPkg, name 
 		e.program.Parametrics.FunctionInstantiations++
 		clone := decl
 		clone.Name, clone.TypeParameters, clone.IsTemplate, clone.TemplateOrigin = concrete, nil, false, origin
+		if originPkg != consumerPkg {
+			for i := range clone.Parameters {
+				clone.Parameters[i].Type = e.qualifyOriginType(originPkg, clone.Parameters[i].Type, subst)
+			}
+			clone.ReturnType = e.qualifyOriginType(originPkg, clone.ReturnType, subst)
+			if clone.IsFallible {
+				clone.ErrorType = e.qualifyOriginType(originPkg, clone.ErrorType, subst)
+			}
+		}
 		var err error
+		if originPkg != consumerPkg {
+			e.rewriteOriginStack = append(e.rewriteOriginStack, originPkg)
+			shadows := make(map[string]struct{}, len(clone.Parameters))
+			for _, parameter := range clone.Parameters {
+				shadows[parameter.Name] = struct{}{}
+			}
+			e.rewriteShadowStack = append(e.rewriteShadowStack, shadows)
+			defer func() {
+				e.rewriteOriginStack = e.rewriteOriginStack[:len(e.rewriteOriginStack)-1]
+				e.rewriteShadowStack = e.rewriteShadowStack[:len(e.rewriteShadowStack)-1]
+			}()
+		}
 		clone, err = e.rewriteFunction(consumerPkg, clone, subst)
 		if err != nil {
 			return err
@@ -390,6 +418,101 @@ func (e *parametricElaborator) instantiateFunction(consumerPkg, originPkg, name 
 		e.program.Packages[consumerPkg] = pkg
 		return nil
 	})
+}
+
+// qualifyOriginType preserves the declaration identity of unqualified sibling
+// types when a template is cloned into a consumer package. Type parameters
+// remain consumer-owned; only exact declarations from the origin package are
+// qualified.
+func (e *parametricElaborator) qualifyOriginType(originPkg string, t ast.TypeRef, subst map[string]ast.TypeRef) ast.TypeRef {
+	t.TypeArguments = append([]ast.TypeRef(nil), t.TypeArguments...)
+	for i := range t.TypeArguments {
+		t.TypeArguments[i] = e.qualifyOriginType(originPkg, t.TypeArguments[i], subst)
+	}
+	if t.Function != nil {
+		functionType := *t.Function
+		functionType.Parameters = append([]ast.TypeRef(nil), functionType.Parameters...)
+		for i := range functionType.Parameters {
+			functionType.Parameters[i] = e.qualifyOriginType(originPkg, functionType.Parameters[i], subst)
+		}
+		functionType.ReturnType = e.qualifyOriginType(originPkg, functionType.ReturnType, subst)
+		if functionType.ErrorType != nil {
+			errorType := e.qualifyOriginType(originPkg, *functionType.ErrorType, subst)
+			functionType.ErrorType = &errorType
+		}
+		t.Function = &functionType
+	}
+	if t.VectorOf != nil {
+		value := e.qualifyOriginType(originPkg, *t.VectorOf, subst)
+		t.VectorOf = &value
+	}
+	if t.MatrixOf != nil {
+		value := e.qualifyOriginType(originPkg, *t.MatrixOf, subst)
+		t.MatrixOf = &value
+	}
+	if t.Package == "" {
+		if _, isTypeParameter := subst[t.Name]; !isTypeParameter && e.originOwnsType(originPkg, t.Name) {
+			t.Package = originPkg
+		}
+	}
+	return t
+}
+
+func (e *parametricElaborator) originOwnsType(originPkg, name string) bool {
+	if _, exists := e.recordTemplates[templateKey(originPkg, name)]; exists {
+		return true
+	}
+	pkg, exists := e.program.Packages[originPkg]
+	if !exists {
+		return false
+	}
+	for _, record := range pkg.Records {
+		if record.Name == name {
+			return true
+		}
+	}
+	for _, enumDecl := range pkg.Enums {
+		if enumDecl.Name == name {
+			return true
+		}
+	}
+	for _, conceptDecl := range pkg.Concepts {
+		if conceptDecl.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *parametricElaborator) originOwnsFunction(originPkg, name string) bool {
+	if _, exists := e.functionTemplates[templateKey(originPkg, name)]; exists {
+		return true
+	}
+	pkg, exists := e.program.Packages[originPkg]
+	if !exists {
+		return false
+	}
+	for _, function := range pkg.Functions {
+		if function.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *parametricElaborator) currentRewriteOrigin() (string, bool) {
+	if len(e.rewriteOriginStack) == 0 {
+		return "", false
+	}
+	return e.rewriteOriginStack[len(e.rewriteOriginStack)-1], true
+}
+
+func (e *parametricElaborator) rewriteCallIsShadowed(name string) bool {
+	if len(e.rewriteShadowStack) == 0 {
+		return false
+	}
+	_, shadowed := e.rewriteShadowStack[len(e.rewriteShadowStack)-1][name]
+	return shadowed
 }
 
 func (e *parametricElaborator) instantiateFlow(consumerPkg, originPkg, name string, args []ast.TypeRef) (string, error) {
@@ -779,6 +902,12 @@ func (e *parametricElaborator) rewriteExpr(pkgName string, expr ast.Expr, expect
 			}
 		}
 		calleePkg, calleeName, qualified := directCallee(pkgName, x.Callee)
+		if !qualified {
+			if originPkg, ok := e.currentRewriteOrigin(); ok && !e.rewriteCallIsShadowed(calleeName) && e.originOwnsFunction(originPkg, calleeName) {
+				calleePkg, qualified = originPkg, true
+				x.Callee = ast.FieldAccessExpr{Target: ast.IdentifierExpr{Name: originPkg}, Field: calleeName}
+			}
+		}
 		if len(x.TypeArguments) > 0 {
 			if _, ok := e.functionTemplates[templateKey(calleePkg, calleeName)]; ok {
 				name, instErr := e.instantiateFunction(pkgName, calleePkg, calleeName, x.TypeArguments)

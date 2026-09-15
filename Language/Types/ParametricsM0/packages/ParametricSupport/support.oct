@@ -7,3 +7,37 @@ template record Box<T> {
 template fn Identity<T>(value: T) -> T {
     return value
 }
+
+template record SiblingBox<T> {
+    Value: T
+}
+
+template fn SiblingValue<T>(box: SiblingBox<T>) -> T {
+    return box.Value
+}
+
+concept NonNegative = Float {
+    Require(Self >= 0.0, "value must be non-negative")
+}
+
+record RefinedStyle {
+    SpaceAfter: NonNegative
+}
+
+record RefinedTheme {
+    Heading: RefinedStyle
+}
+
+record Candidate { Value: Int }
+
+template fn ParameterShadowsOriginRecord<Candidate>(value: Candidate) -> Candidate {
+    return value
+}
+
+fn Transform(value: Int) -> Int {
+    return value + 100
+}
+
+template fn ApplyFunctionValue<T>(Transform: fn(T) -> T, value: T) -> T {
+    return Transform(value)
+}

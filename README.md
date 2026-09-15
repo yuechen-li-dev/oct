@@ -91,8 +91,9 @@ Current milestone capabilities include:
 - source-controlled canonical first-party registry at `Registry/registry.oct`;
 - manifest-declared wrapper lifecycle with Octxiliary sidecars and explicit `oct pkg build-wrappers --allow-native`;
 - tests and CI coverage across core compiler/tooling paths.
-- OctCument M0 backend-neutral immutable documents with deterministic Markdown
-  and DOCX artifact materialization from ordinary Oct source.
+- OctCument M1 backend-neutral immutable documents with ergonomic styles,
+  themes, reusable package-boundary templates, and deterministic Markdown/DOCX
+  artifact materialization from ordinary Oct source.
 - opt-in Atlas semantic documentation graphs that connect authorities,
   interpretations, requirements/claims, implementation symbols, executable
   evidence, and artifacts without changing runtime semantics;

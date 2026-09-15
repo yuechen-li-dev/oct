@@ -5,7 +5,7 @@ import Document
 fn BuildReport() -> Document.Doc {
     return Document.BuildWith(
         Document.Metadata { Title: "Aetheris Build Report" Author: "Oct Make" Subject: "Structured build evidence" },
-        Document.DefaultStyle(),
+        Document.ProfessionalStyle(),
         Document.DefaultLayout(),
         [
             Document.Title("Aetheris Build Report"),

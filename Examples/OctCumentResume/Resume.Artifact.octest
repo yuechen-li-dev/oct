@@ -1,6 +1,16 @@
 package OctCumentResume
 
 import Artifact
+import Document
+
+[Fact]
+fn ResumeM1SemanticWitness() -> Void {
+    let doc = Resume()
+    Assert.Equal("Yuechen Li Resume", doc.Metadata.Title, "shared template metadata")
+    Assert.True(doc.Style.Heading1.Text.SizePt == 11.0, "ergonomic style override")
+    Assert.Equal(0, Len(Document.ValidateFor(doc, Document.Format.Markdown)), "markdown capability")
+    Assert.Equal(0, Len(Document.ValidateFor(doc, Document.Format.Docx)), "docx capability")
+}
 
 [Artifact]
 fn Build() -> Void {

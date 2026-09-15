@@ -4,9 +4,47 @@ import ParametricSupport
 
 record Job {ID: Int}
 
+record Candidate {Score: Int}
+
+fn Increment(value: Int) -> Int {
+    return value + 1
+}
+
 [Fact]
 fn ImportedTemplatesInstantiateDeterministicallyInConsumer() -> Void {
     let boxed = ParametricSupport.Box<Job> {Value: Job {ID: 17}}
     let value = ParametricSupport.Identity<Job>(boxed.Value)
     Assert.Equal(17, value.ID, "imported template preserves consumer nominal type")
+}
+
+[Fact]
+fn ImportedFunctionRetainsSiblingTemplateRecordIdentity() -> Void {
+    let boxed = ParametricSupport.SiblingBox<Job> {Value: Job {ID: 23}}
+    let value = ParametricSupport.SiblingValue<Job>(boxed)
+    Assert.Equal(23, value.ID, "imported function accepts its sibling template record")
+}
+
+[Fact]
+fn ImportedNestedWithUsesTargetRefinementAndFieldChains() -> Void {
+    let base = ParametricSupport.RefinedTheme {
+        Heading: ParametricSupport.RefinedStyle {SpaceAfter: 4.0}
+    }
+    let updated = base with {
+        Heading: base.Heading with {SpaceAfter: 2.0}
+    }
+    Assert.True(updated.Heading.SpaceAfter == 2.0, "imported target refinement and chained access")
+}
+
+[Fact]
+fn ArraysOfRecordsRemainOrdinaryTypedArrays() -> Void {
+    let candidates: Candidate[] = [Candidate {Score: 7}, Candidate {Score: 11}]
+    Assert.Equal(11, candidates[1].Score, "record array element and field access")
+}
+
+[Fact]
+fn ImportedTemplateParametersRetainTheirOwnIdentityAndCallableBinding() -> Void {
+    let job = ParametricSupport.ParameterShadowsOriginRecord<Job>(Job {ID: 29})
+    let transformed = ParametricSupport.ApplyFunctionValue<Int>(Increment, 4)
+    Assert.Equal(29, job.ID, "type parameter shadows origin record")
+    Assert.Equal(5, transformed, "function parameter shadows origin function")
 }

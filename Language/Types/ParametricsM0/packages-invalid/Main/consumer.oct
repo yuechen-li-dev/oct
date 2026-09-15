@@ -1,0 +1,10 @@
+package Main
+
+import ParametricIdentitySupport
+
+record Job { ID: Int }
+
+fn Main() -> Void {
+    let other = ParametricIdentitySupport.OtherBox<Job> { Value: Job { ID: 1 } }
+    let value = ParametricIdentitySupport.ValueOf<Job>(other)
+}

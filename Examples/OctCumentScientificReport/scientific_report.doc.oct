@@ -3,7 +3,10 @@ package OctCumentScientificReport
 import Document
 
 fn ScientificReport() -> Document.Doc {
-    let style = Document.DefaultStyle()
+    let theme = Document.ScientificStyle()
+    let style = theme with {
+        Body: Document.WithLineSpacing(theme.Body, 1.12)
+    }
     return Document.BuildWith(
         Document.Metadata { Title: "Adaptive Filter Experiment" Author: "Oct Research" Subject: "Deterministic experiment report" },
         style,

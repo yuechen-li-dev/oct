@@ -1,5 +1,25 @@
 package Document
 
+record TemplateParameters {
+    Title: String
+}
+
+fn TemplateMetadata(parameters: TemplateParameters) -> Metadata {
+    return Metadata { Title: parameters.Title Author: "Oct" Subject: "M1" }
+}
+
+fn TemplateStyle(parameters: TemplateParameters) -> StyleSheet {
+    return ProfessionalStyle()
+}
+
+fn TemplateLayout(parameters: TemplateParameters) -> PageLayout {
+    return DefaultLayout()
+}
+
+fn TemplateContent(parameters: TemplateParameters) -> Block[] {
+    return [Title(parameters.Title), RichParagraph(JoinInline([Texts(["ordinary", " Oct"]), [Strong(" document")]], []))]
+}
+
 [Fact]
 fn ConstructionStylesAndMarkdownM0() -> Void {
     let base = DefaultStyle()
@@ -46,4 +66,38 @@ fn CapabilityDiagnosticsM0() -> Void {
     ])
     let diagnostics = ValidateFor(invalid, Format.Docx)
     Assert.Equal(1, Len(diagnostics), "bounded diagnostics")
+}
+
+[Fact]
+fn StyleHelpersThemesAndTemplateM1() -> Void {
+    let professional = ProfessionalStyle()
+    let heading = WithAlignment(
+        WithSpacing(
+            WithColor(WithTextSize(professional.Heading1, 11.0), Hex("#123456")),
+            5.0,
+            2.0
+        ),
+        Alignment.Center
+    )
+    let style = professional with { Heading1: heading }
+    Assert.True(style.Heading1.Text.SizePt == 11.0, "text size helper")
+    Assert.Equal("#123456", style.Heading1.Text.Color.Hex, "color helper")
+    Assert.True(style.Heading1.SpaceBeforePt == 5.0, "spacing helper")
+    Assert.Equal(Alignment.Center, style.Heading1.Alignment, "alignment helper")
+    let body = WithWeight(WithFont(WithItalic(WithLineSpacing(style.Body, 1.2), true), "Source Serif 4"), FontWeight.Bold)
+    Assert.Equal("Source Serif 4", body.Text.FontFamily, "font helper")
+    Assert.Equal(FontWeight.Bold, body.Text.Weight, "weight helper")
+    Assert.True(body.Text.Italic, "italic helper")
+    Assert.True(body.LineSpacing == 1.2, "line spacing helper")
+
+    let templateValue = Template<TemplateParameters> {
+        Metadata: TemplateMetadata
+        Style: TemplateStyle
+        Layout: TemplateLayout
+        Content: TemplateContent
+    }
+    let doc = Instantiate<TemplateParameters>(templateValue, TemplateParameters { Title: "M1 proof" })
+    Assert.Equal("M1 proof", doc.Metadata.Title, "template metadata")
+    Assert.Equal("ordinary Oct** document**", ToMarkdown(doc)[2], "rich inline helpers")
+    Assert.Equal("#1F4E79", ScientificStyle().Heading1.Text.Color.Hex, "scientific theme")
 }

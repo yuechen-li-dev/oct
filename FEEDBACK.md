@@ -49,9 +49,23 @@ Observation: <What you encountered. Be specific and factual.>
 
 Suggestion: <What could be improved. Keep it concrete and minimal.>
 
+Status: Open | Resolved | Deferred | Cannot Reproduce | Superseded
+
+Resolution: <Optional short factual note and proof reference.>
+
 ---
 
 ```
+
+Use exactly one status per entry:
+
+- `Open` — verified current friction remains.
+- `Resolved` — verified fixed in current main or fixed in the current milestone.
+- `Deferred` — valid issue, intentionally not addressed now.
+- `Cannot Reproduce` — current main does not reproduce with a faithful focused test.
+- `Superseded` — the observation is no longer relevant because the semantics or design changed.
+
+`Resolution` is optional. When present, keep it factual and point to the narrow proof.
 
 ---
 
@@ -74,6 +88,8 @@ Writing simple counted loops with while requires manual index handling and is le
 Suggestion:
 Prefer expanding for-range capabilities rather than encouraging while-based counted loops.
 
+Status: Open
+
 ---
 
 ```
@@ -93,12 +109,22 @@ Candidate[] — arrays of record types — aren't supported in M0. The type chec
 Suggestion:
 Maybe add them in the future.
 
+Status: Resolved
+
+Resolution:
+Current main supports nominal record arrays in interpreted and compiled execution. Covered by `Language/Types/ParametricsM0/packages/Main/consumer.octest`.
+
 ---
 Observation:
 Chained field access — result.Selection.HasWinner — is parsed as an enum value expression rather than two field accesses. Every CommitmentResult test needed let sel = result.Selection as an intermediate binding before asserting. 
 
 Suggestion:
 Worth adding to the language report for future LLM sessions.
+
+Status: Resolved
+
+Resolution:
+Current main parses and checks chained record field access while retaining enum qualification. Covered by `internal/typecheck/typecheck_test.go` and `Language/Types/ParametricsM0/packages/Main/consumer.octest`.
 
 ---
 
@@ -108,6 +134,11 @@ An imported template function whose parameter is a sibling template record type 
 Suggestion:
 Preserve sibling template-record identity during imported template specialization and add a cross-package contract test.
 
+Status: Resolved
+
+Resolution:
+Imported specialization now qualifies exact origin-owned types before consumer monomorphization. Positive and negative package-boundary coverage lives under `Language/Types/ParametricsM0/packages` and `packages-invalid`.
+
 ---
 
 Observation:
@@ -115,3 +146,10 @@ Nested `with` updates on imported records can lose the imported refined concept 
 
 Suggestion:
 Apply the target imported field's concept conversion to record-update literals, matching record construction and same-package `with` behavior.
+
+Status: Resolved
+
+Resolution:
+Imported record lookup now qualifies origin-owned field types before construction or `with` checking. Covered by `Language/Types/ParametricsM0/packages/Main/consumer.octest` in interpreted and compiled execution.
+
+---

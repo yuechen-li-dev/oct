@@ -96,7 +96,7 @@ let larger = base with { MaxRecords: 5000 }
 
 ## Packages and identity
 
-Imported templates are instantiated deterministically in the consumer compilation. The semantic specialization key includes the declaration package/name, concrete type arguments, declaration kind, and consumer package. This permits consumer-owned nominal type arguments without creating a reverse package dependency. M0 template bodies intended for cross-package reuse should be self-contained or use operations/types already visible in the consumer; automatic qualification of arbitrary template-package-private dependencies is deferred.
+Imported templates are instantiated deterministically in the consumer compilation. The semantic specialization key includes the declaration package/name, concrete type arguments, declaration kind, and consumer package. This permits consumer-owned nominal type arguments without creating a reverse package dependency. Exact origin-owned types in imported template record/function signatures retain their declaring-package identity, and direct calls from an imported template function to an exact function in that origin package remain bound to that declaration. This is declaration-based rebinding, not name guessing. Automatic closure over other arbitrary template-package-private dependencies remains deferred.
 
 ## Concepts and requirements
 

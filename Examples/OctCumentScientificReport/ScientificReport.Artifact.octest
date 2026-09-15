@@ -1,6 +1,17 @@
 package OctCumentScientificReport
 
 import Artifact
+import Document
+
+[Fact]
+fn ScientificReportM1SemanticWitness() -> Void {
+    let doc = ScientificReport()
+    let first = Document.ToMarkdown(doc)
+    let second = Document.ToMarkdown(doc)
+    Assert.Equal(Len(first), Len(second), "deterministic markdown line count")
+    Assert.Equal(first[0], second[0], "deterministic markdown content")
+    Assert.Equal("#1F4E79", doc.Style.Heading1.Text.Color.Hex, "scientific theme")
+}
 
 [Artifact]
 fn Build() -> Void {

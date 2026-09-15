@@ -7755,6 +7755,13 @@ func (c checker) lookupRecord(typeName string) (recordInfo, bool) {
 			return recordInfo{}, false
 		}
 		recordDecl, exists := imported.records[localName]
+		if exists {
+			fields := make(map[string]Type, len(recordDecl.fields))
+			for name, fieldType := range recordDecl.fields {
+				fields[name] = c.qualifyImportedType(pkgName, fieldType)
+			}
+			recordDecl.fields = fields
+		}
 		return recordDecl, exists
 	}
 	recordDecl, exists := c.records[typeName]

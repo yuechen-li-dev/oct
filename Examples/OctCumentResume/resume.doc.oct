@@ -7,31 +7,22 @@ record ResumeParameters {
     Role: String
 }
 
-template record ResumeTemplate<Parameters> {
-    Metadata: fn(Parameters) -> Document.Metadata
-    Style: fn(Parameters) -> Document.StyleSheet
-    Layout: fn(Parameters) -> Document.PageLayout
-    Content: fn(Parameters) -> Document.Block[]
-}
-
-template fn InstantiateResume<Parameters>(templateValue: ResumeTemplate<Parameters>, parameters: Parameters) -> Document.Doc {
-    let metadata = templateValue.Metadata
-    let style = templateValue.Style
-    let layout = templateValue.Layout
-    let content = templateValue.Content
-    return Document.BuildWith(metadata(parameters), style(parameters), layout(parameters), content(parameters))
-}
-
 fn ResumeMetadata(parameters: ResumeParameters) -> Document.Metadata {
     return Document.Metadata { Title: parameters.Name + " Resume" Author: parameters.Name Subject: parameters.Role }
 }
 
 fn ResumeStyle(parameters: ResumeParameters) -> Document.StyleSheet {
-    let base = Document.DefaultStyle()
+    let base = Document.ProfessionalStyle()
     return base with {
-        Body: Document.ParagraphStyleFrom(base.Body.Text, base.Body.Alignment, 0.0, 4.0, 1.0)
-        Heading1: Document.ParagraphStyleFrom(Document.TextStyleFrom(base.Heading1.Text.FontFamily, 11.0, base.Heading1.Text.Weight, base.Heading1.Text.Italic, Document.Hex("#000000")), base.Heading1.Alignment, 7.0, 2.0, 1.0)
-        Heading2: Document.ParagraphStyleFrom(Document.TextStyleFrom(base.Heading2.Text.FontFamily, 10.5, base.Heading2.Text.Weight, base.Heading2.Text.Italic, base.Heading2.Text.Color), base.Heading2.Alignment, 4.0, 1.0, 1.0)
+        Heading1: base.Heading1 with {
+            Text: base.Heading1.Text with {
+                SizePt: 11.0
+                Color: Document.Hex("#000000")
+            }
+            SpaceBeforePt: 7.0
+            SpaceAfterPt: 2.0
+        }
+        Heading2: Document.WithTextSize(base.Heading2, 10.5)
     }
 }
 
@@ -53,11 +44,14 @@ fn ResumeContent(parameters: ResumeParameters) -> Document.Block[] {
     return [
         Document.Title(parameters.Name),
         Document.Subtitle(parameters.Role),
-        Document.SmallParagraph([
-            Document.Text("Seattle, WA  |  "),
-            Document.Link("github.com/yuechen-li-dev", "https://github.com/yuechen-li-dev"),
-            Document.Text("  |  Compiler, CAD, and hardware tooling")
-        ]),
+        Document.SmallParagraph(Document.JoinInline(
+            [
+                Document.Texts(["Seattle, WA"]),
+                [Document.Link("github.com/yuechen-li-dev", "https://github.com/yuechen-li-dev")],
+                Document.Texts(["Compiler, CAD, and hardware tooling"])
+            ],
+            [Document.Text("  |  ")]
+        )),
         Document.Section("Summary", [
             Document.P("Mechanical engineer turned compiler and hardware-tools developer building deterministic languages, native backends, engineering-product evidence, and reproducible scientific workflows.")
         ]),
@@ -106,11 +100,11 @@ fn ResumeContent(parameters: ResumeParameters) -> Document.Block[] {
 }
 
 fn Resume() -> Document.Doc {
-    let templateValue = ResumeTemplate<ResumeParameters> {
+    let templateValue = Document.Template<ResumeParameters> {
         Metadata: ResumeMetadata
         Style: ResumeStyle
         Layout: ResumeLayout
         Content: ResumeContent
     }
-    return InstantiateResume<ResumeParameters>(templateValue, ResumeParameters { Name: "Yuechen Li" Role: "Compiler & Hardware Tools Engineer" })
+    return Document.Instantiate<ResumeParameters>(templateValue, ResumeParameters { Name: "Yuechen Li" Role: "Compiler & Hardware Tools Engineer" })
 }

@@ -1,6 +1,15 @@
 package OctCumentBuildReport
 
 import Artifact
+import Document
+
+[Fact]
+fn EngineeringReportM1SemanticWitness() -> Void {
+    let doc = BuildReport()
+    Assert.Equal("Aetheris Build Report", doc.Metadata.Title, "engineering metadata")
+    Assert.True(doc.Style.Body.SpaceAfterPt == 4.0, "professional theme")
+    Assert.Equal(0, Len(Document.ValidateFor(doc, Document.Format.Docx)), "docx capability")
+}
 
 [Artifact]
 fn Build() -> Void {

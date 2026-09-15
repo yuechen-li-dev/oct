@@ -165,7 +165,7 @@ Artifact guidance:
 - Paths are relative to the `oct artifact --output-root`; absolute, escaping, and duplicate paths are rejected.
 - `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` remain ordinary runtime APIs. Only legacy global `WriteOctagon` and confined directory creation are adapted to the artifact capability during the build phase.
 
-## Document (OctCument M0)
+## Document (OctCument M1)
 
 `Libraries/Document` owns backend-neutral immutable document semantics. Its
 records/enums model metadata, styles, page layout, structured inline content,
@@ -184,9 +184,12 @@ artifact contract, `[Artifact]` entry points remain in a sibling `.octest` file
 or `Make.oct`; no document-specific parser or hidden execution environment exists.
 
 Refined Concepts enforce bounded heading levels and non-negative/positive
-typographic values. Application-owned `template record` / `template fn`
-specializations may assemble themes and content into the same `Document.Doc`.
-They do not create another document IR.
+typographic values. Small immutable `With*` style helpers and the ordinary
+`ProfessionalStyle` / `ScientificStyle` functions return the existing semantic
+style records. `Document.Template<Parameters>` and
+`Document.Instantiate<Parameters>` assemble application-owned metadata, style,
+layout, and content functions into the same `Document.Doc` across package
+boundaries. They do not create another document IR.
 
 ## Markdown
 

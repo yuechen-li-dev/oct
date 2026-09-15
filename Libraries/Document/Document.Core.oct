@@ -192,6 +192,13 @@ record Doc {
     Content: Block[]
 }
 
+template record Template<Parameters> {
+    Metadata: fn(Parameters) -> Metadata
+    Style: fn(Parameters) -> StyleSheet
+    Layout: fn(Parameters) -> PageLayout
+    Content: fn(Parameters) -> Block[]
+}
+
 fn Hex(value: String) -> Color {
     return Color { Hex: value }
 }
@@ -220,6 +227,29 @@ fn Break() -> Inline {
     return Inline.LineBreak
 }
 
+fn Texts(values: String[]) -> Inline[] {
+    var out: Inline[] = []
+    for i in 0..Len(values) {
+        out = Append(out, Text(values[i]))
+    }
+    return out
+}
+
+fn JoinInline(groups: Inline[][], separator: Inline[]) -> Inline[] {
+    var out: Inline[] = []
+    for i in 0..Len(groups) {
+        if i > 0 {
+            for separatorIndex in 0..Len(separator) {
+                out = Append(out, separator[separatorIndex])
+            }
+        }
+        for itemIndex in 0..Len(groups[i]) {
+            out = Append(out, groups[i][itemIndex])
+        }
+    }
+    return out
+}
+
 fn DefaultTextStyle() -> TextStyle {
     return TextStyle {
         FontFamily: "Inter"
@@ -244,6 +274,38 @@ fn ParagraphStyleFrom(text: TextStyle, alignment: Alignment, before: NonNegative
     }
 }
 
+fn WithTextSize(style: ParagraphStyle, sizePt: PositivePoint) -> ParagraphStyle {
+    return style with { Text: style.Text with { SizePt: sizePt } }
+}
+
+fn WithColor(style: ParagraphStyle, color: Color) -> ParagraphStyle {
+    return style with { Text: style.Text with { Color: color } }
+}
+
+fn WithFont(style: ParagraphStyle, fontFamily: String) -> ParagraphStyle {
+    return style with { Text: style.Text with { FontFamily: fontFamily } }
+}
+
+fn WithWeight(style: ParagraphStyle, weight: FontWeight) -> ParagraphStyle {
+    return style with { Text: style.Text with { Weight: weight } }
+}
+
+fn WithItalic(style: ParagraphStyle, italic: Bool) -> ParagraphStyle {
+    return style with { Text: style.Text with { Italic: italic } }
+}
+
+fn WithSpacing(style: ParagraphStyle, before: NonNegativePoint, after: NonNegativePoint) -> ParagraphStyle {
+    return style with { SpaceBeforePt: before SpaceAfterPt: after }
+}
+
+fn WithAlignment(style: ParagraphStyle, alignment: Alignment) -> ParagraphStyle {
+    return style with { Alignment: alignment }
+}
+
+fn WithLineSpacing(style: ParagraphStyle, lineSpacing: PositiveLineSpacing) -> ParagraphStyle {
+    return style with { LineSpacing: lineSpacing }
+}
+
 fn DefaultStyle() -> StyleSheet {
     let bodyText = DefaultTextStyle()
     let body = ParagraphStyleFrom(bodyText, Alignment.Left, 0.0, 6.0, 1.08)
@@ -256,6 +318,25 @@ fn DefaultStyle() -> StyleSheet {
         Caption: ParagraphStyleFrom(bodyText with { SizePt: 9.0 Italic: true Color: Hex("#595959") }, Alignment.Center, 3.0, 6.0, 1.0)
         Code: ParagraphStyleFrom(bodyText with { FontFamily: "Cascadia Mono" SizePt: 9.0 }, Alignment.Left, 3.0, 6.0, 1.0)
         Small: ParagraphStyleFrom(bodyText with { SizePt: 9.0 Color: Hex("#595959") }, Alignment.Left, 0.0, 3.0, 1.0)
+    }
+}
+
+fn ProfessionalStyle() -> StyleSheet {
+    let base = DefaultStyle()
+    return base with {
+        Body: WithSpacing(base.Body, 0.0, 4.0)
+        Heading1: WithSpacing(WithColor(base.Heading1, Hex("#000000")), 7.0, 2.0)
+        Heading2: WithSpacing(base.Heading2, 4.0, 1.0)
+    }
+}
+
+fn ScientificStyle() -> StyleSheet {
+    let base = DefaultStyle()
+    return base with {
+        Heading1: WithColor(base.Heading1, Hex("#1F4E79"))
+        Heading2: WithColor(base.Heading2, Hex("#2F5597"))
+        Caption: WithItalic(WithColor(base.Caption, Hex("#44546A")), true)
+        Code: WithFont(base.Code, "Cascadia Mono")
     }
 }
 
@@ -281,6 +362,14 @@ fn Build(content: Block[]) -> Doc {
 
 fn BuildWith(metadata: Metadata, style: StyleSheet, layout: PageLayout, content: Block[]) -> Doc {
     return Doc { Metadata: metadata Style: style Layout: layout Content: content }
+}
+
+template fn Instantiate<Parameters>(templateValue: Template<Parameters>, parameters: Parameters) -> Doc {
+    let metadata = templateValue.Metadata
+    let style = templateValue.Style
+    let layout = templateValue.Layout
+    let content = templateValue.Content
+    return BuildWith(metadata(parameters), style(parameters), layout(parameters), content(parameters))
 }
 
 fn Heading(level: HeadingLevel, role: ParagraphRole, content: Inline[]) -> Block {
@@ -518,13 +607,17 @@ fn RenderMarkdownInlines(content: Inline[]) -> String {
 
 fn RenderMarkdownInline(inline: Inline) -> String {
     return match inline {
-        case Inline.Text(textValue) => MarkdownEscapeText(textValue)
-        case Inline.Strong(strongValue) => "**" + MarkdownEscapeText(strongValue) + "**"
-        case Inline.Emphasis(emphasisValue) => "*" + MarkdownEscapeText(emphasisValue) + "*"
+        case Inline.Text(textValue) => MarkdownInlineText(textValue)
+        case Inline.Strong(strongValue) => "**" + MarkdownInlineText(strongValue) + "**"
+        case Inline.Emphasis(emphasisValue) => "*" + MarkdownInlineText(emphasisValue) + "*"
         case Inline.Code(codeValue) => "`" + codeValue + "`"
-        case Inline.Link(linkValue) => "[" + MarkdownEscapeText(linkValue.Text) + "](" + linkValue.Url + ")"
+        case Inline.Link(linkValue) => "[" + MarkdownInlineText(linkValue.Text) + "](" + linkValue.Url + ")"
         case Inline.LineBreak => "  \n"
     }
+}
+
+fn MarkdownInlineText(value: String) -> String {
+    return StringReplaceAll(value, "\n", " ")
 }
 
 fn RenderMarkdownList(list: ListBlock) -> String[] {
