@@ -41,12 +41,10 @@ func newSVContext(module MIRModule) *svContext {
 }
 
 // CheckSystemVerilogLegal is the explicit capability boundary between ordinary
-// typed Oct MIR and the combinational SystemVerilog backend.
+// typed Oct MIR and the SystemVerilog backend. Ordinary functions remain
+// combinational; FLOW is admitted only through its explicit sequential model.
 func CheckSystemVerilogLegal(module MIRModule) error {
 	c := newSVContext(module)
-	if len(module.Flows) != 0 {
-		return fmt.Errorf("Verilog profile does not support FLOW; M1 is combinational only")
-	}
 	if len(module.Refinements) != 0 {
 		return fmt.Errorf("Verilog profile does not yet support runtime refinement constructors; compile-time-only Concepts emit no RTL")
 	}
@@ -63,11 +61,16 @@ func CheckSystemVerilogLegal(module MIRModule) error {
 			return err
 		}
 	}
-	if len(module.Functions) == 0 {
-		return fmt.Errorf("Verilog profile requires at least one function module")
+	if len(module.Functions) == 0 && len(module.Flows) == 0 {
+		return fmt.Errorf("Verilog profile requires at least one function or FLOW module")
 	}
 	for _, fn := range module.Functions {
 		if err := c.checkFunction(fn); err != nil {
+			return err
+		}
+	}
+	for _, flow := range module.Flows {
+		if err := c.checkFlow(flow); err != nil {
 			return err
 		}
 	}
@@ -223,6 +226,12 @@ func (c *svContext) checkValue(value MIRValue) error {
 	case MIRFieldAccess:
 		if err := c.checkValue(v.Target); err != nil {
 			return err
+		}
+		// FLOW shared expressions retain the existing compiled-Go binding root
+		// (f.board.X / f.parameter). Intermediate binding-owner accesses are
+		// intentionally typeless; the selected leaf remains fully typed.
+		if v.Type == "" {
+			return nil
 		}
 		_, err := c.typeWidth(v.Type)
 		return err
@@ -390,6 +399,19 @@ func emitSystemVerilog(module MIRModule) (string, error) {
 		}
 		name := uniqueSVName(sanitizeSVIdentifier(fn.Name), moduleNames)
 		if err := c.emitModule(&b, name, fn); err != nil {
+			return "", err
+		}
+		emitted = true
+	}
+	for _, flow := range module.Flows {
+		if flow.Package != module.EntryPackage {
+			continue
+		}
+		if emitted {
+			b.WriteByte('\n')
+		}
+		name := uniqueSVName(sanitizeSVIdentifier(flow.Name), moduleNames)
+		if err := c.emitFlowModule(&b, name, flow); err != nil {
 			return "", err
 		}
 		emitted = true

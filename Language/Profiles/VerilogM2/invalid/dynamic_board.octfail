@@ -1,0 +1,8 @@
+expect error: "Verilog profile does not support dynamic array values"
+
+profile Verilog
+
+flow DynamicBoard() -> Int {
+    board { Values: Int[] }
+    state Start { return 0 }
+}

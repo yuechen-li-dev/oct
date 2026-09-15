@@ -83,7 +83,7 @@ func TestVerilogProfileFocusedCapabilityDiagnostics(t *testing.T) {
 		{"string", "Verilog profile does not support String values"},
 		{"dynamic_array", "Verilog profile does not support dynamic array values"},
 		{"builtin", "Verilog profile does not support builtin Abs"},
-		{"flow", "Verilog profile does not support FLOW; M1 is combinational only"},
+		{"flow", "Verilog profile does not support String values"},
 		{"unknown_profile", "unknown profile 'CUDA'"},
 		{"duplicate_profile", "duplicate profile declaration 'Verilog'"},
 		{"conflicting_profile", "conflicting profile declarations 'Verilog' and 'Go'"},
@@ -106,6 +106,82 @@ func TestVerilogProfileFocusedCapabilityDiagnostics(t *testing.T) {
 			_, err = Compile(sourcePath)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestVerilogM2FlowGoldensAndSequentialState(t *testing.T) {
+	cases := []struct {
+		name      string
+		fragments []string
+	}{
+		{"basic_fsm", []string{"module Counter(", "input  logic Clock", "always_ff @(posedge Clock)", "State_Count", "State_Emit", "NextBoard_Count", "NextYieldValid = 1'b1", "NextDone = 1'b1", "module WaitOnce(", "module SumFour(", "for (Local_i = 64'sd0"}},
+		{"remember_resume", []string{"module Interruptible(", "NextHasResumeTarget = 1'b1", "NextResumeState = NextState", "NextState = NextResumeState", "NextHasResumeTarget = 1'b0"}},
+		{"utility_policy", []string{"module UtilityController(", "UtilitySite0Current", "UtilitySite0CommitAge", "UtilityComb0BestScore", "NextUtilitySite0CommitAge < UtilityComb0MinCommit", "UtilityComb0BestScore <= NextUtilitySite0Score + UtilityComb0Hysteresis"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := filepath.Join("..", "..", "Language", "Profiles", "VerilogM2", "valid", tc.name)
+			program, err := project.Load(filepath.Join(root, tc.name+".oct"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := typecheck.CheckProgram(program); err != nil {
+				t.Fatal(err)
+			}
+			module, err := lowerProgram(program, compileOptions{allowNoEntry: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := CheckSystemVerilogLegal(module); err != nil {
+				t.Fatal(err)
+			}
+			got, err := emitSystemVerilog(module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			golden, err := os.ReadFile(filepath.Join(root, tc.name+".golden.sv"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != string(golden) {
+				t.Fatalf("M2 %s golden mismatch", tc.name)
+			}
+			for _, fragment := range tc.fragments {
+				if !strings.Contains(got, fragment) {
+					t.Errorf("missing M2 evidence %q", fragment)
+				}
+			}
+		})
+	}
+}
+
+func TestVerilogM2FocusedFlowDiagnostics(t *testing.T) {
+	cases := map[string]string{
+		"dynamic_board":     "Verilog profile does not support dynamic array values",
+		"recursive_control": "recursive FLOW control can execute indefinitely within one turn",
+		"runtime_while":     "runtime-dependent while loop is not legal sequential hardware",
+		"native_effect":     "native/Octxiliary, filesystem, network, and process effects are not hardware-admissible",
+	}
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			fixture := filepath.Join("..", "..", "Language", "Profiles", "VerilogM2", "invalid", name+".octfail")
+			data, err := os.ReadFile(fixture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts := strings.SplitN(string(data), "\n\n", 2)
+			if len(parts) != 2 {
+				t.Fatalf("malformed fixture %s", fixture)
+			}
+			path := filepath.Join(t.TempDir(), name+".oct")
+			if err := os.WriteFile(path, []byte(parts[1]), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err = Compile(path)
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(want)) {
+				t.Fatalf("error = %v, want containing %q", err, want)
 			}
 		})
 	}

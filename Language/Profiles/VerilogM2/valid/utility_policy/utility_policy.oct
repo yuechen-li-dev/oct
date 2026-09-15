@@ -1,0 +1,30 @@
+profile Verilog
+
+package Main
+
+record Scores {
+    AValid: Bool
+    BValid: Bool
+    AScore: Int
+    BScore: Int
+}
+
+flow UtilityController() accepts scores: Scores yields Int -> Int {
+    board {
+        Selected: Int
+    }
+
+    state Decide {
+        let selected = when policy {
+            hysteresis: 2
+            min_commit: 3
+        } {
+            case 1 when scores.AValid score scores.AScore
+            case 2 when scores.BValid score scores.BScore
+            else 0
+        }
+        board.Selected = selected
+        yield selected
+        goto Decide
+    }
+}

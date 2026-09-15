@@ -1,0 +1,10 @@
+expect error: "native/Octxiliary, filesystem, network, and process effects are not hardware-admissible"
+
+profile Verilog
+
+flow NativeEffect() -> Int {
+    state Start {
+        Print("not hardware")
+        return 0
+    }
+}

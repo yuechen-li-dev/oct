@@ -333,6 +333,11 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 			return nil, err
 		}
 		return MIRFlowWhen{Cases: cases, Else: elseAction}, nil
+	case ast.ExprStmt:
+		if activeFlowExpressionContext != nil && activeFlowExpressionContext.program.Profile == "Verilog" {
+			return nil, unsupported("effectful/discarded FLOW expression statements; native/Octxiliary, filesystem, network, and process effects are not hardware-admissible")
+		}
+		return nil, unsupported(fmt.Sprintf("flow statement %T", stmt))
 	default:
 		return nil, unsupported(fmt.Sprintf("flow statement %T", stmt))
 	}

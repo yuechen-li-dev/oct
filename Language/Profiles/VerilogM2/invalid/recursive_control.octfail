@@ -1,0 +1,7 @@
+expect error: "recursive FLOW control can execute indefinitely within one turn"
+
+profile Verilog
+
+flow Spin() -> Int {
+    state Start { goto Start }
+}

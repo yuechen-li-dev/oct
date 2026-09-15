@@ -1,0 +1,89 @@
+package Main
+
+record Scores {
+    AValid: Bool
+    BValid: Bool
+    AScore: Int
+    BScore: Int
+}
+
+flow Counter(limit: Int) accepts enable: Bool yields Int -> Int {
+    board { Count: Int Armed: Bool }
+    state Count {
+        board.Armed = enable
+        if board.Armed { board.Count = board.Count + 1 }
+        when {
+            case board.Count >= limit -> return board.Count
+            else -> goto Emit
+        }
+    }
+    state Emit { yield board.Count goto Count }
+}
+
+flow Interruptible() accepts divert: Bool yields Int -> Int {
+    state Work {
+        when {
+            case divert -> { remember goto Detour }
+            else -> goto EmitWork
+        }
+    }
+    state EmitWork { yield 1 goto Work }
+    state Detour { yield 2 resume }
+}
+
+flow UtilityController() accepts scores: Scores yields Int -> Int {
+    board { Selected: Int }
+    state Decide {
+        let selected = when policy {
+            hysteresis: 2
+            min_commit: 3
+        } {
+            case 1 when scores.AValid score scores.AScore
+            case 2 when scores.BValid score scores.BScore
+            else 0
+        }
+        board.Selected = selected
+        yield selected
+        goto Decide
+    }
+}
+
+[Fact]
+fn CounterTurnsMatchRTLSequence() -> Void {
+    let machine = Counter(3)
+    Step(machine, true)
+    Assert.Equal(1, Yielded(machine)!, "counter turn 1")
+    Step(machine, true)
+    Assert.Equal(2, Yielded(machine)!, "counter turn 2")
+    Step(machine, true)
+    Assert.True(Complete(machine), "counter completes")
+    Assert.Equal(3, Result(machine)!, "counter result")
+}
+
+[Fact]
+fn RememberResumeMatchesRTLSequence() -> Void {
+    let machine = Interruptible()
+    Step(machine, true)
+    Assert.Equal(2, Yielded(machine)!, "detour yield")
+    Assert.Equal("Work", ResumeTarget(machine), "remembered state")
+    Step(machine, false)
+    Assert.Equal(1, Yielded(machine)!, "resumed work yield")
+    Assert.Equal("", ResumeTarget(machine), "resume clears slot")
+}
+
+[Fact]
+fn UtilityPolicyMatchesRTLSequence() -> Void {
+    let machine = UtilityController()
+    Step(machine, Scores { AValid: true BValid: true AScore: 10 BScore: 10 })
+    Assert.Equal(1, Yielded(machine)!, "tie keeps earliest")
+    Step(machine, Scores { AValid: true BValid: true AScore: 10 BScore: 11 })
+    Assert.Equal(1, Yielded(machine)!, "minimum commit turn 2")
+    Step(machine, Scores { AValid: true BValid: true AScore: 10 BScore: 20 })
+    Assert.Equal(1, Yielded(machine)!, "minimum commit turn 3")
+    Step(machine, Scores { AValid: true BValid: true AScore: 10 BScore: 20 })
+    Assert.Equal(2, Yielded(machine)!, "switch after commitment")
+    Step(machine, Scores { AValid: false BValid: false AScore: 0 BScore: 0 })
+    Assert.Equal(0, Yielded(machine)!, "fallback when no candidate remains valid")
+}
+
+fn Main() -> Void {}

@@ -1,0 +1,25 @@
+profile Verilog
+
+package Main
+
+flow Interruptible() accepts divert: Bool yields Int -> Int {
+    state Work {
+        when {
+            case divert -> {
+                remember
+                goto Detour
+            }
+            else -> goto EmitWork
+        }
+    }
+
+    state EmitWork {
+        yield 1
+        goto Work
+    }
+
+    state Detour {
+        yield 2
+        resume
+    }
+}

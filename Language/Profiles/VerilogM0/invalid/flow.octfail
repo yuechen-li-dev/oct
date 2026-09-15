@@ -1,8 +1,9 @@
-expect error: "Verilog profile does not support FLOW; M1 is combinational only"
+expect error: "Verilog profile does not support String values"
 
 profile Verilog
 
 flow Counter() -> Int {
+    board { Label: String }
     state Start { return 1 }
 }
 

@@ -1,0 +1,10 @@
+expect error: "runtime-dependent while loop is not legal sequential hardware"
+
+profile Verilog
+
+flow RuntimeLoop(keepGoing: Bool) -> Int {
+    state Start {
+        while keepGoing { }
+        return 0
+    }
+}
