@@ -1,5 +1,22 @@
 # FEEDBACK.md
 
+## Direct WebAssembly backend exposed low-level emitter ownership duplication
+
+**Observation:** The existing Machina UI M98 binary emitter proved direct
+section/LEB emission and Node execution, but it is package-private under
+`internal/interpret` and consumes hard-coded UI templates rather than current
+MIR. Reusing it as an ordinary backend would have coupled compiler codegen to a
+product runtime.
+
+**Suggestion:** Keep the new MIR backend separate under `internal/wasm`. If a
+third binary-WASM consumer appears, extract only the mechanical module/LEB
+writer into a neutral internal package; do not merge the Machina UI ABI with
+ordinary Oct semantics.
+
+**Status:** M0 resolved the compiler integration gap with `build.LoadMIR` and a
+fail-closed direct backend. Low-level writer consolidation is deliberately
+deferred until another consumer justifies the shared primitive.
+
 ## Purpose
 
 This file is a collection of observations and suggestions about the Oct codebase.

@@ -1,0 +1,44 @@
+package WasmCompute
+
+enum Mode {
+    Idle
+    Active
+}
+
+fn Add(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+fn SumTo(n: Int) -> Int {
+    var total = 0
+    var i = 0
+    while i <= n {
+        total = total + i
+        i = i + 1
+    }
+    return total
+}
+
+fn ModeCode(active: Bool) -> Int {
+    let mode = if active { Mode.Active } else { Mode.Idle }
+    return match mode {
+        case Mode.Idle -> 3
+        case Mode.Active -> 7
+    }
+}
+
+fn FloatKernel(x: Float) -> Float {
+    return x * 2.0 + 0.5
+}
+
+fn BoolKernel(a: Bool, b: Bool) -> Bool {
+    return a and not b
+}
+
+fn SignedKernel(x: Int) -> Int {
+    return -x * 3 + 1
+}
+
+fn Main() -> Int {
+    return Add(20, 22) + SumTo(10) + ModeCode(true)
+}

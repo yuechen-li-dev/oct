@@ -24,6 +24,7 @@ import (
 	sdslvtest "github.com/yuechen-li-dev/oct/internal/sdslv/test"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/toolchain"
 	"github.com/yuechen-li-dev/oct/internal/tester"
+	wasmbackend "github.com/yuechen-li-dev/oct/internal/wasm"
 )
 
 var version = "dev"
@@ -104,10 +105,19 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 		if isHelpArg(args[1:]) {
 			return writeBuildHelp(stdout)
 		}
-		if len(args) != 2 {
-			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct build --help for usage"))
+		pathArg, target, err := parseBuildOptions(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, command, err)
 		}
-		path := resolveWorkingPath(workingDir, args[1])
+		path := resolveWorkingPath(workingDir, pathArg)
+		if target == "wasm" {
+			result, err := wasmbackend.Compile(path)
+			if err != nil {
+				return reportCommandError(stderr, command, err)
+			}
+			_, err = fmt.Fprintf(stdout, "build succeeded: %s\ntarget: wasm\nsha256: %s\n", result.ArtifactPath, result.SHA256)
+			return err
+		}
 		result, err := build.Compile(path)
 		if err != nil {
 			return reportCommandError(stderr, command, err)
@@ -1438,8 +1448,34 @@ func writeRunHelp(out io.Writer) error {
 	return err
 }
 func writeBuildHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct build <file-or-root>\nCompile a program and emit an artifact.")
+	_, err := fmt.Fprintln(out, "usage: oct build <file-or-root> [--target native|wasm]\nCompile a program and emit an artifact. The wasm target lowers current MIR directly to a .wasm module.")
 	return err
+}
+
+func parseBuildOptions(args []string) (path, target string, err error) {
+	target = "native"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--target":
+			i++
+			if i >= len(args) {
+				return "", "", fmt.Errorf("missing value after --target")
+			}
+			target = args[i]
+		default:
+			if strings.HasPrefix(args[i], "-") || path != "" {
+				return "", "", fmt.Errorf("usage: oct build <file-or-root> [--target native|wasm]")
+			}
+			path = args[i]
+		}
+	}
+	if path == "" {
+		return "", "", fmt.Errorf("missing path; run oct build --help for usage")
+	}
+	if target != "native" && target != "wasm" {
+		return "", "", fmt.Errorf("unknown build target %q (expected native or wasm)", target)
+	}
+	return path, target, nil
 }
 
 func writeCheckHelp(out io.Writer) error {

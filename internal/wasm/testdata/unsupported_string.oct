@@ -1,0 +1,9 @@
+package UnsupportedString
+
+fn Echo(value: String) -> String {
+    return value
+}
+
+fn Main() -> Int {
+    return 0
+}

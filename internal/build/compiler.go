@@ -67,6 +67,24 @@ func Compile(path string) (Result, error) {
 	return compileProgram(program, compileOptions{})
 }
 
+// LoadMIR runs the ordinary Oct frontend through the current backend-neutral
+// MIR and returns the resolved entry source. Backend packages use this seam to
+// avoid introducing a second parser/typechecker pipeline.
+func LoadMIR(path string) (MIRModule, string, error) {
+	program, err := project.Load(path)
+	if err != nil {
+		return MIRModule{}, "", err
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		return MIRModule{}, "", err
+	}
+	module, err := lowerProgram(program, compileOptions{})
+	if err != nil {
+		return MIRModule{}, "", err
+	}
+	return module, program.EntrySource, nil
+}
+
 func CompileForTest(path string) (Result, error) {
 	program, err := project.LoadForTest(path)
 	if err != nil {

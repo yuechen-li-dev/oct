@@ -2,9 +2,12 @@
 
 ## Current State
 
-Oct currently has one active backend path:
+Oct currently has two active ordinary-language backend paths:
 
 - **GoOct (reference backend):** implemented through `cmd/` and `internal/`.
+- **WASM M0 (bounded direct backend):** current MIR lowers directly to a core
+  WebAssembly binary through `internal/wasm`; its qualified scalar subset and
+  host ABI are documented in `docs/internal/wasm_backend_m0.md`.
 
 A second path now exists as scaffolding:
 
@@ -24,7 +27,9 @@ It exists to prove feasibility boundaries and backend portability strategy over 
 
 ## Reference Backend Policy
 
-GoOct remains the canonical reference backend for language behavior and implementation reality.
+GoOct remains the canonical reference backend for the full compiled language
+surface. The direct WASM backend is an executable, fail-closed subset rather
+than a claim of full backend parity.
 
 Any future ClrOct work must preserve the language contract ownership model:
 
