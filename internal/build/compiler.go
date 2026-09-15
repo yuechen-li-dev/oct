@@ -310,10 +310,14 @@ func injectTestHarnessMain(src, pkg string, cases []TestHarnessCase) (string, er
 	var b strings.Builder
 	b.WriteString("func main() {\n")
 	b.WriteString("\tif len(os.Args) != 3 || os.Args[1] != \"--case\" { fmt.Fprintln(os.Stderr, \"usage: harness --case <stable-id>\"); os.Exit(2) }\n")
-	b.WriteString("\tswitch os.Args[2] {\n")
+	b.WriteString("\tdiagnostic := __octRunMain(func() {\n")
+	b.WriteString("\t\tswitch os.Args[2] {\n")
 	for _, tc := range cases {
-		fmt.Fprintf(&b, "\tcase %q:\n\t\tfn_%s_%s()\n\t\tfmt.Printf(\"{\\\"case_id\\\":%%q,\\\"status\\\":\\\"pass\\\"}\\n\", os.Args[2])\n", tc.ID, pkg, tc.Function)
+		fmt.Fprintf(&b, "\t\tcase %q:\n\t\t\tfn_%s_%s()\n\t\t\tfmt.Printf(\"{\\\"case_id\\\":%%q,\\\"status\\\":\\\"pass\\\"}\\n\", os.Args[2])\n", tc.ID, pkg, tc.Function)
 	}
-	b.WriteString("\tdefault: fmt.Fprintln(os.Stderr, \"unknown test case\"); os.Exit(2)\n\t}\n}\n")
+	b.WriteString("\t\tdefault: fmt.Fprintln(os.Stderr, \"unknown test case\"); os.Exit(2)\n\t\t}\n")
+	b.WriteString("\t})\n")
+	b.WriteString("\tif diagnostic != \"\" { fmt.Fprintln(os.Stderr, diagnostic); os.Exit(1) }\n")
+	b.WriteString("}\n")
 	return src[:start] + b.String() + src[end:], nil
 }

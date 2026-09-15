@@ -81,12 +81,36 @@ func TestIdentityAndPathRedaction(t *testing.T) {
 	if err := VerifySHA256(path, strings.Repeat("0", 64)); err == nil || !strings.Contains(err.Error(), "identity mismatch") {
 		t.Fatalf("expected identity mismatch, got %v", err)
 	}
-	if err := ValidateDisplayPath("local-model-cache/z_image.safetensors"); err != nil {
-		t.Fatal(err)
+}
+
+func TestValidateDisplayPathUsesPortableSyntaxRules(t *testing.T) {
+	tests := []struct {
+		name      string
+		path      string
+		wantError bool
+	}{
+		{name: "ordinary relative", path: "model.safetensors"},
+		{name: "nested relative", path: "local-model-cache/z_image/model.safetensors"},
+		{name: "nested Windows separators", path: `local-model-cache\z_image\model.safetensors`},
+		{name: "Unix absolute", path: "/home/person/model.safetensors", wantError: true},
+		{name: "Windows drive absolute backslashes", path: `C:\Users\person\model.safetensors`, wantError: true},
+		{name: "Windows drive absolute slashes", path: "C:/Users/person/model.safetensors", wantError: true},
+		{name: "Windows drive relative", path: `C:model.safetensors`, wantError: true},
+		{name: "Windows UNC", path: `\\server\share\model.safetensors`, wantError: true},
+		{name: "parent traversal", path: "../model.safetensors", wantError: true},
+		{name: "nested parent traversal", path: "cache/../model.safetensors", wantError: true},
+		{name: "mixed separator traversal", path: `cache\..\model.safetensors`, wantError: true},
+		{name: "empty", path: "", wantError: true},
 	}
-	for _, unsafe := range []string{`C:\\Users\\person\\model.safetensors`, "/home/person/model.safetensors", "../model.safetensors"} {
-		if err := ValidateDisplayPath(unsafe); err == nil {
-			t.Fatalf("accepted unsafe path %q", unsafe)
-		}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateDisplayPath(tc.path)
+			if tc.wantError && err == nil {
+				t.Fatalf("accepted unsafe path %q", tc.path)
+			}
+			if !tc.wantError && err != nil {
+				t.Fatalf("rejected safe path %q: %v", tc.path, err)
+			}
+		})
 	}
 }

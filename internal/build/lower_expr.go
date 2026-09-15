@@ -2685,6 +2685,9 @@ func parseTupleTypeString(t string) ([]string, bool) {
 
 func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 	name = canonicalCompiledBuiltinName(name)
+	if err := builtin.ValidateArgumentCount(name, len(argTypes)); err != nil {
+		return "", err
+	}
 	switch name {
 	case "Idx":
 		if len(argTypes) != 1 {

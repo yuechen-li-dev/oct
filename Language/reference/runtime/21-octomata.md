@@ -151,6 +151,16 @@ for records, nested records, plain and payload enums, arrays, vectors, and
 matrices. Older logical checkpoint versions are rejected rather than silently
 reinterpreted.
 
+For the deterministic, effect-free subset, continuing an in-memory machine and
+serializing, restoring, then continuing from the same boundary must produce the
+same result, board, resume slot, utility commitment, and state history. The
+contract fixture at
+`Language/ControlFlow/OctomataCheckpointDeterminism/valid/` continuously checks
+this property for state/goto, nested control, board mutation, suspend,
+remember/resume, and deterministic utility selection. Ambient time, external
+effects, cryptographic randomness, and RNG state that is not explicitly stored
+in persistent flow data are outside this deterministic subset.
+
 
 ### Dimensioned scalar and array board fields
 
@@ -210,11 +220,12 @@ flow DoneFlow() -> Int {
     }
 }
 
-test "result after completion" {
+[Fact]
+fn ResultAfterCompletion() -> Void {
     let machine = DoneFlow()
     Step(machine)
     let value = Result(machine)!
-    Assert.Equal(7, value)
+    Assert.Equal(7, value, "completed flow result")
 }
 ```
 

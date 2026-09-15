@@ -1,0 +1,9 @@
+package Main
+
+fn main() -> Float {
+    var total = 0.0
+    for index in 0..20000000 {
+        total = total + Float(index) * 0.0000001
+    }
+    return total
+}

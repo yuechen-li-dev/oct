@@ -283,6 +283,10 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	supportFeatures := analyzeGoSupportFeatures(m, usedBuiltins)
 	importSet := map[string]struct{}{"fmt": {}, "os": {}, "reflect": {}}
+	if options.includeMain {
+		importSet["runtime"] = struct{}{}
+		importSet["strings"] = struct{}{}
+	}
 	if options.hostFacade {
 		for _, flow := range m.Flows {
 			if flow.YieldType != "" {
@@ -715,37 +719,54 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if !options.includeMain {
 		return pruneGeneratedImports(b.String()), nil
 	}
+	b.WriteString("func __octRunMain(run func()) (diagnostic string) {\n")
+	b.WriteString("\tdefer func() {\n")
+	b.WriteString("\t\tif recovered := recover(); recovered != nil {\n")
+	b.WriteString("\t\t\tif _, internalRuntimePanic := recovered.(runtime.Error); internalRuntimePanic { panic(recovered) }\n")
+	b.WriteString("\t\t\tmessage := fmt.Sprint(recovered)\n")
+	b.WriteString("\t\t\tfor _, prefix := range []string{\"runtime error:\", \"oct error:\", \"unwrap failed:\"} {\n")
+	b.WriteString("\t\t\t\tif strings.HasPrefix(message, prefix) { diagnostic = message; return }\n")
+	b.WriteString("\t\t\t}\n")
+	b.WriteString("\t\t\tpanic(recovered)\n")
+	b.WriteString("\t\t}\n")
+	b.WriteString("\t}()\n")
+	b.WriteString("\trun()\n")
+	b.WriteString("\treturn \"\"\n")
+	b.WriteString("}\n\n")
 	b.WriteString("func main() {\n")
+	b.WriteString("\tdiagnostic := __octRunMain(func() {\n")
 	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
-		b.WriteString("\tdefer __octOctxiliaryClose()\n")
+		b.WriteString("\t\tdefer __octOctxiliaryClose()\n")
 	}
 	entryReturn := m.EntryReturn
 	entryFallible := m.EntryFallible
 	if entryReturn == "Void" && !entryFallible {
-		b.WriteString("\tfn_")
+		b.WriteString("\t\tfn_")
 		b.WriteString(m.EntryPackage)
 		b.WriteString("_")
 		b.WriteString(m.EntryFunc)
 		b.WriteString("()\n")
 	} else {
-		b.WriteString("\tresult := fn_")
+		b.WriteString("\t\tresult := fn_")
 		b.WriteString(m.EntryPackage)
 		b.WriteString("_")
 		b.WriteString(m.EntryFunc)
 		b.WriteString("()\n")
 	}
 	if entryFallible {
-		b.WriteString("\tif result.IsErr { panic(\"oct error: \" + result.Err) }\n")
+		b.WriteString("\t\tif result.IsErr { panic(\"oct error: \" + result.Err) }\n")
 		if entryReturn != "Void" {
-			b.WriteString("\tfmt.Println(result.Value)\n")
+			b.WriteString("\t\tfmt.Println(result.Value)\n")
 		}
 	} else if entryReturn != "Void" {
-		b.WriteString("\tfmt.Println(result)\n")
+		b.WriteString("\t\tfmt.Println(result)\n")
 	}
-	b.WriteString("	if os.Getenv(\"OCT_ENFORCE_ASSERTIONS\") == \"1\" && __octAssertionCount == 0 {\n")
-	b.WriteString("		fmt.Fprintln(os.Stderr, \"test completed with zero assertions\")\n")
-	b.WriteString("		os.Exit(1)\n")
-	b.WriteString("	}\n")
+	b.WriteString("\t\tif os.Getenv(\"OCT_ENFORCE_ASSERTIONS\") == \"1\" && __octAssertionCount == 0 {\n")
+	b.WriteString("\t\t\tfmt.Fprintln(os.Stderr, \"test completed with zero assertions\")\n")
+	b.WriteString("\t\t\tos.Exit(1)\n")
+	b.WriteString("\t\t}\n")
+	b.WriteString("\t})\n")
+	b.WriteString("\tif diagnostic != \"\" { fmt.Fprintln(os.Stderr, diagnostic); os.Exit(1) }\n")
 	b.WriteString("}\n")
 	return pruneGeneratedImports(b.String()), nil
 }

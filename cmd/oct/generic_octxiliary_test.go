@@ -72,6 +72,9 @@ func TestCompiledGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
 	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-test-wrapper" not found`) {
 		t.Fatalf("expected clear missing sidecar message, got:\n%s", string(out))
 	}
+	if strings.Contains(string(out), "panic:") || strings.Contains(string(out), "goroutine ") {
+		t.Fatalf("expected missing-sidecar Oct diagnostic without Go panic substrate, got:\n%s", string(out))
+	}
 }
 
 func TestCompiledGenericOctxiliarySupportsRecordReturn(t *testing.T) {

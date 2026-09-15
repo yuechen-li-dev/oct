@@ -3791,6 +3791,10 @@ func directMakeHostPrimitiveName(callee string) (string, bool) {
 }
 
 func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	callee = builtin.CanonicalName(callee)
+	if err := builtin.ValidateCallShape(callee, len(arguments), len(typeArguments)); err != nil {
+		return ExprType{}, err
+	}
 	if callee == "TupleProbe" || callee == "BoolIntProbe" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)

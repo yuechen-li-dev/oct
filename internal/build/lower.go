@@ -1033,37 +1033,8 @@ func usesLinearAlgebraHelpers(usedBuiltins map[string]bool) bool {
 }
 
 func canonicalCompiledBuiltinName(name string) string {
+	name = builtin.CanonicalName(name)
 	switch name {
-	case "String.ByteLength":
-		return "StringByteLength"
-	case "String.RuneCount":
-		return "StringRuneCount"
-	case "String.Join":
-		return "StringJoin"
-	case "String.Concat":
-		return "StringConcat"
-	case "String.From":
-		return "StringFrom"
-	case "Array.CrossSection":
-		return "ArrayCrossSection"
-	case "Array.Where":
-		return "ArrayWhere"
-	case "String.ReplaceAll":
-		return "StringReplaceAll"
-	case "String.Contains":
-		return "StringContains"
-	case "String.StartsWith":
-		return "StringStartsWith"
-	case "String.EndsWith":
-		return "StringEndsWith"
-	case "String.Trim":
-		return "StringTrim"
-	case "String.SplitLines":
-		return "StringSplitLines"
-	case "String.EscapeJson", "String.EscapeJSON":
-		return "StringEscapeJSON"
-	case "String.QuoteJson", "String.QuoteJSON":
-		return "StringQuoteJSON"
 	case "Random.Gaussian", "Gaussian":
 		return "Random.RandNormal"
 	case "Markdown.H1", "Markdown.Title":

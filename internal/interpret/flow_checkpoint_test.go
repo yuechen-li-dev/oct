@@ -2,9 +2,11 @@ package interpret
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/yuechen-li-dev/oct/internal/project"
@@ -391,6 +393,75 @@ fn Main() -> Int { return 0 }
 		if resumed.StateHistory[idx] != want[idx] {
 			t.Fatalf("history = %#v, want %#v", resumed.StateHistory, want)
 		}
+	}
+}
+
+func TestCheckpointSerializationContinuationMatchesUninterruptedExecution(t *testing.T) {
+	target := filepath.Join("..", "..", "Language", "ControlFlow", "OctomataCheckpointDeterminism", "valid", "checkpoint_resume_determinism.octest")
+	program, err := project.LoadForTest(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+
+	baselineInterpreter, err := newInterpreter(program, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer baselineInterpreter.close()
+	baseline := baselineInterpreter.instantiateFlow(baselineInterpreter.flows["Main.DeterministicResume"], "Main", nil)
+	if err := baselineInterpreter.stepFlow(baseline, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := baselineInterpreter.stepFlow(baseline, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	checkpointInterpreter, err := newInterpreter(program, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer checkpointInterpreter.close()
+	checkpointed := checkpointInterpreter.instantiateFlow(checkpointInterpreter.flows["Main.DeterministicResume"], "Main", nil)
+	if err := checkpointInterpreter.stepFlow(checkpointed, nil); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := checkpointed.ExportCheckpoint(FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serialized, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded FlowCheckpoint
+	if err := json.Unmarshal(serialized, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := InstantiateFlowFromCheckpoint(program, "Main", "DeterministicResume", decoded, FlowRestoreOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumedInterpreter, err := newInterpreter(program, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumedInterpreter.close()
+	if err := resumedInterpreter.stepFlow(restored, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	baselineResult := flowRunResult(baseline, 0, false)
+	restoredResult := flowRunResult(restored, 0, false)
+	if !reflect.DeepEqual(restoredResult, baselineResult) {
+		t.Fatalf("restored continuation differs from uninterrupted execution\nbaseline: %#v\nrestored: %#v", baselineResult, restoredResult)
+	}
+	baselineBoard, _ := baseline.RootEnv.lookup("board")
+	restoredBoard, _ := restored.RootEnv.lookup("board")
+	if !reflect.DeepEqual(restoredBoard.value, baselineBoard.value) {
+		t.Fatalf("restored board differs from uninterrupted execution\nbaseline: %#v\nrestored: %#v", baselineBoard.value, restoredBoard.value)
 	}
 }
 

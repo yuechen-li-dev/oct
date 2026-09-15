@@ -1336,6 +1336,9 @@ fn main() -> Int {
 	if !strings.Contains(string(out), "unwrap failed: bad input") {
 		t.Fatalf("expected unwrap failure message, got %q", string(out))
 	}
+	if strings.Contains(string(out), "panic:") || strings.Contains(string(out), "goroutine ") {
+		t.Fatalf("expected contained Oct diagnostic without Go panic substrate, got %q", string(out))
+	}
 }
 
 func TestCompileAndRunWriteOctagonSuccess(t *testing.T) {

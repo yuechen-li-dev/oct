@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -253,14 +252,26 @@ func VerifySHA256(path, expected string) error {
 // ValidateDisplayPath rejects absolute and escaping paths so a committed
 // artifact cannot accidentally disclose a user-specific machine path.
 func ValidateDisplayPath(path string) error {
-	normalized := filepath.ToSlash(path)
-	if path == "" || filepath.IsAbs(path) || filepath.VolumeName(path) != "" || strings.HasPrefix(normalized, "/") {
+	if path == "" {
 		return fmt.Errorf("display path must be a non-empty relative path")
 	}
-	for _, part := range strings.FieldsFunc(normalized, func(r rune) bool { return r == '/' }) {
+
+	// Display paths are serialized artifact data, so validate both Unix and
+	// Windows syntax regardless of the host running Oct. filepath.IsAbs and
+	// filepath.VolumeName deliberately follow host semantics and therefore do
+	// not recognize Windows drive or UNC paths on Unix.
+	normalized := strings.ReplaceAll(path, `\`, "/")
+	if strings.HasPrefix(normalized, "/") || hasWindowsVolumePrefix(normalized) {
+		return fmt.Errorf("display path must be a non-empty relative path")
+	}
+	for _, part := range strings.Split(normalized, "/") {
 		if part == ".." {
 			return fmt.Errorf("display path must not escape its cache root")
 		}
 	}
 	return nil
+}
+
+func hasWindowsVolumePrefix(path string) bool {
+	return len(path) >= 2 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':'
 }

@@ -1,0 +1,55 @@
+package Main
+
+flow DeterministicResume() -> Int {
+    board {
+        Count: Int
+        Choice: Int
+    }
+
+    state Start {
+        board.Count = 1
+        goto Work
+    }
+
+    state Work {
+        if board.Count < 3 {
+            board.Count = board.Count + 2
+            remember
+            goto Pause
+        }
+        goto Done
+    }
+
+    state Pause {
+        board.Choice = when policy {
+            hysteresis: 0
+            min_commit: 1
+        } {
+            case 3 when board.Count == 3 score 20
+            case 1 when true score 10
+            else 0
+        }
+        suspend
+        board.Count = board.Count + board.Choice
+        resume
+    }
+
+    state Done {
+        return board.Count
+    }
+}
+
+[Fact]
+fn DeterministicContinuationUsesExistingFlowSemantics() -> Void {
+    let machine = DeterministicResume()
+    Step(machine)
+    Assert.Equal("Pause", Active(machine), "first turn suspends at explicit checkpoint boundary")
+    Assert.Equal("Work", ResumeTarget(machine), "remembered state remains explicit")
+    Assert.Equal(3, BoardSnapshot(machine)!.Choice, "utility choice is persistent state")
+
+    Step(machine)
+    Assert.True(Complete(machine), "second turn completes after resume")
+    Assert.Equal(6, Result(machine)!, "continuation result")
+}
+
+fn Main() -> Void {}

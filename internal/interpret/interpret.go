@@ -3032,6 +3032,10 @@ func dequalifyTargetPackageValue(value Value, pkgName string) Value {
 }
 
 func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, callee string, typeArguments []ast.TypeRef, argumentExprs []ast.Expr) (evalResult, error) {
+	callee = builtin.CanonicalName(callee)
+	if err := builtin.ValidateCallShape(callee, len(argumentExprs), len(typeArguments)); err != nil {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: %w", err)
+	}
 	if i.requestDiscovery && (callee == "Print" || strings.Contains(callee, "CryptoRand") || callee == "WriteOctagon" || callee == "LoadOctagon" || callee == "JsonLoadStructured") {
 		return evalResult{}, fmt.Errorf("capability request is not statically discoverable: provider attempted effectful operation %s", callee)
 	}
