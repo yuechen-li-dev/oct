@@ -1,0 +1,8 @@
+package OctCumentResume
+
+import Artifact
+
+[Artifact]
+fn Build() -> Void {
+    Artifact.Docx("Yuechen_Li_Resume.docx", Resume())
+}

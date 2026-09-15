@@ -1,0 +1,10 @@
+package OctCumentBuildReport
+
+import Artifact
+
+[Artifact]
+fn Build() -> Void {
+    let doc = BuildReport()
+    Artifact.Markdown("aetheris_build_report.md", doc)
+    Artifact.Docx("aetheris_build_report.docx", doc)
+}

@@ -3868,7 +3868,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkWriteOctagonBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
-	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" || callee == "ArtifactCompileData" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
+	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" || callee == "ArtifactDocumentMarkdown" || callee == "ArtifactDocumentDocx" || callee == "ArtifactCompileData" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -6524,6 +6524,35 @@ func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, a
 }
 
 func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if callee == "ArtifactDocumentMarkdown" || callee == "ArtifactDocumentDocx" {
+		displayName := "Artifact.Markdown"
+		extension := ".md"
+		if callee == "ArtifactDocumentDocx" {
+			displayName = "Artifact.Docx"
+			extension = ".docx"
+		}
+		if len(arguments) != 2 {
+			return ExprType{}, fmt.Errorf("function '%s' expects (path: String, doc: Document.Doc); got %d arguments", displayName, len(arguments))
+		}
+		pathType, err := c.checkExpr(scope, arguments[0], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if pathType.Fallible || pathType.ValueType != (Type{Base: BaseTypeString}) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", displayName, pathType.ValueType)
+		}
+		if path, ok := arguments[0].(ast.StringLiteralExpr); ok && !strings.HasSuffix(strings.ToLower(path.Value), extension) {
+			return ExprType{}, fmt.Errorf("%s path must end with %s", displayName, extension)
+		}
+		docType, err := c.checkExpr(scope, arguments[1], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if docType.Fallible || docType.ValueType.Name != "Document.Doc" || docType.ValueType.IsArray {
+			return ExprType{}, fmt.Errorf("function '%s' argument 2 expects Document.Doc, got %s", displayName, docType.ValueType)
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
+	}
 	if callee == "ArtifactCompileData" {
 		if len(arguments) != 3 {
 			return ExprType{}, fmt.Errorf("function 'Artifact.WriteCompiledData' expects (path: String, symbol: String, value: typed data); got %d arguments", len(arguments))

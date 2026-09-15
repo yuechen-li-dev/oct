@@ -614,6 +614,8 @@ func artifactMIMEType(ext string) string {
 		return "application/json"
 	case ".md":
 		return "text/markdown"
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	case ".txt":
 		return "text/plain"
 	case ".go":

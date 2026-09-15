@@ -1,0 +1,28 @@
+package OctCumentBuildReport
+
+import Document
+
+fn BuildReport() -> Document.Doc {
+    return Document.BuildWith(
+        Document.Metadata { Title: "Aetheris Build Report" Author: "Oct Make" Subject: "Structured build evidence" },
+        Document.DefaultStyle(),
+        Document.DefaultLayout(),
+        [
+            Document.Title("Aetheris Build Report"),
+            Document.Callout(Document.CalloutKind.Success, [Document.Text("Status: qualified for the bounded M0 lane.")]),
+            Document.Section("Build Identity", [
+                Document.KeyValueTable(["Target", "Configuration", "Commit", "Result"], ["Firmament", "Release", "4f09d2a", "PASS"])
+            ]),
+            Document.Section("Completed Checks", [
+                Document.Bullets(["Compiler completed without fallback.", "STEP topology validation passed.", "Artifact hashes matched the recorded manifest."])
+            ]),
+            Document.Section("Artifacts", [
+                Document.Table(["Artifact", "Kind", "Status"], [["bracket.step", "CAD", "validated"], ["build-report.json", "evidence", "written"], ["preview.png", "visual", "reviewed"]])
+            ]),
+            Document.Callout(Document.CalloutKind.Warning, [Document.Strong("Diagnostic: "), Document.Text("remote CI was not run; this report records local evidence only.")]),
+            Document.Section("Output", [
+                Document.Code("text", ["compile: PASS", "topology: 1 solid, 18 faces", "artifact-sha256: 7b99...e104"])
+            ])
+        ]
+    )
+}

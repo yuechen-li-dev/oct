@@ -1,0 +1,49 @@
+package Document
+
+[Fact]
+fn ConstructionStylesAndMarkdownM0() -> Void {
+    let base = DefaultStyle()
+    let styled = base with {
+        Heading1: base.Heading1 with {
+            Text: base.Heading1.Text with { SizePt: 11.0 Color: Hex("#2F5597") }
+        }
+    }
+    let doc = BuildWith(
+        Metadata { Title: "Structured report" Author: "Oct" Subject: "M0" },
+        styled,
+        DefaultLayout() with { Size: PageSize.A4 Margins: Margins { TopPt: 48.0 BottomPt: 48.0 LeftPt: 54.0 RightPt: 54.0 } },
+        [
+            Title("Structured report"),
+            RichParagraph([Text("A "), Strong("backend-neutral"), Text(" document with "), Emphasis("semantic"), Text(" values and "), InlineCode("code"), Text(". See "), Link("Oct", "https://oct-lang.dev"), Text(".")]),
+            Bullets(["first", "second"]),
+            Numbered(["one", "two"]),
+            KeyValueTable(["Status"], ["Green"]),
+            Code("oct", ["```oct", "let x = 1", "```"]),
+            Callout(CalloutKind.Warning, [Text("Check the evidence.")]),
+            HorizontalRule(),
+            PageBreak()
+        ]
+    )
+    Assert.True(doc.Style.Heading1.Text.SizePt == 11.0, "nested with update")
+    Assert.Equal(PageSize.A4, doc.Layout.Size, "page size")
+    let diagnostics = ValidateFor(doc, Format.Markdown)
+    Assert.Equal(0, Len(diagnostics), "valid for markdown")
+    let markdown = ToMarkdown(doc)
+    Assert.Equal("# Structured report", markdown[0], "title")
+    Assert.Equal("- first", markdown[4], "bullet")
+    Assert.Equal("1. one", markdown[7], "numbered")
+    Assert.Equal("````oct", markdown[14], "dynamic code fence")
+    Assert.Equal("<!-- pagebreak -->", markdown[Len(markdown) - 1], "page break projection")
+}
+
+[Fact]
+fn CapabilityDiagnosticsM0() -> Void {
+    let invalid = Build([
+        StructuredTable(
+            Row { Cells: Cells(["A", "B"]) },
+            [Row { Cells: Cells(["only one"]) }]
+        )
+    ])
+    let diagnostics = ValidateFor(invalid, Format.Docx)
+    Assert.Equal(1, Len(diagnostics), "bounded diagnostics")
+}

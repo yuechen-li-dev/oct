@@ -159,6 +159,16 @@ fn Registry() -> RegistryIndex {
                 Description: "Explicit deployment/bootstrap helpers for practical Oct lab setup"
             },
             PackageEntry {
+                Name: "Document"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Document"
+                Description: "Backend-neutral immutable documents with Markdown and DOCX artifact rendering"
+            },
+            PackageEntry {
                 Name: "DifferentialEquations"
                 Version: "0.1.0"
                 Kind: "library"

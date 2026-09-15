@@ -1,0 +1,116 @@
+package OctCumentResume
+
+import Document
+
+record ResumeParameters {
+    Name: String
+    Role: String
+}
+
+template record ResumeTemplate<Parameters> {
+    Metadata: fn(Parameters) -> Document.Metadata
+    Style: fn(Parameters) -> Document.StyleSheet
+    Layout: fn(Parameters) -> Document.PageLayout
+    Content: fn(Parameters) -> Document.Block[]
+}
+
+template fn InstantiateResume<Parameters>(templateValue: ResumeTemplate<Parameters>, parameters: Parameters) -> Document.Doc {
+    let metadata = templateValue.Metadata
+    let style = templateValue.Style
+    let layout = templateValue.Layout
+    let content = templateValue.Content
+    return Document.BuildWith(metadata(parameters), style(parameters), layout(parameters), content(parameters))
+}
+
+fn ResumeMetadata(parameters: ResumeParameters) -> Document.Metadata {
+    return Document.Metadata { Title: parameters.Name + " Resume" Author: parameters.Name Subject: parameters.Role }
+}
+
+fn ResumeStyle(parameters: ResumeParameters) -> Document.StyleSheet {
+    let base = Document.DefaultStyle()
+    return base with {
+        Body: Document.ParagraphStyleFrom(base.Body.Text, base.Body.Alignment, 0.0, 4.0, 1.0)
+        Heading1: Document.ParagraphStyleFrom(Document.TextStyleFrom(base.Heading1.Text.FontFamily, 11.0, base.Heading1.Text.Weight, base.Heading1.Text.Italic, Document.Hex("#000000")), base.Heading1.Alignment, 7.0, 2.0, 1.0)
+        Heading2: Document.ParagraphStyleFrom(Document.TextStyleFrom(base.Heading2.Text.FontFamily, 10.5, base.Heading2.Text.Weight, base.Heading2.Text.Italic, base.Heading2.Text.Color), base.Heading2.Alignment, 4.0, 1.0, 1.0)
+    }
+}
+
+fn ResumeLayout(parameters: ResumeParameters) -> Document.PageLayout {
+    return Document.DefaultLayout() with {
+        Margins: Document.MarginsLTRB(42.0, 42.0, 48.0, 48.0)
+    }
+}
+
+fn ResumeRole(name: String, subtitle: String, bullets: String[]) -> Document.Block {
+    return Document.Group([
+        Document.H2(name),
+        Document.SmallParagraph([Document.Emphasis(subtitle)]),
+        Document.Bullets(bullets)
+    ])
+}
+
+fn ResumeContent(parameters: ResumeParameters) -> Document.Block[] {
+    return [
+        Document.Title(parameters.Name),
+        Document.Subtitle(parameters.Role),
+        Document.SmallParagraph([
+            Document.Text("Seattle, WA  |  "),
+            Document.Link("github.com/yuechen-li-dev", "https://github.com/yuechen-li-dev"),
+            Document.Text("  |  Compiler, CAD, and hardware tooling")
+        ]),
+        Document.Section("Summary", [
+            Document.P("Mechanical engineer turned compiler and hardware-tools developer building deterministic languages, native backends, engineering-product evidence, and reproducible scientific workflows.")
+        ]),
+        Document.Section("Selected Compiler & Hardware Tooling", [
+            ResumeRole("Oct / Veril-Oct", "Creator & Compiler Architect", [
+                "Built backend-neutral MIR and direct SystemVerilog lowering.",
+                "Lowered Octomata FLOW into synthesizable finite-state machines.",
+                "Validated generated RTL with Icarus Verilog and Yosys."
+            ]),
+            ResumeRole("Aetheris Firmament", "Engineering Language & CAD Systems", [
+                "Designed typed semantic geometry with explicit feature identity and provenance.",
+                "Materialized manufacturing artifacts and validated realized STEP topology.",
+                "Kept authoring backend-neutral while native renderers owned file-format details."
+            ])
+        ]),
+        Document.Section("Engineering Practice", [
+            Document.Bullets([
+                "Deterministic artifacts, replayable evidence, and explicit authority boundaries.",
+                "Go, C#, TypeScript, C/C++, Vulkan, SystemVerilog, and CAD/CAE workflows.",
+                "Compiler design spanning parsing, typing, immutable IRs, lowering, and diagnostics."
+            ])
+        ]),
+        Document.PageBreak(),
+        Document.Section("Additional Projects", [
+            ResumeRole("Copeland / Aurelian", "Language and Deterministic Game Infrastructure", [
+                "Built typed compiler projections and deterministic state-machine tooling.",
+                "Preserved application-owned time and semantic state through shared mechanisms.",
+                "Qualified headless proofs alongside focused visual verification."
+            ]),
+            ResumeRole("Riemann", "Certified Numerical Research", [
+                "Combined numerical search with interval-certified proof artifacts.",
+                "Separated exploratory evidence from final mathematical claims."
+            ])
+        ]),
+        Document.Section("Skills", [
+            Document.KeyValueTable(
+                ["Languages", "Compiler", "Graphics / hardware", "Engineering"],
+                ["Go, C#, TypeScript, C, C++", "Parsing, type systems, MIR, lowering", "Vulkan, SPIR-V, SystemVerilog", "CAD, topology, validation, DFM"]
+            )
+        ]),
+        Document.Section("Education", [
+            Document.H2("Mechanical Engineering"),
+            Document.P("Engineering foundation in mechanics, manufacturing, numerical methods, and evidence-driven design.")
+        ])
+    ]
+}
+
+fn Resume() -> Document.Doc {
+    let templateValue = ResumeTemplate<ResumeParameters> {
+        Metadata: ResumeMetadata
+        Style: ResumeStyle
+        Layout: ResumeLayout
+        Content: ResumeContent
+    }
+    return InstantiateResume<ResumeParameters>(templateValue, ResumeParameters { Name: "Yuechen Li" Role: "Compiler & Hardware Tools Engineer" })
+}

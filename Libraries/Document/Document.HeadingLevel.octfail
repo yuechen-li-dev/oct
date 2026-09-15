@@ -1,0 +1,12 @@
+expect error: "heading level must be at most 2 in Document M0"
+
+package Document
+
+concept HeadingLevel = Int {
+    Require(Self >= 1, "heading level must be at least 1")
+    Require(Self <= 2, "heading level must be at most 2 in Document M0")
+}
+
+fn InvalidHeading() -> HeadingLevel {
+    return 3
+}

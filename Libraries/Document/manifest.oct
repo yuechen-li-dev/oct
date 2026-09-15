@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Document"
+        Version: "0.1.0"
+        Authors: ["Yuechen Li", "OpenAI Codex"]
+        Date: "2026-09-15"
+        Description: "Backend-neutral immutable structured documents with Markdown and DOCX materialization"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}

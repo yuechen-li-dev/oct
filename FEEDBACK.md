@@ -99,3 +99,19 @@ Chained field access — result.Selection.HasWinner — is parsed as an enum val
 
 Suggestion:
 Worth adding to the language report for future LLM sessions.
+
+---
+
+Observation:
+An imported template function whose parameter is a sibling template record type can pass inside its defining package but fail when specialized by a consumer with "is not a template record". OctCument therefore keeps its M0 document-template proof application-owned instead of publishing a facade that does not work across a package boundary.
+
+Suggestion:
+Preserve sibling template-record identity during imported template specialization and add a cross-package contract test.
+
+---
+
+Observation:
+Nested `with` updates on imported records can lose the imported refined concept type for numeric literals. Updating `Document.ParagraphStyle.SpaceAfterPt` with `4.0` was rejected as Float where Document.NonNegativePoint was expected, although the same composition works inside the defining package.
+
+Suggestion:
+Apply the target imported field's concept conversion to record-update literals, matching record construction and same-package `with` behavior.

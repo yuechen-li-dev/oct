@@ -109,6 +109,11 @@ Still deferred after M24: Complex support, Einstein/tensor notation, broad callb
 
 ## M14 Markdown compiled support
 
+`Libraries/Document` (OctCument M0) constructs and validates immutable document
+values and renders Markdown in ordinary Oct on both interpreted and compiled
+paths. DOCX and first-class document artifact publication intentionally run in
+the existing build-time interpreted artifact phase; no native sidecar is used.
+
 - `Libraries/Markdown` is compiled as ordinary deterministic report construction. It is **not** an Octxiliary wrapper package, and no `octxiliary-markdown` sidecar is required.
 - Scalar/list/report helpers now lower directly in generated Go: headings, paragraphs, blank lines, horizontal rules, bullets, numbered lists, code blocks, callouts, images, figures, key-value tables, sections, subsections, report flattening, and escape helpers.
 - `Markdown.Report(blocks: String[][]) -> String[]` uses the existing compiled `String[][]` value path for block composition.

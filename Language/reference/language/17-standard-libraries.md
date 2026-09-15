@@ -165,6 +165,29 @@ Artifact guidance:
 - Paths are relative to the `oct artifact --output-root`; absolute, escaping, and duplicate paths are rejected.
 - `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` remain ordinary runtime APIs. Only legacy global `WriteOctagon` and confined directory creation are adapted to the artifact capability during the build phase.
 
+## Document (OctCument M0)
+
+`Libraries/Document` owns backend-neutral immutable document semantics. Its
+records/enums model metadata, styles, page layout, structured inline content,
+headings, paragraphs, lists, tables, code blocks, callouts, rules, page breaks,
+and groups. High-level helpers remain ordinary Oct functions.
+
+`Document.ToMarkdown(doc)` is the deterministic in-language Markdown renderer.
+During explicit artifact evaluation, `Artifact.Markdown(path, doc)` and
+`Artifact.Docx(path, doc)` materialize the same `Document.Doc`. DOCX packaging,
+OOXML names, relationships, IDs, and ZIP details are renderer-private Go
+implementation concerns.
+
+Document-authoring source may use the `*.doc.oct` naming convention, but the
+suffix has ordinary `.oct` parsing and typechecking semantics. Under the current
+artifact contract, `[Artifact]` entry points remain in a sibling `.octest` file
+or `Make.oct`; no document-specific parser or hidden execution environment exists.
+
+Refined Concepts enforce bounded heading levels and non-negative/positive
+typographic values. Application-owned `template record` / `template fn`
+specializations may assemble themes and content into the same `Document.Doc`.
+They do not create another document IR.
+
 ## Markdown
 
 `Libraries/Markdown` provides Markdown M1 report-output helpers.
@@ -176,6 +199,9 @@ Artifact guidance:
 - `Markdown.Report(blocks)` takes a list of blocks (not title+sections positional arguments).
 - Canonical report helpers: `Markdown.Report`, `Markdown.Section`, `Markdown.KeyValueTable`, `Markdown.Table`, `Markdown.Callout`.
 - Preferred sink for artifact lane output: `Artifact.WriteMarkdown(path, lines)`.
+- These string-first helpers remain compatibility APIs. New structured document
+  authoring should use `Document`; Markdown is then one renderer rather than the
+  canonical semantic model.
 
 Canonical example:
 

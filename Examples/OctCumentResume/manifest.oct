@@ -1,0 +1,8 @@
+package Manifest
+
+record PackageManifest { Name: String Version: String Description: String Authors: String[] Date: String Dependencies: Dependency[] }
+record Dependency { Name: String VersionRequirement: String }
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest { Name: "OctCumentResume" Version: "0.1.0" Description: "Two-page OctCument resume acceptance specimen" Authors: ["Yuechen Li", "OpenAI Codex"] Date: "2026-09-15" Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }] }
+}

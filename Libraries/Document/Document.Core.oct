@@ -1,0 +1,574 @@
+package Document
+
+enum FontWeight {
+    Normal
+    Medium
+    Bold
+}
+
+enum Alignment {
+    Left
+    Center
+    Right
+    Justify
+}
+
+enum ParagraphRole {
+    Body
+    Title
+    Subtitle
+    Heading1
+    Heading2
+    Caption
+    Code
+    Small
+}
+
+enum PageSize {
+    Letter
+    A4
+}
+
+enum Orientation {
+    Portrait
+    Landscape
+}
+
+enum ListKind {
+    Bullet
+    Numbered
+}
+
+enum CalloutKind {
+    Note
+    Info
+    Warning
+    Danger
+    Success
+}
+
+enum Format {
+    Markdown
+    Docx
+}
+
+concept HeadingLevel = Int {
+    Require(Self >= 1, "heading level must be at least 1")
+    Require(Self <= 2, "heading level must be at most 2 in Document M0")
+}
+
+concept PositivePoint = Float {
+    Require(Self > 0.0, "typographic point size must be positive")
+}
+
+concept NonNegativePoint = Float {
+    Require(Self >= 0.0, "typographic spacing and margins must be non-negative")
+}
+
+concept PositiveLineSpacing = Float {
+    Require(Self > 0.0, "line spacing must be positive")
+}
+
+record Color {
+    Hex: String
+}
+
+record TextStyle {
+    FontFamily: String
+    SizePt: PositivePoint
+    Weight: FontWeight
+    Italic: Bool
+    Color: Color
+}
+
+record ParagraphStyle {
+    Text: TextStyle
+    Alignment: Alignment
+    SpaceBeforePt: NonNegativePoint
+    SpaceAfterPt: NonNegativePoint
+    LineSpacing: PositiveLineSpacing
+}
+
+record StyleSheet {
+    Body: ParagraphStyle
+    Title: ParagraphStyle
+    Subtitle: ParagraphStyle
+    Heading1: ParagraphStyle
+    Heading2: ParagraphStyle
+    Caption: ParagraphStyle
+    Code: ParagraphStyle
+    Small: ParagraphStyle
+}
+
+record Margins {
+    TopPt: NonNegativePoint
+    BottomPt: NonNegativePoint
+    LeftPt: NonNegativePoint
+    RightPt: NonNegativePoint
+}
+
+record PageLayout {
+    Size: PageSize
+    Orientation: Orientation
+    Margins: Margins
+}
+
+record Metadata {
+    Title: String
+    Author: String
+    Subject: String
+}
+
+record LinkValue {
+    Text: String
+    Url: String
+}
+
+enum Inline {
+    Text(String)
+    Strong(String)
+    Emphasis(String)
+    Code(String)
+    Link(LinkValue)
+    LineBreak
+}
+
+record HeadingBlock {
+    Level: HeadingLevel
+    Content: Inline[]
+    Role: ParagraphRole
+}
+
+record ParagraphBlock {
+    Content: Inline[]
+    Role: ParagraphRole
+}
+
+record ListBlock {
+    Kind: ListKind
+    Items: Inline[][]
+}
+
+record Cell {
+    Content: Inline[]
+    Alignment: Alignment
+}
+
+record Row {
+    Cells: Cell[]
+}
+
+record TableBlock {
+    Header: Row
+    Body: Row[]
+}
+
+record CodeBlock {
+    Language: String
+    Lines: String[]
+}
+
+record CalloutBlock {
+    Kind: CalloutKind
+    Content: Inline[]
+}
+
+enum Block {
+    Heading(HeadingBlock)
+    Paragraph(ParagraphBlock)
+    List(ListBlock)
+    Table(TableBlock)
+    Code(CodeBlock)
+    Callout(CalloutBlock)
+    HorizontalRule
+    PageBreak
+    Group(Block[])
+}
+
+record Doc {
+    Metadata: Metadata
+    Style: StyleSheet
+    Layout: PageLayout
+    Content: Block[]
+}
+
+fn Hex(value: String) -> Color {
+    return Color { Hex: value }
+}
+
+fn Text(value: String) -> Inline {
+    return Inline.Text(value)
+}
+
+fn Strong(value: String) -> Inline {
+    return Inline.Strong(value)
+}
+
+fn Emphasis(value: String) -> Inline {
+    return Inline.Emphasis(value)
+}
+
+fn InlineCode(value: String) -> Inline {
+    return Inline.Code(value)
+}
+
+fn Link(text: String, url: String) -> Inline {
+    return Inline.Link(LinkValue { Text: text Url: url })
+}
+
+fn Break() -> Inline {
+    return Inline.LineBreak
+}
+
+fn DefaultTextStyle() -> TextStyle {
+    return TextStyle {
+        FontFamily: "Inter"
+        SizePt: 10.5
+        Weight: FontWeight.Normal
+        Italic: false
+        Color: Hex("#202124")
+    }
+}
+
+fn TextStyleFrom(fontFamily: String, sizePt: PositivePoint, weight: FontWeight, italic: Bool, color: Color) -> TextStyle {
+    return TextStyle { FontFamily: fontFamily SizePt: sizePt Weight: weight Italic: italic Color: color }
+}
+
+fn ParagraphStyleFrom(text: TextStyle, alignment: Alignment, before: NonNegativePoint, after: NonNegativePoint, lineSpacing: PositiveLineSpacing) -> ParagraphStyle {
+    return ParagraphStyle {
+        Text: text
+        Alignment: alignment
+        SpaceBeforePt: before
+        SpaceAfterPt: after
+        LineSpacing: lineSpacing
+    }
+}
+
+fn DefaultStyle() -> StyleSheet {
+    let bodyText = DefaultTextStyle()
+    let body = ParagraphStyleFrom(bodyText, Alignment.Left, 0.0, 6.0, 1.08)
+    return StyleSheet {
+        Body: body
+        Title: ParagraphStyleFrom(bodyText with { SizePt: 20.0 Weight: FontWeight.Bold }, Alignment.Center, 0.0, 3.0, 1.0)
+        Subtitle: ParagraphStyleFrom(bodyText with { SizePt: 11.0 Weight: FontWeight.Medium Color: Hex("#4A4A4A") }, Alignment.Center, 0.0, 8.0, 1.0)
+        Heading1: ParagraphStyleFrom(bodyText with { SizePt: 13.0 Weight: FontWeight.Bold Color: Hex("#000000") }, Alignment.Left, 9.0, 3.0, 1.0)
+        Heading2: ParagraphStyleFrom(bodyText with { SizePt: 11.0 Weight: FontWeight.Bold }, Alignment.Left, 6.0, 2.0, 1.0)
+        Caption: ParagraphStyleFrom(bodyText with { SizePt: 9.0 Italic: true Color: Hex("#595959") }, Alignment.Center, 3.0, 6.0, 1.0)
+        Code: ParagraphStyleFrom(bodyText with { FontFamily: "Cascadia Mono" SizePt: 9.0 }, Alignment.Left, 3.0, 6.0, 1.0)
+        Small: ParagraphStyleFrom(bodyText with { SizePt: 9.0 Color: Hex("#595959") }, Alignment.Left, 0.0, 3.0, 1.0)
+    }
+}
+
+fn DefaultLayout() -> PageLayout {
+    return PageLayout {
+        Size: PageSize.Letter
+        Orientation: Orientation.Portrait
+        Margins: Margins { TopPt: 54.0 BottomPt: 54.0 LeftPt: 54.0 RightPt: 54.0 }
+    }
+}
+
+fn MarginsLTRB(top: NonNegativePoint, bottom: NonNegativePoint, left: NonNegativePoint, right: NonNegativePoint) -> Margins {
+    return Margins { TopPt: top BottomPt: bottom LeftPt: left RightPt: right }
+}
+
+fn EmptyMetadata() -> Metadata {
+    return Metadata { Title: "" Author: "" Subject: "" }
+}
+
+fn Build(content: Block[]) -> Doc {
+    return Doc { Metadata: EmptyMetadata() Style: DefaultStyle() Layout: DefaultLayout() Content: content }
+}
+
+fn BuildWith(metadata: Metadata, style: StyleSheet, layout: PageLayout, content: Block[]) -> Doc {
+    return Doc { Metadata: metadata Style: style Layout: layout Content: content }
+}
+
+fn Heading(level: HeadingLevel, role: ParagraphRole, content: Inline[]) -> Block {
+    return Block.Heading(HeadingBlock { Level: level Content: content Role: role })
+}
+
+fn Title(value: String) -> Block {
+    return Heading(1, ParagraphRole.Title, [Text(value)])
+}
+
+fn Subtitle(value: String) -> Block {
+    return Block.Paragraph(ParagraphBlock { Content: [Text(value)] Role: ParagraphRole.Subtitle })
+}
+
+fn H1(value: String) -> Block {
+    return Heading(1, ParagraphRole.Heading1, [Text(value)])
+}
+
+fn H2(value: String) -> Block {
+    return Heading(2, ParagraphRole.Heading2, [Text(value)])
+}
+
+fn P(value: String) -> Block {
+    return RichParagraph([Text(value)])
+}
+
+fn RichParagraph(content: Inline[]) -> Block {
+    return Block.Paragraph(ParagraphBlock { Content: content Role: ParagraphRole.Body })
+}
+
+fn SmallParagraph(content: Inline[]) -> Block {
+    return Block.Paragraph(ParagraphBlock { Content: content Role: ParagraphRole.Small })
+}
+
+fn InlineItems(items: String[]) -> Inline[][] {
+    var out: Inline[][] = []
+    for i in 0..Len(items) {
+        out = Append(out, [Text(items[i])])
+    }
+    return out
+}
+
+fn Bullets(items: String[]) -> Block {
+    return Block.List(ListBlock { Kind: ListKind.Bullet Items: InlineItems(items) })
+}
+
+fn Numbered(items: String[]) -> Block {
+    return Block.List(ListBlock { Kind: ListKind.Numbered Items: InlineItems(items) })
+}
+
+fn RichBullets(items: Inline[][]) -> Block {
+    return Block.List(ListBlock { Kind: ListKind.Bullet Items: items })
+}
+
+fn RichNumbered(items: Inline[][]) -> Block {
+    return Block.List(ListBlock { Kind: ListKind.Numbered Items: items })
+}
+
+fn Cells(values: String[]) -> Cell[] {
+    var out: Cell[] = []
+    for i in 0..Len(values) {
+        out = Append(out, Cell { Content: [Text(values[i])] Alignment: Alignment.Left })
+    }
+    return out
+}
+
+fn Rows(values: String[][]) -> Row[] {
+    var out: Row[] = []
+    for i in 0..Len(values) {
+        out = Append(out, Row { Cells: Cells(values[i]) })
+    }
+    return out
+}
+
+fn Table(headers: String[], rows: String[][]) -> Block {
+    return Block.Table(TableBlock { Header: Row { Cells: Cells(headers) } Body: Rows(rows) })
+}
+
+fn StructuredTable(header: Row, body: Row[]) -> Block {
+    return Block.Table(TableBlock { Header: header Body: body })
+}
+
+fn KeyValueTable(keys: String[], values: String[]) -> Block {
+    var rows: String[][] = []
+    for i in 0..Len(keys) {
+        rows = Append(rows, [keys[i], values[i]])
+    }
+    return Table(["Key", "Value"], rows)
+}
+
+fn Code(language: String, lines: String[]) -> Block {
+    return Block.Code(CodeBlock { Language: language Lines: lines })
+}
+
+fn Callout(kind: CalloutKind, content: Inline[]) -> Block {
+    return Block.Callout(CalloutBlock { Kind: kind Content: content })
+}
+
+fn HorizontalRule() -> Block {
+    return Block.HorizontalRule
+}
+
+fn PageBreak() -> Block {
+    return Block.PageBreak
+}
+
+fn Group(blocks: Block[]) -> Block {
+    return Block.Group(blocks)
+}
+
+fn Section(title: String, blocks: Block[]) -> Block {
+    var content: Block[] = [H1(title)]
+    for i in 0..Len(blocks) {
+        content = Append(content, blocks[i])
+    }
+    return Group(content)
+}
+
+fn Subsection(title: String, blocks: Block[]) -> Block {
+    var content: Block[] = [H2(title)]
+    for i in 0..Len(blocks) {
+        content = Append(content, blocks[i])
+    }
+    return Group(content)
+}
+
+fn ValidateFor(doc: Doc, format: Format) -> String[] {
+    var diagnostics: String[] = []
+    for i in 0..Len(doc.Content) {
+        diagnostics = ValidateBlock(doc.Content[i], format, diagnostics)
+    }
+    return diagnostics
+}
+
+fn ValidateBlock(block: Block, format: Format, diagnostics: String[]) -> String[] {
+    return match block {
+        case Block.Heading(headingValue) => ValidateHeading(headingValue, diagnostics)
+        case Block.Paragraph(paragraphValue) => diagnostics
+        case Block.List(listValue) => diagnostics
+        case Block.Table(tableValue) => ValidateTable(tableValue, diagnostics)
+        case Block.Code(codeValue) => diagnostics
+        case Block.Callout(calloutValue) => diagnostics
+        case Block.HorizontalRule => diagnostics
+        case Block.PageBreak => diagnostics
+        case Block.Group(children) => ValidateBlocks(children, format, diagnostics)
+    }
+}
+
+fn ValidateBlocks(blocks: Block[], format: Format, diagnostics: String[]) -> String[] {
+    var out = diagnostics
+    for i in 0..Len(blocks) {
+        out = ValidateBlock(blocks[i], format, out)
+    }
+    return out
+}
+
+fn ValidateHeading(heading: HeadingBlock, diagnostics: String[]) -> String[] {
+    return diagnostics
+}
+
+fn ValidateTable(table: TableBlock, diagnostics: String[]) -> String[] {
+    let columns = Len(table.Header.Cells)
+    if columns == 0 {
+        return Append(diagnostics, "Document table header must contain at least one cell")
+    }
+    var out = diagnostics
+    for i in 0..Len(table.Body) {
+        if Len(table.Body[i].Cells) != columns {
+            out = Append(out, "Document table rows must match the header cell count")
+        }
+    }
+    return out
+}
+
+fn ToMarkdown(doc: Doc) -> String[] {
+    var out: String[] = []
+    for i in 0..Len(doc.Content) {
+        let rendered = RenderMarkdownBlock(doc.Content[i])
+        if Len(rendered) > 0 {
+            if Len(out) > 0 {
+                out = Append(out, "")
+            }
+            for lineIndex in 0..Len(rendered) {
+                out = Append(out, rendered[lineIndex])
+            }
+        }
+    }
+    return out
+}
+
+fn RenderMarkdownBlock(block: Block) -> String[] {
+    return match block {
+        case Block.Heading(headingValue) => RenderMarkdownHeading(headingValue)
+        case Block.Paragraph(paragraphValue) => [RenderMarkdownInlines(paragraphValue.Content)]
+        case Block.List(listValue) => RenderMarkdownList(listValue)
+        case Block.Table(tableValue) => RenderMarkdownTable(tableValue)
+        case Block.Code(codeValue) => MarkdownCodeBlock(codeValue.Language, codeValue.Lines)
+        case Block.Callout(calloutValue) => MarkdownCallout(CalloutName(calloutValue.Kind), [RenderMarkdownInlines(calloutValue.Content)])
+        case Block.HorizontalRule => ["---"]
+        case Block.PageBreak => ["<!-- pagebreak -->"]
+        case Block.Group(children) => RenderMarkdownBlocks(children)
+    }
+}
+
+fn RenderMarkdownBlocks(blocks: Block[]) -> String[] {
+    var out: String[] = []
+    for i in 0..Len(blocks) {
+        let rendered = RenderMarkdownBlock(blocks[i])
+        if Len(rendered) > 0 {
+            if Len(out) > 0 {
+                out = Append(out, "")
+            }
+            for lineIndex in 0..Len(rendered) {
+                out = Append(out, rendered[lineIndex])
+            }
+        }
+    }
+    return out
+}
+
+fn RenderMarkdownHeading(heading: HeadingBlock) -> String[] {
+    if heading.Level == 1 {
+        return ["# " + RenderMarkdownInlines(heading.Content)]
+    }
+    return ["## " + RenderMarkdownInlines(heading.Content)]
+}
+
+fn RenderMarkdownInlines(content: Inline[]) -> String {
+    var parts: String[] = []
+    for i in 0..Len(content) {
+        parts = Append(parts, RenderMarkdownInline(content[i]))
+    }
+    return StringConcat(parts)
+}
+
+fn RenderMarkdownInline(inline: Inline) -> String {
+    return match inline {
+        case Inline.Text(textValue) => MarkdownEscapeText(textValue)
+        case Inline.Strong(strongValue) => "**" + MarkdownEscapeText(strongValue) + "**"
+        case Inline.Emphasis(emphasisValue) => "*" + MarkdownEscapeText(emphasisValue) + "*"
+        case Inline.Code(codeValue) => "`" + codeValue + "`"
+        case Inline.Link(linkValue) => "[" + MarkdownEscapeText(linkValue.Text) + "](" + linkValue.Url + ")"
+        case Inline.LineBreak => "  \n"
+    }
+}
+
+fn RenderMarkdownList(list: ListBlock) -> String[] {
+    var out: String[] = []
+    var index = 1
+    for i in 0..Len(list.Items) {
+        let prefix = switch list.Kind {
+            case ListKind.Bullet => "- "
+            case ListKind.Numbered => ToString(index) + ". "
+        }
+        out = Append(out, prefix + RenderMarkdownInlines(list.Items[i]))
+        index = index + 1
+    }
+    return out
+}
+
+fn RenderMarkdownTable(table: TableBlock) -> String[] {
+    var out: String[] = []
+    out = Append(out, RenderMarkdownRow(table.Header))
+    var separator = "|"
+    for i in 0..Len(table.Header.Cells) {
+        separator = separator + " --- |"
+    }
+    out = Append(out, separator)
+    for i in 0..Len(table.Body) {
+        out = Append(out, RenderMarkdownRow(table.Body[i]))
+    }
+    return out
+}
+
+fn RenderMarkdownRow(row: Row) -> String {
+    var line = "|"
+    for i in 0..Len(row.Cells) {
+        line = line + " " + MarkdownEscapeTableCell(RenderMarkdownInlines(row.Cells[i].Content)) + " |"
+    }
+    return line
+}
+
+fn CalloutName(kind: CalloutKind) -> String {
+    return switch kind {
+        case CalloutKind.Note => "note"
+        case CalloutKind.Info => "info"
+        case CalloutKind.Warning => "warning"
+        case CalloutKind.Danger => "danger"
+        case CalloutKind.Success => "success"
+    }
+}

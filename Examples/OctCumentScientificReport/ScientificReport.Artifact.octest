@@ -1,0 +1,10 @@
+package OctCumentScientificReport
+
+import Artifact
+
+[Artifact]
+fn Build() -> Void {
+    let doc = ScientificReport()
+    Artifact.Markdown("scientific_report.md", doc)
+    Artifact.Docx("scientific_report.docx", doc)
+}

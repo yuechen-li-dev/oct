@@ -13,15 +13,17 @@ import (
 
 func artifactWrapperBuiltins() map[string]wrapperBuiltinHandler {
 	return map[string]wrapperBuiltinHandler{
-		"ArtifactWriteText":     (*interpreter).evalArtifactWriteTextBuiltin,
-		"ArtifactWriteLines":    (*interpreter).evalArtifactWriteLinesBuiltin,
-		"ArtifactWriteMarkdown": (*interpreter).evalArtifactWriteMarkdownBuiltin,
-		"ArtifactWriteCsv":      (*interpreter).evalArtifactWriteCsvBuiltin,
-		"ArtifactWriteJson":     (*interpreter).evalArtifactWriteJsonBuiltin,
-		"ArtifactWriteOctagon":  (*interpreter).evalArtifactWriteOctagonBuiltin,
-		"ArtifactCompileData":   (*interpreter).evalArtifactWriteCompiledDataBuiltin,
-		"ArtifactProgress":      (*interpreter).evalArtifactProgressBuiltin,
-		"ArtifactCheckpoint":    (*interpreter).evalArtifactCheckpointBuiltin,
+		"ArtifactWriteText":        (*interpreter).evalArtifactWriteTextBuiltin,
+		"ArtifactWriteLines":       (*interpreter).evalArtifactWriteLinesBuiltin,
+		"ArtifactWriteMarkdown":    (*interpreter).evalArtifactWriteMarkdownBuiltin,
+		"ArtifactWriteCsv":         (*interpreter).evalArtifactWriteCsvBuiltin,
+		"ArtifactWriteJson":        (*interpreter).evalArtifactWriteJsonBuiltin,
+		"ArtifactWriteOctagon":     (*interpreter).evalArtifactWriteOctagonBuiltin,
+		"ArtifactDocumentMarkdown": (*interpreter).evalArtifactDocumentMarkdownBuiltin,
+		"ArtifactDocumentDocx":     (*interpreter).evalArtifactDocumentDocxBuiltin,
+		"ArtifactCompileData":      (*interpreter).evalArtifactWriteCompiledDataBuiltin,
+		"ArtifactProgress":         (*interpreter).evalArtifactProgressBuiltin,
+		"ArtifactCheckpoint":       (*interpreter).evalArtifactCheckpointBuiltin,
 	}
 }
 

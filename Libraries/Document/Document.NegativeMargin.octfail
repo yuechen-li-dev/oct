@@ -1,0 +1,11 @@
+expect error: "typographic spacing and margins must be non-negative"
+
+package Document
+
+concept NonNegativePoint = Float {
+    Require(Self >= 0.0, "typographic spacing and margins must be non-negative")
+}
+
+fn InvalidMargin() -> NonNegativePoint {
+    return -1.0
+}
