@@ -9,6 +9,13 @@ fn Add(a: Int, b: Int) -> Int {
     return a + b
 }
 
+fn Max(a: Int, b: Int) -> Int {
+    if a > b {
+        return a
+    }
+    return b
+}
+
 fn SumTo(n: Int) -> Int {
     var total = 0
     var i = 0
