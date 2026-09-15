@@ -264,6 +264,14 @@ func (e *parametricElaborator) rewriteFlow(pkgName string, decl ast.FlowDecl, su
 }
 
 func (e *parametricElaborator) rewriteType(pkgName string, t ast.TypeRef, subst map[string]ast.TypeRef) (ast.TypeRef, error) {
+	if t.FlowInstanceOf != nil {
+		result, err := e.rewriteType(pkgName, *t.FlowInstanceOf, subst)
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		t.FlowInstanceOf = &result
+		return t, nil
+	}
 	if subst != nil && t.Package == "" && len(t.TypeArguments) == 0 && t.Function == nil && t.VectorOf == nil && t.MatrixOf == nil {
 		if replacement, ok := subst[t.Name]; ok {
 			depth := t.ArrayDepth

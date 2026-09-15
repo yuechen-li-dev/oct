@@ -63,6 +63,70 @@ func TestOrdinaryBackendExcludesArtifactEntryPoints(t *testing.T) {
 	}
 }
 
+func TestAsyncM0DumpExposesFlowStatesLiftedLocalsAndContinuations(t *testing.T) {
+	target := filepath.Join("..", "..", "Language", "ControlFlow", "AsyncM0", "valid", "async_m0.octest")
+	program, err := project.LoadForTest(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	module, err := lowerProgram(program, compileOptions{allowNoEntry: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dump := dumpMIR(module)
+	for _, want := range []string{
+		"flow AsyncM0Valid.FetchThenProcess -> Int",
+		"async-lowering lifted=[X] continuations=[Await0,ContinueAfterAwait0]",
+		"persistent Local_X:Int role=lifted-local",
+		"persistent Await0:FlowInstance<Int> role=await-handle",
+		"state[1] Await0",
+		"state[3] ContinueAfterAwait0",
+	} {
+		if !strings.Contains(dump, want) {
+			t.Fatalf("async MIR dump omitted %q:\n%s", want, dump)
+		}
+	}
+	for _, flow := range module.Flows {
+		if flow.Name == "LocalNotLiveAcrossAwait" && flow.Async != nil {
+			if len(flow.Async.LiftedLocals) != 0 {
+				t.Fatalf("local consumed before await was unnecessarily lifted: %+v", flow.Async.LiftedLocals)
+			}
+		}
+	}
+	secondProgram, err := project.LoadForTest(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(secondProgram); err != nil {
+		t.Fatal(err)
+	}
+	secondModule, err := lowerProgram(secondProgram, compileOptions{allowNoEntry: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second := dumpMIR(secondModule); second != dump {
+		t.Fatalf("async lowering is nondeterministic\nfirst:\n%s\nsecond:\n%s", dump, second)
+	}
+}
+
+func TestAsyncM0VerilogRejectsNestedFlowSchedulingAtExistingBoundary(t *testing.T) {
+	target := filepath.Join("testdata", "async_m0_verilog.oct")
+	program, err := project.LoadForTest(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	_, err = lowerProgram(program, compileOptions{allowNoEntry: true})
+	if err == nil || !strings.Contains(err.Error(), "effectful/discarded FLOW expression statements") {
+		t.Fatalf("expected existing Verilog FLOW legality boundary, got %v", err)
+	}
+}
+
 func TestLowerProgramBuildsMIRShape(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

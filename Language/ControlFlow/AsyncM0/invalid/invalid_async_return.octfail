@@ -1,0 +1,7 @@
+expect error: "function expects Int, but return is Bool"
+
+package AsyncM0Invalid
+
+async fn Bad() -> Int {
+    return true
+}

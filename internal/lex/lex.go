@@ -55,6 +55,8 @@ const (
 	KeywordImport     TokenKind = "KeywordImport"
 	KeywordWith       TokenKind = "KeywordWith"
 	KeywordPrometheus TokenKind = "KeywordPrometheus"
+	KeywordAsync      TokenKind = "KeywordAsync"
+	KeywordAwait      TokenKind = "KeywordAwait"
 
 	LeftParen    TokenKind = "LeftParen"
 	RightParen   TokenKind = "RightParen"
@@ -493,6 +495,10 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordWith
 	case "PROMETHEUS":
 		return KeywordPrometheus
+	case "async":
+		return KeywordAsync
+	case "await":
+		return KeywordAwait
 	default:
 		return Identifier
 	}

@@ -1,0 +1,98 @@
+package AsyncM0Valid
+
+flow Delayed(value: Int) -> Int {
+    state Wait {
+        suspend
+        return value
+    }
+}
+
+fn Consume(value: Int) -> Void {}
+
+async fn Immediate(value: Int) -> Int {
+    return value
+}
+
+async fn AwaitAsyncFunction() -> Int {
+    let Value = await Immediate(6)
+    return Value + 1
+}
+
+async fn FetchThenProcess(A: Int) -> Int {
+    let X = A + 1
+    let Y = await Delayed(40)
+    return X + Y
+}
+
+async fn MultipleAwaits() -> Int {
+    let A = await Delayed(10)
+    let B = await Delayed(A + 2)
+    return B
+}
+
+async fn AwaitInsideIf(Cond: Bool) -> Int {
+    if Cond {
+        let X = await Delayed(7)
+        return X + 1
+    }
+    return 3
+}
+
+async fn LocalNotLiveAcrossAwait() -> Int {
+    let Before = 2 + 3
+    Consume(Before)
+    let ResultValue = await Delayed(9)
+    return ResultValue
+}
+
+async fn CompletesVoid() -> Void {
+    Consume(1)
+}
+
+[Fact]
+fn SingleAwaitAndLiveLocal() -> Void {
+    let machine = FetchThenProcess(1)
+    Assert.Equal(false, Complete(machine), "async call returns an unstarted FLOW handle")
+    Step(machine)
+    Assert.Equal(false, Complete(machine), "await suspends while the child FLOW is incomplete")
+    Assert.Equal("SuspendAwait0", Active(machine), "generated suspension state is inspectable")
+    Step(machine)
+    Assert.Equal(42, Result(machine)!, "live local survives suspension and normal return completes")
+}
+
+[Fact]
+fn SequentialAwaitsResumeDeterministically() -> Void {
+    let machine = MultipleAwaits()
+    Step(machine)
+    Assert.Equal("SuspendAwait0", Active(machine), "first await has stable state identity")
+    Step(machine)
+    Assert.Equal("SuspendAwait1", Active(machine), "second await has stable state identity")
+    Step(machine)
+    Assert.Equal(12, Result(machine)!, "multiple awaits resume in source order")
+}
+
+[Fact]
+fn AwaitInSimpleIfAndOrdinarySyncRemainUnchanged() -> Void {
+    let positive = AwaitInsideIf(true)
+    Step(positive)
+    Step(positive)
+    Assert.Equal(8, Result(positive)!, "await works in a simple branch")
+
+    let negative = AwaitInsideIf(false)
+    Step(negative)
+    Assert.Equal(3, Result(negative)!, "non-await branch completes normally")
+
+    let transient = LocalNotLiveAcrossAwait()
+    Step(transient)
+    Step(transient)
+    Assert.Equal(9, Result(transient)!, "non-live local remains transient")
+
+    let voidMachine = CompletesVoid()
+    Step(voidMachine)
+    Assert.Equal(true, Complete(voidMachine), "Void async fallthrough completes normally")
+
+    let nestedAsync = AwaitAsyncFunction()
+    Step(nestedAsync)
+    Assert.Equal(7, Result(nestedAsync)!, "an async function call is itself awaitable")
+    Assert.Equal(4, 2 + 2, "ordinary synchronous evaluation is unchanged")
+}

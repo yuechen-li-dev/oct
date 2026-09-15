@@ -353,6 +353,19 @@ func TestAnalyzeTokenizesFlowStateGotoSuspendWhen(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesAsyncFnAndAwait(t *testing.T) {
+	file := source.File{Path: "example.oct", Text: "async fn Work() -> Int { let X = await Delay() return X }"}
+	result, err := Analyze(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTokenKinds(t, result.Tokens,
+		KeywordAsync, KeywordFn, Identifier, LeftParen, RightParen, Arrow, Identifier,
+		LeftBrace, KeywordLet, Identifier, Assign, KeywordAwait, Identifier, LeftParen,
+		RightParen, KeywordReturn, Identifier, RightBrace, EOF,
+	)
+}
+
 func TestAnalyzeTokenizesFlowStateRememberResume(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "flow Patrol() -> Int { state Search { remember goto Track } state Track { resume } }"}
 

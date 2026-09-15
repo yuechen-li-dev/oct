@@ -1,0 +1,12 @@
+expect error: "await is only valid inside an async fn"
+
+package AsyncM0Invalid
+
+flow Delayed() -> Int {
+    state Wait { return 1 }
+}
+
+fn Bad() -> Int {
+    let X = await Delayed()
+    return X
+}

@@ -310,11 +310,16 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				return ast.File{}, err
 			}
 			file.Enums = append(file.Enums, enumDecl)
-		case lex.KeywordFn:
+		case lex.KeywordFn, lex.KeywordAsync:
+			isAsync := p.match(lex.KeywordAsync)
+			if isAsync && p.current().Kind != lex.KeywordFn {
+				return ast.File{}, p.errorAtCurrent("expected 'fn' after 'async'")
+			}
 			function, err := p.parseFunctionDecl()
 			if err != nil {
 				return ast.File{}, err
 			}
+			function.IsAsync = isAsync
 			function.IsTestFile = file.IsTest
 			if pendingFact {
 				if len(function.Parameters) != 0 {
@@ -438,7 +443,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Flows = append(file.Flows, flow)
 		default:
-			return ast.File{}, p.errorAtCurrent("expected 'concept', 'record', 'enum', 'fn', 'flow', or 'query' at top level")
+			return ast.File{}, p.errorAtCurrent("expected 'concept', 'record', 'enum', 'fn', 'async fn', 'flow', or 'query' at top level")
 		}
 	}
 	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
@@ -2002,7 +2007,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFn, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.Minus, lex.DotDot:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFn, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.KeywordAwait, lex.Minus, lex.DotDot:
 		return true
 	default:
 		return false
@@ -2135,6 +2140,15 @@ func (p *parser) parsePrefixExpr() (ast.Expr, error) {
 			return nil, err
 		}
 		return ast.UnaryExpr{Operator: "not", Operand: operand}, nil
+	}
+	if p.current().Kind == lex.KeywordAwait {
+		token := p.current()
+		p.advance()
+		operand, err := p.parsePrefixExpr()
+		if err != nil {
+			return nil, err
+		}
+		return ast.AwaitExpr{Inner: operand, Line: token.Line, Column: token.Column}, nil
 	}
 	return p.parsePostfixExpr()
 }

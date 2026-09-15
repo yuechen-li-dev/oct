@@ -1,0 +1,8 @@
+expect error: "await requires an async function or FLOW call; this expression is not awaitable"
+
+package AsyncM0Invalid
+
+async fn Bad() -> Int {
+    let X = await 123
+    return X
+}

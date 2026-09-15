@@ -1,0 +1,13 @@
+expect error: "stored awaitable handles are deferred in ASYNC-M0"
+
+package AsyncM0Invalid
+
+flow Delayed() -> Int {
+    state Wait { return 1 }
+}
+
+async fn Bad() -> Int {
+    let Task = Delayed()
+    let X = await Task
+    return X
+}

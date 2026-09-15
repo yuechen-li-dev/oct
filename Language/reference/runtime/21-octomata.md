@@ -1,5 +1,22 @@
 # Octomata
 
+## Async sugar over FLOW
+
+`async fn` / `await` is a high-level spelling of an ordinary generated FLOW
+machine. Each await has deterministic `AwaitN`, `SuspendAwaitN`, and
+`ContinueAfterAwaitN` control states plus a persistent awaited-machine handle.
+Only locals live across a suspension are lifted to persistent generated
+fields. `return` completes the machine; `suspend` is temporary.
+
+`await` is compiler-generated continuation control. `remember` / `resume` is
+the separate explicit programmer-controlled resume-slot abstraction; async
+lowering does not redefine or consume that slot.
+
+ASYNC-M0 software execution uses the same interpreter and compiled FLOW
+machinery described below. Its nested-machine `Step` pattern is not yet legal
+under `profile Verilog`; the normal FLOW hardware-legality boundary rejects it
+without adding scheduler semantics to RTL.
+
 ## Overview
 
 Octomata is Oct's explicit behavioral/control runtime model.

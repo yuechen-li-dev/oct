@@ -213,6 +213,11 @@ func finishProgram(program Program) (Program, error) {
 			}
 		}
 	}
+	var err error
+	program, err = lowerAsyncFunctions(program)
+	if err != nil {
+		return Program{}, err
+	}
 	return elaborateParametrics(program)
 }
 

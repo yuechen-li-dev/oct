@@ -1,0 +1,11 @@
+expect error: "expects Int, got FlowInstance<Int>"
+
+package AsyncM0Invalid
+
+async fn Value() -> Int { return 1 }
+
+fn NeedsInt(value: Int) -> Int { return value }
+
+fn Bad() -> Int {
+    return NeedsInt(Value())
+}

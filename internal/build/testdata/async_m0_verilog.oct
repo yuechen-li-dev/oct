@@ -1,0 +1,14 @@
+profile Verilog
+package Main
+
+flow Delayed() -> Int {
+    state Wait {
+        suspend
+        return 1
+    }
+}
+
+async fn Work() -> Int {
+    let Value = await Delayed()
+    return Value
+}

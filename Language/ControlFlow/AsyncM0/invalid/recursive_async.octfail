@@ -1,0 +1,8 @@
+expect error: "async recursion cycle involving AsyncM0Invalid.Recur is not supported in ASYNC-M0"
+
+package AsyncM0Invalid
+
+async fn Recur() -> Int {
+    let X = await Recur()
+    return X
+}

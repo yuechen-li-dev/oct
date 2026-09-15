@@ -75,6 +75,20 @@ func TestBuildFileParsesFunctionWithNoParameters(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesAsyncFnAndPrefixAwait(t *testing.T) {
+	file := parseSource(t, "async fn Work() -> Int { let X = await Delay() return X }")
+	if len(file.Functions) != 1 || !file.Functions[0].IsAsync {
+		t.Fatalf("expected one async function, got %+v", file.Functions)
+	}
+	let, ok := file.Functions[0].Body.Statements[0].(ast.LetStmt)
+	if !ok {
+		t.Fatalf("expected let statement, got %T", file.Functions[0].Body.Statements[0])
+	}
+	if _, ok := let.Value.(ast.AwaitExpr); !ok {
+		t.Fatalf("expected prefix await expression, got %T", let.Value)
+	}
+}
+
 func TestBuildFileParsesVerilogProfileWithImplicitMainPackage(t *testing.T) {
 	file := parseSource(t, "profile Verilog\nfn Add(A: Int, B: Int) -> Int { return A + B }")
 	if file.Profile != "Verilog" || file.Package != "Main" {
@@ -779,7 +793,7 @@ func TestBuildFileParsesNestedIndexAssignmentTarget(t *testing.T) {
 }
 
 func TestBuildFileRejectsInvalidTopLevelContent(t *testing.T) {
-	assertParseErrorContains(t, "let x = 1", "expected 'concept', 'record', 'enum', 'fn', 'flow', or 'query' at top level")
+	assertParseErrorContains(t, "let x = 1", "expected 'concept', 'record', 'enum', 'fn', 'async fn', 'flow', or 'query' at top level")
 }
 
 func TestBuildFileRejectsUnterminatedBlock(t *testing.T) {

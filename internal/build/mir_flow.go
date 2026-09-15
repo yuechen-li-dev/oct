@@ -10,6 +10,12 @@ type MIRFlow struct {
 	Return     string
 	EntryState string
 	States     []MIRFlowState
+	Async      *MIRAsyncLowering
+}
+
+type MIRAsyncLowering struct {
+	LiftedLocals  []string
+	Continuations []string
 }
 
 type MIRFlowState struct {
@@ -70,6 +76,13 @@ type MIRFlowLocalAssign struct {
 }
 
 func (MIRFlowLocalAssign) mirFlowStmt() {}
+
+// MIRFlowExprStmt is ordinary MIR value/effect computation whose result is
+// intentionally discarded. It is a general FLOW statement, used by async
+// sugar for Step(machine) without adding async-specific backend semantics.
+type MIRFlowExprStmt struct{ Value MIRFlowExpr }
+
+func (MIRFlowExprStmt) mirFlowStmt() {}
 
 type MIRFlowWhile struct {
 	Condition MIRFlowExpr

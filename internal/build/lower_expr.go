@@ -2482,6 +2482,9 @@ func lookupEnumVariantPayloadTypeForProgram(program project.Program, currentPkg 
 }
 
 func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
+	if t.FlowInstanceOf != nil {
+		return flowInstanceTypeString(typeRefStringForPackage(currentPkg, *t.FlowInstanceOf))
+	}
 	if t.Function != nil {
 		parts := make([]string, 0, len(t.Function.Parameters))
 		for _, param := range t.Function.Parameters {

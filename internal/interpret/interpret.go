@@ -926,6 +926,9 @@ func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, argument
 }
 
 func (i interpreter) defaultFlowBoardValue(pkgName string, fieldType ast.TypeRef) Value {
+	if fieldType.FlowInstanceOf != nil {
+		return Value{Kind: ValueFlow}
+	}
 	if fieldType.IsArray || fieldType.ArrayDepth > 0 {
 		return Value{Kind: ValueArray, Array: []Value{}}
 	}

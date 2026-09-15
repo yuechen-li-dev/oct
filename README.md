@@ -84,6 +84,8 @@ Oct 0.1 is an early preview: real enough to run, test, package, and compile scie
 Current milestone capabilities include:
 
 - core Oct language/toolchain;
+- `async fn` / `await` source sugar lowered to explicit Octomata FLOW machines
+  for interpreted and compiled Go execution;
 - interpreted and compiled execution paths;
 - package manager MVP with local/Git source sync, transitive exact dependency graph sync, and optional project-root `lock.octagon`;
 - source-controlled canonical first-party registry at `Registry/registry.oct`;

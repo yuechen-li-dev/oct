@@ -99,6 +99,9 @@ type FunctionDecl struct {
 	// in an OctGo *.contracts.oct companion. The Go host validates and binds it;
 	// ordinary Oct execution never supplies an implementation body.
 	IsGoImport bool
+	// IsAsync marks C#-style `async fn` source. Project loading lowers these
+	// declarations into ordinary FLOW machines before type checking/execution.
+	IsAsync    bool
 	IsTestFile bool
 	IsFact     bool
 	IsTheory   bool
@@ -139,11 +142,22 @@ type FlowDecl struct {
 	Board          []BoardField
 	States         []StateDecl
 	EntryState     string
+	// AsyncLowering is inspectable compiler provenance for a source async fn.
+	// The executable semantics remain the ordinary Board/States representation.
+	AsyncLowering *AsyncLoweringInfo
+}
+
+type AsyncLoweringInfo struct {
+	LiftedLocals  []string
+	Continuations []string
 }
 
 type BoardField struct {
 	Name string
 	Type TypeRef
+	// AsyncHandle is compiler-generated persistent state. It is intentionally
+	// not legal in programmer-authored FLOW boards.
+	AsyncHandle bool
 }
 
 type StateDecl struct {
@@ -172,6 +186,10 @@ type TypeRef struct {
 	VectorOf      *TypeRef
 	MatrixOf      *TypeRef
 	Function      *FunctionTypeRef
+	// FlowInstanceOf is an internal-only type produced by async lowering.
+	// There is no public Future/Task/awaiter type syntax.
+	FlowInstanceOf *TypeRef
+	FlowIdentity   string
 	// These fields retain compile-time provenance after Selector<R, F>
 	// erases to the exact ordinary function type fn(R) -> F.
 	SelectorOwner  *TypeRef
@@ -446,6 +464,14 @@ type CallExpr struct {
 }
 
 func (CallExpr) exprNode() {}
+
+type AwaitExpr struct {
+	Inner  Expr
+	Line   int
+	Column int
+}
+
+func (AwaitExpr) exprNode() {}
 
 // FunctionExpr is an anonymous function value. Captures are an explicit,
 // ordered environment constructed when the expression is evaluated.

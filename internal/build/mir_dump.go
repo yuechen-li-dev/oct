@@ -23,6 +23,19 @@ func dumpMIR(m MIRModule) string {
 	}
 	for _, flow := range m.Flows {
 		fmt.Fprintf(&b, "flow %s.%s -> %s\n", flow.Package, flow.Name, flow.Return)
+		if flow.Async != nil {
+			fmt.Fprintf(&b, "  async-lowering lifted=[%s] continuations=[%s]\n", strings.Join(flow.Async.LiftedLocals, ","), strings.Join(flow.Async.Continuations, ","))
+			for _, field := range flow.Board {
+				role := "await-handle"
+				for _, local := range flow.Async.LiftedLocals {
+					if field.Name == "Local_"+local {
+						role = "lifted-local"
+						break
+					}
+				}
+				fmt.Fprintf(&b, "  persistent %s:%s role=%s\n", field.Name, field.Type, role)
+			}
+		}
 		for idx, state := range flow.States {
 			fmt.Fprintf(&b, "  state[%d] %s\n", idx, state.Name)
 			for _, stmt := range state.Statements {
@@ -120,6 +133,8 @@ func dumpFlowStmt(stmt MIRFlowStmt) string {
 			return "return"
 		}
 		return "return " + dumpFlowExpr(s.Value)
+	case MIRFlowExprStmt:
+		return "discard " + dumpFlowExpr(s.Value)
 	case MIRFlowIf:
 		return fmt.Sprintf("if %s { ... }", dumpFlowExpr(s.Condition))
 	case MIRFlowWhen:

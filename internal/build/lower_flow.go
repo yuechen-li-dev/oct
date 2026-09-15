@@ -37,6 +37,12 @@ func lowerFlow(program project.Program, pkgName string, flow ast.FlowDecl, pkg p
 		Return:     typeRefStringForPackage(pkgName, flow.ReturnType),
 		EntryState: flow.EntryState,
 	}
+	if flow.AsyncLowering != nil {
+		out.Async = &MIRAsyncLowering{
+			LiftedLocals:  append([]string(nil), flow.AsyncLowering.LiftedLocals...),
+			Continuations: append([]string(nil), flow.AsyncLowering.Continuations...),
+		}
+	}
 	if flow.TurnInput != nil {
 		out.TurnInput = &MIRField{Name: flow.TurnInput.Name, Type: typeRefStringForPackage(pkgName, flow.TurnInput.Type)}
 	}
@@ -337,7 +343,11 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 		if activeFlowExpressionContext != nil && activeFlowExpressionContext.program.Profile == "Verilog" {
 			return nil, unsupported("effectful/discarded FLOW expression statements; native/Octxiliary, filesystem, network, and process effects are not hardware-admissible")
 		}
-		return nil, unsupported(fmt.Sprintf("flow statement %T", stmt))
+		value, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowExprStmt{Value: value}, nil
 	default:
 		return nil, unsupported(fmt.Sprintf("flow statement %T", stmt))
 	}

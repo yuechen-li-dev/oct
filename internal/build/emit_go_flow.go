@@ -670,6 +670,19 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 			return "", err
 		}
 		return fmt.Sprintf("%s = %s\nf.instruction++\ncontinue", s.Name, v), nil
+	case MIRFlowExprStmt:
+		v, err := emitGoFlowExpr(s.Value, pkg)
+		if err != nil {
+			return "", err
+		}
+		typ, _, err := flowExpressionType(s.Value)
+		if err != nil {
+			return "", err
+		}
+		if typ == "Void" {
+			return fmt.Sprintf("%s\nf.instruction++\ncontinue", v), nil
+		}
+		return fmt.Sprintf("_ = %s\nf.instruction++\ncontinue", v), nil
 	case MIRFlowWhile:
 		condition, err := emitGoFlowExpr(s.Condition, pkg)
 		if err != nil {

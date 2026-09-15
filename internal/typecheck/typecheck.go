@@ -793,7 +793,7 @@ func (c checker) resolveFlowSignature(flow ast.FlowDecl) (flowSignature, error) 
 		fields := make(map[string]Type, len(flow.Board))
 		fieldOrder := make([]string, 0, len(flow.Board))
 		for _, field := range flow.Board {
-			fieldType, err := c.resolveFlowBoardFieldType(field.Type)
+			fieldType, err := c.resolveFlowBoardFieldType(field)
 			if err != nil {
 				return flowSignature{}, fmt.Errorf("board field %s: %w", field.Name, err)
 			}
@@ -896,7 +896,7 @@ func (c checker) checkFlow(flow ast.FlowDecl) error {
 			if _, exists := boardFields[field.Name]; exists {
 				return fmt.Errorf("flow %s: duplicate board field '%s'", flow.Name, field.Name)
 			}
-			fieldType, err := c.resolveFlowBoardFieldType(field.Type)
+			fieldType, err := c.resolveFlowBoardFieldType(field)
 			if err != nil {
 				return fmt.Errorf("flow %s board field %s: %w", flow.Name, field.Name, err)
 			}
@@ -931,10 +931,13 @@ func (c checker) checkFlow(flow ast.FlowDecl) error {
 	return nil
 }
 
-func (c checker) resolveFlowBoardFieldType(ref ast.TypeRef) (Type, error) {
-	t, err := c.resolveNonReturnType(ref)
+func (c checker) resolveFlowBoardFieldType(field ast.BoardField) (Type, error) {
+	t, err := c.resolveNonReturnType(field.Type)
 	if err != nil {
 		return Type{}, err
+	}
+	if field.AsyncHandle && t.IsFlowInstance {
+		return t, nil
 	}
 	if err := c.validatePersistentFlowBoardType(t, map[string]bool{}); err != nil {
 		return Type{}, err
@@ -7159,6 +7162,14 @@ func (c checker) resolveNonReturnType(typeRef ast.TypeRef) (Type, error) {
 }
 
 func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) {
+	if typeRef.FlowInstanceOf != nil {
+		result, err := c.resolveType(*typeRef.FlowInstanceOf, false)
+		if err != nil {
+			return Type{}, err
+		}
+		copy := result
+		return Type{IsFlowInstance: true, FlowIdentity: typeRef.FlowIdentity, FlowResultType: result.String(), FlowResult: &copy}, nil
+	}
 	if len(typeRef.TypeArguments) > 0 {
 		return Type{}, fmt.Errorf("unelaborated parametric type %s reached ordinary type checking", typeRef.Name)
 	}

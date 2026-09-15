@@ -1,0 +1,16 @@
+expect error: "await inside a loop is deferred in ASYNC-M0"
+
+package AsyncM0Invalid
+
+flow Delayed() -> Int {
+    state Wait { return 1 }
+}
+
+async fn Bad() -> Int {
+    var X = 0
+    while X < 1 {
+        let Y = await Delayed()
+        X = Y
+    }
+    return X
+}

@@ -1,0 +1,7 @@
+expect error: "fallible async functions are deferred in ASYNC-M0"
+
+package AsyncM0Invalid
+
+async fn Bad() -> Int ! Error {
+    return error("no")
+}
