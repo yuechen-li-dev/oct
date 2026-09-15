@@ -51,6 +51,8 @@ var namespaceAliases = map[string]map[string]string{
 		"WriteOctagon":      "ArtifactWriteOctagon",
 		"Markdown":          "ArtifactDocumentMarkdown",
 		"Docx":              "ArtifactDocumentDocx",
+		"Latex":             "ArtifactDocumentLatex",
+		"Pdf":               "ArtifactDocumentPdf",
 		"WriteCompiledData": "ArtifactCompileData",
 		"Progress":          "ArtifactProgress",
 		"Checkpoint":        "ArtifactCheckpoint",

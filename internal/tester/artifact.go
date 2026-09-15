@@ -616,6 +616,12 @@ func artifactMIMEType(ext string) string {
 		return "text/markdown"
 	case ".docx":
 		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".tex":
+		return "application/x-tex"
+	case ".pdf":
+		return "application/pdf"
+	case ".bib":
+		return "application/x-bibtex"
 	case ".txt":
 		return "text/plain"
 	case ".go":
@@ -624,6 +630,8 @@ func artifactMIMEType(ext string) string {
 		return "application/octet-stream"
 	case ".png":
 		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
 	default:
 		return "application/octet-stream"
 	}

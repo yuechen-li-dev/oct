@@ -1,11 +1,11 @@
-# Document Library (OctCument M2)
+# Document Library (OctCument M3)
 
 `Libraries/Document` is the canonical backend-neutral structured-document model.
 Documents are ordinary immutable Oct records, enums, arrays, and functions. Markdown
 and DOCX are renderers; neither format is the source of truth.
 
 ```text
-ordinary Oct -> Document.Doc -> capability validation -> Markdown or DOCX artifact
+ordinary Oct -> Document.Doc -> capability validation -> Markdown, DOCX, or LaTeX -> PDF
 ```
 
 Authoring files may conventionally be named `resume.doc.oct`, `report.doc.oct`, or
@@ -99,3 +99,43 @@ conversion is performed.
 Deferred beyond M2: SVG, tight wrapping, section/equation references, equations/OMML,
 cell spans, bibliography/citations, parsing, and additional renderers. Absolute
 positioning remains figure-only; M2 is not a general page-layout engine.
+
+M3 adds `Format.Latex` and `Format.Pdf`, `Artifact.Latex`, and `Artifact.Pdf`.
+Both artifact APIs use the same renderer-private textual lowering. PDF generation
+compiles the preserved sibling `.tex`; it does not use `Libraries/Pdf` and does
+not introduce a PDF-native semantic IR. Generated figures and `.bib` files are
+copied to stable content-addressed paths under `assets/`, and the source contains
+only relative slash-separated references.
+
+Academic additions are bounded semantic `Section`, `Abstract`, `Equation`,
+`Citation`, and `Bibliography` values. `LabeledEquation`, `SectionIdentified`,
+`EquationRef`, and `SectionRef` participate in the same deterministic numbering
+pass as figures and tables. Equation payloads are LaTeX math notation only;
+document-level commands are rejected by the backend. Citation keys remain style
+neutral and lower through BibTeX's stable `plain` style.
+
+LaTeX renders general blocks and rich inline content, uses `booktabs` tables,
+non-shell-escape `verbatim` code, bounded quote-style callouts, `hyperref` links,
+`fancyhdr` page chrome, and fixed-order figures/tables. Letter/A4, orientation,
+and margins map directly. Body point size and line spacing are honored; named
+DOCX theme fonts such as Inter and Cascadia Mono normalize to the selected TeX
+engine's dependable built-in fonts rather than making PDF generation depend on
+system font installation.
+
+Page- and margin-relative anchored figures lower through typed `textpos`
+coordinates. Paragraph/character anchors and z-orders above the baseline 0/1 are
+rejected for LaTeX/PDF instead of being approximated. DOCX still owns its full M2
+DrawingML anchor contract. Equations and bibliographies remain explicitly
+unsupported by DOCX in M3; Markdown projects equations as display math and keeps
+citations visible without pretending to format a bibliography.
+
+`Artifact.Pdf` discovers `OCT_LATEX_ENGINE` first, then `pdflatex`, `xelatex`, or
+`lualatex`. It runs with shell escape disabled, a fixed job name, UTC, and a fixed
+`SOURCE_DATE_EPOCH`, invoking BibTeX only when the generated auxiliary file
+requires it. Engine failures report the engine, exit code, concise diagnostic,
+and `.tex` artifact path. Reproducibility is toolchain-dependent; the generated
+`.tex` is always the authoritative deterministic representation.
+
+Deferred beyond M3: raw LaTeX blocks, a full math IR, CSL, Biber, OMML, paragraph/
+character LaTeX anchors, arbitrary z-order, tagged-PDF alt text, journal classes,
+font-file bundling, TeX import/round-trip, and custom PDF layout.

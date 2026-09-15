@@ -139,3 +139,33 @@ fn FigureReferenceDiagnosticsM2() -> Void {
     let negative = Anchor(FigureAnchor.Page, MM(- 1.0), MM(0.0), FigureWidth(MM(10.0)), FigureWrap.TopBottom, 0)
     Assert.Equal(1, Len(ValidateFor(Build([AnchoredFigure("a.png", "A", negative)]), Format.Docx)), "negative anchored coordinate")
 }
+
+[Fact]
+fn AcademicSemanticsAndCrossReferencesM3() -> Void {
+    let doc = BuildWith(
+    Metadata {Title: "Typed Papers" Author: "Ada Author" Subject: "M3"},
+    ScientificStyle(),
+    DefaultLayout(),
+    [
+    Title("Typed Papers"),
+    Abstract([P("A bounded academic document.")]),
+    SectionIdentified("method", "Method",[
+    RichParagraph([Text("The governing relation is "), EquationRef("energy"), Text(". Prior work is "), Cite("smith2024"), Text(".")]),
+    LabeledEquation("energy", "E = mc^2"),
+    FigureIdentified("response", "response.png", "Response", WidthMM(80.0)),
+    TableWithCaption("results", "Results",["Case", "Value"],[["A", "1"]]),
+    RichParagraph([SectionRef("method"), Text(", "), FigureRef("response"), Text(", and "), TableRef("results")])
+    ]),
+    Bibliography("references.bib")
+    ]
+    )
+    Assert.Equal(0, Len(ValidateFor(doc, Format.Latex)), "academic document validates for LaTeX")
+    Assert.Equal(0, Len(ValidateFor(doc, Format.Pdf)), "PDF shares LaTeX semantic capability")
+    Assert.Equal(2, Len(ValidateFor(doc, Format.Docx)), "DOCX explicitly rejects equation and bibliography")
+    let markdown = StringJoin(ToMarkdown(doc), "\n")
+    Assert.True(StringContains(markdown, "Equation 1"), "equation reference uses semantic numbering")
+    Assert.True(StringContains(markdown, "Section 1, Figure 1, and Table 1"), "cross-backend reference numbering is owned by Document")
+    Assert.True(StringContains(markdown, "[smith2024]"), "citation remains visible in Markdown")
+    Assert.True(StringContains(markdown, "$$\nE = mc^2\n$$"), "equation projects to display math")
+    Assert.Equal(1, Len(ValidateFor(Build([Equation("x + \\input{outside}")]), Format.Latex)), "equation payload rejects document-level commands")
+}

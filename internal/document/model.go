@@ -2,7 +2,10 @@
 // Document values. It deliberately exposes no OOXML vocabulary to Oct source.
 package document
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type FontWeight string
 type Alignment string
@@ -53,6 +56,7 @@ const (
 	LinkInline           InlineKind = "Link"
 	LineBreakInline      InlineKind = "LineBreak"
 	ReferenceInline      InlineKind = "Reference"
+	CitationInline       InlineKind = "Citation"
 	PageNumberInline     InlineKind = "PageNumber"
 	DocumentTitleInline  InlineKind = "DocumentTitle"
 	DocumentAuthorInline InlineKind = "DocumentAuthor"
@@ -69,6 +73,10 @@ const (
 	FigureBlockKind         BlockKind = "Figure"
 	LabeledTableBlockKind   BlockKind = "LabeledTable"
 	PageChromeBlockKind     BlockKind = "PageChrome"
+	EquationBlockKind       BlockKind = "Equation"
+	BibliographyBlockKind   BlockKind = "Bibliography"
+	SectionBlockKind        BlockKind = "Section"
+	AbstractBlockKind       BlockKind = "Abstract"
 
 	Point             LengthUnit          = "Pt"
 	Millimeter        LengthUnit          = "Mm"
@@ -84,6 +92,8 @@ const (
 	InFrontOfTextWrap FigureWrap          = "InFrontOfText"
 	FigureReference   ReferenceKind       = "Figure"
 	TableReference    ReferenceKind       = "Table"
+	SectionReference  ReferenceKind       = "Section"
+	EquationReference ReferenceKind       = "Equation"
 )
 
 type Color struct{ Hex string }
@@ -123,6 +133,7 @@ type Inline struct {
 	Text      string
 	URL       string
 	Reference Reference
+	Citation  []string
 }
 
 type Reference struct {
@@ -195,6 +206,23 @@ type LabeledTable struct {
 }
 type PageChrome struct{ Header, Footer []Inline }
 
+type Equation struct {
+	ID       string
+	Latex    string
+	Numbered bool
+}
+
+type Bibliography struct{ Source string }
+
+type Section struct {
+	ID       string
+	Level    int
+	Title    []Inline
+	Children []Block
+}
+
+type Abstract struct{ Children []Block }
+
 type CodeBlock struct {
 	Language string
 	Lines    []string
@@ -217,6 +245,10 @@ type Block struct {
 	Figure       Figure
 	LabeledTable LabeledTable
 	PageChrome   PageChrome
+	Equation     Equation
+	Bibliography Bibliography
+	Section      Section
+	Abstract     Abstract
 }
 
 type Doc struct {
@@ -246,6 +278,22 @@ func Validate(doc Doc) []string {
 			case FigureBlockKind:
 				diagnostics = registerID(block.Figure.ID, FigureReference, ids, diagnostics)
 				diagnostics = validateFigure(block.Figure, diagnostics)
+			case EquationBlockKind:
+				if block.Equation.Latex == "" {
+					diagnostics = append(diagnostics, "Document equation payload must not be empty")
+				}
+				if block.Equation.Numbered {
+					diagnostics = registerID(block.Equation.ID, EquationReference, ids, diagnostics)
+				}
+			case BibliographyBlockKind:
+				if block.Bibliography.Source == "" {
+					diagnostics = append(diagnostics, "Document bibliography source must not be empty")
+				}
+			case SectionBlockKind:
+				diagnostics = registerID(block.Section.ID, SectionReference, ids, diagnostics)
+				visit(block.Section.Children)
+			case AbstractBlockKind:
+				visit(block.Abstract.Children)
 			case GroupBlockKind:
 				visit(block.Children)
 			}
@@ -257,6 +305,19 @@ func Validate(doc Doc) []string {
 		for _, block := range blocks {
 			for _, inlines := range blockInlineCollections(block) {
 				for _, inline := range inlines {
+					if inline.Kind == CitationInline {
+						if len(inline.Citation) == 0 {
+							diagnostics = append(diagnostics, "Document citation must contain at least one key")
+						}
+						for _, key := range inline.Citation {
+							if key == "" {
+								diagnostics = append(diagnostics, "Document citation key must not be empty")
+							}
+							if strings.ContainsAny(key, "{}\\,\r\n") {
+								diagnostics = append(diagnostics, "Document citation key contains unsupported characters")
+							}
+						}
+					}
 					if inline.Kind != ReferenceInline {
 						continue
 					}
@@ -270,6 +331,10 @@ func Validate(doc Doc) []string {
 			}
 			if block.Kind == GroupBlockKind {
 				validateReferences(block.Children)
+			} else if block.Kind == SectionBlockKind {
+				validateReferences(block.Section.Children)
+			} else if block.Kind == AbstractBlockKind {
+				validateReferences(block.Abstract.Children)
 			}
 		}
 	}
@@ -368,6 +433,8 @@ func blockInlineCollections(block Block) [][]Inline {
 		return [][]Inline{block.Callout.Content}
 	case PageChromeBlockKind:
 		return [][]Inline{block.PageChrome.Header, block.PageChrome.Footer}
+	case SectionBlockKind:
+		return [][]Inline{block.Section.Title}
 	default:
 		return nil
 	}

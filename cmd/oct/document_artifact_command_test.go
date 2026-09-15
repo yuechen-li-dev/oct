@@ -29,11 +29,12 @@ func TestOctCumentArtifactsUseOneSemanticDocumentAndRemainDeterministic(t *testi
 	}
 
 	first := run()
-	if !strings.Contains(first, "PRODUCED scientific_report.md") || !strings.Contains(first, "PRODUCED scientific_report.docx") {
-		t.Fatalf("expected both renderer artifacts, got %q", first)
+	if !strings.Contains(first, "PRODUCED scientific_report.md") || !strings.Contains(first, "PRODUCED scientific_report.docx") || !strings.Contains(first, "PRODUCED scientific_report.tex") || !strings.Contains(first, "PRODUCED assets/image-") {
+		t.Fatalf("expected Markdown, DOCX, LaTeX, and portable asset artifacts, got %q", first)
 	}
 	docxPath := filepath.Join(outputRoot, "scientific_report.docx")
 	markdownPath := filepath.Join(outputRoot, "scientific_report.md")
+	latexPath := filepath.Join(outputRoot, "scientific_report.tex")
 	firstDOCX, err := os.ReadFile(docxPath)
 	if err != nil {
 		t.Fatal(err)
@@ -42,12 +43,19 @@ func TestOctCumentArtifactsUseOneSemanticDocumentAndRemainDeterministic(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
+	firstLatex, err := os.ReadFile(latexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(firstLatex, []byte(`\documentclass[11pt]{article}`)) || !bytes.Contains(firstLatex, []byte(`\begin{textblock*}{120.000mm}(20.000mm,30.000mm)`)) || bytes.Contains(firstLatex, []byte(project)) {
+		t.Fatalf("LaTeX renderer did not produce a portable semantic lowering: %q", firstLatex)
+	}
 	if !bytes.Contains(firstMarkdown, []byte("# Adaptive Filter Experiment")) || !bytes.Contains(firstMarkdown, []byte("| Method | Output SNR (dB) | Status |")) || !bytes.Contains(firstMarkdown, []byte("![Adaptive estimator response under seeded noise](adaptive-flow.png)")) || !bytes.Contains(firstMarkdown, []byte("Figure 1")) {
 		t.Fatalf("Markdown renderer lost semantic content: %q", firstMarkdown)
 	}
 
 	second := run()
-	if !strings.Contains(second, "UNCHANGED scientific_report.md") || !strings.Contains(second, "UNCHANGED scientific_report.docx") {
+	if !strings.Contains(second, "UNCHANGED scientific_report.md") || !strings.Contains(second, "UNCHANGED scientific_report.docx") || !strings.Contains(second, "UNCHANGED scientific_report.tex") {
 		t.Fatalf("expected deterministic unchanged artifacts, got %q", second)
 	}
 	secondDOCX, err := os.ReadFile(docxPath)
@@ -56,6 +64,13 @@ func TestOctCumentArtifactsUseOneSemanticDocumentAndRemainDeterministic(t *testi
 	}
 	if sha256.Sum256(firstDOCX) != sha256.Sum256(secondDOCX) {
 		t.Fatal("DOCX renderer was not byte deterministic")
+	}
+	secondLatex, err := os.ReadFile(latexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sha256.Sum256(firstLatex) != sha256.Sum256(secondLatex) {
+		t.Fatal("LaTeX renderer was not byte deterministic")
 	}
 
 	zr, err := zip.OpenReader(docxPath)

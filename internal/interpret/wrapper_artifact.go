@@ -21,6 +21,8 @@ func artifactWrapperBuiltins() map[string]wrapperBuiltinHandler {
 		"ArtifactWriteOctagon":     (*interpreter).evalArtifactWriteOctagonBuiltin,
 		"ArtifactDocumentMarkdown": (*interpreter).evalArtifactDocumentMarkdownBuiltin,
 		"ArtifactDocumentDocx":     (*interpreter).evalArtifactDocumentDocxBuiltin,
+		"ArtifactDocumentLatex":    (*interpreter).evalArtifactDocumentLatexBuiltin,
+		"ArtifactDocumentPdf":      (*interpreter).evalArtifactDocumentPdfBuiltin,
 		"ArtifactCompileData":      (*interpreter).evalArtifactWriteCompiledDataBuiltin,
 		"ArtifactProgress":         (*interpreter).evalArtifactProgressBuiltin,
 		"ArtifactCheckpoint":       (*interpreter).evalArtifactCheckpointBuiltin,

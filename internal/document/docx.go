@@ -25,7 +25,7 @@ const wordDrawingNS = `http://schemas.openxmlformats.org/drawingml/2006/wordproc
 const pictureNS = `http://schemas.openxmlformats.org/drawingml/2006/picture`
 
 func DOCX(doc Doc) ([]byte, error) {
-	if diagnostics := Validate(doc); len(diagnostics) > 0 {
+	if diagnostics := ValidateDocx(doc); len(diagnostics) > 0 {
 		return nil, fmt.Errorf("Document.Docx: %s", strings.Join(diagnostics, "; "))
 	}
 	r := &docxRenderer{doc: doc, nextRelationshipID: 3, nextDrawingID: 1, mediaByHash: map[string]mediaPart{}}
@@ -66,6 +66,29 @@ func DOCX(doc Doc) ([]byte, error) {
 		parts["word/_rels/footer1.xml.rels"] = []byte(hyperlinkRelationshipsXML(r.footerLinks))
 	}
 	return deterministicZip(parts)
+}
+
+func ValidateDocx(doc Doc) []string {
+	diagnostics := Validate(doc)
+	var visit func([]Block)
+	visit = func(blocks []Block) {
+		for _, block := range blocks {
+			switch block.Kind {
+			case EquationBlockKind:
+				diagnostics = append(diagnostics, "Document equations are not supported by Docx in M3")
+			case BibliographyBlockKind:
+				diagnostics = append(diagnostics, "Document bibliography is not supported by Docx in M3")
+			case SectionBlockKind:
+				visit(block.Section.Children)
+			case AbstractBlockKind:
+				visit(block.Abstract.Children)
+			case GroupBlockKind:
+				visit(block.Children)
+			}
+		}
+	}
+	visit(doc.Content)
+	return diagnostics
 }
 
 type hyperlinkRelationship struct{ id, target string }
@@ -143,6 +166,20 @@ func (r *docxRenderer) writeBlock(out *strings.Builder, block Block) {
 		for _, child := range block.Children {
 			r.writeBlock(out, child)
 		}
+	case SectionBlockKind:
+		role := Heading1Role
+		if block.Section.Level == 2 {
+			role = Heading2Role
+		}
+		r.writeParagraph(out, block.Section.Title, role, nil)
+		for _, child := range block.Section.Children {
+			r.writeBlock(out, child)
+		}
+	case AbstractBlockKind:
+		r.writeParagraph(out, []Inline{{Kind: TextInline, Text: "Abstract"}}, Heading2Role, nil)
+		for _, child := range block.Abstract.Children {
+			r.writeBlock(out, child)
+		}
 	}
 }
 
@@ -190,6 +227,8 @@ func (r *docxRenderer) writeInlines(out *strings.Builder, content []Inline, bold
 			writeRun(out, r.doc.Metadata.Author, bold, italic, code)
 		case ReferenceInline:
 			writeRun(out, "??", bold, italic, code)
+		case CitationInline:
+			writeRun(out, "["+strings.Join(inline.Citation, "; ")+"]", bold, italic, code)
 		}
 	}
 }
@@ -207,6 +246,10 @@ func (r *docxRenderer) findPageChrome(blocks []Block) {
 		}
 		if block.Kind == GroupBlockKind {
 			r.findPageChrome(block.Children)
+		} else if block.Kind == SectionBlockKind {
+			r.findPageChrome(block.Section.Children)
+		} else if block.Kind == AbstractBlockKind {
+			r.findPageChrome(block.Abstract.Children)
 		}
 	}
 }

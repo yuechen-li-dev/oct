@@ -48,6 +48,8 @@ var names = map[string]struct{}{
 	"ArtifactWriteOctagon":     {},
 	"ArtifactDocumentMarkdown": {},
 	"ArtifactDocumentDocx":     {},
+	"ArtifactDocumentLatex":    {},
+	"ArtifactDocumentPdf":      {},
 	"ArtifactCompileData":      {},
 	"ArtifactProgress":         {},
 	"ArtifactCheckpoint":       {},

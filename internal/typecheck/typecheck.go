@@ -3868,7 +3868,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkWriteOctagonBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
-	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" || callee == "ArtifactDocumentMarkdown" || callee == "ArtifactDocumentDocx" || callee == "ArtifactCompileData" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
+	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" || callee == "ArtifactDocumentMarkdown" || callee == "ArtifactDocumentDocx" || callee == "ArtifactDocumentLatex" || callee == "ArtifactDocumentPdf" || callee == "ArtifactCompileData" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -6524,12 +6524,18 @@ func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, a
 }
 
 func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
-	if callee == "ArtifactDocumentMarkdown" || callee == "ArtifactDocumentDocx" {
+	if callee == "ArtifactDocumentMarkdown" || callee == "ArtifactDocumentDocx" || callee == "ArtifactDocumentLatex" || callee == "ArtifactDocumentPdf" {
 		displayName := "Artifact.Markdown"
 		extension := ".md"
 		if callee == "ArtifactDocumentDocx" {
 			displayName = "Artifact.Docx"
 			extension = ".docx"
+		} else if callee == "ArtifactDocumentLatex" {
+			displayName = "Artifact.Latex"
+			extension = ".tex"
+		} else if callee == "ArtifactDocumentPdf" {
+			displayName = "Artifact.Pdf"
+			extension = ".pdf"
 		}
 		if len(arguments) != 2 {
 			return ExprType{}, fmt.Errorf("function '%s' expects (path: String, doc: Document.Doc); got %d arguments", displayName, len(arguments))

@@ -1,0 +1,25 @@
+package OctCumentPaper
+
+import Artifact
+import Document
+
+[Fact]
+fn AcademicPaperSemanticWitnessM3() -> Void {
+    let doc = Paper()
+    Assert.Equal(0, Len(Document.ValidateFor(doc, Document.Format.Latex)), "paper validates for LaTeX")
+    Assert.Equal(0, Len(Document.ValidateFor(doc, Document.Format.Pdf)), "paper validates for PDF")
+    let markdown = StringJoin(Document.ToMarkdown(doc), "\n")
+    Assert.True(StringContains(markdown, "Equation 1"), "equation reference")
+    Assert.True(StringContains(markdown, "Figure 1 and Table 1"), "figure and table references")
+    Assert.True(StringContains(markdown, "Section 2"), "section reference")
+}
+
+[Artifact]
+fn Build() -> Void {
+    Artifact.Pdf("paper.pdf", Paper())
+}
+
+[Artifact]
+fn BuildLatexOnly() -> Void {
+    Artifact.Latex("latex-only/paper.tex", Paper())
+}

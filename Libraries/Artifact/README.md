@@ -13,6 +13,10 @@ not generate or compile the application backend.
 - `Artifact.WriteCsv(path, table) -> Void`
 - `Artifact.WriteJson(path, value) -> Void`
 - `Artifact.WriteOctagon(path, value) -> Void`
+- `Artifact.Markdown(path, doc) -> Void`
+- `Artifact.Docx(path, doc) -> Void`
+- `Artifact.Latex(path, doc) -> Void`
+- `Artifact.Pdf(path, doc) -> Void`
 
 All functions are valid only during the explicit artifact phase. They declare
 paths relative to `--output-root` (the working directory by default), reject
@@ -46,3 +50,9 @@ ordinary runtime code. During artifact evaluation, the legacy global
 `WriteOctagon` call is a compatibility alias for the same output capability;
 ordinary filesystem writes are rejected. `Directory.Make*` is accepted only as
 a confined staging-directory compatibility operation.
+
+The document artifact APIs accept the canonical `Document.Doc`. `Artifact.Latex`
+publishes deterministic human-readable LaTeX plus content-addressed relative
+assets. `Artifact.Pdf` preserves that exact sibling `.tex` bundle and compiles it
+with the configured/discovered LaTeX engine; it does not invoke the direct-drawing
+`Libraries/Pdf` API or create a second document IR.

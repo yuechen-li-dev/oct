@@ -1,0 +1,76 @@
+package OctCumentPaper
+
+import Document
+
+fn Paper() -> Document.Doc {
+    return Document.BuildWith(
+    Document.Metadata {
+        Title: "Semantic Authority in Reproducible Technical Publishing"
+        Author: "Ada Author and Lin Researcher"
+        Subject: "OctCument M3 academic acceptance specimen"
+    },
+    Document.ScientificStyle(),
+    Document.DefaultLayout() with {
+        Size: Document.PageSize.A4
+        Margins: Document.MarginsLTRB(54.0, 54.0, 60.0, 60.0)
+    },
+    [
+    Document.Title("Semantic Authority in Reproducible Technical Publishing"),
+    Document.Subtitle("A deterministic OctCument M3 acceptance specimen"),
+    Document.HeaderFooter(
+    [Document.DocumentTitle()],
+    [Document.Text("Page "), Document.PageNumber()]
+    ),
+    Document.Abstract([
+    Document.P("This paper demonstrates one typed semantic document lowered to a clean LaTeX publishing artifact and materialized as PDF without a second PDF-native document model.")
+    ]),
+    Document.SectionIdentified("introduction", "Introduction",[
+    Document.RichParagraph([
+    Document.Text("Reproducible publishing benefits from a single semantic authority. Prior work motivates deterministic artifact construction "),
+    Document.Cite("smith2024"),
+    Document.Text(".")
+    ])
+    ]),
+    Document.SectionIdentified("method", "Method",[
+    Document.RichParagraph([
+    Document.Text("The governing relation is shown in "),
+    Document.EquationRef("energy"),
+    Document.Text(". The implementation retains ordinary typed Oct authoring.")
+    ]),
+    Document.LabeledEquation("energy", "E = mc^2"),
+    Document.Code("oct",[
+    "fn Energy(mass: Float, c: Float) -> Float {",
+    "    return mass * c * c",
+    "}"
+    ])
+    ]),
+    Document.SectionIdentified("results", "Results",[
+    Document.FigureIdentified(
+    "response",
+    "../OctCumentScientificReport/adaptive-flow.png",
+    "Adaptive response used as a deterministic scientific asset",
+    Document.WidthMM(118.0)
+    ),
+    Document.TableWithCaption(
+    "comparison",
+    "Cross-backend semantic reference witness",
+    ["Target", "Resolved text"],
+    [["Equation", "Equation 1"], ["Figure", "Figure 1"], ["Table", "Table 1"]]
+    ),
+    Document.RichParagraph([
+    Document.Text("The evidence appears in "),
+    Document.FigureRef("response"),
+    Document.Text(" and "),
+    Document.TableRef("comparison"),
+    Document.Text("; the method is "),
+    Document.SectionRef("method"),
+    Document.Text(".")
+    ]),
+    Document.Callout(Document.CalloutKind.Info,[
+    Document.Text("The generated paper.tex is intentionally readable, diffable, and independently compilable.")
+    ])
+    ]),
+    Document.Bibliography("references.bib")
+    ]
+    )
+}

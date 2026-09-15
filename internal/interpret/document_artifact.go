@@ -48,6 +48,115 @@ func (i *interpreter) evalArtifactDocumentDocxBuiltin(env *environment, pkgName 
 	})
 }
 
+func (i *interpreter) evalArtifactDocumentLatexBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	return i.evalArtifactDocumentLatexBundleBuiltin(env, pkgName, callee, argumentExprs, false)
+}
+
+func (i *interpreter) evalArtifactDocumentPdfBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	return i.evalArtifactDocumentLatexBundleBuiltin(env, pkgName, callee, argumentExprs, true)
+}
+
+func (i *interpreter) evalArtifactDocumentLatexBundleBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr, materializePDF bool) (evalResult, error) {
+	if err := i.beginArtifactWrite(); err != nil {
+		return evalResult{}, err
+	}
+	defer i.endArtifactWrite()
+	if len(argumentExprs) != 2 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
+	}
+	pathResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if pathResult.hasError {
+		return pathResult, nil
+	}
+	docResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if docResult.hasError {
+		return docResult, nil
+	}
+	extension := ".tex"
+	if materializePDF {
+		extension = ".pdf"
+	}
+	if pathResult.value.Kind != ValueString || !strings.HasSuffix(strings.ToLower(pathResult.value.Text), extension) {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: %s path must end with %s", callee, extension)
+	}
+	unresolved, err := decodeDocument(docResult.value)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if diagnostics := document.Validate(unresolved); len(diagnostics) > 0 {
+		return evalResult{}, fmt.Errorf("Document validation: %s", strings.Join(diagnostics, "; "))
+	}
+	resolvedValue, err := i.invokeFunctionValue(FunctionValue{Key: "Document.Resolve"}, pkgName, []Value{docResult.value})
+	if err != nil {
+		return evalResult{}, fmt.Errorf("Document.Resolve failed: %w", err)
+	}
+	if resolvedValue.hasError {
+		return evalResult{}, fmt.Errorf("Document.Resolve failed: %s", resolvedValue.errorVal.Error.Message)
+	}
+	doc, err := decodeDocument(resolvedValue.value)
+	if err != nil {
+		return evalResult{}, err
+	}
+	doc.SourceRoot = filepath.Dir(i.artifactSourcePath)
+	bundle, err := document.Latex(doc)
+	if err != nil {
+		return evalResult{}, err
+	}
+	logicalRequested := attributedOutputPath(pathResult.value.Text)
+	logicalTex := logicalRequested
+	if materializePDF {
+		logicalTex = strings.TrimSuffix(logicalRequested, filepath.Ext(logicalRequested)) + ".tex"
+	}
+	if err := i.stageLatexBundle(logicalTex, bundle); err != nil {
+		return evalResult{}, err
+	}
+	if materializePDF {
+		pdf, pdfErr := document.PDF(bundle)
+		if pdfErr != nil {
+			return evalResult{}, fmt.Errorf("%w; source artifact=%s", pdfErr, filepath.ToSlash(logicalTex))
+		}
+		actual, stageErr := i.artifactCapability.StageArtifactOutput(ArtifactOutputRequest{Path: logicalRequested, Package: i.artifactPackage, Function: i.currentFunctionName, SourcePath: i.artifactSourcePath, Kind: "document-pdf"})
+		if stageErr != nil {
+			return evalResult{}, stageErr
+		}
+		if writeErr := os.WriteFile(actual, pdf.Bytes, 0o644); writeErr != nil {
+			return evalResult{}, fmt.Errorf("Artifact PDF write: %w", writeErr)
+		}
+		i.recordArtifactWrite(logicalRequested)
+	}
+	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
+}
+
+func (i *interpreter) stageLatexBundle(logicalTex string, bundle document.LatexBundle) error {
+	actual, err := i.artifactCapability.StageArtifactOutput(ArtifactOutputRequest{Path: logicalTex, Package: i.artifactPackage, Function: i.currentFunctionName, SourcePath: i.artifactSourcePath, Kind: "document-latex"})
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(actual, bundle.Source, 0o644); err != nil {
+		return fmt.Errorf("Artifact LaTeX write: %w", err)
+	}
+	i.recordArtifactWrite(logicalTex)
+	base := filepath.Dir(logicalTex)
+	for _, file := range bundle.Files {
+		logical := filepath.Join(base, filepath.FromSlash(file.Path))
+		actualFile, stageErr := i.artifactCapability.StageArtifactOutput(ArtifactOutputRequest{Path: logical, Package: i.artifactPackage, Function: i.currentFunctionName, SourcePath: i.artifactSourcePath, Kind: "document-latex-asset"})
+		if stageErr != nil {
+			return stageErr
+		}
+		if writeErr := os.WriteFile(actualFile, file.Bytes, 0o644); writeErr != nil {
+			return fmt.Errorf("Artifact LaTeX asset write: %w", writeErr)
+		}
+		i.recordArtifactWrite(logical)
+	}
+	return nil
+}
+
 func (i *interpreter) evalArtifactDocumentBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr, extension, kind string, render func(document.Doc, Value) ([]byte, error)) (evalResult, error) {
 	if err := i.beginArtifactWrite(); err != nil {
 		return evalResult{}, err
@@ -457,6 +566,77 @@ func decodeDocumentBlock(value Value) (document.Block, error) {
 			return out, err
 		}
 		out.Callout = document.Callout{Kind: document.CalloutKind(kind), Content: content}
+	case "Equation":
+		r, err := documentRecord(*value.Enum.Payload, "EquationBlock")
+		if err != nil {
+			return out, err
+		}
+		id, err := documentStringField(r, "Id")
+		if err != nil {
+			return out, err
+		}
+		latex, err := documentStringField(r, "Latex")
+		if err != nil {
+			return out, err
+		}
+		numberedValue, err := documentField(r, "Numbered")
+		if err != nil {
+			return out, err
+		}
+		if numberedValue.Kind != ValueBool {
+			return out, fmt.Errorf("Document.EquationBlock.Numbered expects Bool")
+		}
+		out.Equation = document.Equation{ID: id, Latex: latex, Numbered: numberedValue.Bool}
+	case "Bibliography":
+		r, err := documentRecord(*value.Enum.Payload, "BibliographyBlock")
+		if err != nil {
+			return out, err
+		}
+		source, err := documentStringField(r, "Source")
+		if err != nil {
+			return out, err
+		}
+		out.Bibliography = document.Bibliography{Source: source}
+	case "Section":
+		r, err := documentRecord(*value.Enum.Payload, "SectionBlock")
+		if err != nil {
+			return out, err
+		}
+		id, err := documentStringField(r, "Id")
+		if err != nil {
+			return out, err
+		}
+		level, err := documentIntField(r, "Level")
+		if err != nil {
+			return out, err
+		}
+		title, err := documentInlineField(r, "Title")
+		if err != nil {
+			return out, err
+		}
+		contentValue, err := documentField(r, "Content")
+		if err != nil {
+			return out, err
+		}
+		children, err := decodeDocumentBlocks(contentValue)
+		if err != nil {
+			return out, err
+		}
+		out.Section = document.Section{ID: id, Level: int(level), Title: title, Children: children}
+	case "Abstract":
+		r, err := documentRecord(*value.Enum.Payload, "AbstractBlock")
+		if err != nil {
+			return out, err
+		}
+		contentValue, err := documentField(r, "Content")
+		if err != nil {
+			return out, err
+		}
+		children, err := decodeDocumentBlocks(contentValue)
+		if err != nil {
+			return out, err
+		}
+		out.Abstract = document.Abstract{Children: children}
 	case "Group":
 		children, err := decodeDocumentBlocks(*value.Enum.Payload)
 		if err != nil {
@@ -701,6 +881,19 @@ func decodeDocumentInlines(value Value) ([]document.Inline, error) {
 					return nil, e
 				}
 				inline.Reference.Kind = document.ReferenceKind(kind)
+			} else if inlineValue.Enum.Variant == "Citation" {
+				citation, e := documentRecord(*inlineValue.Enum.Payload, "CitationValue")
+				if e != nil {
+					return nil, e
+				}
+				keysValue, e := documentField(citation, "Keys")
+				if e != nil {
+					return nil, e
+				}
+				inline.Citation, e = documentStrings(keysValue)
+				if e != nil {
+					return nil, e
+				}
 			} else {
 				if inlineValue.Enum.Payload.Kind != ValueString {
 					return nil, fmt.Errorf("Document.%s payload expects String", inlineValue.Enum.Variant)
