@@ -149,7 +149,6 @@ runtime assumption; 4 unrestricted ambient effect; 5 same-compilation input;
 
 | Location (all `.octest` entry files unless noted) | Declarations | Outputs / effects | Before M0 engine and backend | Class | M0 action |
 |---|---:|---|---|---:|---|
-| `docs/build-week/recording/fixtures/JudgeDemo/JudgeDemo.octest` | 1 | JSON; redundant `IO.MakeAll` | interpreter or compiled runner; backend only when compiled selected | 3 | Migrated: removed runtime directory setup; retained entry/API |
 | `Experiments/FmBrownNoiseKalman/{M0,M1,M2,M3,M4,M4b,M5,M6}` | 12 | Octagon/Markdown/CSV/JSON; seeded random; some helper calls | interpreter or compiled runner | 1/2 | Retained; global `WriteOctagon` and helper writes delegate to one capability |
 | `Experiments/OctErgonomicsLab/{M0,M1}` | 2 | Octagon/Markdown/CSV/JSON; helper, mkdir, staged verification | interpreter or compiled runner | 2 | Retained; confined mkdir and declared-output reads adapted |
 | `Experiments/PrometheusFftAlgorithmLab/M1` | 4 | Octagon/Markdown; mkdir and read-after-write | interpreter or compiled runner | 2 | Retained statically; same confined compatibility path; workload not run |
