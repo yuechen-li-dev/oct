@@ -1,0 +1,34 @@
+function WasmCompute.Choose
+
+definitions
+  D0: parameter[0] defines __oct_user_0
+  D1: entry:stmt0 defines __oct_user_1
+  D2: b1:stmt0 defines __oct_user_1
+
+block entry
+  GEN:  {D1:__oct_user_1}
+  KILL: {D2:__oct_user_1}
+  IN:   {D0:__oct_user_0}
+  OUT:  {D0:__oct_user_0, D1:__oct_user_1}
+  uses:
+    term condition __oct_user_0 <- {D0:__oct_user_0}
+
+block b1
+  GEN:  {D2:__oct_user_1}
+  KILL: {D1:__oct_user_1}
+  IN:   {D0:__oct_user_0, D1:__oct_user_1}
+  OUT:  {D0:__oct_user_0, D2:__oct_user_1}
+
+block b2
+  GEN:  {}
+  KILL: {}
+  IN:   {D0:__oct_user_0, D1:__oct_user_1}
+  OUT:  {D0:__oct_user_0, D1:__oct_user_1}
+
+block b3
+  GEN:  {}
+  KILL: {}
+  IN:   {D0:__oct_user_0, D1:__oct_user_1, D2:__oct_user_1}
+  OUT:  {D0:__oct_user_0, D1:__oct_user_1, D2:__oct_user_1}
+  uses:
+    term return __oct_user_1 <- {D1:__oct_user_1, D2:__oct_user_1}

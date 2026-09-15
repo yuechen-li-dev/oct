@@ -16,6 +16,14 @@ fn Max(a: Int, b: Int) -> Int {
     return b
 }
 
+fn Choose(flag: Bool) -> Int {
+    var x = 1
+    if flag {
+        x = 2
+    }
+    return x
+}
+
 fn SumTo(n: Int) -> Int {
     var total = 0
     var i = 0
@@ -47,5 +55,5 @@ fn SignedKernel(x: Int) -> Int {
 }
 
 fn Main() -> Int {
-    return Add(20, 22) + SumTo(10) + ModeCode(true)
+    return Add(20, 22) + SumTo(10) + ModeCode(true) + Choose(false) + Choose(true)
 }

@@ -40,12 +40,12 @@ func TestCurrentMIRProducesDeterministicExecutableModule(t *testing.T) {
 	if err := os.WriteFile(modulePath, first, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	script := `const fs=require("fs");const b=fs.readFileSync(process.argv[1]);if(!WebAssembly.validate(b))throw new Error("invalid module");WebAssembly.instantiate(b,{}).then(({instance:{exports:e}})=>{const got=[String(e.Add(20n,22n)),String(e.Max(20n,22n)),String(e.SumTo(10n)),String(e.ModeCode(1)),String(e.FloatKernel(2)),String(e.BoolKernel(1,0)),String(e.SignedKernel(5n)),String(e.Main())].join(",");if(got!=="42,22,55,7,4.5,1,-14,104")throw new Error(got);console.log(got)});`
+	script := `const fs=require("fs");const b=fs.readFileSync(process.argv[1]);if(!WebAssembly.validate(b))throw new Error("invalid module");WebAssembly.instantiate(b,{}).then(({instance:{exports:e}})=>{const got=[String(e.Add(20n,22n)),String(e.Max(20n,22n)),String(e.Choose(0)),String(e.Choose(1)),String(e.SumTo(10n)),String(e.ModeCode(1)),String(e.FloatKernel(2)),String(e.BoolKernel(1,0)),String(e.SignedKernel(5n)),String(e.Main())].join(",");if(got!=="42,22,1,2,55,7,4.5,1,-14,107")throw new Error(got);console.log(got)});`
 	output, err := exec.Command(node, "-e", script, modulePath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("Node WebAssembly execution failed: %v\n%s", err, output)
 	}
-	if strings.TrimSpace(string(output)) != "42,22,55,7,4.5,1,-14,104" {
+	if strings.TrimSpace(string(output)) != "42,22,1,2,55,7,4.5,1,-14,107" {
 		t.Fatalf("unexpected WebAssembly results: %s", output)
 	}
 
@@ -61,7 +61,7 @@ func TestCurrentMIRProducesDeterministicExecutableModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Go backend execution: %v\n%s", err, nativeOutput)
 	}
-	if strings.TrimSpace(interpreted.String()) != "104" || strings.TrimSpace(string(nativeOutput)) != "104" {
+	if strings.TrimSpace(interpreted.String()) != "107" || strings.TrimSpace(string(nativeOutput)) != "107" {
 		t.Fatalf("three-lane parity failed: interpreter=%q Go=%q WASM=%q", interpreted.String(), nativeOutput, output)
 	}
 }

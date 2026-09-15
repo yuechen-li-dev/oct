@@ -13,40 +13,59 @@ func TestCompilerOptimizationBookMIRSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	dump := strings.ReplaceAll(dumpMIR(module), "\r\n", "\n")
-	for _, name := range []string{"Add", "Max", "SumTo"} {
+	for _, name := range []string{"Add", "Max", "Choose", "SumTo"} {
 		t.Run(name, func(t *testing.T) {
 			got := functionFromMIRDump(t, dump, "WasmCompute."+name)
 			path := filepath.Join("..", "..", "book", "compiler-optimization-by-example", "snapshots", snapshotName(name)+".mir")
-			wantBytes, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := strings.TrimSpace(strings.ReplaceAll(string(wantBytes), "\r\n", "\n")) + "\n"
-			if got != want {
-				t.Fatalf("%s is stale\n--- snapshot ---\n%s--- current MIR ---\n%s", path, want, got)
-			}
+			checkBookSnapshot(t, path, got, "MIR")
 		})
 	}
 }
 
 func TestCompilerOptimizationBookCFGSnapshots(t *testing.T) {
 	module := loadWasmComputeMIR(t)
-	for _, name := range []string{"Max", "SumTo"} {
+	for _, name := range []string{"Max", "Choose", "SumTo"} {
 		t.Run(name, func(t *testing.T) {
 			got, err := DumpCFG(findMIRFunction(t, module, name))
 			if err != nil {
 				t.Fatal(err)
 			}
 			path := filepath.Join("..", "..", "book", "compiler-optimization-by-example", "snapshots", snapshotName(name)+".cfg")
-			wantBytes, err := os.ReadFile(path)
+			checkBookSnapshot(t, path, got, "CFG")
+		})
+	}
+}
+
+func TestCompilerOptimizationBookReachingDefinitionsSnapshots(t *testing.T) {
+	module := loadWasmComputeMIR(t)
+	for _, name := range []string{"Choose", "SumTo"} {
+		t.Run(name, func(t *testing.T) {
+			got, err := DumpReachingDefinitions(findMIRFunction(t, module, name))
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := strings.TrimSpace(strings.ReplaceAll(string(wantBytes), "\r\n", "\n")) + "\n"
-			if got != want {
-				t.Fatalf("%s is stale\n--- snapshot ---\n%s--- current CFG ---\n%s", path, want, got)
-			}
+			path := filepath.Join("..", "..", "book", "compiler-optimization-by-example", "snapshots", snapshotName(name)+".reaching")
+			checkBookSnapshot(t, path, got, "reaching definitions")
 		})
+	}
+}
+
+func checkBookSnapshot(t *testing.T, path, got, kind string) {
+	t.Helper()
+	got = strings.TrimSpace(strings.ReplaceAll(got, "\r\n", "\n")) + "\n"
+	if os.Getenv("OCT_UPDATE_BOOK_SNAPSHOTS") == "1" {
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	wantBytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.TrimSpace(strings.ReplaceAll(string(wantBytes), "\r\n", "\n")) + "\n"
+	if got != want {
+		t.Fatalf("%s is stale\n--- snapshot ---\n%s--- current %s ---\n%s", path, want, kind, got)
 	}
 }
 

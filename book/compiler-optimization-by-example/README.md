@@ -8,6 +8,7 @@ This book teaches compiler construction and optimization by following the real O
 
 1. [From Source to Executable WebAssembly](01-from-source-to-wasm.md)
 2. [Basic Blocks and Control-Flow Graphs](02-basic-blocks-and-cfgs.md)
+3. [Uses, Definitions, and Dataflow](03-uses-definitions-and-dataflow.md)
 
 ## Run the examples
 

@@ -1,0 +1,11 @@
+fn WasmCompute.Choose(__oct_user_0:Bool) -> Int
+  entry:
+    __oct_user_1 = 1
+    branch __oct_user_0 ? b1 : b2
+  b1:
+    __oct_user_1 = 2
+    jump b3
+  b2:
+    jump b3
+  b3:
+    return __oct_user_1

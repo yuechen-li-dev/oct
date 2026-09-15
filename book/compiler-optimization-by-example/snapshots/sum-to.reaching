@@ -1,0 +1,47 @@
+function WasmCompute.SumTo
+
+definitions
+  D0: parameter[0] defines __oct_user_0
+  D1: entry:stmt0 defines __oct_user_1
+  D2: entry:stmt1 defines __oct_user_2
+  D3: b1:stmt0 defines __oct_internal_tmp_0
+  D4: b2:stmt0 defines __oct_internal_tmp_1
+  D5: b2:stmt1 defines __oct_user_1
+  D6: b2:stmt2 defines __oct_internal_tmp_2
+  D7: b2:stmt3 defines __oct_user_2
+
+block entry
+  GEN:  {D1:__oct_user_1, D2:__oct_user_2}
+  KILL: {D5:__oct_user_1, D7:__oct_user_2}
+  IN:   {D0:__oct_user_0}
+  OUT:  {D0:__oct_user_0, D1:__oct_user_1, D2:__oct_user_2}
+
+block b1
+  GEN:  {D3:__oct_internal_tmp_0}
+  KILL: {}
+  IN:   {D0:__oct_user_0, D1:__oct_user_1, D2:__oct_user_2, D3:__oct_internal_tmp_0, D4:__oct_internal_tmp_1, D5:__oct_user_1, D6:__oct_internal_tmp_2, D7:__oct_user_2}
+  OUT:  {D0:__oct_user_0, D1:__oct_user_1, D2:__oct_user_2, D3:__oct_internal_tmp_0, D4:__oct_internal_tmp_1, D5:__oct_user_1, D6:__oct_internal_tmp_2, D7:__oct_user_2}
+  uses:
+    stmt0 value.left __oct_user_2 <- {D2:__oct_user_2, D7:__oct_user_2}
+    stmt0 value.right __oct_user_0 <- {D0:__oct_user_0}
+    term condition __oct_internal_tmp_0 <- {D3:__oct_internal_tmp_0}
+
+block b2
+  GEN:  {D4:__oct_internal_tmp_1, D5:__oct_user_1, D6:__oct_internal_tmp_2, D7:__oct_user_2}
+  KILL: {D1:__oct_user_1, D2:__oct_user_2}
+  IN:   {D0:__oct_user_0, D1:__oct_user_1, D2:__oct_user_2, D3:__oct_internal_tmp_0, D4:__oct_internal_tmp_1, D5:__oct_user_1, D6:__oct_internal_tmp_2, D7:__oct_user_2}
+  OUT:  {D0:__oct_user_0, D3:__oct_internal_tmp_0, D4:__oct_internal_tmp_1, D5:__oct_user_1, D6:__oct_internal_tmp_2, D7:__oct_user_2}
+  uses:
+    stmt0 value.left __oct_user_1 <- {D1:__oct_user_1, D5:__oct_user_1}
+    stmt0 value.right __oct_user_2 <- {D2:__oct_user_2, D7:__oct_user_2}
+    stmt1 value __oct_internal_tmp_1 <- {D4:__oct_internal_tmp_1}
+    stmt2 value.left __oct_user_2 <- {D2:__oct_user_2, D7:__oct_user_2}
+    stmt3 value __oct_internal_tmp_2 <- {D6:__oct_internal_tmp_2}
+
+block b3
+  GEN:  {}
+  KILL: {}
+  IN:   {D0:__oct_user_0, D1:__oct_user_1, D2:__oct_user_2, D3:__oct_internal_tmp_0, D4:__oct_internal_tmp_1, D5:__oct_user_1, D6:__oct_internal_tmp_2, D7:__oct_user_2}
+  OUT:  {D0:__oct_user_0, D1:__oct_user_1, D2:__oct_user_2, D3:__oct_internal_tmp_0, D4:__oct_internal_tmp_1, D5:__oct_user_1, D6:__oct_internal_tmp_2, D7:__oct_user_2}
+  uses:
+    term return __oct_user_1 <- {D1:__oct_user_1, D5:__oct_user_1}
