@@ -50,6 +50,27 @@ func TestCompilerOptimizationBookReachingDefinitionsSnapshots(t *testing.T) {
 	}
 }
 
+func TestCompilerOptimizationBookConstantDemoSnapshots(t *testing.T) {
+	module := loadWasmComputeMIR(t)
+	before := findMIRFunction(t, module, "ConstantDemo")
+	after, _, err := OptimizeFunction(before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, snapshot := range []struct {
+		name string
+		fn   MIRFunction
+	}{
+		{"constant-demo.before.mir", before},
+		{"constant-demo.after.mir", after},
+	} {
+		dump := dumpMIR(MIRModule{EntryPackage: module.EntryPackage, Functions: []MIRFunction{snapshot.fn}})
+		got := functionFromMIRDump(t, dump, "WasmCompute.ConstantDemo")
+		path := filepath.Join("..", "..", "book", "compiler-optimization-by-example", "snapshots", snapshot.name)
+		checkBookSnapshot(t, path, got, "optimized MIR")
+	}
+}
+
 func checkBookSnapshot(t *testing.T, path, got, kind string) {
 	t.Helper()
 	got = strings.TrimSpace(strings.ReplaceAll(got, "\r\n", "\n")) + "\n"

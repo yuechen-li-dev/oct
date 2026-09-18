@@ -1,0 +1,16 @@
+fn WasmCompute.ConstantDemo(__oct_user_0:Bool) -> Int
+  entry:
+    __oct_user_1 = 2
+    __oct_internal_tmp_0 = (__oct_user_1 + 3)
+    __oct_user_2 = __oct_internal_tmp_0
+    __oct_internal_tmp_1 = (__oct_user_2 == 5)
+    branch __oct_internal_tmp_1 ? b1 : b2
+  b1:
+    __oct_internal_tmp_2 = (__oct_user_2 + 2)
+    __oct_user_2 = __oct_internal_tmp_2
+    jump b3
+  b2:
+    __oct_user_2 = 99
+    jump b3
+  b3:
+    return __oct_user_2

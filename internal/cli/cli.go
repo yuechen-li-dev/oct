@@ -105,20 +105,30 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 		if isHelpArg(args[1:]) {
 			return writeBuildHelp(stdout)
 		}
-		pathArg, target, err := parseBuildOptions(args[1:])
+		pathArg, target, optimize, err := parseBuildOptions(args[1:])
 		if err != nil {
 			return reportCommandError(stderr, command, err)
 		}
 		path := resolveWorkingPath(workingDir, pathArg)
 		if target == "wasm" {
-			result, err := wasmbackend.Compile(path)
+			var result wasmbackend.Result
+			if optimize {
+				result, err = wasmbackend.CompileOptimized(path)
+			} else {
+				result, err = wasmbackend.Compile(path)
+			}
 			if err != nil {
 				return reportCommandError(stderr, command, err)
 			}
 			_, err = fmt.Fprintf(stdout, "build succeeded: %s\ntarget: wasm\nsha256: %s\n", result.ArtifactPath, result.SHA256)
 			return err
 		}
-		result, err := build.Compile(path)
+		var result build.Result
+		if optimize {
+			result, err = build.CompileOptimized(path)
+		} else {
+			result, err = build.Compile(path)
+		}
 		if err != nil {
 			return reportCommandError(stderr, command, err)
 		}
@@ -1448,34 +1458,36 @@ func writeRunHelp(out io.Writer) error {
 	return err
 }
 func writeBuildHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct build <file-or-root> [--target native|wasm]\nCompile a program and emit an artifact. The wasm target lowers current MIR directly to a .wasm module.")
+	_, err := fmt.Fprintln(out, "usage: oct build <file-or-root> [--target native|wasm] [--opt]\nCompile a program and emit an artifact. --opt runs the backend-neutral scalar constant optimizer; the default remains unoptimized.")
 	return err
 }
 
-func parseBuildOptions(args []string) (path, target string, err error) {
+func parseBuildOptions(args []string) (path, target string, optimize bool, err error) {
 	target = "native"
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--target":
 			i++
 			if i >= len(args) {
-				return "", "", fmt.Errorf("missing value after --target")
+				return "", "", false, fmt.Errorf("missing value after --target")
 			}
 			target = args[i]
+		case "--opt":
+			optimize = true
 		default:
 			if strings.HasPrefix(args[i], "-") || path != "" {
-				return "", "", fmt.Errorf("usage: oct build <file-or-root> [--target native|wasm]")
+				return "", "", false, fmt.Errorf("usage: oct build <file-or-root> [--target native|wasm] [--opt]")
 			}
 			path = args[i]
 		}
 	}
 	if path == "" {
-		return "", "", fmt.Errorf("missing path; run oct build --help for usage")
+		return "", "", false, fmt.Errorf("missing path; run oct build --help for usage")
 	}
 	if target != "native" && target != "wasm" {
-		return "", "", fmt.Errorf("unknown build target %q (expected native or wasm)", target)
+		return "", "", false, fmt.Errorf("unknown build target %q (expected native or wasm)", target)
 	}
-	return path, target, nil
+	return path, target, optimize, nil
 }
 
 func writeCheckHelp(out io.Writer) error {

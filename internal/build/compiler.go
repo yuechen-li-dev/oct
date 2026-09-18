@@ -67,6 +67,17 @@ func Compile(path string) (Result, error) {
 	return compileProgram(program, compileOptions{})
 }
 
+// CompileOptimized is the explicit Chapter 4 path. Compile remains unchanged
+// so existing generated output stays reproducible unless optimization is
+// requested.
+func CompileOptimized(path string) (Result, error) {
+	program, err := project.Load(path)
+	if err != nil {
+		return Result{}, err
+	}
+	return compileProgram(program, compileOptions{optimizeMIR: true})
+}
+
 // LoadMIR runs the ordinary Oct frontend through the current backend-neutral
 // MIR and returns the resolved entry source. Backend packages use this seam to
 // avoid introducing a second parser/typechecker pipeline.
@@ -98,6 +109,7 @@ type compileOptions struct {
 	testHarnessCases      []TestHarnessCase
 	testArtifactLayout    bool
 	allowNoEntry          bool
+	optimizeMIR           bool
 }
 
 // TestHarnessCase is one already-lowered, zero-argument Oct helper function.
@@ -119,6 +131,12 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 	module, err := lowerProgram(program, options)
 	if err != nil {
 		return Result{}, err
+	}
+	if options.optimizeMIR {
+		module, _, err = OptimizeMIR(module)
+		if err != nil {
+			return Result{}, err
+		}
 	}
 	if program.Profile == "Verilog" {
 		if len(options.testHarnessCases) > 0 {

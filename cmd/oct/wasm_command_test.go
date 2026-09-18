@@ -35,3 +35,22 @@ func TestBuildRejectsUnknownTarget(t *testing.T) {
 		t.Fatalf("unexpected error=%v stderr=%q", err, stderr)
 	}
 }
+
+func TestBuildWasmOptIsExplicitAndProducesSmallerChapterSpecimen(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "WasmCompute")
+	copyDir(t, filepath.Join("..", "..", "Examples", "WasmCompute"), root)
+	if _, stderr, err := executeCLIArgs("build", root, "--target", "wasm"); err != nil {
+		t.Fatalf("default wasm build: %v\n%s", err, stderr)
+	}
+	artifact := filepath.Join(root, "WasmCompute.wasm")
+	before, err := os.ReadFile(artifact)
+	if err != nil { t.Fatal(err) }
+	if _, stderr, err := executeCLIArgs("build", root, "--target", "wasm", "--opt"); err != nil {
+		t.Fatalf("optimized wasm build: %v\n%s", err, stderr)
+	}
+	after, err := os.ReadFile(artifact)
+	if err != nil { t.Fatal(err) }
+	if len(after) >= len(before) {
+		t.Fatalf("optimized module size = %d, want less than default %d", len(after), len(before))
+	}
+}

@@ -22,9 +22,25 @@ type Result struct {
 }
 
 func Compile(path string) (Result, error) {
+	return compile(path, false)
+}
+
+// CompileOptimized selects the backend-neutral Chapter 4 MIR optimizer before
+// WebAssembly encoding. The default Compile path remains byte-compatible.
+func CompileOptimized(path string) (Result, error) {
+	return compile(path, true)
+}
+
+func compile(path string, optimize bool) (Result, error) {
 	module, entrySource, err := build.LoadMIR(path)
 	if err != nil {
 		return Result{}, err
+	}
+	if optimize {
+		module, _, err = build.OptimizeMIR(module)
+		if err != nil {
+			return Result{}, err
+		}
 	}
 	bytes, err := Encode(module)
 	if err != nil {

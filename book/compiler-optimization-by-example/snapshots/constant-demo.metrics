@@ -1,0 +1,7 @@
+program: ConstantDemo (within WasmCompute module)
+fold-or-branch MIR ops before: 4
+fold-or-branch MIR ops after: 0
+WASM module bytes before: 1179
+WASM module bytes after: 1165
+WASM code section bytes before: 960
+WASM code section bytes after: 946

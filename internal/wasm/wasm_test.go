@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +32,21 @@ func TestCurrentMIRProducesDeterministicExecutableModule(t *testing.T) {
 	if !bytes.Equal(first, second) {
 		t.Fatal("same current MIR produced different module bytes")
 	}
+	optimizedModule, _, err := build.OptimizeMIR(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	optimized, err := Encode(optimizedModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	optimizedAgain, err := Encode(optimizedModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(optimized, optimizedAgain) {
+		t.Fatal("same optimized MIR produced different module bytes")
+	}
 
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -40,12 +56,17 @@ func TestCurrentMIRProducesDeterministicExecutableModule(t *testing.T) {
 	if err := os.WriteFile(modulePath, first, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	script := `const fs=require("fs");const b=fs.readFileSync(process.argv[1]);if(!WebAssembly.validate(b))throw new Error("invalid module");WebAssembly.instantiate(b,{}).then(({instance:{exports:e}})=>{const got=[String(e.Add(20n,22n)),String(e.Max(20n,22n)),String(e.Choose(0)),String(e.Choose(1)),String(e.SumTo(10n)),String(e.ModeCode(1)),String(e.FloatKernel(2)),String(e.BoolKernel(1,0)),String(e.SignedKernel(5n)),String(e.Main())].join(",");if(got!=="42,22,1,2,55,7,4.5,1,-14,107")throw new Error(got);console.log(got)});`
-	output, err := exec.Command(node, "-e", script, modulePath).CombinedOutput()
+	optimizedPath := filepath.Join(t.TempDir(), "compute-optimized.wasm")
+	if err := os.WriteFile(optimizedPath, optimized, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := `const fs=require("fs");Promise.all(process.argv.slice(1).map(async p=>{const b=fs.readFileSync(p);if(!WebAssembly.validate(b))throw new Error("invalid module");const {instance:{exports:e}}=await WebAssembly.instantiate(b,{});const got=[String(e.Add(20n,22n)),String(e.Max(20n,22n)),String(e.Choose(0)),String(e.Choose(1)),String(e.SumTo(10n)),String(e.ModeCode(1)),String(e.FloatKernel(2)),String(e.BoolKernel(1,0)),String(e.SignedKernel(5n)),String(e.ConstantDemo(0)),String(e.ConstantDemo(1)),String(e.Main())].join(",");if(got!=="42,22,1,2,55,7,4.5,1,-14,7,7,114")throw new Error(got);return got})).then(x=>console.log(x.join("\n")));`
+	output, err := exec.Command(node, "-e", script, modulePath, optimizedPath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("Node WebAssembly execution failed: %v\n%s", err, output)
 	}
-	if strings.TrimSpace(string(output)) != "42,22,1,2,55,7,4.5,1,-14,107" {
+	wantWasm := "42,22,1,2,55,7,4.5,1,-14,7,7,114\n42,22,1,2,55,7,4.5,1,-14,7,7,114"
+	if strings.TrimSpace(string(output)) != wantWasm {
 		t.Fatalf("unexpected WebAssembly results: %s", output)
 	}
 
@@ -61,9 +82,128 @@ func TestCurrentMIRProducesDeterministicExecutableModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Go backend execution: %v\n%s", err, nativeOutput)
 	}
-	if strings.TrimSpace(interpreted.String()) != "107" || strings.TrimSpace(string(nativeOutput)) != "107" {
+	optimizedNative, err := build.CompileOptimized(example)
+	if err != nil {
+		t.Fatalf("optimized Go backend lane: %v", err)
+	}
+	optimizedNativeOutput, err := exec.Command(optimizedNative.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("optimized Go backend execution: %v\n%s", err, optimizedNativeOutput)
+	}
+	if strings.TrimSpace(interpreted.String()) != "114" || strings.TrimSpace(string(nativeOutput)) != "114" || strings.TrimSpace(string(optimizedNativeOutput)) != "114" {
 		t.Fatalf("three-lane parity failed: interpreter=%q Go=%q WASM=%q", interpreted.String(), nativeOutput, output)
 	}
+}
+
+func TestCompilerOptimizationBookMetricsSnapshot(t *testing.T) {
+	module, _, err := build.LoadMIR(wasmComputeExample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	optimizedModule, _, err := build.OptimizeMIR(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeBytes, err := Encode(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterBytes, err := Encode(optimizedModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeFn := findFunction(t, module, "ConstantDemo")
+	afterFn := findFunction(t, optimizedModule, "ConstantDemo")
+	metrics := fmt.Sprintf("program: ConstantDemo (within WasmCompute module)\nfold-or-branch MIR ops before: %d\nfold-or-branch MIR ops after: %d\nWASM module bytes before: %d\nWASM module bytes after: %d\nWASM code section bytes before: %d\nWASM code section bytes after: %d\n",
+		countFoldBranchOps(beforeFn), countFoldBranchOps(afterFn), len(beforeBytes), len(afterBytes), wasmSectionPayloadSize(t, beforeBytes, 10), wasmSectionPayloadSize(t, afterBytes, 10))
+	path := filepath.Join("..", "..", "book", "compiler-optimization-by-example", "snapshots", "constant-demo.metrics")
+	if os.Getenv("OCT_UPDATE_BOOK_SNAPSHOTS") == "1" {
+		if err := os.WriteFile(path, []byte(metrics), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ReplaceAll(string(want), "\r\n", "\n") != metrics {
+		t.Fatalf("%s is stale\n--- snapshot ---\n%s--- current metrics ---\n%s", path, want, metrics)
+	}
+}
+
+func findFunction(t *testing.T, module build.MIRModule, name string) build.MIRFunction {
+	t.Helper()
+	for _, fn := range module.Functions {
+		if fn.Name == name {
+			return fn
+		}
+	}
+	t.Fatalf("function %s not found", name)
+	return build.MIRFunction{}
+}
+
+func countFoldBranchOps(fn build.MIRFunction) int {
+	count := 0
+	var walk func(build.MIRValue)
+	walk = func(value build.MIRValue) {
+		switch v := value.(type) {
+		case build.MIRUnary:
+			count++
+			walk(v.Value)
+		case build.MIRBinary:
+			count++
+			walk(v.Left)
+			walk(v.Right)
+		case build.MIRConvert:
+			count++
+			walk(v.Value)
+		case build.MIRIntrinsicValue:
+			count++
+			for _, arg := range v.Args {
+				walk(arg)
+			}
+		}
+	}
+	for _, block := range fn.Blocks {
+		for _, stmt := range block.Statements {
+			if assign, ok := stmt.(build.MIRAssign); ok {
+				walk(assign.Value)
+			}
+		}
+		if branch, ok := block.Terminator.(build.MIRBranch); ok {
+			count++
+			walk(branch.Cond)
+		}
+	}
+	return count
+}
+
+func wasmSectionPayloadSize(t *testing.T, module []byte, wanted byte) int {
+	t.Helper()
+	for offset := 8; offset < len(module); {
+		id := module[offset]
+		offset++
+		size, width := decodeU32(module[offset:])
+		offset += width
+		if id == wanted {
+			return int(size)
+		}
+		offset += int(size)
+	}
+	t.Fatalf("WebAssembly section %d not found", wanted)
+	return 0
+}
+
+func decodeU32(input []byte) (uint32, int) {
+	var value uint32
+	for i, b := range input {
+		value |= uint32(b&0x7f) << (7 * i)
+		if b&0x80 == 0 {
+			return value, i + 1
+		}
+	}
+	return 0, 0
 }
 
 func TestUnsupportedMIRFailsBeforeEmission(t *testing.T) {

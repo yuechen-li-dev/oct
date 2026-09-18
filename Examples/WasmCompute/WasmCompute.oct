@@ -54,6 +54,19 @@ fn SignedKernel(x: Int) -> Int {
     return -x * 3 + 1
 }
 
+fn ConstantDemo(flag: Bool) -> Int {
+    var x = 2
+    var y = x + 3
+
+    if y == 5 {
+        y = y + 2
+    } else {
+        y = 99
+    }
+
+    return y
+}
+
 fn Main() -> Int {
-    return Add(20, 22) + SumTo(10) + ModeCode(true) + Choose(false) + Choose(true)
+    return Add(20, 22) + SumTo(10) + ModeCode(true) + Choose(false) + Choose(true) + ConstantDemo(false)
 }

@@ -24,6 +24,10 @@
   does not invoke Go, TinyGo, WAT tooling, WASI, or a browser API. The command
   reports the output path, target, and SHA-256. M0 supports the scalar subset
   documented in `docs/internal/wasm_backend_m0.md`.
+- `oct build <path> [--target native|wasm] --opt` runs the opt-in,
+  backend-neutral scalar constant optimizer before emission. The default build
+  remains unoptimized; `--opt` does not select a multi-level optimization
+  policy.
 - `oct run` executes program behavior and does not require a prebuilt `.octbin`.
 - `oct test <path>` runs `.octest` and `.octfail` suites.
 - `oct test <path> --suite <name>` runs only tests tagged with `[Suite("<name>")]`.
@@ -126,6 +130,7 @@ See also [31 octest](./31-octest.md), [32 ocfmt](./32-ocfmt.md), and [33 oct pkg
 oct run App/main.oct
 oct build App/main.oct
 oct build Examples/WasmCompute --target wasm
+oct build Examples/WasmCompute --target wasm --opt
 oct test Language
 oct test Language --execution compiled
 oct test Language --execution interpreted
