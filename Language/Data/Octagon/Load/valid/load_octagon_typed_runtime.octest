@@ -77,6 +77,19 @@ record table PublicationCatalog {
     Name: String
 }
 
+record table Catalog {
+    ID: Int
+    Active: Bool
+}
+
+[Fact]
+fn LoadConceptColumnarCatalog() -> Void ! Error {
+    let catalog = LoadOctagon<Catalog>("Language/Data/Octagon/Load/valid/concept_catalog.octagon")?
+    Assert.Equal(3, Len(catalog), "Concept table writer preserves three rows")
+    Assert.Equal(2, catalog[1].ID, "Concept table ID column")
+    Assert.Equal(false, catalog[1].Active, "Concept table bool column")
+}
+
 [Fact]
 fn LoadSignedNumericData() -> Void ! Error {
     let values = LoadOctagon<SignedSamplesConfig>("Language/Data/Octagon/Load/valid/signed_samples_config.octagon")?

@@ -1,0 +1,4 @@
+Catalog {
+    ID: [1, 2, 3]
+    Active: [true, false, true]
+}

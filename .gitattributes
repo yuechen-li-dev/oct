@@ -1,1 +1,4 @@
 internal/prometheus/models/zimage-turbo/lock-tagon.octagon text eol=lf
+Language/Data/Octagon/valid/array_of_scalars.octagon text eol=lf
+Language/Data/Octagon/valid/payload_enum_nested.octagon text eol=lf
+Language/Data/Octagon/Load/valid/concept_catalog.octagon text eol=lf

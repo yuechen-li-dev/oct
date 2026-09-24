@@ -23,6 +23,8 @@ Load and write are explicit through builtins.
 - `WriteOctagon(path, value)` writes `.octagon` data and returns `Int` status.
 - `WriteOctagon` path must end with `.octagon`.
 - `WriteOctagon` value must be `.octagon`-representable.
+- Canonical output ends with one newline after the single value expression;
+  nested values have no document terminator of their own.
 - `LoadOctagon<T>(path)` loads a value as type `T` and is fallible.
 - `LoadOctagon` path must end with `.octagon`.
 - `LoadOctagon` type argument `T` must be `.octagon`-representable.
@@ -43,6 +45,11 @@ Load and write are explicit through builtins.
 - Enum-valued table cells retain their nominal enum and refined-Concept cells
   are checked through the same authoritative refinement admission used by
   ordinary construction.
+- `Language/Data/Octagon/valid/payload_enum_nested.octagon` and
+  `Language/Data/Octagon/Load/valid/concept_catalog.octagon` are shared
+  Concept/Oct byte goldens for a nested payload enum and a two-column
+  `record table`. The table fixture stores complete `ID` and `Active` arrays,
+  and the interpreted and compiled loaders agree on its three rows.
 
 See also [31 octest](./31-octest.md) for artifact and benchmark workflows.
 

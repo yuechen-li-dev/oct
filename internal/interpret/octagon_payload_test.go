@@ -65,6 +65,10 @@ func TestWriteOctagonPayloadEnumUsesDataConstructor(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "payload.octagon")
 	inner := Value{Kind: ValueEnum, Enum: EnumValue{TypeName: "Inner", Variant: "Value", Payload: &Value{Kind: ValueInt, Int: 42}}}
 	outer := Value{Kind: ValueEnum, Enum: EnumValue{TypeName: "Outer", Variant: "Wrapped", Payload: &inner}}
+	golden, err := os.ReadFile(filepath.Join("..", "..", "Language", "Data", "Octagon", "valid", "payload_enum_nested.octagon"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for run := 0; run < 100; run++ {
 		if err := WriteOctagon(path, outer); err != nil {
 			t.Fatal(err)
@@ -73,8 +77,56 @@ func TestWriteOctagonPayloadEnumUsesDataConstructor(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(data) != "Outer.Wrapped(Inner.Value(42))\n" {
+		if string(data) != string(golden) {
 			t.Fatalf("unexpected Octagon payload on run %d: %q", run+1, data)
+		}
+	}
+}
+
+func TestWriteOctagonColumnarCatalogMatchesConceptGolden(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "catalog.octagon")
+	value := Value{Kind: ValueRecord, Record: RecordValue{
+		TypeName: "Catalog", FieldOrder: []string{"ID", "Active"},
+		Fields: map[string]Value{
+			"ID":     {Kind: ValueArray, Array: []Value{{Kind: ValueInt, Int: 1}, {Kind: ValueInt, Int: 2}, {Kind: ValueInt, Int: 3}}},
+			"Active": {Kind: ValueArray, Array: []Value{{Kind: ValueBool, Bool: true}, {Kind: ValueBool, Bool: false}, {Kind: ValueBool, Bool: true}}},
+		},
+	}}
+	golden, err := os.ReadFile(filepath.Join("..", "..", "Language", "Data", "Octagon", "Load", "valid", "concept_catalog.octagon"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for run := 0; run < 100; run++ {
+		if err := WriteOctagon(path, value); err != nil {
+			t.Fatal(err)
+		}
+		written, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(written) != string(golden) {
+			t.Fatalf("columnar Octagon bytes differ from Concept golden on run %d: %q", run+1, written)
+		}
+	}
+}
+
+func TestWriteOctagonFixedArrayMatchesConceptGolden(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "array.octagon")
+	value := Value{Kind: ValueArray, Array: []Value{{Kind: ValueInt, Int: 1}, {Kind: ValueInt, Int: 2}, {Kind: ValueInt, Int: 3}}}
+	golden, err := os.ReadFile(filepath.Join("..", "..", "Language", "Data", "Octagon", "valid", "array_of_scalars.octagon"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for run := 0; run < 100; run++ {
+		if err := WriteOctagon(path, value); err != nil {
+			t.Fatal(err)
+		}
+		written, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(written) != string(golden) {
+			t.Fatalf("array Octagon bytes differ from Concept golden on run %d: %q", run+1, written)
 		}
 	}
 }

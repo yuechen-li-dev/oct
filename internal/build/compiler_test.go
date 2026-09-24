@@ -1641,6 +1641,55 @@ fn main() -> Int ! Error {
 	}
 }
 
+func TestCompileAndRunOctagonColumnarTableRoundTrip(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	inputPath, err := filepath.Abs(filepath.Join("..", "..", "Language", "Data", "Octagon", "Load", "valid", "concept_catalog.octagon"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactPath := filepath.Join(root, "catalog.octagon")
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+record table Catalog {
+    ID: Int
+    Active: Bool
+}
+
+fn main() -> Int ! Error {
+    let catalog = LoadOctagon<Catalog>(%q)?
+    WriteOctagon(%q, catalog)
+    return Len(catalog)
+}
+`, inputPath, artifactPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, out)
+	}
+	if strings.TrimSpace(string(out)) != "3" {
+		t.Fatalf("expected 3 table rows, got %q", out)
+	}
+	golden, err := os.ReadFile(inputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(artifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(written) != string(golden) {
+		t.Fatalf("compiled columnar writer differs from Concept golden: %q", written)
+	}
+}
+
 func TestCompileAndRunLoadOctagonFailureReturnsErr(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
