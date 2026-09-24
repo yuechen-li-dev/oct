@@ -1526,6 +1526,36 @@ fn main() -> Int {
 	}
 }
 
+func TestCompileAndRunOctagonDimensionedNestedRecord(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	inPath := filepath.Join(root, "dimensioned-record.octagon")
+	if err := os.WriteFile(inPath, []byte("Payload { Samples: [9.81m/s^2, 1.23m/s^2] Rate: 2.5Hz }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+record Payload { Samples: Float<m/s^2>[] Rate: Float<Hz> }
+fn main() -> Int {
+    match LoadOctagon<Payload>(%q) {
+        ok(value) => { return Len(value.Samples) }
+        err(error) => { return 0 }
+    }
+}
+`, inPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "2" {
+		t.Fatalf("compiled Octagon dimensioned record: %v (%s)", err, string(out))
+	}
+}
+
 func TestCompileAndRunOctagonRoundTrip(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

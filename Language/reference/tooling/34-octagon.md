@@ -34,6 +34,9 @@ Load and write are explicit through builtins.
   admission uses the same constructor checks as an ordinary loaded value.
 - Load rejects array element type mismatches.
 - Load rejects dimension mismatches.
+- Compiled loading checks the same declared dimension for numeric literals,
+  including literals nested in arrays and records. Parenthesized data values
+  remain data values in either execution mode.
 - A nominal `record table` is represented by its declared table literal: each
   field is one complete column array. The loader applies the schema's implicit
   column array depth exactly once in interpreted and compiled execution.

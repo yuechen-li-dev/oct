@@ -1224,6 +1224,14 @@ func (p *__octParser) parseValue() (__octParsedValue, error) {
 		return __octParsedValue{}, fmt.Errorf("expected expression")
 	}
 	switch p.input[p.pos] {
+	case '(':
+		p.pos++
+		value, err := p.parseValue()
+		if err != nil { return __octParsedValue{}, err }
+		p.skipWS()
+		if p.pos >= len(p.input) || p.input[p.pos] != ')' { return __octParsedValue{}, fmt.Errorf("expected ')' after parenthesized value") }
+		p.pos++
+		return value, nil
 	case '"':
 		s, err := p.parseString()
 		if err != nil {
@@ -1323,6 +1331,7 @@ func (p *__octParser) parseRecord(name string) (__octParsedValue, error) {
 		if err != nil {
 			return __octParsedValue{}, err
 		}
+		if _, exists := fields[field]; exists { return __octParsedValue{}, fmt.Errorf("record %s field %s specified more than once", name, field) }
 		fields[field] = value
 	}
 }
@@ -1356,18 +1365,53 @@ func (p *__octParser) parseNumber() (__octParsedValue, error) {
 		break
 	}
 	num := p.input[start:p.pos]
+	dimensionStart := p.pos
+	if p.pos < len(p.input) {
+		r, _ := utf8.DecodeRuneInString(p.input[p.pos:])
+		if unicode.IsLetter(r) {
+			for p.pos < len(p.input) {
+				r, width := utf8.DecodeRuneInString(p.input[p.pos:])
+				if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '*' && r != '/' && r != '^' && r != '+' && r != '-' { break }
+				p.pos += width
+			}
+		}
+	}
+	dim, err := __octCanonicalDimension(p.input[dimensionStart:p.pos])
+	if err != nil { return __octParsedValue{}, err }
 	if dot || exp {
 		v, err := strconv.ParseFloat(num, 64)
 		if err != nil {
 			return __octParsedValue{}, fmt.Errorf("invalid Float literal %q", num)
 		}
-		return __octParsedValue{Kind: __octParsedFloat, Float: v}, nil
+		return __octParsedValue{Kind: __octParsedFloat, Float: v, Dimension: dim}, nil
 	}
 	v, err := strconv.Atoi(num)
 	if err != nil {
 		return __octParsedValue{}, fmt.Errorf("invalid Int literal %q", num)
 	}
-	return __octParsedValue{Kind: __octParsedInt, Int: v}, nil
+	return __octParsedValue{Kind: __octParsedInt, Int: v, Dimension: dim}, nil
+}
+
+func __octCanonicalDimension(spelling string) (string, error) {
+	if spelling == "" { return "", nil }
+	result := dimension.Zero()
+	for sectionIndex, section := range strings.Split(spelling, "/") {
+		if section == "" { return "", fmt.Errorf("invalid unit expression %q", spelling) }
+		for _, factor := range strings.Split(section, "*") {
+			parts := strings.Split(factor, "^")
+			if len(parts) == 0 || len(parts) > 2 { return "", fmt.Errorf("invalid unit factor %q", factor) }
+			base, ok := dimension.FromBaseName(parts[0])
+			if !ok { return "", fmt.Errorf("unknown base unit %q", parts[0]) }
+			exponent := 1
+			if len(parts) == 2 {
+				var err error
+				exponent, err = strconv.Atoi(parts[1])
+				if err != nil || exponent == 0 { return "", fmt.Errorf("invalid unit exponent %q", parts[1]) }
+			}
+			if sectionIndex == 0 { result = result.Multiply(base.Pow(exponent)) } else { result = result.Divide(base.Pow(exponent)) }
+		}
+	}
+	return result.String(), nil
 }
 
 func (p *__octParser) parseIdentifier() (string, error) {
@@ -1455,6 +1499,7 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 		if value.Kind != __octParsedInt {
 			return reflect.Value{}, fmt.Errorf("expected %s, got non-int value", expectedType)
 		}
+		if err := __octCheckNumericDimension(expectedType, "Int", value.Dimension); err != nil { return reflect.Value{}, err }
 		out := reflect.New(target).Elem()
 		out.SetInt(int64(value.Int))
 		if err := __octValidateRefinement(expectedType, out); err != nil { return reflect.Value{}, err }
@@ -1463,6 +1508,7 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 		if value.Kind != __octParsedFloat {
 			return reflect.Value{}, fmt.Errorf("expected %s, got non-float value", expectedType)
 		}
+		if err := __octCheckNumericDimension(expectedType, "Float", value.Dimension); err != nil { return reflect.Value{}, err }
 		out := reflect.New(target).Elem()
 		out.SetFloat(value.Float)
 		if err := __octValidateRefinement(expectedType, out); err != nil { return reflect.Value{}, err }
@@ -1542,6 +1588,17 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 	default:
 		return reflect.Value{}, fmt.Errorf("unsupported expected type %s", expectedType)
 	}
+}
+
+func __octCheckNumericDimension(expectedType string, scalar string, received string) error {
+	expected := ""
+	if strings.HasPrefix(expectedType, scalar+"<") && strings.HasSuffix(expectedType, ">") {
+		expected = strings.TrimSuffix(strings.TrimPrefix(expectedType, scalar+"<"), ">")
+	}
+	if expected != received {
+		return fmt.Errorf("expected %s dimension %q, got %q", expectedType, expected, received)
+	}
+	return nil
 }
 `
 
