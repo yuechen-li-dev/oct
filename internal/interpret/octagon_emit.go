@@ -77,7 +77,15 @@ func serializeOctagonValueAtDepth(value Value, depth int) (string, error) {
 		if strings.Contains(value.Enum.TypeName, ".") {
 			return "", fmt.Errorf("enum type %q is not representable in .octagon output", value.Enum.TypeName)
 		}
-		return fmt.Sprintf("%s.%s", value.Enum.TypeName, value.Enum.Variant), nil
+		name := fmt.Sprintf("%s.%s", value.Enum.TypeName, value.Enum.Variant)
+		if value.Enum.Payload == nil {
+			return name, nil
+		}
+		payload, err := serializeOctagonValueAtDepth(*value.Enum.Payload, depth)
+		if err != nil {
+			return "", err
+		}
+		return name + "(" + payload + ")", nil
 	default:
 		return "", fmt.Errorf("value kind %s is not representable in .octagon output", value.Kind)
 	}

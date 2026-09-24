@@ -584,9 +584,9 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		b.WriteString("type __octParsedKind int\n\n")
 		b.WriteString("const (\n")
 		b.WriteString("\t__octParsedInt __octParsedKind = iota\n\t__octParsedFloat\n\t__octParsedBool\n\t__octParsedString\n\t__octParsedArray\n\t__octParsedRecord\n\t__octParsedEnum\n)\n\n")
-		b.WriteString("type __octParsedValue struct {\n\tKind __octParsedKind\n\tInt int\n\tFloat float64\n\tBool bool\n\tText string\n\tArray []__octParsedValue\n\tRecordType string\n\tRecordFields map[string]__octParsedValue\n\tEnumType string\n\tEnumVariant string\n}\n\n")
+		b.WriteString("type __octParsedValue struct {\n\tKind __octParsedKind\n\tInt int\n\tFloat float64\n\tBool bool\n\tText string\n\tArray []__octParsedValue\n\tRecordType string\n\tRecordFields map[string]__octParsedValue\n\tEnumType string\n\tEnumVariant string\n\tEnumPayload []__octParsedValue\n\tEnumHasPayload bool\n}\n\n")
 		b.WriteString("type __octRecordMeta struct {\n\tFullName string\n\tShortName string\n\tFields []string\n\tFieldTypes map[string]string\n}\n\n")
-		b.WriteString("type __octEnumMeta struct {\n\tFullName string\n\tShortName string\n\tVariants []string\n}\n\n")
+		b.WriteString("type __octEnumMeta struct {\n\tFullName string\n\tShortName string\n\tVariants []string\n\tPayloadTypes []reflect.Type\n\tPayloadNames []string\n}\n\n")
 		b.WriteString("var __octRecordMetaByGoType = map[string]__octRecordMeta{\n")
 		for _, r := range m.Records {
 			fmt.Fprintf(&b, "\t%q: {FullName: %q, ShortName: %q, Fields: []string{", "main."+r.Package+"_"+r.Name, r.Package+"."+r.Name, r.Name)
@@ -614,6 +614,24 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 					b.WriteString(", ")
 				}
 				fmt.Fprintf(&b, "%q", v.Name)
+			}
+			b.WriteString("}, PayloadTypes: []reflect.Type{")
+			for i, v := range e.Variants {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				if v.PayloadType == "" {
+					b.WriteString("nil")
+				} else {
+					fmt.Fprintf(&b, "reflect.TypeOf((*%s)(nil)).Elem()", goType(v.PayloadType))
+				}
+			}
+			b.WriteString("}, PayloadNames: []string{")
+			for i, v := range e.Variants {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(&b, "%q", v.PayloadType)
 			}
 			b.WriteString("}},\n")
 		}

@@ -1,0 +1,33 @@
+package OctagonLoadValid
+
+enum Inner {
+    Value(Int)
+}
+
+enum Outer {
+    Wrapped(Inner)
+}
+
+record Pair {
+    X: Int
+    Y: Int
+}
+
+[Fact]
+fn LoadConceptPairGolden() -> Void ! Error {
+    let value = LoadOctagon<Pair>("Language/Data/Octagon/valid/concept_pair.octagon")?
+    Assert.Equal(12, value.X, "Concept writer X")
+    Assert.Equal(-3, value.Y, "Concept writer Y")
+}
+
+[Fact]
+fn LoadNestedPayloadEnum() -> Void ! Error {
+    let value = LoadOctagon<Outer>("Language/Data/Octagon/valid/payload_enum_nested.octagon")?
+    let inner = match value {
+        case Outer.Wrapped(v) -> v
+    }
+    let number = match inner {
+        case Inner.Value(v) -> v
+    }
+    Assert.Equal(42, number, "nested payload enum data")
+}

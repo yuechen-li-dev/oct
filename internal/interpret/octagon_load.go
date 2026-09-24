@@ -172,6 +172,14 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 	if hasEnum {
 		enumName := ""
 		enumVariant := ""
+		var payload []ast.Expr
+		hasPayloadForm := false
+		switch enumExpr := expr.(type) {
+		case ast.CallExpr:
+			hasPayloadForm = true
+			payload = enumExpr.Arguments
+			expr = enumExpr.Callee
+		}
 		switch enumExpr := expr.(type) {
 		case ast.EnumValueExpr:
 			enumName = enumExpr.EnumName
@@ -200,7 +208,17 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 		for _, declaredVariant := range enumDecl.Variants {
 			if declaredVariant.Name == enumVariant {
 				if declaredVariant.Payload != nil {
-					return Value{}, fmt.Errorf("enum %s variant %s requires payload and is not supported in octagon data literals", expectedTypeString(expectedType), enumVariant)
+					if len(payload) != 1 {
+						return Value{}, fmt.Errorf("enum %s variant %s requires exactly 1 payload argument, got %d", expectedTypeString(expectedType), enumVariant, len(payload))
+					}
+					value, err := i.materializeOctagonValue(currentPkg, *declaredVariant.Payload, payload[0])
+					if err != nil {
+						return Value{}, fmt.Errorf("enum %s variant %s payload mismatch: %w", expectedTypeString(expectedType), enumVariant, err)
+					}
+					return Value{Kind: ValueEnum, Enum: EnumValue{TypeName: resolvedEnumName, Variant: enumVariant, Payload: &value}}, nil
+				}
+				if hasPayloadForm {
+					return Value{}, fmt.Errorf("enum %s variant %s does not accept a payload", expectedTypeString(expectedType), enumVariant)
 				}
 				return Value{Kind: ValueEnum, Enum: EnumValue{TypeName: resolvedEnumName, Variant: enumVariant}}, nil
 			}

@@ -1111,11 +1111,17 @@ func __octSerialize(v reflect.Value, depth int) (string, error) {
 		return __octSerialize(v.Elem(), depth)
 	}
 	if meta, ok := __octEnumMetaByGoType[__octTypeKey(v.Type())]; ok {
-		idx := int(v.Int())
+		idx := int(v.FieldByName("Tag").Int())
 		if idx < 0 || idx >= len(meta.Variants) {
 			return "", fmt.Errorf("enum %s variant index %d out of range", meta.ShortName, idx)
 		}
-		return meta.ShortName + "." + meta.Variants[idx], nil
+		name := meta.ShortName + "." + meta.Variants[idx]
+		if meta.PayloadTypes[idx] == nil { return name, nil }
+		payload := v.FieldByName("Payload")
+		if !payload.IsValid() || payload.IsNil() { return "", fmt.Errorf("enum %s variant %s missing payload", meta.ShortName, meta.Variants[idx]) }
+		rendered, err := __octSerialize(payload.Elem(), depth)
+		if err != nil { return "", err }
+		return name + "(" + rendered + ")", nil
 	}
 	switch v.Kind() {
 	case reflect.Int:
@@ -1246,7 +1252,24 @@ func (p *__octParser) parseValue() (__octParsedValue, error) {
 		return p.parseRecord(id)
 	}
 	if dot := strings.LastIndex(id, "."); dot > 0 && dot < len(id)-1 {
-		return __octParsedValue{Kind: __octParsedEnum, EnumType: id[:dot], EnumVariant: id[dot+1:]}, nil
+		out := __octParsedValue{Kind: __octParsedEnum, EnumType: id[:dot], EnumVariant: id[dot+1:]}
+		p.skipWS()
+		if p.pos < len(p.input) && p.input[p.pos] == '(' {
+			out.EnumHasPayload = true
+			p.pos++
+			for {
+				p.skipWS()
+				if p.pos < len(p.input) && p.input[p.pos] == ')' { p.pos++; break }
+				item, err := p.parseValue()
+				if err != nil { return __octParsedValue{}, err }
+				out.EnumPayload = append(out.EnumPayload, item)
+				p.skipWS()
+				if p.pos < len(p.input) && p.input[p.pos] == ')' { p.pos++; break }
+				if p.pos >= len(p.input) || p.input[p.pos] != ',' { return __octParsedValue{}, fmt.Errorf("expected ',' or ')' after enum payload") }
+				p.pos++
+			}
+		}
+		return out, nil
 	}
 	return __octParsedValue{}, fmt.Errorf("expected expression")
 }
@@ -1409,12 +1432,19 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 		}
 		for i, v := range meta.Variants {
 			if v == value.EnumVariant {
+				if meta.PayloadTypes[i] == nil && value.EnumHasPayload { return reflect.Value{}, fmt.Errorf("enum %s variant %s does not accept a payload", expectedType, v) }
+				if meta.PayloadTypes[i] != nil && len(value.EnumPayload) != 1 { return reflect.Value{}, fmt.Errorf("enum %s variant %s requires exactly 1 payload argument, got %d", expectedType, v, len(value.EnumPayload)) }
 				out := reflect.New(target).Elem()
 				tag := out.FieldByName("Tag")
 				if !tag.IsValid() || !tag.CanSet() {
 					return reflect.Value{}, fmt.Errorf("enum %s has unsupported compiled representation", expectedType)
 				}
 				tag.SetInt(int64(i))
+				if meta.PayloadTypes[i] != nil {
+					payload, err := __octMaterialize(value.EnumPayload[0], meta.PayloadTypes[i], meta.PayloadNames[i])
+					if err != nil { return reflect.Value{}, fmt.Errorf("enum %s variant %s payload mismatch: %w", expectedType, v, err) }
+					out.FieldByName("Payload").Set(payload)
+				}
 				return out, nil
 			}
 		}

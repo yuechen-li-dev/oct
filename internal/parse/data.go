@@ -49,12 +49,26 @@ func validateDataValue(expr ast.Expr) error {
 			return nil
 		}
 		return fmt.Errorf(".octagon enum values must use explicit Enum.Variant form")
+	case ast.CallExpr:
+		if len(node.TypeArguments) != 0 {
+			return fmt.Errorf(".octagon payload enum values cannot have type arguments")
+		}
+		if _, ok := node.Callee.(ast.FieldAccessExpr); !ok {
+			return fmt.Errorf(".octagon does not allow function calls")
+		}
+		if err := validateDataValue(node.Callee); err != nil {
+			return fmt.Errorf(".octagon payload enum constructor: %w", err)
+		}
+		for _, argument := range node.Arguments {
+			if err := validateDataValue(argument); err != nil {
+				return err
+			}
+		}
+		return nil
 	case ast.ParenExpr:
 		return validateDataValue(node.Inner)
 	case ast.IdentifierExpr:
 		return fmt.Errorf(".octagon does not allow bare identifiers")
-	case ast.CallExpr:
-		return fmt.Errorf(".octagon does not allow function calls")
 	case ast.IndexExpr:
 		return fmt.Errorf(".octagon does not allow index expressions")
 	case ast.BinaryExpr:

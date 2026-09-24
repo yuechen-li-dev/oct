@@ -10,9 +10,16 @@ Load and write are explicit through builtins.
 
 - `.octagon` payload is a single top-level value.
 - Allowed surface is data-only values: scalar literals, arrays, record literals, and enum values.
+- Octagon payload enum literals are the data-only subset of ordinary Oct enum
+  construction syntax. Payload expressions must themselves be Octagon data
+  expressions. They use the ordinary one-payload constructor spelling,
+  such as `Result.Ok(42)`. Their payload must recursively be an Octagon data
+  expression. Tag-only `Enum.Case` remains valid. Ordinary function calls,
+  including calls with the same punctuation, remain invalid data.
 - Signed `Int` and `Float` scalar literals are data literals (for example `-1`
   and `-0.5`), including inside arrays and record fields.
-- Disallowed surface includes package declarations, function declarations, bindings, calls, control flow, and multiple top-level values.
+- Disallowed surface includes package declarations, function declarations,
+  bindings, arbitrary calls, control flow, and multiple top-level values.
 - `WriteOctagon(path, value)` writes `.octagon` data and returns `Int` status.
 - `WriteOctagon` path must end with `.octagon`.
 - `WriteOctagon` value must be `.octagon`-representable.
@@ -23,6 +30,8 @@ Load and write are explicit through builtins.
 - Load rejects top-level type mismatches.
 - Load rejects record field type/shape mismatches.
 - Load rejects enum type/variant mismatches.
+- Load rejects missing, extra, and mistyped enum payloads. Payload refinement
+  admission uses the same constructor checks as an ordinary loaded value.
 - Load rejects array element type mismatches.
 - Load rejects dimension mismatches.
 - A nominal `record table` is represented by its declared table literal: each

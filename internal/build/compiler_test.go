@@ -1564,6 +1564,53 @@ fn main() -> Int ! Error {
 	}
 }
 
+func TestCompileAndRunOctagonPayloadEnumRoundTrip(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	artifactPath := filepath.Join(root, "payload.octagon")
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+enum Choice {
+    Some(Int)
+    Empty
+}
+
+fn main() -> Int ! Error {
+    WriteOctagon(%q, Choice.Some(42))
+    let loaded = LoadOctagon<Choice>(%q)?
+    return match loaded {
+        case Choice.Some(value) -> value
+        case Choice.Empty -> 0
+    }
+}
+`, artifactPath, artifactPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "42" {
+		t.Fatalf("expected 42, got %q", string(out))
+	}
+	body, err := os.ReadFile(artifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "Choice.Some(42)\n" {
+		t.Fatalf("unexpected payload Octagon: %q", body)
+	}
+	if _, err := octagon.Load(artifactPath); err != nil {
+		t.Fatalf("written payload rejected: %v", err)
+	}
+}
+
 func TestCompileAndRunLoadOctagonFailureReturnsErr(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
