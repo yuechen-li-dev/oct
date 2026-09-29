@@ -1,23 +1,21 @@
 # Oct
 
-**A programming language for science.** Oct brings physical units, numerical data, tests, artifacts, and native programs into one readable language. Its compiler and native backend are implemented in Go, so an Oct program can become an ordinary executable without asking a scientist to maintain a second implementation of the same model.
+**A native programming language for scientific computing.** Oct brings dimensional analysis, matrix math, embedded tests, and native compilation into a single, legible language. Written in Go, Oct compiles down to standalone native binaries so researchers never have to maintain separate prototype and production codebases.
 
-Oct is deliberately ambitious: a scientific idea should be able to grow from a calculation into a tested, reviewable, distributable system without changing its vocabulary halfway through.
+Oct eliminates the two-language problem: write your model once, test it in place, and distribute a single executable.
 
-**Oct 1.1.0.** See the [release notes](docs/releases/OCT_1_1_RELEASE_NOTES.md) for what has changed since 1.0.0 and the [installation guide](docs/releases/INSTALL_1_1.md) for the supported binary archives.
+> **Latest Release:** Oct 1.1.0 — Read the [Release Notes](docs/releases/OCT_1_1_RELEASE_NOTES.md) or see the [Installation Guide](docs/releases/INSTALL_1_1.md).
 
-## Why Oct exists
+## Why Oct?
 
-Scientific software often has a two-language problem: a productive language for exploring a model, then a lower-level language for the parts that must run quickly or ship as a native program. Python makes exploration approachable but often pushes performance-critical work into extensions. C++ and Rust offer native control but ask researchers to carry more systems complexity through everyday scientific code. Go provides a practical implementation and distribution foundation, but its language does not express all the scientific contracts we want at the source level.
+Scientific software usually forces a trade-off: fast prototyping in Python at the cost of performance, or speed and distribution in C++/Rust at the cost of high language friction. Go offers an excellent runtime and distribution model, but lacks explicit domain abstractions for scientific contracts.
 
-Oct is an attempt to close that gap. The scientist writes Oct for both the model and the program around it. Go implements the language and its current native compilation path; Oct adds the domain vocabulary and checks that Go alone does not provide. The aim is to make the code a human can review also be the code an LLM can author, test, and hand back as a reproducible artifact.
+Oct closes the gap. It provides domain-first language primitives while using Go as a runtime foundation and native backend:
 
-That goal shapes the language:
-
-- **Scientific meaning is explicit.** SI dimensions, arrays, vectors, matrices, tensors, and fallible results are part of the type and execution model.
-- **Evidence travels with the program.** `[Fact]` tests, benchmarks, typed artifacts, packages, and optional lockfiles make results repeatable and inspectable.
-- **Native delivery is ordinary.** The Go backend builds executables, while explicit Octxiliary sidecars provide access to selected Go libraries when a wrapper is needed.
-- **The source stays legible.** Named concepts, explicit template applications, and visible control flow let reviewers see what a value means and where a decision came from.
+* **First-Class Scientific Types:** Built-in SI dimensions, vectors/matrices/tensors, and explicit error handling.
+* **Embedded Verification:** Native xUnit.NET style `[Fact]` unit tests, benchmarks, typed artifacts, and reproducible lockfiles ship alongside your code.
+* **Native Executables:** Compiles directly to standalone binaries via the Go backend, with optional Octxiliary sidecars for standard Go library interop.
+* **Readable & Deterministic:** Clear control flow, explicit generic instantiation, and self-documenting code built for human review and reliable LLM generation.
 
 ## A small Oct program
 
