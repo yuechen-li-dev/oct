@@ -5,6 +5,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if ($Version -notmatch '^(\d+)\.(\d+)\.') { throw "release version must begin with major.minor.patch: $Version" }
+$installGuide = Join-Path $repo ("docs\releases\INSTALL_{0}_{1}.md" -f $Matches[1], $Matches[2])
+if (-not (Test-Path -LiteralPath $installGuide)) { throw "missing release install guide: $installGuide" }
 $out = [System.IO.Path]::GetFullPath($OutputDirectory)
 $name = "oct-$Version-windows-amd64"
 $stage = Join-Path $out "stage-$name"
@@ -19,11 +22,13 @@ New-Item -ItemType Directory -Force -Path $root, (Join-Path $root 'runtime\inter
 Push-Location $repo
 try {
     go build -trimpath -ldflags "-X github.com/yuechen-li-dev/oct/internal/cli.version=$Version" -o (Join-Path $root 'oct.exe') ./cmd/oct
+    if ($LASTEXITCODE -ne 0) { throw "Oct CLI build failed with exit code $LASTEXITCODE" }
     go run ./tools/build_sidecars --out (Join-Path $root 'sidecars')
+    if ($LASTEXITCODE -ne 0) { throw "Octxiliary sidecar build failed with exit code $LASTEXITCODE" }
 } finally { Pop-Location }
 
 Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $root 'LICENSE')
-Copy-Item (Join-Path $repo 'docs\releases\INSTALL_1_0.md') (Join-Path $root 'INSTALL.md')
+Copy-Item $installGuide (Join-Path $root 'INSTALL.md')
 Copy-Item (Join-Path $repo 'go.mod') (Join-Path $root 'runtime\go.mod')
 Copy-Item (Join-Path $repo 'go.sum') (Join-Path $root 'runtime\go.sum')
 Get-ChildItem (Join-Path $repo 'internal\octxiliary') -Filter '*.go' | Where-Object { $_.Name -notlike '*_test.go' } | Copy-Item -Destination (Join-Path $root 'runtime\internal\octxiliary')

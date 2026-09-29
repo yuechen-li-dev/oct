@@ -4,7 +4,7 @@
 
 Oct is deliberately ambitious: a scientific idea should be able to grow from a calculation into a tested, reviewable, distributable system without changing its vocabulary halfway through.
 
-**Current work: Oct 1.1.0.** This README describes the 1.1.0 development line. The latest published release is [v1.0.0](https://github.com/yuechen-li-dev/oct/releases/tag/v1.0.0); the 1.1.0 tag, changelog, and release artifacts will follow the release process.
+**Oct 1.1.0.** See the [release notes](docs/releases/OCT_1_1_RELEASE_NOTES.md) for what has changed since 1.0.0 and the [installation guide](docs/releases/INSTALL_1_1.md) for the supported binary archives.
 
 ## Why Oct exists
 
@@ -56,18 +56,18 @@ fn MeasuresSpeed() -> Void ! Error {
 
 Oct also explores what a well-equipped programming language can do around the computation itself. It has FLOW-backed queries over arrays and tables, package and artifact workflows, document generation, Go integration and source-generation experiments, and build orchestration that can coordinate Go, C/C++, and Rust projects. These capabilities serve the scientific program; they are not prerequisites for writing one.
 
-The [language reference](Language/reference/README.md) and [executable contracts](Language/README.md) define the supported Oct surface. Some wider work, including `oct make`, OctGen, SDSL-V, Prometheus, and alternate backends, is experimental or separately governed. The [1.0 surface manifest](docs/releases/OCT_1_0_SURFACE_MANIFEST.md) identifies the stable boundary; development toward 1.1.0 does not silently make every experiment a stable API.
+The [language reference](Language/reference/README.md) and [executable contracts](Language/README.md) define the supported Oct surface. Some wider work, including `oct make`, OctGen, SDSL-V, Prometheus, and alternate backends, is experimental or separately governed. The [1.0 surface manifest](docs/releases/OCT_1_0_SURFACE_MANIFEST.md) identifies the stable boundary; this release does not silently make every experiment a stable API.
 
 ## Get started
 
-Install the published 1.0.0 CLI with Go:
+Install the 1.1.0 CLI with Go:
 
 ```sh
-go install github.com/yuechen-li-dev/oct/cmd/oct@v1.0.0
+go install github.com/yuechen-li-dev/oct/cmd/oct@v1.1.0
 oct version
 ```
 
-For the 1.1.0 development line, use a checkout of this repository:
+From a checkout of this repository:
 
 ```sh
 go run ./cmd/oct --help
@@ -82,7 +82,7 @@ cd HelloScience
 oct test .
 ```
 
-Native compilation uses the Go toolchain. Release archives and their installation details are in the [1.0 installation guide](docs/releases/INSTALL_1_0.md).
+Native compilation uses the Go toolchain. Release archives and their installation details are in the [1.1 installation guide](docs/releases/INSTALL_1_1.md).
 
 ## Explore the repository
 
