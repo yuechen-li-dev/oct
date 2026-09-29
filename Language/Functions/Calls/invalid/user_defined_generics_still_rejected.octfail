@@ -1,4 +1,4 @@
-expect error: "expected '(' after function name"
+expect error: "type parameters require a 'template' declaration"
 package Main
 
 fn Identity<T>(x: T) -> T {

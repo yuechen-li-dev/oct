@@ -24,7 +24,11 @@ func parallelBoundaryTest(t *testing.T) {
 }
 
 func nativeArtifactPath(sourcePath string) string {
-	return build.OutputPath(sourcePath, build.ArtifactExecutable, build.HostTarget())
+	path := build.OutputPath(sourcePath, build.ArtifactExecutable, build.HostTarget())
+	if filepath.Clean(path) == filepath.Clean(sourcePath) {
+		return path + ".out"
+	}
+	return path
 }
 
 func octStringLiteralPath(path string) string {

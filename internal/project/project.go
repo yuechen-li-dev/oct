@@ -441,7 +441,10 @@ func loadPackageFiles(directory string, includeTests bool, selected map[string]s
 			}
 			parsed, err := parseFile(candidate)
 			if err != nil {
-				return nil, err
+				// An explicit file target does not own malformed sibling tests.
+				// A selected source that needs a declaration from one will still
+				// fail during type checking with an unresolved name.
+				continue
 			}
 			// Selection controls test execution, not the package declaration
 			// universe. Include sibling test sources from the same package while

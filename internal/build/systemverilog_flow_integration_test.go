@@ -17,6 +17,9 @@ func TestVerilogM2IcarusAndYosysEvidence(t *testing.T) {
 	if _, err := exec.LookPath("wsl"); err != nil {
 		t.Skip("WSL is unavailable")
 	}
+	if output, err := exec.Command("wsl", "sh", "-lc", "command -v iverilog && command -v vvp && command -v yosys").CombinedOutput(); err != nil {
+		t.Skipf("WSL Icarus/Yosys toolchain is unavailable: %v: %s", err, strings.TrimSpace(string(output)))
+	}
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)

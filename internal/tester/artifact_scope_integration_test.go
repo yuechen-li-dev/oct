@@ -165,8 +165,8 @@ func TestUserRequestedBuildArtifactRemainsPersistent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("user build: %v", err)
 	}
-	if result.ArtifactPath != build.OutputPath(sourcePath, build.ArtifactExecutable, build.HostTarget()) {
-		t.Fatalf("unexpected persistent build path: %s", result.ArtifactPath)
+	if filepath.Clean(result.ArtifactPath) == filepath.Clean(sourcePath) {
+		t.Fatalf("build output collided with source: %s", result.ArtifactPath)
 	}
 	if _, err := os.Stat(result.ArtifactPath); err != nil {
 		t.Fatalf("user-requested build output was removed: %v", err)

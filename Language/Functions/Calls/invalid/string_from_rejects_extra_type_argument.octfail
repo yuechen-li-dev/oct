@@ -1,4 +1,4 @@
-expect error: "expected statement"
+expect error: "function 'StringFrom' expects 1 type argument, got 2"
 package Main
 
 fn Main() -> String {
