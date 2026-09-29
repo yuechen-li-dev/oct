@@ -2,6 +2,11 @@
 
 Oct is a scientific programming language and toolchain for reproducible research.
 
+Concept Vulkan language and compiler development has graduated to the
+[Concept repository](https://github.com/yuechen-li-dev/Concept). Oct retains
+historical Prometheus native conformance artifacts that consume its output;
+the former Oct-local Concept Vulkan compiler and specimens are no longer maintained here.
+
 It is designed for the point where notebooks and scripts stop being enough: when an experiment needs tests, units, artifacts, packages, native binaries, and a distribution story. Oct's guiding principle is that the correct way should also be the easiest way.
 
 ## What is Oct?

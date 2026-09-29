@@ -1,6 +1,11 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the current worktree now carries an experimental DragonGod M3 typed-automata control-and-effect vertical with fixed local instances, one exact optional borrowed context binding, guarded candidates, explicit fallback, deterministic ambiguity reporting, ordered typed effect emission, and strict-C11 lowering; production remains handwritten**
+> Historical Oct-era design record. Active Concept Vulkan language and compiler
+> development now lives in the [Concept repository](https://github.com/yuechen-li-dev/Concept).
+> The implementation and specimens described below were removed from Oct during
+> the CI stabilization pass. This document no longer defines the current language.
+
+Historical Oct-era status: **EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the Oct worktree carried an experimental DragonGod M3 typed-automata control-and-effect vertical with fixed local instances, one exact optional borrowed context binding, guarded candidates, explicit fallback, deterministic ambiguity reporting, ordered typed effect emission, and strict-C11 lowering; production remained handwritten**
 
 Date: 2026-07-25
 
