@@ -17,6 +17,9 @@ import (
 )
 
 func TestCompiledOctestArtifactLifecycle(t *testing.T) {
+	// These cases validate artifact cleanup, not compilation speed. Give the
+	// external Go build room to finish on loaded CI hosts.
+	const compiledLifecycleCycleTime = 30 * time.Second
 	artifactRoot := t.TempDir()
 	t.Setenv(testArtifactRootEnv, artifactRoot)
 	sourceDir := t.TempDir()
@@ -48,7 +51,7 @@ fn TimesOut() -> Void {
 	}
 
 	t.Run("success", func(t *testing.T) {
-		err := executeCompiledTestCase(program, lifecycleTestCase(sourcePath, "Passes", time.Second), &bytes.Buffer{})
+		err := executeCompiledTestCase(program, lifecycleTestCase(sourcePath, "Passes", compiledLifecycleCycleTime), &bytes.Buffer{})
 		if err != nil {
 			t.Fatalf("compiled success: %v", err)
 		}
@@ -57,7 +60,7 @@ fn TimesOut() -> Void {
 	})
 
 	t.Run("compile failure", func(t *testing.T) {
-		err := executeCompiledTestCase(program, lifecycleTestCase(sourcePath, "MissingFunction", time.Second), &bytes.Buffer{})
+		err := executeCompiledTestCase(program, lifecycleTestCase(sourcePath, "MissingFunction", compiledLifecycleCycleTime), &bytes.Buffer{})
 		if err == nil {
 			t.Fatal("expected compile failure")
 		}
@@ -66,7 +69,7 @@ fn TimesOut() -> Void {
 	})
 
 	t.Run("runtime failure", func(t *testing.T) {
-		err := executeCompiledTestCase(program, lifecycleTestCase(sourcePath, "FailsAtRuntime", time.Second), &bytes.Buffer{})
+		err := executeCompiledTestCase(program, lifecycleTestCase(sourcePath, "FailsAtRuntime", compiledLifecycleCycleTime), &bytes.Buffer{})
 		if err == nil || !strings.Contains(err.Error(), "compiled test run failed") {
 			t.Fatalf("expected runtime failure, got %v", err)
 		}
@@ -86,7 +89,7 @@ fn TimesOut() -> Void {
 	t.Run("debug retention", func(t *testing.T) {
 		t.Setenv(keepTestArtifactsEnv, "1")
 		var diagnostic bytes.Buffer
-		err := executeCompiledTestCase(program, lifecycleTestCase(sourcePath, "Passes", time.Second), &diagnostic)
+		err := executeCompiledTestCase(program, lifecycleTestCase(sourcePath, "Passes", compiledLifecycleCycleTime), &diagnostic)
 		if err != nil {
 			t.Fatalf("compiled retained run: %v", err)
 		}

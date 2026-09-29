@@ -1,151 +1,80 @@
 # Oct
 
-Oct is a scientific programming language and toolchain for reproducible research.
+**A programming language for science.** Oct brings physical units, numerical data, tests, artifacts, and native programs into one readable language. Its compiler and native backend are implemented in Go, so an Oct program can become an ordinary executable without asking a scientist to maintain a second implementation of the same model.
 
-Concept Vulkan language and compiler development has graduated to the
-[Concept repository](https://github.com/yuechen-li-dev/Concept). Oct retains
-historical Prometheus native conformance artifacts that consume its output;
-the former Oct-local Concept Vulkan compiler and specimens are no longer maintained here.
+Oct is deliberately ambitious: a scientific idea should be able to grow from a calculation into a tested, reviewable, distributable system without changing its vocabulary halfway through.
 
-Find current guides in [docs](docs/README.md), runnable examples in
-[Examples](Examples/README.md), and SDSL-V contracts in
-[Language/SDSL-V](Language/SDSL-V/README.md).
+**Current work: Oct 1.1.0.** This README describes the 1.1.0 development line. The latest published release is [v1.0.0](https://github.com/yuechen-li-dev/oct/releases/tag/v1.0.0); the 1.1.0 tag, changelog, and release artifacts will follow the release process.
 
-It is designed for the point where notebooks and scripts stop being enough: when an experiment needs tests, units, artifacts, packages, native binaries, and a distribution story. Oct's guiding principle is that the correct way should also be the easiest way.
+## Why Oct exists
 
-## What is Oct?
+Scientific software often has a two-language problem: a productive language for exploring a model, then a lower-level language for the parts that must run quickly or ship as a native program. Python makes exploration approachable but often pushes performance-critical work into extensions. C++ and Rust offer native control but ask researchers to carry more systems complexity through everyday scientific code. Go provides a practical implementation and distribution foundation, but its language does not express all the scientific contracts we want at the source level.
 
-Oct is an early scientific programming language/toolchain for portable computation, reproducible research, and AI-assisted experimentation.
+Oct is an attempt to close that gap. The scientist writes Oct for both the model and the program around it. Go implements the language and its current native compilation path; Oct adds the domain vocabulary and checks that Go alone does not provide. The aim is to make the code a human can review also be the code an LLM can author, test, and hand back as a reproducible artifact.
 
-Oct is built on Go as its systems substrate. Ordinary Oct programs compile through Go, build quickly, run as native binaries, and target the platforms Go targets. The experimental `profile Verilog` M2 path emits structured SystemVerilog from the same backend-neutral MIR: M1 combinational functions plus Octomata FLOW machines lowered directly to clocked FSM, board, continuation, yield/result, and utility-policy state. Existing Go libraries can be exposed to Oct through explicit Octxiliary wrappers, letting researchers keep a high-level scientific language without losing access to the Go ecosystem.
+That goal shapes the language:
 
-The language includes first-class scientific features that are already represented in the repository's contracts and libraries: SI units, xUnit-style testing, arrays/vectors/matrices, native Einstein tensor notation, Octomata flow/state machines, utility scoring, fallible functions, package sync, optional `lock.octagon` reproducibility, and explicit native wrapper builds.
+- **Scientific meaning is explicit.** SI dimensions, arrays, vectors, matrices, tensors, and fallible results are part of the type and execution model.
+- **Evidence travels with the program.** `[Fact]` tests, benchmarks, typed artifacts, packages, and optional lockfiles make results repeatable and inspectable.
+- **Native delivery is ordinary.** The Go backend builds executables, while explicit Octxiliary sidecars provide access to selected Go libraries when a wrapper is needed.
+- **The source stays legible.** Named concepts, explicit template applications, and visible control flow let reviewers see what a value means and where a decision came from.
 
-## Why Oct?
+## A small Oct program
 
-Oct is for research code that has outgrown throwaway scripts but still needs to stay close to the scientist's model of the problem.
-
-- **Reproducibility by default:** tests, artifacts, package manifests, and optional lockfiles are part of the normal workflow.
-- **Scientific language surface:** units, tensors, arrays, matrices, fallible functions, and experiment artifacts are language/toolchain concerns rather than notebook conventions.
-- **Native distribution path:** the current implementation compiles through Go, so the compiled path can produce ordinary native binaries.
-- **Explicit integration:** Octxiliary sidecars expose Go libraries through manifest-declared wrappers instead of hidden ambient bindings.
-- **Agent-friendly workflow:** an LLM can create Oct experiments, run tests, sync packages, generate artifacts, and return reproducible code instead of a fragile transcript.
-
-## Example
 ```oct
 package ReadmeDemo
 
-// Oct enforces physical units at compile time.
-// Wrong units are a type error — not a runtime surprise.
+concept Distance = Float<m>
+concept Duration = Float<s>
+concept Speed = Float<m/s>
 
-fn KineticEnergy(mass: Float<kg>, velocity: Float<m/s>) -> Float<kg*m^2/s^2> {
-    return 0.5 * mass * velocity * velocity
-    // kg * (m/s)^2 = kg*m^2/s^2  ✓  compiler verifies this
+template record Measurement<T> {
+    Value: T
+    UnitLabel: String
 }
 
-fn StiffnessForce(K: Matrix<Float<kg/s^2>>, u: Vector<Float<m>>) -> Vector<Float<kg*m/s^2>> {
-    return K @ u
-    // Matrix<Float<kg/s^2>> @ Vector<Float<m>> → Vector<Float<kg*m/s^2>>  ✓  Newton's law
+fn AverageSpeed(distance: Distance, elapsed: Duration) -> Measurement<Speed> ! Error {
+    if elapsed <= 0.0s {
+        return error("elapsed time must be positive")
+    }
+    return Measurement<Speed> {
+        Value: distance / elapsed
+        UnitLabel: "m/s"
+    }
 }
 
-// Errors are values. ? propagates. match handles locally.
-fn AverageSpeed(distance: Float<m>, time: Float<s>) -> Float<m/s> ! Error {
-    if time <= 0.0s {
-        return error("time must be positive")
-    }
-    return distance / time
+[Fact]
+fn MeasuresSpeed() -> Void ! Error {
+    let result = AverageSpeed(12.0m, 3.0s)?
+    Assert.Equal(4.0m/s, result.Value, "distance divided by time")
 }
-
-// State machines are a language primitive — explicit, named, typed.
-// Python's async/await secretly compiles to one of these.
-// Oct makes the states, transitions, and mutable board visible.
-flow HeatReactor(target: Float<K>, initial: Float<K>) -> Float<K> {
-    board {
-        Temp:  Float<K>
-        Ticks: Int
-    }
-
-    state Initialize {
-        board.Temp  = initial
-        board.Ticks = 0
-        goto Heating
-    }
-
-    state Heating {
-        board.Temp  = board.Temp + 0.5K
-        board.Ticks = board.Ticks + 1
-        when {
-            case board.Temp >= target -> goto Done
-            case board.Ticks > 1000  -> goto Done
-            else                     -> goto Heating
-        }
-    }
-
-    state Done { return board.Temp }
-}
-
 ```
 
-## Current status: v0.1 preview
+`concept` gives domain quantities names without hiding their units. `template` makes the measurement shape reusable while each application has a concrete type. The division has to produce speed, and the test exercises the same code that can compile to a native executable. Save this as `readme.octest` and run `oct test readme.octest --execution compiled`.
 
-Oct 0.1 is an early preview: real enough to run, test, package, and compile scientific programs, but still pre-1.0 and evolving.
+## More than the scientific core
 
-Current milestone capabilities include:
+Oct also explores what a well-equipped programming language can do around the computation itself. It has FLOW-backed queries over arrays and tables, package and artifact workflows, document generation, Go integration and source-generation experiments, and build orchestration that can coordinate Go, C/C++, and Rust projects. These capabilities serve the scientific program; they are not prerequisites for writing one.
 
-- core Oct language/toolchain;
-- `async fn` / `await` source sugar lowered to explicit Octomata FLOW machines
-  for interpreted and compiled Go execution;
-- interpreted and compiled execution paths;
-- package manager MVP with local/Git source sync, transitive exact dependency graph sync, and optional project-root `lock.octagon`;
-- source-controlled canonical first-party registry at `Registry/registry.oct`;
-- manifest-declared wrapper lifecycle with Octxiliary sidecars and explicit `oct pkg build-wrappers --allow-native`;
-- tests and CI coverage across core compiler/tooling paths.
-- OctCument M2 backend-neutral immutable documents with ergonomic styles,
-  templates, semantic figures and references, explicit typed anchored placement,
-  headers/footers/page numbering, and deterministic Markdown/DOCX artifacts.
-- opt-in Atlas semantic documentation graphs that connect authorities,
-  interpretations, requirements/claims, implementation symbols, executable
-  evidence, and artifacts without changing runtime semantics;
+The [language reference](Language/reference/README.md) and [executable contracts](Language/README.md) define the supported Oct surface. Some wider work, including `oct make`, OctGen, SDSL-V, Prometheus, and alternate backends, is experimental or separately governed. The [1.0 surface manifest](docs/releases/OCT_1_0_SURFACE_MANIFEST.md) identifies the stable boundary; development toward 1.1.0 does not silently make every experiment a stable API.
 
-The language definition lives in Oct source contracts under `Language/`. The Go implementation (`cmd/`, `internal/`) is the current implementation/backend for those contracts.
+## Get started
 
-## Install
-
-After the `v0.1.0` tag is published, install the Oct CLI with Go:
+Install the published 1.0.0 CLI with Go:
 
 ```sh
-go install github.com/yuechen-li-dev/oct/cmd/oct@v0.1.0
-```
-
-For development from a checkout, use:
-
-```sh
-go run ./cmd/oct --help
-go install ./cmd/oct
-```
-
-Optional sidecar command for compiled programs that use the current IO sidecar path:
-
-```sh
-go install github.com/yuechen-li-dev/oct/cmd/octxiliary-io@v0.1.0
-```
-
-Ensure your Go bin directory is on `PATH` (commonly `$(go env GOPATH)/bin` or your configured `GOBIN`), then verify:
-
-```sh
-oct --help
+go install github.com/yuechen-li-dev/oct/cmd/oct@v1.0.0
 oct version
 ```
 
-Release builds can inject a version string with:
+For the 1.1.0 development line, use a checkout of this repository:
 
 ```sh
-go build -ldflags "-X github.com/yuechen-li-dev/oct/internal/cli.version=0.1.0" ./cmd/oct
+go run ./cmd/oct --help
+go run ./cmd/oct test Examples/SmartGreenhouseController --execution compiled
 ```
 
-## Quick start
-
-Create and test a small library package:
+To start a project with an installed CLI:
 
 ```sh
 oct new library HelloScience
@@ -153,144 +82,14 @@ cd HelloScience
 oct test .
 ```
 
-The generated library contains an `Identity` function and an xUnit-style `[Fact]` test. Replace those with your package code as the experiment grows. For an existing directory that already contains Oct files, run `oct init experiment`, `oct init library`, `oct init application`, or `oct init wrapper-library` from that directory to add only `manifest.oct`; `oct init` refuses to overwrite an existing manifest.
+Native compilation uses the Go toolchain. Release archives and their installation details are in the [1.0 installation guide](docs/releases/INSTALL_1_0.md).
 
-From a repository checkout without installing first, the same flow is:
+## Explore the repository
 
-```sh
-go run ./cmd/oct new library HelloScience
-cd HelloScience
-go run ../cmd/oct test .
-```
+- [Examples](Examples/README.md) — small programs and complete workflows.
+- [Science libraries](docs/science/README.md) — numerical, physical, statistical, and domain packages by task.
+- [Documentation](docs/README.md) — CLI, architecture, testing, and development guides.
+- [Language reference](Language/reference/README.md) — authoritative syntax and supported features.
+- [Language contracts](Language/README.md) — valid and invalid executable specimens.
 
-## Package manager / canonical registry
-
-Oct 0.1 includes a package manager MVP. The canonical first-party registry is source-controlled at:
-
-```text
-Registry/registry.oct
-```
-
-PM7 is intentionally local/source-controlled, not hosted. When using an installed `oct` outside this repository, point a project at a local checkout of the Oct repository:
-
-```sh
-oct pkg registry add oct <path-to-oct-repo>/Registry
-oct pkg add Mathematics@0.1.0
-oct pkg sync
-oct test .
-```
-
-`Mathematics` is the canonical math package name. There is no `Math` alias in the canonical registry.
-
-Optional lockfile workflow:
-
-```sh
-oct pkg lock
-oct pkg sync --locked
-```
-
-Current package-manager boundaries for v0.1:
-
-- registry entries are exact-version source entries;
-- hosted registry, publishing, auth, signing, `.octpkg` artifacts, semver ranges, `latest`, and solver/backtracking behavior are not implemented;
-- `lock.octagon` records the resolved graph but does not yet provide package tree digest or artifact integrity;
-- wrapper package sync copies source and manifest metadata only; it does not build native sidecars.
-
-## Wrapper / Octxiliary note
-
-Octxiliary is the explicit sidecar bridge for exposing Go libraries to Oct. Wrapper packages declare sidecars in `manifest.oct`; `oct pkg wrappers` inspects that metadata without building or running native code.
-
-Native sidecars are built only when requested explicitly:
-
-```sh
-oct pkg build-wrappers --allow-native
-```
-
-Built sidecars currently require `OCT_WRAPPER_PATH` or an existing sibling-discovery location at runtime. Package sync does not build sidecars, fetch arbitrary native dependencies, or run wrapper code.
-
-## AI-assisted virtual laboratory note
-
-Oct is designed to work well in agentic coding environments such as Codex Cloud or Claude Code. An LLM can write an experiment, run `oct test`, generate artifacts, sync exact package dependencies, and return a repository state that another user can reproduce locally.
-
-This is a design goal, not a claim that every scientific workflow is complete in v0.1.
-
-## Agent workflow
-
-For repository work, the semantic authority is the CLI:
-
-```sh
-oct test <file-or-root> --execution auto --json
-oct artifact <file-or-root> --execution interpreted --json
-```
-
-`oct test` reports compiled cases and any explicit interpreted fallbacks.
-`oct artifact` is a separate lane and reports interpreted artifact paths,
-types, sizes, and SHA-256 hashes. Local coding agents should edit and inspect
-the repository directly; the bounded MCP server is for hosted virtual
-workspaces, not a replacement filesystem or shell.
-
-Artifacts that explicitly request one manifest wrapper operation through a
-typed Concept provider may be invoked with
-`--grant-native Package:Wrapper:Operation`. The request is descriptive, the
-host grant is authoritative, and the broker checks it at dispatch. Sidecars
-must already be built and remain trusted unsandboxed native processes.
-
-Choose `oct new library Name` for stable reusable code. Choose
-`oct new experiment Name` for a milestone-driven investigation: it creates
-`REPORT.md` and M0, while root `oct test` / `oct artifact` run every canonical
-`M<number>[letter]` milestone. See the bundled `oct-experiments` skill for the
-focused-milestone then root-evidence loop.
-
-## Oct 1.0 installation
-
-Release archives, checksum verification, prerequisites, native build, test,
-formatting, upgrade, and uninstall instructions are in
-[`docs/releases/INSTALL_1_0.md`](docs/releases/INSTALL_1_0.md). An artifact
-requires the Go toolchain declared by its bundled compiler runtime for `oct
-build`; a repository checkout is not required.
-
-## Stability notice / pre-1.0 warning
-
-Oct 0.1 is a preview release. Language syntax, Go APIs, package registry format, standard-library APIs, wrapper metadata, and compiled-backend support may change before 1.0. Performance is not final, and no production-readiness promise is made for this prerelease.
-
-## Development/test commands
-
-Useful commands from the repository root:
-
-```sh
-go test ./pkg/octxiliary ./internal/octxiliary
-go test ./internal/pkgmgr ./internal/project
-go test ./cmd/oct -run 'Version|Help|Pkg|Registry|Lock|New|Init|Wrappers|BuildWrappers'
-go test ./internal/... ./cmd/oct
-go test -count=1 -parallel 8 ./...
-go test -count=1 -parallel 8 -tags=integration ./...
-go run ./tools/build_sidecars --out dist/sidecars
-OCT_SLOW_TESTS=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
-go run ./cmd/oct --help
-go run ./cmd/oct pkg --help
-go run ./cmd/oct version
-```
-
-Default `go test ./...` is the fast lane and skips sidecar-heavy Octxiliary wrapper tests. Build sidecars and set `OCT_SLOW_TESTS=1` when wrapper/octxiliary code changed, before release, or when that lane is explicitly requested.
-
-On PowerShell, use the same sidecar build command and set the wrapper path with:
-
-```powershell
-go run ./tools/build_sidecars --out dist/sidecars
-$env:OCT_SLOW_TESTS = "1"
-$env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
-go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
-```
-
-For more details, start with:
-
-- [`docs/science/README.md`](docs/science/README.md) — task- and discipline-oriented map of the scientific libraries;
-- `docs/ARCHITECTURE.md` — architecture and execution model;
-- `docs/CLI.md` — CLI quick reference;
-- `docs/COMPILED_SUPPORT.md` — compiled-backend status;
-- `docs/releases/OCT_1_0_CONTRACT.md` — proposed 1.0 stable-surface and compatibility contract;
-- `docs/releases/OCT_1_0_READINESS.md` — RC1 evidence, discrepancies, and blocker ledger;
-- `docs/releases/OCT_1_0_RELEASE_PLAN.md` — RC2/GA gates and non-goals;
-- `docs/releases/OCT_1_0_SURFACE_MANIFEST.md` — authoritative stable and experimental API boundary;
-- `Language/reference/` — canonical language/reference corpus;
-- `docs/internal/canonical_registry_pm7.md` — canonical registry PM7 notes.
+Concept Vulkan language and compiler development has moved to the [Concept repository](https://github.com/yuechen-li-dev/Concept). Oct retains the historical Prometheus artifacts that consume its output.
