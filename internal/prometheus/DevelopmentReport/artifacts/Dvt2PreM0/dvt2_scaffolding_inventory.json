@@ -3,7 +3,7 @@
     {
       "action": "keep production bootstrap",
       "owner": "bootstrap",
-      "path": "tools/zimage_prometheus_smoke.py",
+      "path": "tools/python/zimage/zimage_prometheus_smoke.py",
       "purpose": "canonical fixed smoke",
       "references": "shipping report and DVT2 docs",
       "risk": "low"
@@ -11,7 +11,7 @@
     {
       "action": "keep diagnostic/bridge",
       "owner": "Prometheus",
-      "path": "tools/prometheus_zimage_bridge.py",
+      "path": "tools/python/zimage/prometheus_zimage_bridge.py",
       "purpose": "typed ctypes ABI",
       "references": "smoke",
       "risk": "low"
@@ -19,7 +19,7 @@
     {
       "action": "keep tooling",
       "owner": "DVT2",
-      "path": "tools/zimage_dvt2_pre_m0_report.py",
+      "path": "tools/python/zimage/zimage_dvt2_pre_m0_report.py",
       "purpose": "deterministic audit materializer",
       "references": "DVT2 artifacts",
       "risk": "low"

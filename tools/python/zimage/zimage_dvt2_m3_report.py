@@ -8,7 +8,7 @@ import statistics
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 ARTIFACTS = ROOT / "internal/prometheus/DevelopmentReport/artifacts/Dvt2M3"
 RAW = ROOT / "out/prometheus/dvt2_m3/dvt2_m3_raw_prefetch_smoke.json"
 CONTENDED = ROOT / "out/prometheus/dvt2_m3/dvt2_m3_raw_contended_smoke.json"

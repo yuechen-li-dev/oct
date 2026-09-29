@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "Dvt2M2"
 WINDOW_BYTES = 361_820_672
 STAGING_BYTES = 88_473_600
@@ -75,7 +75,7 @@ def main() -> None:
     write("dvt2_m2_memory_profiles.json", {"schema": "prometheus.dvt2.m2.memory-profiles.v1", "minimum_memory": {"weight_windows": 1, "window_bytes": WINDOW_BYTES, "model_ceiling_bytes": MIN_CEILING}, "prefetch": {"weight_windows": 2, "second_window_bytes": WINDOW_BYTES, "second_host_staging_bytes": STAGING_BYTES, "model_ceiling_bytes": PREFETCH_CEILING}, "host_cache_unchanged_bytes": prefetch["allocation"]["host_package_cache_bytes"], "telemetry_limit": "model-owned allocation accounting excludes Vulkan driver bookkeeping"})
     write("dvt2_m2_output_validation.json", {"schema": "prometheus.dvt2.m2.output-validation.v1", "accepted_png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613", "minimum_memory": min_profile, "prefetch": prefetch_profile, "all_evaluations_have_30_main_layers": all(row["main_layer_count"] == 30 for row in minimum["native_evaluations"] + prefetch["native_evaluations"])})
     write("dvt2_m2_faults.json", {"schema": "prometheus.dvt2.m2.faults.v1", "guarded_conditions": ["wrong successor", "prefetch active window", "activation before completion", "stale target position", "payload mismatch", "uncertain completion quarantines window", "reset reaps completion", "missing transfer capability falls back"], "fallback_profile": "MinimumMemory"})
-    write("dvt2_m2_replay.json", {"schema": "prometheus.dvt2.m2.replay.v1", "profiles_frozen": ["MinimumMemory", "Prefetch"], "semantic_lock_sha256": prefetch["authority"]["compiled_model_lock_sha256"], "payload_root": prefetch["authority"]["payload_root"], "reproduction": "tools/zimage_prometheus_smoke.py --execution-profile <profile>"})
+    write("dvt2_m2_replay.json", {"schema": "prometheus.dvt2.m2.replay.v1", "profiles_frozen": ["MinimumMemory", "Prefetch"], "semantic_lock_sha256": prefetch["authority"]["compiled_model_lock_sha256"], "payload_root": prefetch["authority"]["payload_root"], "reproduction": "tools/python/zimage/zimage_prometheus_smoke.py --execution-profile <profile>"})
     write("dvt2_m3_handoff.json", {"schema": "prometheus.dvt2.m3-handoff.v1", "status": "ready", "selected_target": "typed transport and residency generations", "remaining_bottleneck": "compute and Python scheduler/bridge crossings after bounded dual-window overlap", "m2_overlap_seconds": overlap, "m2_exposed_prefetch_wait_seconds": prefetch_profile["prefetch_wait_seconds"], "hypothesis": "typed transport generations can lower the remaining swap/bridge coordination cost without adding prefetch depth or changing semantic ownership"})
 
 

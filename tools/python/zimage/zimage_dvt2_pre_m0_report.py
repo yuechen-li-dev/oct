@@ -88,9 +88,9 @@ def main() -> None:
         {"candidate": "Qwen/VAE/final/PNG", "seconds": cold["timings"]["qwen_conditioning_seconds"]+cold["timings"]["vae_decode_and_png_seconds"]+cold["timings"]["external_final_projection_seconds"], "percent_wall": 0, "payoff": "low", "risk": "high if native"}
     ]}
     inventory = {"schema": "prometheus.dvt2.scaffolding.v1", "entries": [
-        {"path": "tools/zimage_prometheus_smoke.py", "purpose": "canonical fixed smoke", "references": "shipping report and DVT2 docs", "action": "keep production bootstrap", "risk": "low", "owner": "bootstrap"},
-        {"path": "tools/prometheus_zimage_bridge.py", "purpose": "typed ctypes ABI", "references": "smoke", "action": "keep diagnostic/bridge", "risk": "low", "owner": "Prometheus"},
-        {"path": "tools/zimage_dvt2_pre_m0_report.py", "purpose": "deterministic audit materializer", "references": "DVT2 artifacts", "action": "keep tooling", "risk": "low", "owner": "DVT2"},
+        {"path": "tools/python/zimage/zimage_prometheus_smoke.py", "purpose": "canonical fixed smoke", "references": "shipping report and DVT2 docs", "action": "keep production bootstrap", "risk": "low", "owner": "bootstrap"},
+        {"path": "tools/python/zimage/prometheus_zimage_bridge.py", "purpose": "typed ctypes ABI", "references": "smoke", "action": "keep diagnostic/bridge", "risk": "low", "owner": "Prometheus"},
+        {"path": "tools/python/zimage/zimage_dvt2_pre_m0_report.py", "purpose": "deterministic audit materializer", "references": "DVT2 artifacts", "action": "keep tooling", "risk": "low", "owner": "DVT2"},
         {"path": "internal/prometheus/DevelopmentReport/artifacts/Evt2Shipping", "purpose": "canonical accepted evidence", "references": "reports", "action": "keep canonical evidence", "risk": "high", "owner": "EVT2"},
         {"path": "out/", "purpose": "local DLL/build outputs", "references": "local smoke", "action": "local-only generated artifact", "risk": "do not commit", "owner": "native build"}
     ]}

@@ -489,8 +489,8 @@ Final validation for this closure included `go test ./internal/source`,
 `go test ./internal/diagnostic`, `go test ./internal/sdslv/...`,
 `go test ./cmd/oct`, focused valid and invalid language fixture corpus tests,
 focused expected-failure/XYZ/Near/exactly-once/first-failure/ABI/stable replay
-native host tests, `go run ./cmd/oct sdslv test Examples/SDSL-V/M29`,
-`go run ./cmd/oct sdslv test Examples/SDSL-V/M30`, and the canonical Windows
+native host tests, `go run ./cmd/oct sdslv test Language/SDSL-V/M29`,
+`go run ./cmd/oct sdslv test Language/SDSL-V/M30`, and the canonical Windows
 native build through `internal\prometheus\native\build_windows_launcher.cmd`,
 which rebuilt `sdslv_test_host.exe`, `prometheus_reactor.dll`, and the
 Marionette executables with verified outputs.

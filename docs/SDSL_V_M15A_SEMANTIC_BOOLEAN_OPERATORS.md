@@ -65,8 +65,8 @@ This keeps source style Oct-like while keeping backend output target-native.
 
 ## Examples
 
-- `Examples/SDSL-V/M15a/SemanticBooleanOperators.sdslv`
-- `Examples/SDSL-V/M15a/SemanticComptimeGuard.sdslv`
+- `Language/SDSL-V/M15a/SemanticBooleanOperators.sdslv`
+- `Language/SDSL-V/M15a/SemanticComptimeGuard.sdslv`
 
 M16a guarded memory access uses the same source-level boolean spelling:
 

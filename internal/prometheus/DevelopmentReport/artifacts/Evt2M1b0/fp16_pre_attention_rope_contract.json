@@ -16,7 +16,7 @@
     "interpretation": "these values exactly match Comfy EmbedND(pos_ids_x(33, 32, 32, 1), theta=256, axes=[32,48,48])"
   },
   "accepted_fp16_script_evidence": {
-    "script_relative_path": "tools/zimage_fp16_block_drift.py",
+    "script_relative_path": "tools/python/zimage/zimage_fp16_block_drift.py",
     "script_sha256": "2011cb1b4ecb9f4e4eeef2d93e3205f8de8ffdfd52f2e53c775bebf7f1cc6773",
     "source_line_behavior": "pos_ids_x(16, 32, 32, 1, device)",
     "computed_first_frequency_values": [-0.9576594829559326, 0.2879033088684082],

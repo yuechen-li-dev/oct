@@ -35,13 +35,13 @@ func TestSdslvTestParsesFactTheoryAndLaunchMetadata(t *testing.T) {
 	}
 }
 
-func TestSdslvStableIdsRemainUnchangedForM29Fixtures(t *testing.T) {
+func TestSdslvStableIdsForM29Fixtures(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	m, err := Discover(filepath.Join("Examples", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
+	m, err := Discover(filepath.Join("Language", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestSdslvStableIdsRemainUnchangedForM29Fixtures(t *testing.T) {
 	for _, c := range m.Cases {
 		got = append(got, c.StableID)
 	}
-	want := []string{"sdslv-6f0c815f69506af931c8e29d", "sdslv-b5a40570a1bd37bca746f2a2", "sdslv-bba048707a3df484d781ef83", "sdslv-f0513f0c292555490b1f6b65"}
+	want := []string{"sdslv-2bc96de6f56be1ab3da9808c", "sdslv-65f3491f56cb0b2854d0573d", "sdslv-73369bb5950e9dfd8896731c", "sdslv-8d108235967e87851cf2b098"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("stable IDs changed: got %v, want %v", got, want)
 	}
@@ -74,7 +74,7 @@ func TestSdslvGroupingAndManifestAreCanonicalProjections(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	suite, err := Prepare(filepath.Join("Examples", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
+	suite, err := Prepare(filepath.Join("Language", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
 	if err != nil {
 		t.Fatal(err)
 	}

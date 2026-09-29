@@ -13,7 +13,7 @@ def write_json(path: Path, value: object) -> None:
 
 
 def main() -> None:
-    repo = Path(__file__).resolve().parents[1]
+    repo = Path(__file__).resolve().parents[3]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--smoke", type=Path, default=repo / "internal/prometheus/DevelopmentReport/artifacts/Dvt2M0/dvt2_m0_smoke.json")
     parser.add_argument("--out", type=Path, default=repo / "internal/prometheus/DevelopmentReport/artifacts/Dvt2M0")

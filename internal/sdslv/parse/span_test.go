@@ -120,7 +120,7 @@ func TestSdslvAstExampleCorpusHasKnownSpans(t *testing.T) {
 	if !ok {
 		t.Fatal("caller")
 	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(here), "..", "..", "..", "Examples", "SDSL-V"))
+	root := filepath.Clean(filepath.Join(filepath.Dir(here), "..", "..", "..", "Language", "SDSL-V"))
 	paths, err := filepath.Glob(filepath.Join(root, "*", "*.sdslv"))
 	if err != nil {
 		t.Fatal(err)

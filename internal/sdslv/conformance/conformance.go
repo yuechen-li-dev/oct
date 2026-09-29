@@ -66,7 +66,7 @@ var syntaxLocationRE = regexp.MustCompile(`\bat ([0-9]+):([0-9]+)(?:\s|$)`)
 var diagnosticCodeRE = regexp.MustCompile(`SDSL-V[0-9]+`)
 
 func Load(root string) (Manifest, error) {
-	path := filepath.Join(root, "Examples", "SDSL-V", "conformance", "manifest.json")
+	path := filepath.Join(root, "Language", "SDSL-V", "conformance", "manifest.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Manifest{}, err

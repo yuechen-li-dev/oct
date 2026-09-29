@@ -93,7 +93,7 @@ Vulkan handles or process metadata leaking into compiler IR.
 ## Permanent test inventory
 
 The committed M30 executable suite is
-`Examples/SDSL-V/M30/FixedTestInputResources.sdslvtest` and currently contains
+`Language/SDSL-V/M30/FixedTestInputResources.sdslvtest` and currently contains
 seven hardware-executed Facts:
 
 - `sdslv-562ebcfc3fd535b10496774c` — `FloatInputReads`
@@ -210,10 +210,10 @@ The following validation lanes were rerun after the permanent hardening pass:
 - `go run ./tools/prometheus_native_manifest -check`
 - `bash -n internal/prometheus/native/build_linux.sh`
 - canonical Windows native build via `internal/prometheus/native/build_windows.cmd`
-- `go run ./cmd/oct sdslv test Examples/SDSL-V/M29/InlineHlslFacts.sdslvtest`
-- `go run ./cmd/oct sdslv test Examples/SDSL-V/M29/RealAssertions.sdslvtest`
-- `go run ./cmd/oct sdslv test Examples/SDSL-V/M30/FixedTestInputResources.sdslvtest`
-- `go run ./cmd/oct sdslv test Examples/SDSL-V/M30/FixedTestInputResources.sdslvtest --case sdslv-a5f866221f90199dace4a0df`
+- `go run ./cmd/oct sdslv test Language/SDSL-V/M29/InlineHlslFacts.sdslvtest`
+- `go run ./cmd/oct sdslv test Language/SDSL-V/M29/RealAssertions.sdslvtest`
+- `go run ./cmd/oct sdslv test Language/SDSL-V/M30/FixedTestInputResources.sdslvtest`
+- `go run ./cmd/oct sdslv test Language/SDSL-V/M30/FixedTestInputResources.sdslvtest --case sdslv-a5f866221f90199dace4a0df`
 
 Fresh hardware evidence on `2026-07-10`:
 

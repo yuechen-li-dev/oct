@@ -17,7 +17,7 @@ M0 is **persistent warm model owner/session across scheduler evaluations**. It t
 ## Canonical command
 
 ```powershell
-& "$env:USERPROFILE\ComfyUI\.venv\Scripts\python.exe" tools\zimage_prometheus_smoke.py --metadata internal\prometheus\DevelopmentReport\artifacts\Dvt2PreM0\dvt2_profile_cold.json
+& "$env:USERPROFILE\ComfyUI\.venv\Scripts\python.exe" tools\python\zimage\zimage_prometheus_smoke.py --metadata internal\prometheus\DevelopmentReport\artifacts\Dvt2PreM0\dvt2_profile_cold.json
 ```
 
 The command validates its PNG, records all nine native evaluations, validates the 30-layer count and allocation ceiling, and writes evidence atomically.

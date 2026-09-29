@@ -26,7 +26,7 @@
     }
   },
   "reference": {
-    "script_relative_path": "tools/zimage_fp16_block_drift.py",
+    "script_relative_path": "tools/python/zimage/zimage_fp16_block_drift.py",
     "script_sha256": "2011cb1b4ecb9f4e4eeef2d93e3205f8de8ffdfd52f2e53c775bebf7f1cc6773",
     "checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
     "model_revision": "f332072aa78be7aecdf3ee76d5c247082da564a6",
@@ -45,7 +45,7 @@
     "recommended_working_directory": "<reference-checkout>",
     "sys_path": "the script prepends --comfy-root before importing folder_paths, nodes, and the Lumina model",
     "environment_variables": "none required by the script; do not set PYTHONPATH when --comfy-root is supplied",
-    "command_template": "<existing-venv-python> <repo>/tools/zimage_fp16_block_drift.py --comfy-root <reference-checkout> --data-root <existing-model-root> --oracle-root <evt2-oracle-root> --cache-root <evt2-oracle-root> --out <local-output>"
+    "command_template": "<existing-venv-python> <repo>/tools/python/zimage/zimage_fp16_block_drift.py --comfy-root <reference-checkout> --data-root <existing-model-root> --oracle-root <evt2-oracle-root> --cache-root <evt2-oracle-root> --out <local-output>"
   },
   "reproduction": {
     "runs": ["m1b0-env-repro-1", "m1b0-env-repro-2"],

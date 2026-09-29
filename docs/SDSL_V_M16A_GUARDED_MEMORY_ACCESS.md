@@ -156,10 +156,10 @@ TileA[p.row, p.col] =
 
 ## Examples
 
-- `Examples/SDSL-V/M16a/GuardedReadBasic.sdslv`
-- `Examples/SDSL-V/M16a/GuardedWriteBasic.sdslv`
-- `Examples/SDSL-V/M16a/GuardedSgemmTileLoad.sdslv`
-- `Examples/SDSL-V/M19/GuardWhenTilePath.sdslv`
+- `Language/SDSL-V/M16a/GuardedReadBasic.sdslv`
+- `Language/SDSL-V/M16a/GuardedWriteBasic.sdslv`
+- `Language/SDSL-V/M16a/GuardedSgemmTileLoad.sdslv`
+- `Language/SDSL-V/M19/GuardWhenTilePath.sdslv`
 
 ## Current Boundaries
 

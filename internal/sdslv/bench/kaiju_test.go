@@ -33,7 +33,7 @@ func TestKaijuBenchCanonicalNDArrayHardware(t *testing.T) {
 	path := findBenchSource(t)
 	report, err := runKaiju(path, Manifest{
 		SchemaVersion: 1,
-		Source:        "Examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
+		Source:        "Language/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
 		Benchmarks: []Case{{
 			ID:             "sdslvbench-8b1f66233dd54390f518e9c7",
 			Name:           "NDArrayMaterializeStorage",
@@ -80,7 +80,7 @@ func findBenchSource(t *testing.T) string {
 	}
 	dir := wd
 	for i := 0; i < 8; i++ {
-		path := filepath.Join(dir, "examples", "SDSL-V", "M36a", "BasicBenchmarks.sdslvbench")
+		path := filepath.Join(dir, "Language", "SDSL-V", "M36a", "BasicBenchmarks.sdslvbench")
 		if _, err := os.Stat(path); err == nil {
 			return path
 		}
@@ -90,6 +90,6 @@ func findBenchSource(t *testing.T) string {
 		}
 		dir = parent
 	}
-	t.Fatalf("source file not found: %s", filepath.Join("Examples", "SDSL-V", "M36a", "BasicBenchmarks.sdslvbench"))
+	t.Fatalf("source file not found: %s", filepath.Join("Language", "SDSL-V", "M36a", "BasicBenchmarks.sdslvbench"))
 	return ""
 }

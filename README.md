@@ -7,6 +7,10 @@ Concept Vulkan language and compiler development has graduated to the
 historical Prometheus native conformance artifacts that consume its output;
 the former Oct-local Concept Vulkan compiler and specimens are no longer maintained here.
 
+Find current guides in [docs](docs/README.md), runnable examples in
+[Examples](Examples/README.md), and SDSL-V contracts in
+[Language/SDSL-V](Language/SDSL-V/README.md).
+
 It is designed for the point where notebooks and scripts stop being enough: when an experiment needs tests, units, artifacts, packages, native binaries, and a distribution story. Oct's guiding principle is that the correct way should also be the easiest way.
 
 ## What is Oct?

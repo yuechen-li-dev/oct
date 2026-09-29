@@ -1,0 +1,51 @@
+package OctagonLoadValid
+
+enum LaserMode {
+    Continuous
+    Pulsed
+}
+
+record Researcher {
+    Name: String
+    Title: String
+    ClearanceLevel: Int
+}
+
+record LaserSpec {
+    Wavelength: Float<m>
+    Power: Float<kg*m^2/s^3>
+    PulseDuration: Float<s>
+    Mode: LaserMode
+}
+
+record TargetSpec {
+    Material: String
+    Distance: Float<m>
+    AngleDegrees: Float
+}
+
+record SamplingConfig {
+    Duration: Float<s>
+    SampleRate: Float<Hz>
+}
+
+record LaserExperiment {
+    Name: String
+    LeadResearcher: Researcher
+    Laser: LaserSpec
+    Target: TargetSpec
+    Sampling: SamplingConfig
+    Checkpoints: Float<s>[]
+    Notes: String
+}
+
+[Fact]
+fn LoadLaserExperimentExample() -> Void ! Error {
+    let experiment = LoadOctagon<LaserExperiment>("Examples/Octagon/laser_experiment.octagon")?
+    Assert.Equal("Dr. O. A. Gonapus", experiment.LeadResearcher.Name, "researcher joke stays intact")
+    Assert.Equal(LaserMode.Pulsed, experiment.Laser.Mode, "pulsed mode")
+    Assert.True(experiment.Laser.Wavelength > 5.31e-7m, "nanometres expressed in metres")
+    Assert.True(experiment.Laser.Power > 4.9e3kg*m^2/s^3, "kilowatts expressed in SI base units")
+    Assert.True(experiment.Laser.PulseDuration < 1.1e-8s, "nanoseconds expressed in seconds")
+    Assert.Equal(5, Len(experiment.Checkpoints), "checkpoint count")
+}
