@@ -12,3 +12,4 @@ Language/Data/Octagon/Load/valid/concept_catalog.octagon text eol=lf
 *.json text eol=lf
 *.c text eol=lf
 *.h text eol=lf
+*.sdslv* text eol=lf
