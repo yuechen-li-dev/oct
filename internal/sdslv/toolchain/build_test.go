@@ -105,7 +105,7 @@ func TestCompileToSPIRVSmokeIfDXCAvailable(t *testing.T) {
 	root := filepath.Clean(filepath.Join(cwd, "..", "..", ".."))
 	tmp := t.TempDir()
 	result, err := CompileToSPIRV(CompileOptions{
-		InputPath:  filepath.Join(root, "Examples", "SDSL-V", "M0", "VectorAdd.sdslv"),
+		InputPath:  filepath.Join(root, "Language", "SDSL-V", "M0", "VectorAdd.sdslv"),
 		OutputPath: filepath.Join(tmp, "vector_add.spv"),
 		HLSLPath:   filepath.Join(tmp, "vector_add.hlsl"),
 		DXCPath:    dxcPath,

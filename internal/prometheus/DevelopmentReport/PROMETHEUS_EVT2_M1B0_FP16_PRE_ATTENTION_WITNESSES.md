@@ -44,7 +44,7 @@ beside the separate reference checkout; SHA-256
 ## Accepted final-output reproduction
 
 The unmodified accepted script
-[`tools/zimage_fp16_block_drift.py`](../../../tools/zimage_fp16_block_drift.py)
+[`tools/python/zimage/zimage_fp16_block_drift.py`](../../../tools/python/zimage/zimage_fp16_block_drift.py)
 (SHA-256 `2011cb1b4ecb9f4e4eeef2d93e3205f8de8ffdfd52f2e53c775bebf7f1cc6773`)
 was run twice against the existing 13-tensor cache, captured input, and
 captured timestep.  Both runs produced:

@@ -106,9 +106,9 @@ With M10a, reduction loop attributes lower through `VD-MIR` metadata rather than
 
 ## Examples
 
-- `Examples/SDSL-V/M10/ReductionBasic.sdslv`
-- `Examples/SDSL-V/M10/ReductionTileShape.sdslv`
-- `Examples/SDSL-V/M10a/ReductionAttributes.sdslv`
+- `Language/SDSL-V/M10/ReductionBasic.sdslv`
+- `Language/SDSL-V/M10/ReductionTileShape.sdslv`
+- `Language/SDSL-V/M10a/ReductionAttributes.sdslv`
 
 These examples exercise:
 

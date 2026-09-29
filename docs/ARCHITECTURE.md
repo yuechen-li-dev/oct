@@ -27,9 +27,10 @@ If behavior is user-visible language semantics, it should be expressed in `Langu
 
 For onboarding, read in this order:
 
-1. `docs/REPO_LAYOUT.md`
-2. `docs/BACKENDS.md`
-3. `docs/TESTING.md`
-4. `docs/LLM_LAB.md`
+1. `docs/README.md`
+2. `docs/REPO_LAYOUT.md`
+3. `docs/BACKENDS.md`
+4. `docs/TESTING.md`
+5. `docs/LLM_LAB.md`
 
 Historical milestone reports remain valuable context but are not the primary source of current architecture truth.

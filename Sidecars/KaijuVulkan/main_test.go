@@ -29,7 +29,7 @@ func TestBenchmarkDirectHardware(t *testing.T) {
 	if os.Getenv("OCT_KAIJU_VULKAN_TESTS") != "1" {
 		t.Skip("set OCT_KAIJU_VULKAN_TESTS=1 to run Kaiju Vulkan hardware tests")
 	}
-	spvPath := filepath.Join("..", "..", "examples", "SDSL-V", "M36a", "artifacts", "ndarraymaterialize.spv")
+	spvPath := filepath.Join("..", "..", "Language", "SDSL-V", "M36a", "artifacts", "ndarraymaterialize.spv")
 	spirv, err := os.ReadFile(spvPath)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestDispatchDirectHardware(t *testing.T) {
 	if os.Getenv("OCT_KAIJU_VULKAN_TESTS") != "1" {
 		t.Skip("set OCT_KAIJU_VULKAN_TESTS=1 to run Kaiju Vulkan hardware tests")
 	}
-	spvPath := filepath.Join("..", "..", "examples", "SDSL-V", "M36a", "artifacts", "tensorcontraction.spv")
+	spvPath := filepath.Join("..", "..", "Language", "SDSL-V", "M36a", "artifacts", "tensorcontraction.spv")
 	spirv, err := os.ReadFile(spvPath)
 	if err != nil {
 		t.Fatal(err)

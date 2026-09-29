@@ -306,7 +306,7 @@ All closeout lanes passed on Windows:
 - canonical conformance verification, including every new valid/invalid fixture
   and the unchanged graphics-space corpus
 - `go run ./cmd/oct sdslv test
-  Examples/SDSL-V/AttentionSpacePoc/AttentionSpaceGpuProof.sdslvtest`
+  Language/SDSL-V/AttentionSpacePoc/AttentionSpaceGpuProof.sdslvtest`
 - semantic and erased HLSL/SPIR-V generation through DXC
 - standalone `spirv-val` on both modules
 - SPIR-V resource-interface disassembly inspection

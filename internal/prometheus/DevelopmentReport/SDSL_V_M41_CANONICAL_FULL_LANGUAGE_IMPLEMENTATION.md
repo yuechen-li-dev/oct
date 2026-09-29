@@ -6,7 +6,7 @@ Convergence outcome: **SUCCESS**. Milestone state: **COMPLETE**.
 
 SDSL-V is now one shared language with compute, vertex, and pixel profiles. The
 normative authority is `docs/SDSL_V_LANGUAGE_SPEC.md` together with
-`Examples/SDSL-V/conformance/`; GoOct is the reference implementation. A parser,
+`Language/SDSL-V/conformance/`; GoOct is the reference implementation. A parser,
 validator, or emitter that disagrees with those authorities is defective.
 
 The historical Wyrmcoil/Aurelian graphics document contributed useful stage,
@@ -90,7 +90,7 @@ normalized SPIR-V interface facts, locations, targets, builtins, resources,
 material layout, capabilities, and deterministic replay identity. Pipeline
 state and runtime objects are intentionally absent.
 
-The permanent corpus is `Examples/SDSL-V/conformance/` with 6 valid fixture
+The permanent corpus is `Language/SDSL-V/conformance/` with 6 valid fixture
 records and 21 invalid fixture records. The canonical graphics source subsumes
 paired varyings, clip position, explicit inputs, texture/sampler, material,
 concept specialization, payload match, record/with, flow, comptime, spaces,

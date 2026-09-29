@@ -1,36 +1,36 @@
 LaserExperiment {
-    Name: "OAG-Δ Beam Stability Trial",
+    Name: "OAG-Δ Beam Stability Trial"
     LeadResearcher: Researcher {
-        Name: "Dr. O. A. Gonapus",
-        Title: "Principal Investigator",
+        Name: "Dr. O. A. Gonapus"
+        Title: "Principal Investigator"
         ClearanceLevel: 7
-    },
+    }
 
     Laser: LaserSpec {
-        Wavelength: 532nm,
-        Power: 5kW,
-        PulseDuration: 10ns,
+        Wavelength: 5.32e-7m
+        Power: 5.0e3kg*m^2/s^3
+        PulseDuration: 1.0e-8s
         Mode: LaserMode.Pulsed
-    },
+    }
 
     Target: TargetSpec {
-        Material: "Polished Tungsten",
-        Distance: 2.5m,
-        Angle: 45deg
-    },
+        Material: "Polished Tungsten"
+        Distance: 2.5m
+        AngleDegrees: 45.0
+    }
 
     Sampling: SamplingConfig {
-        Duration: 5s,
-        SampleRate: 1000Hz
-    },
+        Duration: 5.0s
+        SampleRate: 1.0e3Hz
+    }
 
     Checkpoints: [
-        0s,
-        1s,
-        2s,
-        3s,
-        5s
-    ],
+        0.0s,
+        1.0s,
+        2.0s,
+        3.0s,
+        5.0s
+    ]
 
     Notes: "Ensure beam coherence. Previous trial resulted in... anomalous oscillations."
 }

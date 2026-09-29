@@ -214,7 +214,7 @@ func mutateCaseInput(t *testing.T, payload map[string]any, functionName string, 
 func TestSdslvNativeHostRejectsMalformedTestInputManifest(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)
-	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Examples", "SDSL-V", "M30", "FixedTestInputResources.sdslvtest"))
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Language", "SDSL-V", "M30", "FixedTestInputResources.sdslvtest"))
 	inv := fixture.byFunction["GuardedReadUsesSource"]
 	cases := []struct {
 		name   string
@@ -285,7 +285,7 @@ func TestSdslvNativeHostRejectsMalformedTestInputManifest(t *testing.T) {
 func TestSdslvNativeHostNoInputReplayIsDeterministic(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)
-	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Examples", "SDSL-V", "M30", "FixedTestInputResources.sdslvtest"))
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Language", "SDSL-V", "M30", "FixedTestInputResources.sdslvtest"))
 	inv := fixture.byFunction["NoInputCompatibility"]
 	first, err := runNativeHost(t, host, inv, fixture.manifestPath)
 	if err != nil {
@@ -306,7 +306,7 @@ func TestSdslvNativeHostNoInputReplayIsDeterministic(t *testing.T) {
 func TestSdslvNativeHostXYZAndDeterministicFailingInvocation(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)
-	passingFixture := compileHostSuiteFromFile(t, filepath.Join(root, "Examples", "SDSL-V", "M29", "XYZInvocationIndexing.sdslvtest"))
+	passingFixture := compileHostSuiteFromFile(t, filepath.Join(root, "Language", "SDSL-V", "M29", "XYZInvocationIndexing.sdslvtest"))
 	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "internal", "sdslv", "testdata", "language", "valid", "XYZAssertionFailures.sdslvvalid"))
 
 	passing := passingFixture.byFunction["CombinedXYZGeometry"]
@@ -401,7 +401,7 @@ func TestSdslvExpectedAssertionFailureKeepsUserFacingRunnerFailure(t *testing.T)
 func TestSdslvNativeHostAssertAndABIMatrix(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)
-	passing := compileHostSuiteFromFile(t, filepath.Join(root, "Examples", "SDSL-V", "M29", "RealAssertions.sdslvtest"))
+	passing := compileHostSuiteFromFile(t, filepath.Join(root, "Language", "SDSL-V", "M29", "RealAssertions.sdslvtest"))
 	passInv := passing.byFunction["ScalarAssertions"]
 	first, passResult, err := runNativeHostJSON(t, host, passInv, passing.manifestPath)
 	if err != nil {
@@ -522,7 +522,7 @@ func TestSdslvNativeHostNearSpecialValueMatrix(t *testing.T) {
 func TestSdslvNativeHostExecutesTensorExecutionSuite(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)
-	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Examples", "SDSL-V", "M32b2", "TensorExecution.sdslvtest"))
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Language", "SDSL-V", "M32b2", "TensorExecution.sdslvtest"))
 	if got := len(fixture.groups); got != 2 {
 		t.Fatalf("groups=%d, want 2 workgroup groups", got)
 	}
@@ -555,7 +555,7 @@ func TestSdslvNativeHostExecutesTensorExecutionSuite(t *testing.T) {
 func TestSdslvNativeHostExecutesM33bTensorConstructionSuite(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)
-	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Examples", "SDSL-V", "M33b", "TensorConstruction.sdslvtest"))
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Language", "SDSL-V", "M33b", "TensorConstruction.sdslvtest"))
 	for _, function := range []string{
 		"Rank1Fill",
 		"Rank4Fill",
@@ -593,7 +593,7 @@ func TestSdslvNativeHostExecutesM33bTensorConstructionSuite(t *testing.T) {
 
 func TestSdslvM33bCompiledArtifactsContainConstructionProofMarkers(t *testing.T) {
 	root := repoRoot(t)
-	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Examples", "SDSL-V", "M33b", "TensorConstruction.sdslvtest"))
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Language", "SDSL-V", "M33b", "TensorConstruction.sdslvtest"))
 	if got := len(fixture.groups); got != 2 {
 		t.Fatalf("groups=%d, want 2 workgroup groups", got)
 	}
@@ -630,7 +630,7 @@ func TestSdslvStableCaseReplayWithTestInput(t *testing.T) {
 	if err := os.Setenv("SDSLV_TEST_HOST", host); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, "Examples", "SDSL-V", "M30", "FixedTestInputResources.sdslvtest")
+	path := filepath.Join(root, "Language", "SDSL-V", "M30", "FixedTestInputResources.sdslvtest")
 	manifest, err := Discover(path)
 	if err != nil {
 		t.Fatal(err)
@@ -662,7 +662,7 @@ func TestSdslvM33bStableCaseReplay(t *testing.T) {
 	if err := os.Setenv("SDSLV_TEST_HOST", host); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, "Examples", "SDSL-V", "M33b", "TensorConstruction.sdslvtest")
+	path := filepath.Join(root, "Language", "SDSL-V", "M33b", "TensorConstruction.sdslvtest")
 	manifest, err := Discover(path)
 	if err != nil {
 		t.Fatal(err)
@@ -720,7 +720,7 @@ func TestSdslvM31bFlowStackSuitePassesOnNativeHost(t *testing.T) {
 	if err := os.Setenv("SDSLV_TEST_HOST", host); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, "Examples", "SDSL-V", "M31b", "FlowStacks.sdslvtest")
+	path := filepath.Join(root, "Language", "SDSL-V", "M31b", "FlowStacks.sdslvtest")
 	var out bytes.Buffer
 	if err := Execute(path, &out); err != nil {
 		t.Fatalf("M31b flow stack suite failed: %v\n%s", err, out.String())
@@ -733,7 +733,7 @@ func TestSdslvM31bFlowStackSuitePassesOnNativeHost(t *testing.T) {
 func TestSdslvM31bFlowStackNativeHostCasesAreDeterministic(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)
-	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Examples", "SDSL-V", "M31b", "FlowStacks.sdslvtest"))
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "Language", "SDSL-V", "M31b", "FlowStacks.sdslvtest"))
 	for _, name := range []string{
 		"LinearFallthroughLegacy",
 		"GotoOnlyTransfer",
@@ -782,7 +782,7 @@ func TestSdslvM31bStableCaseReplay(t *testing.T) {
 	if err := os.Setenv("SDSLV_TEST_HOST", host); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, "Examples", "SDSL-V", "M31b", "FlowStacks.sdslvtest")
+	path := filepath.Join(root, "Language", "SDSL-V", "M31b", "FlowStacks.sdslvtest")
 	manifest, err := Discover(path)
 	if err != nil {
 		t.Fatal(err)

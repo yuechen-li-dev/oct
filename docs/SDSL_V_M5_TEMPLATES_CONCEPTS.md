@@ -127,5 +127,5 @@ M13 adds constrained compile-time shader staging with `comptime let` and `compti
 
 ## Examples
 
-- `Examples/SDSL-V/M5/TemplateTileConfig.sdslv`
-- `Examples/SDSL-V/M5/TemplateWorkgroupTileCopy.sdslv`
+- `Language/SDSL-V/M5/TemplateTileConfig.sdslv`
+- `Language/SDSL-V/M5/TemplateWorkgroupTileCopy.sdslv`

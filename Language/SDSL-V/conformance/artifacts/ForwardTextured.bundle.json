@@ -1,9 +1,9 @@
 {
   "schema": "sdslv.graphics-program-bundle.v1",
   "program": "ForwardTextured",
-  "replay_identity": "270415a98a26d4e7a449054b9174f0d20377b8151401805d39caea263ab4eac3",
+  "replay_identity": "ddd6dea167104bf09e195f992085c1b4f4624a92bafd6e63038bc24d434f9327",
   "source": {
-    "path": "Examples/SDSL-V/conformance/graphics/CanonicalGraphicsProgram.sdslvvalid",
+    "path": "Language/SDSL-V/conformance/graphics/CanonicalGraphicsProgram.sdslvvalid",
     "sha256": "5fe7528dcc37c99132ac6841e221c8cb99bba2359f907303f57a6a4312f1640f"
   },
   "compiler": {

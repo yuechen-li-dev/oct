@@ -143,7 +143,7 @@ payload-derived evidence with:
 ```powershell
 $env:OCT_EVT2_CACHE = "$env:LOCALAPPDATA\Oct\evt2-z-image-turbo"
 go run ./tools/zimage_main_transformer_cache -source C:\Users\yuech\ComfyUI\models\diffusion_models\z_image_turbo_bf16.safetensors -cache-root $env:OCT_EVT2_CACHE
-python tools/zimage_main_transformer_canonical.py --cache-root $env:OCT_EVT2_CACHE --oracle-root $env:OCT_EVT2_CACHE\oracle\f332072aa78be7aecdf3ee76d5c247082da564a6 --out $env:OCT_EVT2_CACHE\canonical\f332072aa78be7aecdf3ee76d5c247082da564a6\m2c-fp32-reference\layers.0
+python tools/python/zimage/zimage_main_transformer_canonical.py --cache-root $env:OCT_EVT2_CACHE --oracle-root $env:OCT_EVT2_CACHE\oracle\f332072aa78be7aecdf3ee76d5c247082da564a6 --out $env:OCT_EVT2_CACHE\canonical\f332072aa78be7aecdf3ee76d5c247082da564a6\m2c-fp32-reference\layers.0
 go run ./tools/evt2_m2c_artifacts -cache-root $env:OCT_EVT2_CACHE
 go run ./cmd/oct test Experiments/ZImageTurboMainTransformer0 --execution compiled
 ```

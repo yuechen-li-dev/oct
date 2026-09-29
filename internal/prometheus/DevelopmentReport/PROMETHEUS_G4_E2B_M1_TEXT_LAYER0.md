@@ -80,7 +80,7 @@ a general interpretation of PLE.
 
 ## Independent CPU-BF16 reference capture
 
-`tools/gemma4e2b_m1_reference.py` is a bounded reference-only harness.  It
+`tools/python/gemma/gemma4e2b_m1_reference.py` is a bounded reference-only harness.  It
 uses the official Gemma4 layer modules from Transformers 5.6.2, reads only
 selected embedding rows plus exact layer-0 tensors from the validated external
 checkpoint, and never writes weights into the repository.  It produces:
@@ -494,9 +494,9 @@ go run ./tools/gemma4e2b_forensics -root $env:G4E2B_CHECKPOINT_ROOT `
   -authority internal\prometheus\DevelopmentReport\artifacts\G4E2BM0\checkpoint_authority.json
 
 $env:PYTHONPATH = "$env:TEMP\g4e2b-transformers-5.6.2"
-<validated-python> tools\gemma4e2b_m1_reference.py ...
+<validated-python> tools\python\gemma\gemma4e2b_m1_reference.py ...
 
-<validated-python> -m py_compile tools\gemma4e2b_m1_reference.py
+<validated-python> -m py_compile tools\python\gemma\gemma4e2b_m1_reference.py
 go test ./tools/gemma4e2b_forensics ./internal/prometheus/zimage
 $env:G4E2B_CHECKPOINT_ROOT='<validated checkpoint root>'
 go test -count=1 -v ./internal/prometheus/gemma4e2b

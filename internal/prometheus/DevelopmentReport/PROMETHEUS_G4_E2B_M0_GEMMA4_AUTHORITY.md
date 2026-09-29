@@ -110,7 +110,7 @@ is missing, so no numerical audio authority is claimed.
 
 ## Pinned reference oracle
 
-`tools/gemma4e2b_reference_oracle.py` pins Transformers 5.6.2, PyTorch
+`tools/python/gemma/gemma4e2b_reference_oracle.py` pins Transformers 5.6.2, PyTorch
 2.9.1+cu130, CPU BF16 weights, eager attention, inference mode, fixed prompt,
 chat template, and forward argmax. It commits no weights or full activations.
 The compact results are [reference_oracle.json](artifacts/G4E2BM0/reference_oracle.json).

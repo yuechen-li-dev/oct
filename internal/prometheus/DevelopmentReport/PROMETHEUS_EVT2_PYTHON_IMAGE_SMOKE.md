@@ -199,7 +199,7 @@ From the repository root in PowerShell:
 ```powershell
 cmd /c internal\prometheus\native\build_windows.cmd
 go build -buildmode=c-shared -o out\prometheus\python_bridge\prometheus_zimage_bridge.dll ./tools/prometheus_zimage_bridge
-& "$env:USERPROFILE\ComfyUI\.venv\Scripts\python.exe" tools\zimage_prometheus_smoke.py
+& "$env:USERPROFILE\ComfyUI\.venv\Scripts\python.exe" tools\python\zimage\zimage_prometheus_smoke.py
 ```
 
 The defaults use the installed ComfyUI source/data roots and

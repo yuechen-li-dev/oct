@@ -89,6 +89,6 @@ M14a adds `comptime when utility` as the utility-scored arbitration sibling to `
 
 ## Examples
 
-- `Examples/SDSL-V/M14/ComptimeMatchInt.sdslv`
-- `Examples/SDSL-V/M14/ComptimeMatchBool.sdslv`
-- `Examples/SDSL-V/M14/ComptimeMatchTileConfig.sdslv`
+- `Language/SDSL-V/M14/ComptimeMatchInt.sdslv`
+- `Language/SDSL-V/M14/ComptimeMatchBool.sdslv`
+- `Language/SDSL-V/M14/ComptimeMatchTileConfig.sdslv`

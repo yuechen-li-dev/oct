@@ -131,10 +131,10 @@ comptime for oi in 0u..C.Outputs.M {
 
 The loop indices may contribute constants to the guard, but the guarded read/write itself remains a runtime memory operation rather than a compile-time expression.
 
-M19 runtime guard `when` also composes with `comptime for`: a `comptime for` inside a guard arm expands before VD-MIR, while the surrounding guard `when` remains runtime control flow and lowers to an `if / else if / else` chain. See `Examples/SDSL-V/M19/GuardWhenWithComptimeFor.sdslv`.
+M19 runtime guard `when` also composes with `comptime for`: a `comptime for` inside a guard arm expands before VD-MIR, while the surrounding guard `when` remains runtime control flow and lowers to an `if / else if / else` chain. See `Language/SDSL-V/M19/GuardWhenWithComptimeFor.sdslv`.
 
 ## Examples
 
-- `Examples/SDSL-V/M16/ComptimeForBasic.sdslv`
-- `Examples/SDSL-V/M16/ComptimeForRegTile.sdslv`
-- `Examples/SDSL-V/M16/ComptimeForSgemmMicroKernel.sdslv`
+- `Language/SDSL-V/M16/ComptimeForBasic.sdslv`
+- `Language/SDSL-V/M16/ComptimeForRegTile.sdslv`
+- `Language/SDSL-V/M16/ComptimeForSgemmMicroKernel.sdslv`

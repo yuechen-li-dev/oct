@@ -67,7 +67,7 @@ def torch_bf16_bits(tensor):
 
 
 def main() -> None:
-    repo = Path(__file__).resolve().parents[1]
+    repo = Path(__file__).resolve().parents[3]
     default_payload = Path(os.environ.get("LOCALAPPDATA", "")) / "Oct" / "evt2-z-image-turbo"
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--comfy-root", type=Path, default=Path(os.environ.get("OCT_COMFY_ROOT", r"C:\Users\yuech\AppData\Local\Programs\ComfyUI\resources\ComfyUI")))
