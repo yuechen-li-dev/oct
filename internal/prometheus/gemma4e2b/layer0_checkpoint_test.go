@@ -10,6 +10,9 @@ import (
 func TestLayer0ContractMatchesAcceptedAuthority(t *testing.T) {
 	authority, err := readAuthority(filepath.Join("..", "DevelopmentReport", "artifacts", "G4E2BM0", "checkpoint_authority.json"))
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("local G4E2B checkpoint authority artifact is unavailable")
+		}
 		t.Fatal(err)
 	}
 	byName := make(map[string]authorityTensor, len(authority.Safetensors.Tensors))

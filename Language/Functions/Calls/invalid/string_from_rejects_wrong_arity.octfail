@@ -1,4 +1,4 @@
-expect error: "function 'String.From' expects 1 argument, got 2"
+expect error: "function 'StringFrom' expects 1 argument, got 2"
 package Main
 
 fn Main() -> String {

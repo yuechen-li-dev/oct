@@ -14,7 +14,7 @@ func TestCanonicalRegistryDogfoodMathematicsAddSyncTestAndLockedSync(t *testing.
 	root := canonicalRegistryCLIRepoRoot(t)
 	workspace := t.TempDir()
 	consumerDir := filepath.Join(workspace, "PackageRegistryDogfood")
-	copyDir(t, filepath.Join(root, "examples", "PackageRegistryDogfood"), consumerDir)
+	copyDir(t, filepath.Join(root, "Examples", "PackageRegistryDogfood"), consumerDir)
 
 	stdout, stderr, err := executeCLIInDir(consumerDir, "pkg", "registry", "add", "oct", filepath.Join(root, "Registry"))
 	if err != nil || !strings.Contains(stdout, "Added package registry oct") {
@@ -56,7 +56,7 @@ func TestCanonicalRegistryDogfoodMathematicsAddSyncTestAndLockedSync(t *testing.
 func TestCanonicalRegistryWrapperSyncDoesNotBuildSidecars(t *testing.T) {
 	root := canonicalRegistryCLIRepoRoot(t)
 	consumerDir := filepath.Join(t.TempDir(), "WrapperConsumer")
-	copyDir(t, filepath.Join(root, "examples", "PackageRegistryDogfood"), consumerDir)
+	copyDir(t, filepath.Join(root, "Examples", "PackageRegistryDogfood"), consumerDir)
 
 	if _, stderr, err := executeCLIInDir(consumerDir, "pkg", "registry", "add", "oct", filepath.Join(root, "Registry")); err != nil {
 		t.Fatalf("registry add failed: %v %s", err, stderr)

@@ -29,8 +29,8 @@ func TestGroupedSemanticSpacesAreExactlyExpandedEquivalent(t *testing.T) {
 		t.Fatal("locate conformance package")
 	}
 	root := filepath.Clean(filepath.Join(filepath.Dir(current), "..", "..", ".."))
-	grouped := filepath.Join(root, "examples", "SDSL-V", "AttentionSpacePoc", "GroupedSpaceEquivalence.sdslv")
-	expanded := filepath.Join(root, "examples", "SDSL-V", "AttentionSpacePoc", "ExpandedSpaceEquivalence.sdslv")
+	grouped := filepath.Join(root, "Examples", "SDSL-V", "AttentionSpacePoc", "GroupedSpaceEquivalence.sdslv")
+	expanded := filepath.Join(root, "Examples", "SDSL-V", "AttentionSpacePoc", "ExpandedSpaceEquivalence.sdslv")
 	groupedHLSL, err := sdslv.EmitHLSLFile(grouped)
 	if err != nil {
 		t.Fatal(err)

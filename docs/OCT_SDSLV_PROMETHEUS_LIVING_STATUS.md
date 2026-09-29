@@ -1,8 +1,12 @@
 # Oct / SDSL-V / Prometheus living project status
 
+> Historical project briefing. Concept Vulkan development now lives in the
+> [Concept repository](https://github.com/yuechen-li-dev/Concept). The Oct-local
+> compiler and specimens described below have graduated out of this repository.
+
 Date: 2026-07-25
 
-Status: current in-repository briefing
+Status: historical in-repository briefing
 
 ## Current direction
 

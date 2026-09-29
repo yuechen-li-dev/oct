@@ -1,4 +1,4 @@
-expect error: "function 'String.From' requires an explicit type argument, e.g. String.From<Int>(value)"
+expect error: "function 'StringFrom' expects 1 type argument, got 0"
 package Main
 fn Main() -> String {
     return StringFrom(42)
