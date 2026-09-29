@@ -171,7 +171,7 @@ func TestUserRequestedBuildArtifactRemainsPersistent(t *testing.T) {
 	if _, err := os.Stat(result.ArtifactPath); err != nil {
 		t.Fatalf("user-requested build output was removed: %v", err)
 	}
-	header := make([]byte, 2)
+	header := make([]byte, 4)
 	file, err := os.Open(result.ArtifactPath)
 	if err != nil {
 		t.Fatalf("open native build: %v", err)
@@ -181,8 +181,15 @@ func TestUserRequestedBuildArtifactRemainsPersistent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read native build header: %v", err)
 	}
-	if string(header) != "MZ" {
-		t.Fatalf("Windows native build header = %q, want PE MZ", header)
+	switch runtime.GOOS {
+	case "windows":
+		if string(header[:2]) != "MZ" {
+			t.Fatalf("Windows native build header = %q, want PE MZ", header)
+		}
+	case "linux":
+		if string(header) != "\x7fELF" {
+			t.Fatalf("Linux native build header = %q, want ELF", header)
+		}
 	}
 }
 
