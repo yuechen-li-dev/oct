@@ -19,7 +19,7 @@ root="$stage/$name"
 archive="$out/$name.tar.gz"
 mkdir -p "$out"
 rm -rf "$stage" "$archive"
-mkdir -p "$root/runtime/internal/octxiliary" "$root/sidecars"
+mkdir -p "$root/runtime/internal/octxiliary" "$root/runtime/internal/dimension" "$root/sidecars"
 (
     cd "$repo"
     go build -trimpath -ldflags "-X github.com/yuechen-li-dev/oct/internal/cli.version=$version" -o "$root/oct" ./cmd/oct
@@ -29,6 +29,7 @@ cp "$repo/LICENSE" "$root/LICENSE"
 cp "$install_guide" "$root/INSTALL.md"
 cp "$repo/go.mod" "$repo/go.sum" "$root/runtime/"
 find "$repo/internal/octxiliary" -maxdepth 1 -type f -name '*.go' ! -name '*_test.go' -exec cp {} "$root/runtime/internal/octxiliary/" \;
+find "$repo/internal/dimension" -maxdepth 1 -type f -name '*.go' ! -name '*_test.go' -exec cp {} "$root/runtime/internal/dimension/" \;
 tar -C "$stage" --sort=name --owner=0 --group=0 --numeric-owner -czf "$archive" "$name"
 (
     cd "$out"
