@@ -1107,7 +1107,7 @@ func checkM40bTrace(label string, trace m40bTrace, submitCount uint32, resident 
 
 func checkCanonicalArtifacts(root string) error {
 	var m canonicalManifest
-	path := filepath.Join(root, "examples", "SDSL-V", "M36a", "artifacts", "manifest.json")
+	path := filepath.Join(root, "Examples", "SDSL-V", "M36a", "artifacts", "manifest.json")
 	if err := readJSON(path, &m); err != nil {
 		return err
 	}
@@ -1132,7 +1132,7 @@ func checkCanonicalArtifacts(root string) error {
 }
 
 func checkBenchmarkIdentities(root string) error {
-	source := filepath.Join(root, "examples", "SDSL-V", "M36a", "BasicBenchmarks.sdslvbench")
+	source := filepath.Join(root, "Examples", "SDSL-V", "M36a", "BasicBenchmarks.sdslvbench")
 	benchmarks, err := bench.Discover(source)
 	if err != nil {
 		return fmt.Errorf("discover permanent benchmark corpus: %w", err)
@@ -1145,7 +1145,7 @@ func checkBenchmarkIdentities(root string) error {
 		byID[benchmark.ID] = benchmark
 	}
 	var artifacts canonicalManifest
-	artifactPath := filepath.Join(root, "examples", "SDSL-V", "M36a", "artifacts", "manifest.json")
+	artifactPath := filepath.Join(root, "Examples", "SDSL-V", "M36a", "artifacts", "manifest.json")
 	if err := readJSON(artifactPath, &artifacts); err != nil {
 		return err
 	}

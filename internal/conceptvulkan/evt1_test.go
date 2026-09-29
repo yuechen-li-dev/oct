@@ -12,7 +12,7 @@ import (
 
 func readEVT1Fixture(t *testing.T, name string) string {
 	t.Helper()
-	path := filepath.Join("..", "..", "examples", "Concept-Vulkan", name)
+	path := filepath.Join("..", "..", "Examples", "Concept-Vulkan", name)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

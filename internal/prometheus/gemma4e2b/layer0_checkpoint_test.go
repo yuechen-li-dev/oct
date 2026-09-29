@@ -8,7 +8,7 @@ import (
 )
 
 func TestLayer0ContractMatchesAcceptedAuthority(t *testing.T) {
-	authority, err := readAuthority(filepath.Join("..", "DevelopmentReport", "artifacts", "G4E2BM0", "checkpoint_authority.json"))
+	authority, err := readAuthority(filepath.Join("..", "..", "DevelopmentReport", "artifacts", "G4E2BM0", "checkpoint_authority.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestOpenLayer0CheckpointWhenOwnerCheckpointIsAvailable(t *testing.T) {
 	if root == "" {
 		t.Skip("G4E2B_CHECKPOINT_ROOT is not set")
 	}
-	checkpoint, err := OpenLayer0Checkpoint(root, filepath.Join("..", "DevelopmentReport", "artifacts", "G4E2BM0", "checkpoint_authority.json"))
+	checkpoint, err := OpenLayer0Checkpoint(root, filepath.Join("..", "..", "DevelopmentReport", "artifacts", "G4E2BM0", "checkpoint_authority.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

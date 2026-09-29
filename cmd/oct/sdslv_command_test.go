@@ -13,7 +13,7 @@ import (
 func TestSDSLvEmitVDMIRCommand(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	path := repoPath(t, "examples", "SDSL-V", "M0", "VectorAdd.sdslv")
+	path := repoPath(t, "Examples", "SDSL-V", "M0", "VectorAdd.sdslv")
 	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
 		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
 	}
@@ -82,7 +82,7 @@ func TestSDSLvGenerateHeaderCommand(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	tmp := t.TempDir()
-	input := repoPath(t, "examples", "SDSL-V", "M0", "VectorAdd.sdslv")
+	input := repoPath(t, "Examples", "SDSL-V", "M0", "VectorAdd.sdslv")
 	output := filepath.Join(tmp, "vector_add_spirv.h")
 	args := []string{
 		"sdslv", "generate-header", input,
@@ -111,7 +111,7 @@ func TestSDSLvM33bRepresentativeCompileSPVCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	tmp := t.TempDir()
-	input := repoPath(t, "examples", "SDSL-V", "M33b", "TensorConstructionProofs.sdslv")
+	input := repoPath(t, "Examples", "SDSL-V", "M33b", "TensorConstructionProofs.sdslv")
 	cases := []struct {
 		entry string
 		name  string
@@ -156,7 +156,7 @@ func TestSDSLvM33bRepresentativeCompileSPVCommands(t *testing.T) {
 func TestSDSLvM4EmitCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	path := repoPath(t, "examples", "SDSL-V", "M4", "WorkgroupTileCopy.sdslv")
+	path := repoPath(t, "Examples", "SDSL-V", "M4", "WorkgroupTileCopy.sdslv")
 	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
 		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
 	}
@@ -319,7 +319,7 @@ func TestSDSLvPrometheusSgemmShadersDoNotGainFlowDispatcherOverhead(t *testing.T
 func TestSDSLvM15RegTileEmitCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	path := repoPath(t, "examples", "SDSL-V", "M15", "RegTileBasic.sdslv")
+	path := repoPath(t, "Examples", "SDSL-V", "M15", "RegTileBasic.sdslv")
 	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
 		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
 	}
@@ -359,7 +359,7 @@ func TestSDSLvM15RegTileEmitCommands(t *testing.T) {
 func TestSDSLvM15aSemanticBooleanEmitCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	path := repoPath(t, "examples", "SDSL-V", "M15a", "SemanticBooleanOperators.sdslv")
+	path := repoPath(t, "Examples", "SDSL-V", "M15a", "SemanticBooleanOperators.sdslv")
 	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
 		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
 	}
@@ -404,7 +404,7 @@ func TestSDSLvM15aSemanticBooleanEmitCommands(t *testing.T) {
 func TestSDSLvM16ComptimeForEmitCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	path := repoPath(t, "examples", "SDSL-V", "M16", "ComptimeForRegTile.sdslv")
+	path := repoPath(t, "Examples", "SDSL-V", "M16", "ComptimeForRegTile.sdslv")
 	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
 		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
 	}
@@ -451,7 +451,7 @@ func TestSDSLvM16ComptimeForEmitCommands(t *testing.T) {
 func TestSDSLvM22FlowStateEmitCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	path := repoPath(t, "examples", "SDSL-V", "M22", "FlowStateGuardWhenTileLoad.sdslv")
+	path := repoPath(t, "Examples", "SDSL-V", "M22", "FlowStateGuardWhenTileLoad.sdslv")
 	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
 		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
 	}
