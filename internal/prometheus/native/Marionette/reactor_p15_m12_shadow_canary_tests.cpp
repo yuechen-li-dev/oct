@@ -1,4 +1,5 @@
 #include "../reactor_api.h"
+#include "reactor_test_compositions.h"
 #include "../reactor_dominatus_predictor.h"
 #include "test_harness.h"
 
@@ -156,7 +157,7 @@ FACT(PrometheusReactorP15M12ShadowCanary_DiagnosticsAndInvalidTiming)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
     PrometheusSgemmPolicyDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diag query succeeds");
-    ASSERT_EQUAL(0u, diag.p15_shadow_canary_enabled, "default-off exported");
+    ASSERT_EQUAL(1u, diag.p15_shadow_canary_enabled, "shadow runs by default");
     ASSERT_EQUAL(0u, diag.p15_shadow_canary_evaluation_count, "invalid timing should not evaluate canary");
     ASSERT_EQUAL(0u, diag.p15_shadow_canary_action_applied_count, "invalid timing no actuation");
     ASSERT_EQUAL(0u, diag.p15_shadow_canary_reservation_attempt_count, "invalid timing no reservation attempts");

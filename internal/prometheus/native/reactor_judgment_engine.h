@@ -344,7 +344,6 @@ enum {
   PROM_JUDGMENT_TILED_WORK_THRESHOLD = 131072u,
 };
 
-void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, prom_judgment_decision* out_decision);
 void prom_judgment_engine_select_layout_precision(const prom_judgment_facts* facts,
                                                   prom_judgment_layout_precision_decision* out_decision);
 void prom_judgment_engine_select_sgemm_mode_with_layout_precision(

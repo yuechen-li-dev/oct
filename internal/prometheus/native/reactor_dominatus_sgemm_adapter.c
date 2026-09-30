@@ -403,15 +403,6 @@ uint32_t prom_dom_sgemm_stage_m35_decision(prom_dom_blackboard* board,
   return 1u;
 }
 
-uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
-                                  const prom_buffering_selector_facts* facts,
-                                  const prom_buffering_selector_decision* decision) {
-  if (prom_dom_sgemm_stage_m35_facts(board, facts) == 0u) {
-    return 0u;
-  }
-  return prom_dom_sgemm_stage_m35_decision(board, decision, 0u);
-}
-
 void prom_dom_sgemm_commit(prom_dom_blackboard* board) {
   if (board == 0) {
     return;

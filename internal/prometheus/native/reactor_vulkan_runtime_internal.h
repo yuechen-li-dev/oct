@@ -128,77 +128,12 @@
 
 #include "reactor_vulkan_transformer_internal.h"
 
-typedef struct prom_m40b_sgemm_push_constants {
-  uint32_t m;
-  uint32_t n;
-  uint32_t k;
-} prom_m40b_sgemm_push_constants;
 
-typedef struct prom_m42_pack_push_constants {
-  uint32_t logical_rows;
-  uint32_t logical_columns;
-  uint32_t input_row_stride;
-  uint32_t output_rows;
-  uint32_t output_columns;
-  uint32_t transpose;
-  uint32_t packed_word_count;
-  uint32_t reserved;
-} prom_m42_pack_push_constants;
 
-typedef struct prom_m42_transpose_push_constants {
-  uint32_t input_rows;
-  uint32_t input_columns;
-  uint32_t input_row_stride;
-  uint32_t output_row_stride;
-  uint32_t output_element_count;
-  uint32_t reserved0;
-  uint32_t reserved1;
-  uint32_t reserved2;
-} prom_m42_transpose_push_constants;
 
-typedef struct prom_m42_scale_push_constants {
-  uint32_t rows;
-  uint32_t columns;
-  uint32_t row_stride;
-  uint32_t total_elements;
-  float scale;
-  uint32_t reserved0;
-  uint32_t reserved1;
-  uint32_t reserved2;
-} prom_m42_scale_push_constants;
 
-typedef struct prom_m44_interleave_push_constants {
-  uint32_t tokens;
-  uint32_t head_dim;
-  uint32_t head_row_stride;
-  uint32_t output_rows;
-  uint32_t output_columns;
-  uint32_t packed_output;
-  uint32_t work_item_count;
-  uint32_t reserved;
-} prom_m44_interleave_push_constants;
 
-typedef struct prom_m44_direct_push_constants {
-  uint32_t tokens;
-  uint32_t head_dim;
-  uint32_t model_width;
-  uint32_t head_row_stride;
-  uint32_t padded_model_width;
-  uint32_t total_output_elements;
-  uint32_t reserved0;
-  uint32_t reserved1;
-} prom_m44_direct_push_constants;
 
-typedef struct prom_m45_residual_push_constants {
-  uint32_t tokens;
-  uint32_t model_width;
-  uint32_t x_row_stride;
-  uint32_t y_row_stride;
-  uint32_t z_row_stride;
-  uint32_t logical_element_count;
-  uint32_t reserved0;
-  uint32_t reserved1;
-} prom_m45_residual_push_constants;
 
 typedef struct prom_m46_reduce_push_constants {
   uint32_t row_count;
@@ -222,27 +157,7 @@ typedef struct prom_m46_apply_push_constants {
   uint32_t reserved2;
 } prom_m46_apply_push_constants;
 
-typedef struct prom_m47_gate_push_constants {
-  uint32_t logical_rows;
-  uint32_t logical_columns;
-  uint32_t input_row_stride;
-  uint32_t output_rows;
-  uint32_t output_columns;
-  uint32_t mode;
-  uint32_t element_count;
-  uint32_t reserved;
-} prom_m47_gate_push_constants;
 
-typedef struct prom_m47_gate_pack_push_constants {
-  uint32_t logical_rows;
-  uint32_t logical_columns;
-  uint32_t input_row_stride;
-  uint32_t output_rows;
-  uint32_t output_columns;
-  uint32_t mode;
-  uint32_t packed_word_count;
-  uint32_t reserved;
-} prom_m47_gate_pack_push_constants;
 
 typedef struct prom_reduction_push_constants {
   uint32_t row_count;
@@ -566,7 +481,6 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m48_readback;
   /* Fixed-size host-visible capture for the transformer controller.  It is
      owned by the stack slot and therefore cannot outlive a recycled slot. */
-  prom_vk_buffer m49b_canary_readback;
   uint64_t composed_command_reuse_count;
   uint64_t m42_command_reuse_count;
   uint64_t m43_command_reuse_count;
@@ -766,12 +680,9 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m48_buffer_grow_count;
   uint64_t m48_buffer_reuse_count;
   uint64_t m48_descriptor_update_count;
-  prom_num_m49b_controller m49b_controller;
 
   prom_model_block_state model_block;
   prom_compiled_model_session_state compiled_session;
-  uint64_t m49b_next_execution_index;
-  uint32_t m49b_enabled;
   prom_reduction_slot slots[PROM_REDUCTION_RING_MAX_DEPTH];
   PrometheusReductionDiagnostics diagnostics;
 } prom_reduction_runtime_state;
@@ -900,10 +811,6 @@ int prom_reactor_runtime_main_transformer_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusMainTransformerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state);
-int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_t kernel);
-int prom_m40b_pack_matrix(const float* values, uint32_t rows, uint32_t columns,
-                          uint32_t padded_rows, uint32_t padded_columns, uint32_t kernel,
-                          void** out_payload, size_t* out_bytes);
 VkPipeline prom_reduction_pipeline_for_implementation(const prom_reduction_runtime_state* state,
                                                        uint32_t implementation_id);
 void prom_reduction_stage_bindings_for_io(const prom_reduction_slot* slot,

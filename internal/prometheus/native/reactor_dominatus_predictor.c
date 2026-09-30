@@ -754,11 +754,6 @@ void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_
   else state->lookahead_diagnostic_state = PROM_SHADOW_LOOKAHEAD_UNRELIABLE;
 }
 
-prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate(
-    const prom_dominatus_shadow_calibration_state* calibration) {
-  return prom_dominatus_shadow_authority_gate_evaluate_with_enabled(calibration, 0u);
-}
-
 prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate_with_enabled(
     const prom_dominatus_shadow_calibration_state* calibration,
     uint32_t authority_enabled) {

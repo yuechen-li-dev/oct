@@ -1,4 +1,5 @@
 #include "../reactor_dominatus_predictor.h"
+#include "reactor_test_compositions.h"
 #include "test_harness.h"
 
 static prom_dominatus_shadow_snapshot make_snapshot(uint64_t issued, uint64_t target, uint64_t predicted)

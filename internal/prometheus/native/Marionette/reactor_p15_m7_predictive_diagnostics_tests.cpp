@@ -17,7 +17,7 @@ bool run_sgemm_once(void* handle) {
 
 }
 
-FACT(PrometheusReactor_Sgemm_P15_PredictiveDiagnostics_FieldsPresentAndDefaultOff)
+FACT(PrometheusReactor_Sgemm_P15_PredictiveDiagnostics_FieldsPresentShadowOnPrestageOff)
 {
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
@@ -37,7 +37,7 @@ FACT(PrometheusReactor_Sgemm_P15_PredictiveDiagnostics_FieldsPresentAndDefaultOf
                 "prestage should show disabled block when evaluated");
     ASSERT_TRUE(diag.p15_shadow_calibration_confidence >= 0.0 && diag.p15_shadow_calibration_confidence <= 1.0,
                 "calibration confidence must remain clamped");
-    ASSERT_EQUAL(0u, diag.p15_shadow_authority_enabled, "authority remains diagnostic-only/off");
+    ASSERT_EQUAL(1u, diag.p15_shadow_authority_enabled, "shadow authority gate runs by default");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }

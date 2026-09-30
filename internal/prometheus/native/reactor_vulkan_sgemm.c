@@ -376,63 +376,6 @@ static void commit_slot_runtime_diag_snapshot(prometheus_runtime* rt, int reason
   }
 }
 
-static int update_async_progress(prometheus_runtime* rt) {
-  VkResult vk_result;
-
-  if (rt == NULL) {
-    return PROM_ERROR;
-  }
-  if (rt->async_state != PROM_ASYNC_STATE_SUBMITTED) {
-    return PROM_OK;
-  }
-  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_ASYNC_POLL) != 0u) {
-    rt->in_flight_submit = 0u;
-    set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE);
-    if (rt->slot_diag.async_slot_id >= 0) {
-      prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE);
-    }
-    return PROM_ERROR;
-  }
-  if (rt->slot_diag.transfer_queue_used != 0u && rt->slot_diag.async_transfer_complete == 0u) {
-    vk_result = vkGetFenceStatus(rt->vulkan.device, rt->transfer_submit_fence);
-    if (vk_result == VK_SUCCESS) {
-      stage_transfer_complete_telemetry(rt, 1u, rt->slot_diag.async_slot_id < 0 ? 0u : (uint32_t)rt->slot_diag.async_slot_id, 0);
-    } else if (vk_result == VK_NOT_READY) {
-      return PROM_OK;
-    } else {
-      rt->in_flight_submit = 0u;
-      if (rt->slot_diag.async_slot_id >= 0) {
-        stage_transfer_failure_telemetry(rt, (uint32_t)rt->slot_diag.async_slot_id, (int)vk_result);
-      }
-      if (rt->slot_diag.async_slot_id >= 0) {
-        prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, (int)vk_result);
-      }
-      set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-  }
-  vk_result = vkGetFenceStatus(rt->vulkan.device, rt->submit_fence);
-  if (vk_result == VK_SUCCESS) {
-    rt->in_flight_submit = 0u;
-    if (rt->slot_diag.async_slot_id >= 0 && !prom_slot_mark_complete(rt, (uint32_t)rt->slot_diag.async_slot_id)) {
-      prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
-      set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
-      return PROM_ERROR;
-    }
-    set_async_state(rt, PROM_ASYNC_STATE_READY, PROM_STAGE_SUBMIT, rt->async_final_detail);
-    return PROM_OK;
-  }
-  if (vk_result == VK_NOT_READY) {
-    return PROM_OK;
-  }
-  rt->in_flight_submit = 0u;
-  if (rt->slot_diag.async_slot_id >= 0) {
-    prom_slot_mark_failure(rt, (uint32_t)rt->slot_diag.async_slot_id, (int)vk_result);
-  }
-  set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, (int)vk_result);
-  return PROM_ERROR;
-}
-
 static uint32_t sync_transfer_diag_from_visible(prometheus_runtime* rt) {
   prom_dom_transfer_queue_snapshot snapshot;
   if (rt == NULL) {
@@ -3304,6 +3247,11 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   prom_dominatus_shadow_would_act_init(&runtime->p15_shadow_would_act_state);
   runtime->p15_shadow_canary_params = prom_dominatus_shadow_canary_default_params();
   prom_dominatus_shadow_canary_init(&runtime->p15_shadow_canary_state);
+  /* The shadow controller runs unless the caller opts out (see
+     PrometheusReactorConfig.p15_shadow_disabled). */
+  runtime->p15_shadow_canary_params.enabled = 1u;
+  runtime->p15_shadow_canary_state.enabled = 1u;
+  runtime->p15_shadow_authority_gate.authority_enabled = 1u;
   runtime->p15_prestage_params = prom_dominatus_prestage_default_params();
   prom_sgemm_controller_init(&runtime->sgemm_controller);
   prom_slot_hfsm_init(&runtime->slots[0], 0u);
@@ -3345,10 +3293,11 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
     if (cfg->struct_size >= offsetof(PrometheusReactorConfig, async_test_flags) + sizeof(cfg->async_test_flags)) {
       runtime->async_test_flags = cfg->async_test_flags;
     }
-    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, p15_shadow_canary_enabled) + sizeof(cfg->p15_shadow_canary_enabled)) {
-      runtime->p15_shadow_canary_params.enabled = cfg->p15_shadow_canary_enabled != 0u ? 1u : 0u;
-      runtime->p15_shadow_canary_state.enabled = runtime->p15_shadow_canary_params.enabled;
-      runtime->p15_shadow_authority_gate.authority_enabled = runtime->p15_shadow_canary_params.enabled;
+    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, p15_shadow_disabled) + sizeof(cfg->p15_shadow_disabled) &&
+        cfg->p15_shadow_disabled != 0u) {
+      runtime->p15_shadow_canary_params.enabled = 0u;
+      runtime->p15_shadow_canary_state.enabled = 0u;
+      runtime->p15_shadow_authority_gate.authority_enabled = 0u;
     }
     if (cfg->struct_size >= offsetof(PrometheusReactorConfig, reduction_test_flags) + sizeof(cfg->reduction_test_flags)) {
       runtime->reduction_test_flags = cfg->reduction_test_flags;
