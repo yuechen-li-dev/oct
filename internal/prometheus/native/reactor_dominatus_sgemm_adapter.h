@@ -276,9 +276,6 @@ typedef struct prom_dom_sgemm_resource_lease_snapshot {
   uint32_t lookahead_blocked_reason;
 } prom_dom_sgemm_resource_lease_snapshot;
 
-uint32_t prom_dom_sgemm_stage_m35(prom_dom_blackboard* board,
-                                  const prom_buffering_selector_facts* facts,
-                                  const prom_buffering_selector_decision* decision);
 uint32_t prom_dom_sgemm_stage_m35_facts(prom_dom_blackboard* board, const prom_buffering_selector_facts* facts);
 uint32_t prom_dom_sgemm_stage_m35_decision(prom_dom_blackboard* board,
                                            const prom_buffering_selector_decision* decision,

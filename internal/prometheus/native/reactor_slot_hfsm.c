@@ -52,60 +52,6 @@ prom_slot_state prom_slot_hfsm_current_state(const prom_slot_hfsm* machine) {
   return machine->stack[machine->depth - 1u];
 }
 
-uint32_t prom_slot_hfsm_depth(const prom_slot_hfsm* machine) {
-  if (machine == 0) {
-    return 0u;
-  }
-
-  return machine->depth;
-}
-
-uint32_t prom_slot_hfsm_contains(const prom_slot_hfsm* machine, prom_slot_state state) {
-  uint32_t i;
-  if (machine == 0 || state_is_valid(state) == 0u) {
-    return 0u;
-  }
-
-  for (i = 0u; i < machine->depth; ++i) {
-    if (machine->stack[i] == state) {
-      return 1u;
-    }
-  }
-
-  return 0u;
-}
-
-uint32_t prom_slot_hfsm_push_state(prom_slot_hfsm* machine, prom_slot_state state) {
-  if (machine == 0 || state_is_valid(state) == 0u) {
-    return 0u;
-  }
-  if (machine->depth >= PROM_SLOT_HFSM_MAX_DEPTH) {
-    return 0u;
-  }
-
-  machine->diagnostics.previous_state = prom_slot_hfsm_current_state(machine);
-  machine->stack[machine->depth] = state;
-  machine->depth += 1u;
-  refresh_current_state(machine);
-
-  if (machine->depth > machine->diagnostics.max_stack_depth_reached) {
-    machine->diagnostics.max_stack_depth_reached = machine->depth;
-  }
-
-  return 1u;
-}
-
-uint32_t prom_slot_hfsm_pop_state(prom_slot_hfsm* machine) {
-  if (machine == 0 || machine->depth <= 1u) {
-    return 0u;
-  }
-
-  machine->diagnostics.previous_state = prom_slot_hfsm_current_state(machine);
-  machine->depth -= 1u;
-  refresh_current_state(machine);
-  return 1u;
-}
-
 uint32_t prom_slot_hfsm_replace_state(prom_slot_hfsm* machine, prom_slot_state state) {
   if (machine == 0 || state_is_valid(state) == 0u || machine->depth == 0u) {
     return 0u;

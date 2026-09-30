@@ -1,4 +1,5 @@
 #include "../reactor_dominatus_predictor.h"
+#include "reactor_test_compositions.h"
 #include "test_harness.h"
 
 FACT(PrometheusP15M10ShadowAuthority_DefaultsBlocked)

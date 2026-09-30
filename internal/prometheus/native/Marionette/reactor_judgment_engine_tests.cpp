@@ -1,4 +1,5 @@
 #include "../reactor_judgment_engine.h"
+#include "reactor_test_compositions.h"
 #include "test_harness.h"
 
 #include <cstdint>

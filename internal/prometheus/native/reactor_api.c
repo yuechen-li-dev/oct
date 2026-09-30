@@ -1,7 +1,6 @@
 #include "reactor_api.h"
 
 #include "reactor_vulkan.h"
-#include "reactor_numerical_research.h"
 
 #include <string.h>
 

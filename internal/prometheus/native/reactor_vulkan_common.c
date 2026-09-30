@@ -395,3 +395,25 @@ void prom_vk_destroy_buffer(VkDevice device, prom_vk_buffer* buffer) {
     buffer->memory = VK_NULL_HANDLE;
   }
 }
+
+/* FNV-1a over the IEEE bit patterns of a float array; used for output evidence. */
+static uint64_t prom_hash_u64_fnv(uint64_t hash, uint64_t value) {
+  uint32_t byte_index;
+  for (byte_index = 0u; byte_index < 8u; ++byte_index) {
+    hash ^= (value >> (byte_index * 8u)) & 0xffu;
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
+uint64_t prom_num_hash_float_bits(const float* values, uint64_t count) {
+  uint64_t hash = 1469598103934665603ull;
+  uint64_t index;
+  if (values == NULL && count != 0u) return 0u;
+  for (index = 0u; index < count; ++index) {
+    uint32_t bits = 0u;
+    memcpy(&bits, &values[index], sizeof(bits));
+    hash = prom_hash_u64_fnv(hash, bits);
+  }
+  return hash;
+}

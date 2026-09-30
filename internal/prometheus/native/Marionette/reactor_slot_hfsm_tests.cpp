@@ -63,25 +63,6 @@ FACT(PrometheusSlotHfsm_FailurePathRequiresCleanup)
     ASSERT_EQUAL(1u, diagnostics->cleanup_count, "cleanup transitions should be counted");
 }
 
-FACT(PrometheusSlotHfsm_StackBehaviorBoundedAndDeterministic)
-{
-    prom_slot_hfsm machine{};
-    prom_slot_hfsm_init(&machine, 5u);
-
-    ASSERT_TRUE(prom_slot_hfsm_push_state(&machine, PROM_SLOT_PREPARING) == 1u, "push should work inside bounds");
-    ASSERT_TRUE(prom_slot_hfsm_replace_state(&machine, PROM_SLOT_READY) == 1u, "replace should update top of stack");
-    ASSERT_TRUE(prom_slot_hfsm_contains(&machine, PROM_SLOT_READY) == 1u, "contains should observe replaced top state");
-    ASSERT_TRUE(prom_slot_hfsm_pop_state(&machine) == 1u, "pop should restore prior state when depth > 1");
-    ASSERT_TRUE(prom_slot_hfsm_pop_state(&machine) == 0u, "underflow should be rejected at base depth");
-
-    for (std::uint32_t i = prom_slot_hfsm_depth(&machine); i < PROM_SLOT_HFSM_MAX_DEPTH; ++i) {
-        ASSERT_TRUE(prom_slot_hfsm_push_state(&machine, PROM_SLOT_PREPARING) == 1u, "push should fill stack until max depth");
-    }
-
-    ASSERT_TRUE(prom_slot_hfsm_push_state(&machine, PROM_SLOT_READY) == 0u, "overflow push should be rejected deterministically");
-    ASSERT_EQUAL(PROM_SLOT_HFSM_MAX_DEPTH, prom_slot_hfsm_get_diagnostics(&machine)->max_stack_depth_reached, "max stack depth should be tracked");
-}
-
 FACT(PrometheusSlotHfsm_DiagnosticsAndDeterminism)
 {
     auto run_sequence = []() {

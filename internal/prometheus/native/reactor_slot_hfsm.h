@@ -67,11 +67,7 @@ void prom_slot_hfsm_init(prom_slot_hfsm* machine, uint32_t slot_id);
 void prom_slot_hfsm_reset(prom_slot_hfsm* machine);
 
 prom_slot_state prom_slot_hfsm_current_state(const prom_slot_hfsm* machine);
-uint32_t prom_slot_hfsm_depth(const prom_slot_hfsm* machine);
-uint32_t prom_slot_hfsm_contains(const prom_slot_hfsm* machine, prom_slot_state state);
 
-uint32_t prom_slot_hfsm_push_state(prom_slot_hfsm* machine, prom_slot_state state);
-uint32_t prom_slot_hfsm_pop_state(prom_slot_hfsm* machine);
 uint32_t prom_slot_hfsm_replace_state(prom_slot_hfsm* machine, prom_slot_state state);
 
 uint32_t prom_slot_hfsm_can_transition(prom_slot_state from, prom_slot_state to);

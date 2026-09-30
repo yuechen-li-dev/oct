@@ -1,4 +1,5 @@
 #include "../reactor_api.h"
+#include "reactor_test_compositions.h"
 #include "../reactor_dominatus_predictor.h"
 #include "test_harness.h"
 

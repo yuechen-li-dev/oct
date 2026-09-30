@@ -293,12 +293,6 @@ void prom_judgment_engine_select_sgemm_mode_with_layout_precision(
   out_decision->transfer_fallback_reason = PROM_TRANSFER_FALLBACK_NONE;
 }
 
-void prom_judgment_engine_select_sgemm_mode(const prom_judgment_facts* facts, prom_judgment_decision* out_decision) {
-  prom_judgment_layout_precision_decision layout_precision_decision;
-  prom_judgment_engine_select_layout_precision(facts, &layout_precision_decision);
-  prom_judgment_engine_select_sgemm_mode_with_layout_precision(facts, &layout_precision_decision, out_decision);
-}
-
 void prom_judgment_engine_select_async_submission(const prom_judgment_async_facts* facts,
                                                   prom_judgment_async_decision* out_decision) {
   if (out_decision == NULL) {

@@ -1,4 +1,5 @@
 #include "../reactor_dominatus_sgemm_adapter.h"
+#include "reactor_test_compositions.h"
 #include "../reactor_vulkan_sgemm_internal.h"
 #include "test_harness.h"
 

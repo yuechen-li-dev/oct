@@ -7,8 +7,7 @@
     "reactor_dominatus_slot_adapter.c", "reactor_policy_memory.c", "reactor_slot_hfsm.c",
     "reactor_vulkan_common.c", "reactor_vulkan_runtime.c", "reactor_shader_registry.c", "reactor_shader_package.c", "reactor_vulkan_sgemm.c", "reactor_vulkan_ray_query.c", "reactor_batch.c", "reactor_vulkan_fft.c",
     "reactor_vulkan_fused_reduction.c", "reactor_vulkan_model_block.c",
-    "reactor_vulkan_transformer.c", "reactor_vulkan_transformer_control.c",
-    "reactor_numerical_research.c"
+    "reactor_vulkan_transformer.c"
   ],
   "native_test_sources": [
     "Marionette/test_harness.cpp", "Marionette/test_doom.cpp", "Marionette/smoke_tests.cpp",
@@ -30,7 +29,7 @@
     "Marionette/reactor_p15_m13_shadow_feedforward_tests.cpp", "Marionette/reactor_fft_api_tests.cpp", "Marionette/ray_query_public_api_tests.cpp", "Marionette/ray_query_batch_dispatch_tests.cpp",
     "Marionette/reactor_fft_benchmarks.cpp", "Marionette/reactor_reduction_tests.cpp",
     "Marionette/reactor_reduction_benchmarks.cpp", "Marionette/reactor_cooperative_matrix_tests.cpp",
-    "Marionette/reactor_attention_tests.cpp", "Marionette/reactor_m49_numerical_research_tests.cpp",
+    "Marionette/reactor_attention_tests.cpp",
     "Marionette/reactor_model_block_tests.cpp"
   ],
   "slow_only_test_sources": [],
@@ -40,7 +39,6 @@
   },
   "sdslv_test_host_source": "sdslv_test_host.c",
   "generated_headers": [
-    "reactor_concept_vulkan_kernel54.generated.h",
     "reactor_shader_ids.generated.h",
     "reactor_vulkan_a2x4_row_biased_accum8_spirv.h",
     "reactor_vulkan_b2x2_row_major_biased_spirv.h",
@@ -102,28 +100,6 @@
     "reactor_vulkan_zimage_nr0_q_norm_rope_spirv.h"
   ],
   "generated_artifact_sets": [
-    {
-      "id": "concept-vulkan-m1-kernel54-conformance",
-      "paths": [
-        "internal/prometheus/native/reactor_concept_vulkan_kernel54.generated.c",
-        "internal/prometheus/native/reactor_concept_vulkan_kernel54.generated.h",
-        "internal/prometheus/native/reactor_concept_vulkan_kernel54.manifest.json",
-        "internal/prometheus/native/reactor_concept_vulkan_kernel54.map.json",
-        "internal/prometheus/native/reactor_concept_vulkan_kernel54.mir.json"
-      ],
-      "generator": "go run ./cmd/concept-vulkan generate",
-      "declared_input_authority": ["Examples/Concept-Vulkan/kernel54_probe.concept", "internal/conceptvulkan"],
-      "required_for_clean_clone": true,
-      "required_for_build": false,
-      "reproducibility_check": "go run ./cmd/concept-vulkan check",
-      "source_controlled_intentionally": true,
-      "packaged": false,
-      "content_addressed": true,
-      "bytes_authoritative": "deterministic private conformance artifact; do not hand edit",
-      "known_consumers": ["Concept/Vulkan M1 review and conformance tests"],
-      "delete_regenerate_result": "regenerate with the bounded compiler; checked output is rejected on drift",
-      "status": "normative"
-    },
     {
       "id": "native-generated-headers-declared",
       "paths": [

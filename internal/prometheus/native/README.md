@@ -26,11 +26,12 @@ Current Vulkan reactor file topology (P12 M5 baseline):
     plans, one-workgroup and staged dispatch, persistent family ring,
     device-local reusable temporaries, timestamps, validation, and CPU oracle.
 - `reactor_vulkan_transformer.c`
-  - complete M42-M49b transformer runtime: attention through FFN, fixed-stack
-    recording, activation handoff, descriptor banks, lifecycle, replay/fault
-    integration, and the existing planning/reference code.
-- `reactor_vulkan_transformer_control.c`
-  - pure M49b policy and state transitions; it owns no Vulkan resources.
+  - the Gemma 4 E2B M1 operations (input/head RMSNorm, RoPE, attention
+    scores) and the M46 RMSNorm executor they run on. The M42-M49b
+    transformer executors, the numerical-research shadow, and the
+    transformer control module were removed in Phase 0 (see
+    `docs/design/PROMETHEUS-AUDIT-2026-09.md` in the Concept repository);
+    their reports remain under `../DevelopmentReport/`.
 
 Pre-DVT M0 removed live transformer implementation from the fused-reduction
 translation unit. `reactor_vulkan_runtime_internal.h` is the intentionally

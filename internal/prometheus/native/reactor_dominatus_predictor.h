@@ -529,8 +529,6 @@ void prom_dominatus_shadow_calibration_init(prom_dominatus_shadow_calibration_st
 void prom_dominatus_shadow_calibration_reset(prom_dominatus_shadow_calibration_state* state);
 void prom_dominatus_shadow_calibration_update(prom_dominatus_shadow_calibration_state* state,
                                               const prom_dominatus_shadow_snapshot* snapshot);
-prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate(
-    const prom_dominatus_shadow_calibration_state* calibration);
 prom_dominatus_shadow_authority_gate prom_dominatus_shadow_authority_gate_evaluate_with_enabled(
     const prom_dominatus_shadow_calibration_state* calibration,
     uint32_t authority_enabled);
