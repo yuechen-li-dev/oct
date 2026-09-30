@@ -126,3 +126,6 @@ work/
 *.json
 !internal/prometheus/DevelopmentReport/PROMETHEUS_DEVELOPMENT_EVIDENCE_INDEX.json
 
+
+# Local verification logs
+tools/prometheus_phase0/out/
