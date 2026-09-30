@@ -1750,7 +1750,10 @@ typedef struct PrometheusRayQueryRuntimeConfig {
 typedef struct PrometheusReactorConfig {
   uint32_t struct_size;
   uint32_t test_flags;
-  uint32_t p15_shadow_canary_enabled;
+  /* The P15 shadow controller (canary reservations and agree-and-confirm
+     feedforward) runs by default. Non-zero opts out. It never overrides the
+     judgment-selected variant. */
+  uint32_t p15_shadow_disabled;
   uint32_t async_test_flags;
   /* Test-only M31 override. Zero preserves the production default depth two. */
   uint32_t batch_ring_depth;
@@ -2642,10 +2645,6 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_policy_diagnostics(void* h
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_policy_diagnostics_sized(void* handle,
                                                                                PrometheusSgemmPolicyDiagnostics* out_diag,
                                                                                uint32_t out_size);
-PROM_REACTOR_API int prometheus_reactor_runtime_p15_test_seed_matured_reservation(void* handle,
-                                                                                    uint32_t shape_class,
-                                                                                    uint32_t variant_id,
-                                                                                    uint64_t target_tick);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch_diagnostics(void* handle,
                                                                         PrometheusSgemmBatchDiagnostics* out_diag);
 

@@ -3247,6 +3247,11 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   prom_dominatus_shadow_would_act_init(&runtime->p15_shadow_would_act_state);
   runtime->p15_shadow_canary_params = prom_dominatus_shadow_canary_default_params();
   prom_dominatus_shadow_canary_init(&runtime->p15_shadow_canary_state);
+  /* The shadow controller runs unless the caller opts out (see
+     PrometheusReactorConfig.p15_shadow_disabled). */
+  runtime->p15_shadow_canary_params.enabled = 1u;
+  runtime->p15_shadow_canary_state.enabled = 1u;
+  runtime->p15_shadow_authority_gate.authority_enabled = 1u;
   runtime->p15_prestage_params = prom_dominatus_prestage_default_params();
   prom_sgemm_controller_init(&runtime->sgemm_controller);
   prom_slot_hfsm_init(&runtime->slots[0], 0u);
@@ -3288,10 +3293,11 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
     if (cfg->struct_size >= offsetof(PrometheusReactorConfig, async_test_flags) + sizeof(cfg->async_test_flags)) {
       runtime->async_test_flags = cfg->async_test_flags;
     }
-    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, p15_shadow_canary_enabled) + sizeof(cfg->p15_shadow_canary_enabled)) {
-      runtime->p15_shadow_canary_params.enabled = cfg->p15_shadow_canary_enabled != 0u ? 1u : 0u;
-      runtime->p15_shadow_canary_state.enabled = runtime->p15_shadow_canary_params.enabled;
-      runtime->p15_shadow_authority_gate.authority_enabled = runtime->p15_shadow_canary_params.enabled;
+    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, p15_shadow_disabled) + sizeof(cfg->p15_shadow_disabled) &&
+        cfg->p15_shadow_disabled != 0u) {
+      runtime->p15_shadow_canary_params.enabled = 0u;
+      runtime->p15_shadow_canary_state.enabled = 0u;
+      runtime->p15_shadow_authority_gate.authority_enabled = 0u;
     }
     if (cfg->struct_size >= offsetof(PrometheusReactorConfig, reduction_test_flags) + sizeof(cfg->reduction_test_flags)) {
       runtime->reduction_test_flags = cfg->reduction_test_flags;

@@ -1,4 +1,5 @@
 #include <vector>
+#include "../reactor_vulkan.h"
 #include <cstring>
 #include "../reactor_api.h"
 #include "../reactor_dominatus_predictor.h"
@@ -13,7 +14,7 @@ static uint32_t alternate_wired_variant(uint32_t selected)
     return PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
 }
 
-FACT(PrometheusP15M13ShadowFeedforward_DefaultOffDoesNotEnableAuthority)
+FACT(PrometheusP15M13ShadowFeedforward_DefaultOnEnablesShadowAuthority)
 {
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(cfg);
@@ -23,26 +24,26 @@ FACT(PrometheusP15M13ShadowFeedforward_DefaultOffDoesNotEnableAuthority)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
     PrometheusSgemmPolicyDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diag query succeeds");
-    ASSERT_EQUAL(0u, diag.p15_shadow_canary_enabled, "default canary off");
-    ASSERT_EQUAL(0u, diag.p15_shadow_authority_enabled, "authority must remain off when feature flag is off");
-    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_enabled, "feedforward disabled by default");
+    ASSERT_EQUAL(1u, diag.p15_shadow_canary_enabled, "shadow canary runs by default");
+    ASSERT_EQUAL(1u, diag.p15_shadow_authority_enabled, "authority gate evaluates by default");
+    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_used, "no dispatch means no feedforward use");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
-FACT(PrometheusP15M13ShadowFeedforward_EnabledFlagPropagatesToAuthority)
+FACT(PrometheusP15M13ShadowFeedforward_OptOutDisablesShadowAuthority)
 {
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(cfg);
     cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
-    cfg.p15_shadow_canary_enabled = 1u;
+    cfg.p15_shadow_disabled = 1u;
 
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
     PrometheusSgemmPolicyDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diag query succeeds");
-    ASSERT_EQUAL(1u, diag.p15_shadow_canary_enabled, "enabled canary exported");
-    ASSERT_EQUAL(1u, diag.p15_shadow_authority_enabled, "authority should track canary feature flag");
-    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_used, "no dispatch means no feedforward use");
+    ASSERT_EQUAL(0u, diag.p15_shadow_canary_enabled, "opt-out disables the canary");
+    ASSERT_EQUAL(0u, diag.p15_shadow_authority_enabled, "opt-out disables the authority gate");
+    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_enabled, "opt-out disables feedforward");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
@@ -57,7 +58,6 @@ FACT(PrometheusP15M13ShadowFeedforward_DiagnosticsSizedTruncatedDoesNotOverwrite
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(cfg);
     cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
-    cfg.p15_shadow_canary_enabled = 1u;
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
     struct Tiny {
@@ -248,11 +248,12 @@ FACT(PrometheusP15M13ShadowFeedforward_ReservationHeartbeatExpiresStaleEntries)
 }
 
 
-FACT(PrometheusP15M13ShadowFeedforward_DefaultOffMaturedReservationDoesNotConsume)
+FACT(PrometheusP15M13ShadowFeedforward_OptOutMaturedReservationDoesNotConsume)
 {
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(cfg);
     cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
+    cfg.p15_shadow_disabled = 1u;
 
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
@@ -266,9 +267,9 @@ FACT(PrometheusP15M13ShadowFeedforward_DefaultOffMaturedReservationDoesNotConsum
 
     PrometheusSgemmPolicyDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "diag query succeeds");
-    ASSERT_EQUAL(0u, diag.p15_shadow_canary_enabled, "canary default off");
-    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_used, "default-off cannot use feedforward");
-    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_reservation_consumed_count, "default-off must not consume reservations");
+    ASSERT_EQUAL(0u, diag.p15_shadow_canary_enabled, "opted out");
+    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_used, "opted out cannot use feedforward");
+    ASSERT_EQUAL(0u, diag.p15_shadow_feedforward_reservation_consumed_count, "opted out must not consume reservations");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
@@ -278,7 +279,6 @@ FACT(PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySge
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(cfg);
     cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
-    cfg.p15_shadow_canary_enabled = 1u;
 
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
@@ -306,7 +306,7 @@ FACT(PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySge
 
     const uint64_t target_tick = 1u;
     ASSERT_EQUAL(PROM_OK,
-                 prometheus_reactor_runtime_p15_test_seed_matured_reservation(handle,
+                 prom_reactor_runtime_p15_test_seed_matured_reservation_impl(handle,
                                                                               baseline.p13_m2_occupancy_shape_class,
                                                                               baseline.p13_m2_occupancy_selected_variant,
                                                                               target_tick),
@@ -355,7 +355,6 @@ FACT(PrometheusP15M13ShadowFeedforward_VariantMismatchFallsBackToJudgmentAndCorr
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(cfg);
     cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
-    cfg.p15_shadow_canary_enabled = 1u;
 
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
@@ -385,7 +384,7 @@ FACT(PrometheusP15M13ShadowFeedforward_VariantMismatchFallsBackToJudgmentAndCorr
     ASSERT_TRUE(mismatched_variant != selected_variant, "test needs a different wired variant");
 
     ASSERT_EQUAL(PROM_OK,
-                 prometheus_reactor_runtime_p15_test_seed_matured_reservation(handle,
+                 prom_reactor_runtime_p15_test_seed_matured_reservation_impl(handle,
                                                                               baseline.p13_m2_occupancy_shape_class,
                                                                               mismatched_variant,
                                                                               1u),

@@ -239,7 +239,7 @@ func (l *winDLLLibrary) Resolve(symbol string) (any, error) {
 			cCfg := C.oct_prom_cfg{
 				struct_size:               C.uint32_t(C.sizeof_oct_prom_cfg),
 				test_flags:                C.uint32_t(cfg.TestFlags),
-				p15_shadow_canary_enabled: 0,
+				p15_shadow_disabled:       0,
 				async_test_flags:          0,
 				batch_ring_depth:          0,
 				reduction_test_flags:      0,
