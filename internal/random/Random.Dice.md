@@ -1,5 +1,7 @@
 # Random.Dice (M3)
 
+> **Superseded (2026-10-02).** The Random v1 library layer described here was replaced by Random v2 in ladder milestone M4. The seeded functions on this page no longer exist in `Libraries/Random`; the `Crypto*` helpers remain until M5. Current API: `internal/random/RANDOM_V2_LADDER.md`, sections 3.3 and 3.4. This page is kept as history until M6 retires it.
+
 `Random.Dice` is a pure Oct convenience layer on top of `Random.Core`.
 
 ## API overview

@@ -5,48 +5,24 @@ enum CoinSide {
     Tails
 }
 
-record CoinFlipResult {
-    Next: Rng
-    Side: CoinSide
-}
-
-record CoinFlipManyResult {
-    Next: Rng
-    Flips: CoinSide[]
-}
-
-fn FlipCoin(rng: Rng) -> CoinFlipResult {
-    return FlipBiasedCoin(rng, 0.5)
-}
-
-fn FlipBiasedCoin(rng: Rng, pHeads: Float) -> CoinFlipResult {
-    let draw = RandBernoulli(rng, pHeads)
-    let side = switch draw.Value {
-        case true => CoinSide.Heads
-        case false => CoinSide.Tails
-        else => CoinSide.Tails
+/// Flips a fair coin at index i.
+fn FlipCoin(s: Stream, i: Int) -> CoinSide {
+    if Chance(s, i, 0.5) {
+        return CoinSide.Heads
     }
-    return CoinFlipResult {
-        Next: draw.Next
-        Side: side
-    }
+    return CoinSide.Tails
 }
 
-fn FlipCoins(rng: Rng, count: Int) -> CoinFlipManyResult {
+/// Flips count fair coins at index i. Flip k is FlipCoin(Child(s, i), k), so
+/// the flips at one index do not overlap the draws at any other index.
+fn FlipCoins(s: Stream, i: Int, count: Int) -> CoinSide[] {
     Assert.True(count >= 0, "FlipCoins requires count >= 0")
-
-    var next = rng
+    let step = Child(s, i)
     var flips: CoinSide[] = []
-    for _i in 0..count {
-        let flipResult = FlipCoin(next)
-        next = flipResult.Next
-        flips = Append(flips, flipResult.Side)
+    for k in 0..count {
+        flips = Append(flips, FlipCoin(step, k))
     }
-
-    return CoinFlipManyResult {
-        Next: next
-        Flips: flips
-    }
+    return flips
 }
 
 fn CountHeads(flips: CoinSide[]) -> Int {
@@ -76,6 +52,9 @@ fn CoinSideToString(side: CoinSide) -> String {
         else => "Tails"
     }
 }
+
+// Entropy-backed coins (Random v1). These move to the Entropy package in
+// ladder milestone M5.
 
 fn CryptoFlipCoin() -> CoinSide ! Error {
     return CryptoFlipBiasedCoin(0.5)!

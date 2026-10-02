@@ -33,6 +33,39 @@ record StateThreadingSummary {
     AdvancedStateDiffers: Bool
 }
 
+// Jitter, Spike and DriftStep were composites in the Random v1 library layer,
+// which Random v2 replaced. This experiment characterizes Random v1, so the
+// three composites are kept here exactly as v1 defined them, on the v1 native
+// draws, and its recorded results do not change. The experiment moves to
+// Random v2 with the other experiments in ladder milestone M6
+// (internal/random/RANDOM_V2_LADDER.md).
+
+fn M2JitterV1(rng: Random.Rng, amplitude: Float) -> Float {
+    return Random.RandFloatRange(rng, 0.0 - amplitude, amplitude).Value
+}
+
+fn M2SpikeV1(rng: Random.Rng, probability: Float, amplitude: Float) -> Float {
+    if probability == 0.0 {
+        return 0.0
+    }
+    if probability == 1.0 {
+        let signAlways = Random.RandBernoulli(rng, 0.5)
+        return if signAlways.Value { amplitude } else { 0.0 - amplitude }
+    }
+
+    let trigger = Random.RandBernoulli(rng, probability)
+    if trigger.Value == false {
+        return 0.0
+    }
+
+    let sign = Random.RandBernoulli(trigger.Next, 0.5)
+    return if sign.Value { amplitude } else { 0.0 - amplitude }
+}
+
+fn M2DriftStepV1(rng: Random.Rng, current: Float, stepStddev: Float) -> Float {
+    return current + Random.RandNormal(rng, 0.0, stepStddev).Value
+}
+
 fn M2CollectFloat01(seed: Int, n: Int) -> Float[] {
     var out: Float[] = []
     for i in 0..n {
@@ -63,8 +96,7 @@ fn M2CollectNormal(seed: Int, n: Int, mean: Float, stddev: Float) -> Float[] {
 fn M2CollectJitter(seed: Int, n: Int, amplitude: Float) -> Float[] {
     var out: Float[] = []
     for i in 0..n {
-        let draw = Random.Jitter(Random.RngSeed(seed * 10007 + i * 37 + 4), amplitude)
-        out = Append(out, draw.Value)
+        out = Append(out, M2JitterV1(Random.RngSeed(seed * 10007 + i * 37 + 4), amplitude))
     }
     return out
 }
@@ -72,8 +104,7 @@ fn M2CollectJitter(seed: Int, n: Int, amplitude: Float) -> Float[] {
 fn M2CollectSpike(seed: Int, n: Int, probability: Float, amplitude: Float) -> Float[] {
     var out: Float[] = []
     for i in 0..n {
-        let draw = Random.Spike(Random.RngSeed(seed * 10007 + i * 37 + 5), probability, amplitude)
-        out = Append(out, draw.Value)
+        out = Append(out, M2SpikeV1(Random.RngSeed(seed * 10007 + i * 37 + 5), probability, amplitude))
     }
     return out
 }
@@ -82,8 +113,7 @@ fn M2DriftWalk(seed: Int, n: Int, start: Float, stepStddev: Float) -> Float[] {
     var out: Float[] = []
     var current = start
     for i in 0..n {
-        let draw = Random.DriftStep(Random.RngSeed(seed * 10007 + i * 37 + 6), current, stepStddev)
-        current = draw.Value
+        current = M2DriftStepV1(Random.RngSeed(seed * 10007 + i * 37 + 6), current, stepStddev)
         out = Append(out, current)
     }
     return out

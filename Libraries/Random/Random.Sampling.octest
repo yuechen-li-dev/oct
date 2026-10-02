@@ -1,0 +1,172 @@
+package Random
+
+// Expected values in this file were computed from internal/octrandom outside
+// the Oct library code, so they check the Oct definitions against the
+// specification (internal/random/RANDOM_V2_LADDER.md, section 3.4) and not
+// against themselves.
+
+[Fact]
+fn ChanceIsUnitBelowTheProbability() -> Void {
+    let s = Fork(Seeded(42), "sampling")
+    let expected = [false, false, false, false, false, true, false, true, false, false, true, true]
+    for i in 0..Len(expected) {
+        Assert.Equal(expected[i], Chance(s, i, 0.3), "expected outcome at p = 0.3")
+    }
+    for i in 0..200 {
+        Assert.Equal(Unit(s, i) < 0.3, Chance(s, i, 0.3), "definition at p = 0.3")
+        Assert.Equal(Unit(s, i) < 0.75, Chance(s, i, 0.75), "definition at p = 0.75")
+        Assert.Equal(false, Chance(s, i, 0.0), "p = 0 never succeeds")
+        Assert.Equal(true, Chance(s, i, 1.0), "p = 1 always succeeds")
+        Assert.Equal(false, Chance(s, i, Unit(s, i)), "the comparison is strict: a draw equal to p does not succeed")
+    }
+}
+
+[Fact]
+fn ChanceSucceedsAtAboutItsProbability() -> Void {
+    let s = Fork(Seeded(7), "chance-rate")
+    var successes = 0
+    for i in 0..4000 {
+        if Chance(s, i, 0.25) {
+            successes = successes + 1
+        }
+    }
+    Assert.True(successes >= 900 and successes <= 1100, "about one quarter of 4000 draws succeed")
+}
+
+[Fact]
+fn ExponentialDrawsTheExpectedValues() -> Void {
+    let s = Fork(Seeded(42), "sampling")
+    Assert.Near(0.6987032165017828, Exponential(s, 0, 2.0), 0.000000000001, "rate 2 index 0")
+    Assert.Near(0.31985031020818455, Exponential(s, 1, 2.0), 0.000000000001, "rate 2 index 1")
+    Assert.Near(0.24241706961610565, Exponential(s, 2, 2.0), 0.000000000001, "rate 2 index 2")
+    Assert.Near(0.023837873611367456, Exponential(s, 5, 2.0), 0.000000000001, "rate 2 index 5")
+    Assert.Near(2.0 * Exponential(s, 3, 2.0), Exponential(s, 3, 1.0), 0.000000000001, "halving the rate doubles the draw")
+}
+
+[Fact]
+fn ExponentialIsNonNegativeWithMeanOneOverRate() -> Void {
+    let s = Fork(Seeded(7), "exponential")
+    var sum = 0.0
+    for i in 0..10000 {
+        let x = Exponential(s, i, 2.0)
+        Assert.True(x >= 0.0, "an exponential draw is not negative")
+        sum = sum + x
+    }
+    let mean = sum / 10000.0
+    Assert.True(mean > 0.48 and mean < 0.52, "mean near 1 / rate")
+}
+
+[Fact]
+fn UnitsIsUnitAtEachIndex() -> Void {
+    let s = Fork(Seeded(42), "sampling")
+    let draws = Units(s, 50)
+    Assert.Equal(50, Len(draws), "count")
+    for k in 0..50 {
+        Assert.Equal(Unit(s, k), draws[k], "element k is Unit(s, k)")
+    }
+    Assert.Equal(0.7527626402155055, draws[0], "expected element 0")
+    Assert.Equal(0.4725496917381131, draws[1], "expected element 1")
+    Assert.Equal(0.38420067475661435, draws[2], "expected element 2")
+    Assert.Equal(0.8210591950467527, draws[3], "expected element 3")
+    Assert.Equal(0.38468521505897324, draws[4], "expected element 4")
+
+    Assert.Equal(0, Len(Units(s, 0)), "count 0 gives an empty array")
+    let shorter = Units(s, 20)
+    for k in 0..20 {
+        Assert.Equal(draws[k], shorter[k], "a shorter request is a prefix of a longer one")
+    }
+}
+
+[Fact]
+fn UnitsMeanIsNearOneHalf() -> Void {
+    let draws = Units(Fork(Seeded(7), "units-mean"), 10000)
+    var sum = 0.0
+    for k in 0..Len(draws) {
+        sum = sum + draws[k]
+    }
+    let mean = sum / 10000.0
+    Assert.True(mean > 0.48 and mean < 0.52, "mean of 10000 Unit draws")
+}
+
+[Fact]
+fn NormalsIsNormalAtEachIndex() -> Void {
+    let s = Fork(Seeded(42), "sampling")
+    let draws = Normals(s, 50, 1.0, 2.0)
+    Assert.Equal(50, Len(draws), "count")
+    for k in 0..50 {
+        Assert.Equal(Normal(s, k, 1.0, 2.0), draws[k], "element k is Normal(s, k, mean, stddev)")
+    }
+    Assert.Near(2.431621370716273, draws[0], 0.000000000001, "expected element 0")
+    Assert.Near(-0.9534903082490842, draws[1], 0.000000000001, "expected element 1")
+    Assert.Near(-1.5360741857903562, draws[2], 0.000000000001, "expected element 2")
+    Assert.Near(2.1544206372847885, draws[3], 0.000000000001, "expected element 3")
+
+    Assert.Equal(0, Len(Normals(s, 0, 1.0, 2.0)), "count 0 gives an empty array")
+    let flat = Normals(s, 5, 3.5, 0.0)
+    for k in 0..5 {
+        Assert.Equal(3.5, flat[k], "stddev 0 gives the mean")
+    }
+}
+
+[Fact]
+fn NormalsHaveTheRequestedMeanAndVariance() -> Void {
+    let draws = Normals(Fork(Seeded(7), "normals-moments"), 10000, 0.0, 1.0)
+    var sum = 0.0
+    var sumSquares = 0.0
+    for k in 0..Len(draws) {
+        sum = sum + draws[k]
+        sumSquares = sumSquares + draws[k] * draws[k]
+    }
+    let mean = sum / 10000.0
+    let variance = sumSquares / 10000.0 - mean * mean
+    Assert.True(mean > -0.05 and mean < 0.05, "mean of 10000 standard Normal draws")
+    Assert.True(variance > 0.9 and variance < 1.1, "variance of 10000 standard Normal draws")
+}
+
+[Fact]
+fn SpikeDrawsTheExpectedValues() -> Void {
+    let s = Fork(Seeded(42), "sampling")
+    let expected = [3.0, -3.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -3.0, -3.0, 0.0, 0.0, 0.0, 0.0, -3.0, -3.0, 3.0, 3.0]
+    for i in 0..Len(expected) {
+        Assert.Equal(expected[i], Spike(s, i, 0.4, 3.0), "expected spike")
+    }
+}
+
+// The trigger and the sign are draws 0 and 1 of the child stream for the
+// index, so a spike never shares a draw with Unit(s, i) or with another index.
+[Fact]
+fn SpikeUsesTheChildStreamOfItsIndex() -> Void {
+    let s = Fork(Seeded(7), "spike-definition")
+    for i in 0..300 {
+        let step = Child(s, i)
+        var expected = 0.0
+        if Chance(step, 0, 0.4) {
+            expected = if Chance(step, 1, 0.5) { 2.5 } else { -2.5 }
+        }
+        Assert.Equal(expected, Spike(s, i, 0.4, 2.5), "definition")
+    }
+}
+
+[Fact]
+fn SpikeRateAndSignAreBalanced() -> Void {
+    let s = Fork(Seeded(7), "spike-rate")
+    var positive = 0
+    var negative = 0
+    var zero = 0
+    for i in 0..4000 {
+        let x = Spike(s, i, 0.25, 4.0)
+        Assert.True(x == 0.0 or x == 4.0 or x == -4.0, "a spike is zero or plus or minus the amplitude")
+        if x > 0.0 { positive = positive + 1 }
+        if x < 0.0 { negative = negative + 1 }
+        if x == 0.0 { zero = zero + 1 }
+    }
+    Assert.True(zero >= 2900 and zero <= 3100, "about three quarters of 4000 draws are zero")
+    Assert.True(positive >= 400 and positive <= 600, "about half of the spikes are positive")
+    Assert.True(negative >= 400 and negative <= 600, "about half of the spikes are negative")
+
+    for i in 0..200 {
+        Assert.Equal(0.0, Spike(s, i, 0.0, 4.0), "probability 0 never spikes")
+        Assert.True(Spike(s, i, 1.0, 4.0) != 0.0, "probability 1 always spikes")
+        Assert.Equal(0.0, Spike(s, i, 1.0, 0.0), "amplitude 0 spikes by zero")
+    }
+}

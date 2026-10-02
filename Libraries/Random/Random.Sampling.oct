@@ -1,0 +1,54 @@
+package Random
+
+// Sampling helpers built on the native stream primitives of Random.Stream.oct.
+// Each one is a pure function of (stream, index, parameters), written in Oct.
+
+/// Returns true with probability p at index i.
+/// Param p: probability in [0, 1]. 0 never succeeds and 1 always does.
+fn Chance(s: Stream, i: Int, p: Float) -> Bool {
+    Assert.True(p >= 0.0 and p <= 1.0, "Chance requires p in [0, 1]")
+    return Unit(s, i) < p
+}
+
+/// Draws from the exponential distribution with the given rate at index i.
+/// Param rate: events per unit; must be positive. The mean is 1 / rate.
+fn Exponential(s: Stream, i: Int, rate: Float) -> Float {
+    Assert.True(rate > 0.0, "Exponential requires rate > 0")
+    return -Ln(1.0 - Unit(s, i)) / rate
+}
+
+/// Returns count uniform draws in [0, 1). Element k is Unit(s, k).
+fn Units(s: Stream, count: Int) -> Float[] {
+    Assert.True(count >= 0, "Units requires count >= 0")
+    var draws: Float[] = []
+    for k in 0..count {
+        draws = Append(draws, Unit(s, k))
+    }
+    return draws
+}
+
+/// Returns count Gaussian draws. Element k is Normal(s, k, mean, stddev).
+fn Normals(s: Stream, count: Int, mean: Float, stddev: Float) -> Float[] {
+    Assert.True(count >= 0, "Normals requires count >= 0")
+    var draws: Float[] = []
+    for k in 0..count {
+        draws = Append(draws, Normal(s, k, mean, stddev))
+    }
+    return draws
+}
+
+/// Returns +amplitude or -amplitude with the given probability at index i,
+/// and 0.0 otherwise. The sign is drawn independently of the trigger.
+/// Param probability: chance of a spike, in [0, 1].
+/// Param amplitude: size of a spike; must not be negative.
+fn Spike(s: Stream, i: Int, probability: Float, amplitude: Float) -> Float {
+    Assert.True(amplitude >= 0.0, "Spike requires amplitude >= 0")
+    let step = Child(s, i)
+    if not Chance(step, 0, probability) {
+        return 0.0
+    }
+    if Chance(step, 1, 0.5) {
+        return amplitude
+    }
+    return -amplitude
+}

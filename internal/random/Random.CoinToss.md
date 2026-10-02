@@ -1,5 +1,7 @@
 # Random.CoinToss
 
+> **Superseded (2026-10-02).** The Random v1 library layer described here was replaced by Random v2 in ladder milestone M4. The seeded functions on this page no longer exist in `Libraries/Random`; the `Crypto*` helpers remain until M5. Current API: `internal/random/RANDOM_V2_LADDER.md`, sections 3.3 and 3.4. This page is kept as history until M6 retires it.
+
 `Random.CoinToss` is a pure Oct library layer built on top of `Random.Core` draws and state threading.
 
 ## API overview

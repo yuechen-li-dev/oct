@@ -1,6 +1,6 @@
 # Random v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-01.** M0–M3 are closed (`RANDOM_V2_M1.md`, `RANDOM_V2_M2.md`, `RANDOM_V2_M3.md`); M4–M6 are not started. M4 has an open issue, recorded under that milestone.
+Status: **ACCEPTED 2026-10-01.** M0–M4 are closed (`RANDOM_V2_M1.md` through `RANDOM_V2_M4.md`); M5 and M6 are not started.
 Date: 2026-10-01
 
 This document supersedes `internal/random/Random.Core.md` as the
@@ -113,12 +113,12 @@ All native primitives fail non-recoverably on `i < 0`.
 | `Chance(s, i, p: Float) -> Bool` | `Assert.True(0 <= p <= 1)`; `Unit(s, i) < p` |
 | `Exponential(s, i, rate: Float) -> Float` | `Assert.True(rate > 0)`; `−Ln(1 − Unit(s, i)) / rate` |
 | `Units(s, count: Int) -> Float[]` | `Assert.True(count >= 0)`; element `k = Unit(s, k)` |
-| `Normals(s, count, mean, stddev) -> Float[]` | element `k = Normal(s, k, mean, stddev)` |
-| `Spike(s, i, probability, amplitude) -> Float` | `c = Child(s, i)`; if `Chance(c, 0, probability)` then `±amplitude` by `Chance(c, 1, 0.5)`, else `0.0` |
+| `Normals(s, count, mean, stddev) -> Float[]` | `Assert.True(count >= 0)`; element `k = Normal(s, k, mean, stddev)` |
+| `Spike(s, i, probability, amplitude) -> Float` | `Assert.True(amplitude >= 0)`; `c = Child(s, i)`; if `Chance(c, 0, probability)` then `±amplitude` by `Chance(c, 1, 0.5)`, else `0.0` |
 | `FlipCoin(s, i) -> CoinSide` | `Heads` iff `Chance(s, i, 0.5)` |
-| `FlipCoins(s, i, count) -> CoinSide[]` | element `k = FlipCoin(Child(s, i), k)` |
+| `FlipCoins(s, i, count) -> CoinSide[]` | `Assert.True(count >= 0)`; element `k = FlipCoin(Child(s, i), k)` |
 | `RollDie(s, i, sides) -> Int` | `Assert.True(sides >= 2)`; `IntBetween(s, i, 1, sides)` |
-| `RollDice(s, i, count, sides) -> Int[]` | element `k = RollDie(Child(s, i), k)` |
+| `RollDice(s, i, count, sides) -> Int[]` | `Assert.True(count >= 0)` and `Assert.True(sides >= 2)`; element `k = RollDie(Child(s, i), k)` |
 | `RollWithAdvantage(s, i, sides) -> Int` | max of `RollDice(s, i, 2, sides)` |
 | `RollWithDisadvantage(s, i, sides) -> Int` | min of `RollDice(s, i, 2, sides)` |
 | `CountHeads`, `CountTails`, `CoinSideToString`, `enum CoinSide` | unchanged |
@@ -219,23 +219,30 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
 - **Verdict:** SUCCESS — see `internal/random/RANDOM_V2_M3.md`.
 
 ### M4 — Oct library layer
-- **Scope:** Implement §3.4 in Oct: `Random.Sampling.oct` (Chance, Exponential, Units, Normals, Spike), plus rewritten `Random.CoinToss.oct` and `Random.Dice.oct`. v1 remains for callers.
-- **Open issue (found in M3, needs a decision before M4 starts):** "v1 remains for callers" cannot hold as written. Oct has no overloading, and six §3.4 names are already v1 functions in package Random with different signatures: `Exponential`, `Spike`, `FlipCoin`, `FlipCoins`, `RollDie`, `RollDice`. The v2 versions cannot be added beside them. Proposed resolution: M4 replaces the v1 library layer and migrates its callers (the experiment files listed under M6) in the same milestone; M6 keeps the removal of the v1 natives, the docs and the recorded-output regeneration.
+- **Scope:**
+  - Implement §3.4 in Oct: `Random.Sampling.oct` (Chance, Exponential, Units, Normals, Spike), plus rewritten `Random.CoinToss.oct` and `Random.Dice.oct`.
+  - The v2 functions replace the seeded v1 library layer; they cannot sit beside it. Oct has no overloading, and six §3.4 names were already v1 functions in package Random with different signatures (`Exponential`, `Spike`, `FlipCoin`, `FlipCoins`, `RollDie`, `RollDice`). Removed with it: `Uniform`, `Bernoulli`, `Jitter`, `DriftStep`, `FlipBiasedCoin`, `RollD4`..`RollD100`, `RollDiceSum`, `RollD20Advantage`, `RollD20Disadvantage` and the four library result records.
+  - The v1 natives (`RngSeed`, `Rand*`, `Gaussian`, `CryptoRand*`) and the `Crypto*` coin and dice helpers stay, unchanged, for M5 and M6.
+  - The one caller of the removed layer outside the library, `Experiments/PrometheusMeasurementFilteringLab/M2`, keeps `Jitter`, `Spike` and `DriftStep` as local functions defined exactly as v1 defined them, so its recorded results do not change. It moves to v2 with the other experiments in M6.
 - **Tests:**
+  - Expected values for every library function, computed from `internal/octrandom` outside the Oct code.
   - I2 bulk–scalar identity.
-  - `Child` sub-indexing for `FlipCoins` and `RollDice`.
+  - `Child` sub-indexing for `Spike`, `FlipCoins` and `RollDice`.
   - Advantage ≥ disadvantage at the same `(s, i)`.
   - Sanity bands:
     - mean of `Units(s, 10000)` in `[0.48, 0.52]`
     - mean and variance of `Normals(s, 10000, 0, 1)` within `±0.05` / `±0.1`
     - each face count of `RollDice(s, 0, 6000, 6)` within `[850, 1150]`
+  - Runtime preconditions of the library layer, added to the M3 fixture and Go test.
 - **Exit:** Both lanes green. No `Assert.True(false, ...)` dispatch stubs remain in v2 sources.
+- **Verdict:** SUCCESS — see `internal/random/RANDOM_V2_M4.md`.
 
 ### M5 — `Entropy` package
 - **Scope:**
   - Add `Libraries/Entropy` (§3.5), with natives registered through the M2 table and implemented in `octrandom` over `crypto/rand`.
   - Bulk helpers use loops, not recursion.
   - The artifact ambient-randomness guard covers `Entropy.*`.
+  - Remove the `Crypto*` coin and dice helpers that M4 left in `Random.CoinToss.oct` and `Random.Dice.oct`.
 - **Tests:**
   - Smoke and range tests.
   - `.octfail` for domain violations.
@@ -245,6 +252,7 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
 ### M6 — Migration and v1 removal
 - **Scope:**
   - Migrate `Experiments/FmBrownNoiseKalman/{M0,Shared}` and `Experiments/PrometheusMeasurementFilteringLab/M1–M4` to v2, using one `Fork` per noise source and deleting the F3 idiom.
+  - In `PrometheusMeasurementFilteringLab/M2`, replace the local `M2JitterV1`, `M2SpikeV1` and `M2DriftStepV1` functions that M4 introduced.
   - Regenerate `m2_random_*_summary.octagon` and any other recorded outputs, noting in each experiment's report that the regeneration came from the Random v2 stream change.
   - Delete:
     - `Rng`, `Rand*`, `RngSeed`, all `*Result` records, `Crypto*` from `Random`
