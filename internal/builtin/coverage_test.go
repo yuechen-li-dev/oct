@@ -46,7 +46,14 @@ func TestRandomBuiltinsHaveImplementationCoverage(t *testing.T) {
 	compiledLiterals := implementationStringLiterals(t, filepath.Join("..", "build"))
 
 	for _, random := range RandomBuiltins() {
-		for _, spelling := range []string{random.Symbol, random.Name()} {
+		// A v2 symbol such as "Unit" is an ordinary word that the typechecker
+		// may use for something else, so only the spellings that are reserved
+		// builtin names are checked.
+		spellings := []string{random.Name()}
+		if random.Legacy {
+			spellings = append(spellings, random.Symbol)
+		}
+		for _, spelling := range spellings {
 			if _, ok := typecheckLiterals[spelling]; ok {
 				t.Errorf("typechecker names Random builtin %q; it must come from the table in random.go", spelling)
 			}

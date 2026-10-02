@@ -1,0 +1,8 @@
+expect error: "function 'Between' argument 3 expects Float, got Float<m>"
+
+package Random
+
+// The v2 draws take dimensionless Float parameters.
+fn Main() -> Float {
+    return Between(Seeded(1), 0, 1.0m, 2.0m)
+}

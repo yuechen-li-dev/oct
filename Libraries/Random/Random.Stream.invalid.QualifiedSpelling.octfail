@@ -1,0 +1,8 @@
+expect error: "function 'Random.Unit' argument 1 expects Stream, got Int"
+
+package Random
+
+// The qualified spelling is checked the same way and is reported as written.
+fn Main() -> Float {
+    return Random.Unit(42, 0)
+}

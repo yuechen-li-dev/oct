@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "RandomUsage"
+        Version: "0.1.0"
+        Authors: ["Claude"]
+        Date: "2026-10-01"
+        Description: "Contracts for using the Random v2 stream builtins from another package"
+        Dependencies: [Dependency { Name: "Random" VersionRequirement: "0.1.0" }]
+    }
+}

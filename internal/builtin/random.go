@@ -10,7 +10,8 @@ const RandomNamespace = "Random"
 type RandomKind string
 
 const (
-	// RandomSeed constructs generator state from a seed.
+	// RandomSeed constructs or derives generator state: a v1 Rng from a seed,
+	// or a v2 Stream from a seed, a label or an index.
 	RandomSeed RandomKind = "seed"
 	// RandomDraw is a deterministic draw from explicit generator state.
 	RandomDraw RandomKind = "draw"
@@ -19,9 +20,21 @@ const (
 	RandomEntropy RandomKind = "entropy"
 )
 
+// RandomParameter is the type of one parameter of a Random builtin.
+type RandomParameter string
+
+const (
+	RandomParameterInt    RandomParameter = "Int"
+	RandomParameterFloat  RandomParameter = "Float"
+	RandomParameterString RandomParameter = "String"
+	// RandomParameterStream is the record Stream declared in package Random.
+	RandomParameterStream RandomParameter = "Stream"
+)
+
 // RandomArityCheck records how the typechecker validates the argument count
-// of a Random builtin. The three forms preserve the Random v1 diagnostics
-// exactly; they are retired with v1 in ladder milestone M6.
+// of a legacy Random builtin. The three forms preserve the Random v1
+// diagnostics exactly; they are retired with v1 in ladder milestone M6.
+// Non-legacy builtins always use RandomArityCounted.
 type RandomArityCheck string
 
 const (
@@ -55,21 +68,54 @@ type RandomBuiltin struct {
 	Result          string
 	ResultInPackage bool
 	Fallible        bool
+	// Parameters lists the parameter types of a non-legacy builtin. The
+	// typechecker checks every argument against it.
+	Parameters []RandomParameter
+	// Legacy marks a Random v1 builtin. A legacy builtin keeps the v1 rules
+	// until ladder milestone M6 removes it: its unqualified name is reserved
+	// in every package, package Random may declare a stub with the same name,
+	// and its arguments are not type-checked.
+	Legacy bool
 }
 
 // randomBuiltins is the table. Adding, renaming or removing a Random builtin
 // starts here.
 var randomBuiltins = []RandomBuiltin{
-	{Symbol: "RngSeed", Kind: RandomSeed, Arguments: 1, ArityCheck: RandomArityCounted, Result: "Rng", ResultInPackage: true},
-	{Symbol: "RandInt", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityCounted, Result: "RandIntResult", ResultInPackage: true},
-	{Symbol: "RandFloat01", Kind: RandomDraw, Arguments: 1, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true},
-	{Symbol: "RandFloatRange", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true},
-	{Symbol: "RandBernoulli", Kind: RandomDraw, Arguments: 2, ArityCheck: RandomArityCounted, Result: "RandBoolResult", ResultInPackage: true},
-	{Symbol: "RandNormal", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true},
-	{Symbol: "Gaussian", ImplementedBy: "RandNormal", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true},
-	{Symbol: "CryptoRandInt", Kind: RandomEntropy, Arguments: 2, ArityCheck: RandomArityUnchecked, Result: "Int", Fallible: true},
-	{Symbol: "CryptoRandFloat01", Kind: RandomEntropy, Arguments: 0, ArityCheck: RandomArityUnchecked, Result: "Float", Fallible: true},
-	{Symbol: "CryptoRandBytes", Kind: RandomEntropy, Arguments: 1, ArityCheck: RandomArityUnchecked, Result: "Bytes", Fallible: true},
+	{Symbol: "RngSeed", Kind: RandomSeed, Arguments: 1, ArityCheck: RandomArityCounted, Result: "Rng", ResultInPackage: true, Legacy: true},
+	{Symbol: "RandInt", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityCounted, Result: "RandIntResult", ResultInPackage: true, Legacy: true},
+	{Symbol: "RandFloat01", Kind: RandomDraw, Arguments: 1, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
+	{Symbol: "RandFloatRange", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
+	{Symbol: "RandBernoulli", Kind: RandomDraw, Arguments: 2, ArityCheck: RandomArityCounted, Result: "RandBoolResult", ResultInPackage: true, Legacy: true},
+	{Symbol: "RandNormal", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
+	{Symbol: "Gaussian", ImplementedBy: "RandNormal", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
+	{Symbol: "CryptoRandInt", Kind: RandomEntropy, Arguments: 2, ArityCheck: RandomArityUnchecked, Result: "Int", Fallible: true, Legacy: true},
+	{Symbol: "CryptoRandFloat01", Kind: RandomEntropy, Arguments: 0, ArityCheck: RandomArityUnchecked, Result: "Float", Fallible: true, Legacy: true},
+	{Symbol: "CryptoRandBytes", Kind: RandomEntropy, Arguments: 1, ArityCheck: RandomArityUnchecked, Result: "Bytes", Fallible: true, Legacy: true},
+
+	// Random v2: counter-based streams. Every draw is a pure function of
+	// (stream, index, parameters). Specification: internal/random/
+	// RANDOM_V2_LADDER.md, section 3.3. Implementation: internal/octrandom.
+	stream("Seeded", RandomSeed, "Stream", RandomParameterInt),
+	stream("Fork", RandomSeed, "Stream", RandomParameterStream, RandomParameterString),
+	stream("Child", RandomSeed, "Stream", RandomParameterStream, RandomParameterInt),
+	stream("Unit", RandomDraw, "Float", RandomParameterStream, RandomParameterInt),
+	stream("Between", RandomDraw, "Float", RandomParameterStream, RandomParameterInt, RandomParameterFloat, RandomParameterFloat),
+	stream("IntBetween", RandomDraw, "Int", RandomParameterStream, RandomParameterInt, RandomParameterInt, RandomParameterInt),
+	stream("Normal", RandomDraw, "Float", RandomParameterStream, RandomParameterInt, RandomParameterFloat, RandomParameterFloat),
+}
+
+// stream describes a Random v2 builtin. Its result is the record Stream when
+// result names it, and a base type otherwise.
+func stream(symbol string, kind RandomKind, result string, parameters ...RandomParameter) RandomBuiltin {
+	return RandomBuiltin{
+		Symbol:          symbol,
+		Kind:            kind,
+		Arguments:       len(parameters),
+		ArityCheck:      RandomArityCounted,
+		Result:          result,
+		ResultInPackage: result == string(RandomParameterStream),
+		Parameters:      parameters,
+	}
 }
 
 var randomBySymbol = indexRandomBuiltins(randomBuiltins)
@@ -82,13 +128,17 @@ func indexRandomBuiltins(table []RandomBuiltin) map[string]RandomBuiltin {
 	return index
 }
 
-// withRandomBuiltinNames reserves both spellings of every Random builtin, the
-// qualified "Random.RandInt" and the unqualified "RandInt", alongside the
-// other reserved builtin names.
+// withRandomBuiltinNames reserves the qualified name of every Random builtin,
+// such as "Random.Unit", alongside the other reserved builtin names. A legacy
+// builtin also reserves its unqualified name, such as "RandInt", in every
+// package. A v2 builtin does not: "Unit" and "Normal" stay available to other
+// packages, and resolve to the builtin only inside package Random.
 func withRandomBuiltinNames(reserved map[string]struct{}) map[string]struct{} {
 	for _, entry := range randomBuiltins {
-		reserved[entry.Symbol] = struct{}{}
 		reserved[entry.Name()] = struct{}{}
+		if entry.Legacy {
+			reserved[entry.Symbol] = struct{}{}
+		}
 	}
 	return reserved
 }
@@ -125,7 +175,12 @@ func (b RandomBuiltin) ResultType() string {
 
 // RandomBuiltins returns the table in declaration order.
 func RandomBuiltins() []RandomBuiltin {
-	return append([]RandomBuiltin(nil), randomBuiltins...)
+	table := make([]RandomBuiltin, len(randomBuiltins))
+	for i, entry := range randomBuiltins {
+		entry.Parameters = append([]RandomParameter(nil), entry.Parameters...)
+		table[i] = entry
+	}
+	return table
 }
 
 // IsRandomSymbol reports whether symbol is the unqualified name of a Random

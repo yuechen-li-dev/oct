@@ -1,0 +1,9 @@
+expect error: "operator '?' requires fallible expression"
+
+package Random
+
+// A v2 draw never returns an Error. A violated precondition is a
+// non-recoverable runtime error.
+fn Main() -> Float ! Error {
+    return Unit(Seeded(1), 0)?
+}

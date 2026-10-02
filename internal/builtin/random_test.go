@@ -32,6 +32,72 @@ func TestRandomTableEntriesAreWellFormed(t *testing.T) {
 		if (random.Kind == RandomEntropy) != random.Fallible {
 			t.Errorf("Random builtin %q: entropy reads are fallible and nothing else is; kind %q, fallible %v", random.Symbol, random.Kind, random.Fallible)
 		}
+		if random.Legacy {
+			if len(random.Parameters) != 0 {
+				t.Errorf("legacy Random builtin %q declares parameter types; v1 arguments are not type-checked", random.Symbol)
+			}
+			continue
+		}
+		if random.ArityCheck != RandomArityCounted {
+			t.Errorf("Random builtin %q must use the counted arity check, got %q", random.Symbol, random.ArityCheck)
+		}
+		if random.Arguments != len(random.Parameters) {
+			t.Errorf("Random builtin %q declares %d arguments and %d parameter types", random.Symbol, random.Arguments, len(random.Parameters))
+		}
+		for index, parameter := range random.Parameters {
+			switch parameter {
+			case RandomParameterInt, RandomParameterFloat, RandomParameterString, RandomParameterStream:
+			default:
+				t.Errorf("Random builtin %q parameter %d has unknown type %q", random.Symbol, index+1, parameter)
+			}
+		}
+		if !random.HasOwnImplementation() {
+			t.Errorf("Random builtin %q must have its own implementation", random.Symbol)
+		}
+		if random.Kind == RandomEntropy {
+			t.Errorf("Random builtin %q reads entropy; package Random is deterministic in v2", random.Symbol)
+		}
+		if random.ResultInPackage != (random.Result == string(RandomParameterStream)) {
+			t.Errorf("Random builtin %q result %q: only Stream is a record of package Random", random.Symbol, random.Result)
+		}
+	}
+}
+
+// The v2 table must match ladder section 3.3 exactly: these seven signatures
+// and no others.
+func TestRandomStreamBuiltinSignatures(t *testing.T) {
+	want := map[string]string{
+		"Seeded":     "(Int) -> Stream",
+		"Fork":       "(Stream, String) -> Stream",
+		"Child":      "(Stream, Int) -> Stream",
+		"Unit":       "(Stream, Int) -> Float",
+		"Between":    "(Stream, Int, Float, Float) -> Float",
+		"IntBetween": "(Stream, Int, Int, Int) -> Int",
+		"Normal":     "(Stream, Int, Float, Float) -> Float",
+	}
+	got := map[string]string{}
+	for _, random := range RandomBuiltins() {
+		if random.Legacy {
+			continue
+		}
+		signature := "("
+		for index, parameter := range random.Parameters {
+			if index > 0 {
+				signature += ", "
+			}
+			signature += string(parameter)
+		}
+		got[random.Symbol] = signature + ") -> " + random.Result
+	}
+	for symbol, signature := range want {
+		if got[symbol] != signature {
+			t.Errorf("Random.%s signature = %q, want %q", symbol, got[symbol], signature)
+		}
+	}
+	for symbol := range got {
+		if _, ok := want[symbol]; !ok {
+			t.Errorf("Random.%s is in the v2 table but not in the specification", symbol)
+		}
 	}
 }
 
@@ -57,15 +123,24 @@ func TestRandomImplementationsResolveToOwnImplementations(t *testing.T) {
 	}
 }
 
-func TestRandomBuiltinsReserveBothSpellings(t *testing.T) {
+// Every Random builtin reserves its qualified name. Only a legacy builtin also
+// reserves its unqualified name: a v2 name such as "Unit" or "Normal" must stay
+// available to every other package.
+func TestRandomBuiltinNameReservation(t *testing.T) {
+	want := 0
 	for _, random := range RandomBuiltins() {
-		for _, spelling := range []string{random.Symbol, random.Name()} {
-			if !IsName(spelling) {
-				t.Errorf("Random builtin spelling %q is not a reserved builtin name", spelling)
-			}
-			if _, ok := Lookup(spelling); !ok {
-				t.Errorf("Random builtin spelling %q has no semantic definition", spelling)
-			}
+		want++
+		if !IsName(random.Name()) {
+			t.Errorf("Random builtin %q is not a reserved builtin name", random.Name())
+		}
+		if _, ok := Lookup(random.Name()); !ok {
+			t.Errorf("Random builtin %q has no semantic definition", random.Name())
+		}
+		if random.Legacy {
+			want++
+		}
+		if IsName(random.Symbol) != random.Legacy {
+			t.Errorf("unqualified name %q reserved = %v, want %v (legacy = %v)", random.Symbol, IsName(random.Symbol), random.Legacy, random.Legacy)
 		}
 	}
 	reserved := 0
@@ -74,7 +149,7 @@ func TestRandomBuiltinsReserveBothSpellings(t *testing.T) {
 			reserved++
 		}
 	}
-	if want := 2 * len(RandomBuiltins()); reserved != want {
+	if reserved != want {
 		t.Errorf("%d reserved names resolve to Random builtins, want %d", reserved, want)
 	}
 }
@@ -114,6 +189,11 @@ func TestResolveRandomCallScopesUnqualifiedNamesToPackageRandom(t *testing.T) {
 		{"RandInt", "", false},
 		{"Len", "Random", false},
 		{"Random.Missing", "Random", false},
+		{"Random.Unit", "Main", true},
+		{"Random.Unit", "Random", true},
+		{"Unit", "Random", true},
+		{"Unit", "Main", false},
+		{"Normal", "Statistics", false},
 	}
 	for _, c := range cases {
 		if _, got := ResolveRandomCall(c.callee, c.callerPackage); got != c.want {

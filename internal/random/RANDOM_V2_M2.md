@@ -166,3 +166,15 @@ types and a regular argument count, so the typechecker checks both.
 - Windows. Everything above ran on linux/amd64.
 - The slow wrapper lanes (`OCT_SLOW_TESTS=1`); no wrapper or Octxiliary code
   was touched.
+
+## Addendum (2026-10-01, from M3)
+
+The `oct test Language --all-packages` figure above (392 passed, 4 failed)
+covers `.octfail` contracts only. A run at a root directory executes the
+`.octfail` fixtures below it but only the facts of the root package. M3 re-ran
+the comparison one directory at a time over every directory under `Libraries`
+and `Language` that holds an `.octest`, with the pre-M2 compiler (`3d1cdfff`)
+and the M2 compiler (`51e53a2`): compiled 1447 pass / 125 fail in both;
+interpreted 1539 / 33 and 1540 / 32, the one difference being a test that runs
+close to its 30 s cycle limit and timed out under load. The M2 conclusion
+stands. Details: `RANDOM_V2_M3.md`.

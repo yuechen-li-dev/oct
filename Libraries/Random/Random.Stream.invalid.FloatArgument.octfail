@@ -1,0 +1,8 @@
+expect error: "function 'Between' argument 3 expects Float, got Int"
+
+package Random
+
+// There is no implicit Int to Float conversion for a bound.
+fn Main() -> Float {
+    return Between(Seeded(1), 0, 1, 2.0)
+}

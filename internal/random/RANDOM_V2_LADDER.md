@@ -1,6 +1,6 @@
 # Random v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-01.** M0, M1 and M2 are closed (`RANDOM_V2_M1.md`, `RANDOM_V2_M2.md`); M3–M6 are not started.
+Status: **ACCEPTED 2026-10-01.** M0–M3 are closed (`RANDOM_V2_M1.md`, `RANDOM_V2_M2.md`, `RANDOM_V2_M3.md`); M4–M6 are not started. M4 has an open issue, recorded under that milestone.
 Date: 2026-10-01
 
 This document supersedes `internal/random/Random.Core.md` as the
@@ -60,6 +60,18 @@ record Stream { _Key: Int }   // _Key holds the 64-bit Philox key (as Int bits)
 Every `Int` value of `_Key` is a valid key. There is no degenerate state.
 Constructing `Stream { _Key: k }` directly is permitted, but it is not the public
 way to make a stream. (Enforcing source-level opacity is out of scope.)
+
+Naming rules for the native primitives of §3.3:
+
+- Outside package Random they exist only in the qualified spelling
+  (`Random.Unit`), and the calling package must `import Random`. The bare words
+  (`Unit`, `Normal`, `Between`, `Fork`, `Child`, `Seeded`, `IntBetween`) are not
+  reserved: any other package may declare its own function with one of those
+  names.
+- Inside package Random both spellings name the builtin, and the package may
+  not declare a function with one of those names.
+- The natives have no Oct declarations and no stub bodies. `Random.Stream.oct`
+  declares only the record `Stream`.
 
 ### 3.2 Bit generator
 
@@ -190,20 +202,25 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
   - Register the §3.3 natives through the M2 table.
   - The table rows for the v2 natives carry parameter types, and the typechecker checks both argument count and argument types from them. v1 checks neither argument types nor the entropy builtins' argument count (M2 report, "v1 defects"); v2 must not inherit that.
   - The interpreter calls `octrandom` directly. Generated programs import `github.com/yuechen-li-dev/oct/internal/octrandom` through the existing staged-build path.
-  - Add a new `Random.Stream.oct` declaring `Stream` and the native signatures. The v1 API stays side by side, untouched.
-- **Tests:** `Libraries/Random/Random.Stream.octest`, run in both lanes:
-  - Golden values for each primitive at a fixed set of `(seed, label, index)` inputs. These are a regression lock taken from M1 output, not an independent correctness proof; M1's KATs are that proof.
-  - I1 purity.
-  - I3 parameter isolation, with the M4-lab shape as the explicit regression: `Normal(..., sd = 0)` on one fork leaves `Chance` on another fork unchanged.
-  - Fork independence: different labels give different streams; the same label gives the same stream.
-  - Range checks.
-  - `.octfail` contracts for `i < 0`, `lo > hi`, `stddev < 0`, non-finite arguments.
+  - Add a new `Random.Stream.oct` declaring the record `Stream`. The natives are compiler-owned builtins with no Oct declarations. The v1 API stays side by side, untouched.
+- **Tests:**
+  - `Libraries/Random/Random.Stream.octest`, run in both lanes:
+    - Golden values for each primitive at a fixed set of `(seed, label, index)` inputs. These are a regression lock taken from M1 output, not an independent correctness proof; M1's KATs are that proof.
+    - I1 purity.
+    - I3 parameter isolation, with the M4-lab shape as the explicit regression: `Normal(..., sd = 0)` on one fork leaves draws on another fork unchanged.
+    - Fork independence: different labels give different streams; the same label gives the same stream.
+    - Range checks.
+  - `Libraries/Random/Random.Stream.invalid.*.octfail`: compile-time contracts for argument count, every parameter type, type arguments, fallible arguments and redeclaration.
+  - `Libraries/RandomUsage`: use from another package, including that the bare builtin names are not reserved there, and `.octfail` contracts for a missing import and an unqualified name.
+  - Runtime preconditions (`i < 0`, `lo > hi`, `stddev < 0`): a fixture under `testdata/random_stream_preconditions` driven by `cmd/oct/random_stream_preconditions_test.go` (integration lane), which requires both lanes to stop with the same error. The original text of this milestone asked for `.octfail` contracts here; that was wrong, because `.octfail` is compile-time only and these are runtime failures. Non-finite arguments cannot be written as Oct literals and are covered by the M1 Go tests.
 - **Exit:**
   - Both lanes green and producing identical golden values.
   - `grep` finds no Philox code in `emit_go_runtime.go`.
+- **Verdict:** SUCCESS — see `internal/random/RANDOM_V2_M3.md`.
 
 ### M4 — Oct library layer
 - **Scope:** Implement §3.4 in Oct: `Random.Sampling.oct` (Chance, Exponential, Units, Normals, Spike), plus rewritten `Random.CoinToss.oct` and `Random.Dice.oct`. v1 remains for callers.
+- **Open issue (found in M3, needs a decision before M4 starts):** "v1 remains for callers" cannot hold as written. Oct has no overloading, and six §3.4 names are already v1 functions in package Random with different signatures: `Exponential`, `Spike`, `FlipCoin`, `FlipCoins`, `RollDie`, `RollDice`. The v2 versions cannot be added beside them. Proposed resolution: M4 replaces the v1 library layer and migrates its callers (the experiment files listed under M6) in the same milestone; M6 keeps the removal of the v1 natives, the docs and the recorded-output regeneration.
 - **Tests:**
   - I2 bulk–scalar identity.
   - `Child` sub-indexing for `FlipCoins` and `RollDice`.

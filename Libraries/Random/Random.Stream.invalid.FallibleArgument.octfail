@@ -1,0 +1,11 @@
+expect error: "fallible expression must be handled explicitly"
+
+package Random
+
+fn Index() -> Int ! Error {
+    return 3
+}
+
+fn Main() -> Float {
+    return Unit(Seeded(1), Index())
+}

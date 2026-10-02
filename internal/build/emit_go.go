@@ -352,6 +352,9 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		importSet["encoding/binary"] = struct{}{}
 		importSet["math/big"] = struct{}{}
 	}
+	if usesRandomStreamBuiltins(usedBuiltins) {
+		importSet[octrandomImportPath] = struct{}{}
+	}
 	imports := make([]string, 0, len(importSet))
 	for pkg := range importSet {
 		imports = append(imports, pkg)
@@ -425,7 +428,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		b.WriteString("type __octRange struct {\n\tStart int\n\tHasStart bool\n\tEnd int\n\tHasEnd bool\n\tStep int\n\tHasStep bool\n}\n\n")
 	}
 	if supportFeatures.NeedsClone {
-		b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")
+		b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tout.Set(value)\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")
 	}
 	if supportFeatures.NeedsRowAssign {
 		b.WriteString("func __octAssignRow[T any](matrix [][]T, row int, rhs []T) {\n\tif row < 0 || row >= len(matrix) { panic(fmt.Sprintf(\"runtime error: row index %d out of bounds for array with %d rows\", row, len(matrix))) }\n\tif len(rhs) != len(matrix[row]) { panic(fmt.Sprintf(\"runtime error: row length mismatch: expected %d, got %d\", len(matrix[row]), len(rhs))) }\n\tmatrix[row] = __octClone(rhs)\n}\n\n")
@@ -475,6 +478,11 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		}
 		if _, ok := emittedRecordTypes["Random.RandBoolResult"]; !ok {
 			b.WriteString("type Random_RandBoolResult struct {\n\tNext Random_Rng\n\tValue bool\n}\n\n")
+		}
+	}
+	if usesRandomStreamBuiltins(usedBuiltins) {
+		if _, ok := emittedRecordTypes["Random.Stream"]; !ok {
+			b.WriteString(randomStreamRecordType)
 		}
 	}
 	for _, e := range m.Enums {
@@ -557,6 +565,9 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	if needsRandomHelpers {
 		b.WriteString(__octRandomHelpers)
+	}
+	if usesRandomStreamBuiltins(usedBuiltins) {
+		b.WriteString(randomStreamHelpers)
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
 		b.WriteString(__octPrometheusHelpers)
@@ -1869,6 +1880,8 @@ func goStmt(s MIRStmt) (string, error) {
 				goElemType := goType(elemType)
 				return fmt.Sprintf("%s = func() [][]%s { __rows := int(%s); __cols := int(%s); __m := make([][]%s, __rows); for __r := 0; __r < __rows; __r++ { __row := make([]%s, __cols); for __c := 0; __c < __cols; __c++ { __row[__c] = %s(__r, __c) }; __m[__r] = __row }; return __m }()",
 					st.Target, goElemType, args[0], args[1], goElemType, goElemType, args[2]), nil
+			case "Random.Seeded", "Random.Fork", "Random.Child", "Random.Unit", "Random.Between", "Random.IntBetween", "Random.Normal":
+				return emitRandomStreamCall(st.Callee, st.Target, args)
 			case "Random.RngSeed":
 				return fmt.Sprintf("%s = __octRandomRngSeed(%s)", st.Target, args[0]), nil
 			case "Random.RandInt":
