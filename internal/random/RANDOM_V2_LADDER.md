@@ -1,6 +1,6 @@
 # Random v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-01.** M0–M4 are closed (`RANDOM_V2_M1.md` through `RANDOM_V2_M4.md`); M5 and M6 are not started.
+Status: **ACCEPTED 2026-10-01.** M0–M5 are closed (`RANDOM_V2_M1.md` through `RANDOM_V2_M5.md`); M6 is not started.
 Date: 2026-10-01
 
 This document supersedes `internal/random/Random.Core.md` as the
@@ -137,17 +137,26 @@ Removed with no replacement (each is a one-liner in the new API):
 ### 3.5 `Entropy` package
 
 ```oct
-package Entropy
-fn Seed() -> Int ! Error                            // for Random.Seeded(Entropy.Seed()!); record the value
-fn IntBetween(lo: Int, hi: Int) -> Int ! Error
-fn Unit() -> Float ! Error
-fn Bytes(count: Int) -> Bytes ! Error
+Entropy.Seed() -> Int ! Error                       // for Random.Seeded(Entropy.Seed()!); record the value
+Entropy.IntBetween(lo: Int, hi: Int) -> Int ! Error // uniform on the closed range, no modulo bias
+Entropy.Unit() -> Float ! Error                     // uniform on [0, 1), a multiple of 2^-53
+Entropy.Bytes(count: Int) -> Bytes ! Error
 ```
 
+`Entropy` is a compiler-owned namespace, like `Artifact`: the four functions
+are builtins with no Oct declarations, and calling them needs no `import`.
+`Libraries/Entropy` exists so that `import Entropy` resolves and so that the
+package has a manifest, a README and tests. The naming rule is the one that
+governs the Random v2 builtins: outside package Entropy only the qualified
+spelling names a builtin and the bare names are not reserved; inside it both
+spellings do, and the package cannot redeclare them.
+
 Domain violations (`lo > hi`, `count < 0`) are non-recoverable, not `Error`.
-Only OS entropy failure is an `Error`. Artifact evaluation rejects every
-`Entropy.*` call, carrying over the existing ambient-randomness guard.
-`CryptoFlipCoin*` and `CryptoRollDie*` are removed.
+Only OS entropy failure is an `Error`. Artifact evaluation and capability
+discovery reject every `Entropy.*` call before it reads anything, carrying
+over the existing ambient-randomness guard. `CryptoFlipCoin*` and
+`CryptoRollDie*` are removed and have no replacement: seed a stream and use
+the Random library, or call `Entropy.IntBetween`.
 
 ### 3.6 Global invariants
 
@@ -240,14 +249,20 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
 ### M5 — `Entropy` package
 - **Scope:**
   - Add `Libraries/Entropy` (§3.5), with natives registered through the M2 table and implemented in `octrandom` over `crypto/rand`.
-  - Bulk helpers use loops, not recursion.
-  - The artifact ambient-randomness guard covers `Entropy.*`.
+  - The table rows carry parameter types, and the typechecker checks argument count, argument types and fallibility from them, as for the Random v2 natives.
+  - The artifact ambient-randomness guard and the capability-discovery guard cover `Entropy.*`.
   - Remove the `Crypto*` coin and dice helpers that M4 left in `Random.CoinToss.oct` and `Random.Dice.oct`.
+  - The original text of this milestone also said "bulk helpers use loops, not recursion". §3.5 has no Oct helpers: the only bulk function, `Bytes`, is native. The line had nothing to apply to.
 - **Tests:**
-  - Smoke and range tests.
-  - `.octfail` for domain violations.
-  - Artifact-evaluation rejection test for `Entropy.Seed`.
+  - `Language/Builtins/Entropy/valid`: types, ranges and every handling form from another package without an import, in both lanes.
+  - `Language/Builtins/Entropy/invalid/*.octfail`: compile-time contracts for fallibility, argument count, every parameter type, result types, type arguments, the unqualified name outside the package, an unknown function and redeclaration.
+  - `Libraries/Entropy`: the unqualified spelling inside the package. `Libraries/RandomUsage`: seeding and replaying a stream, with `import Entropy`.
+  - Runtime preconditions (`lo > hi`, `count < 0`): added to the M3 fixture and Go test, including that `match` does not catch them. The original text asked for `.octfail` here; that was wrong for the reason given under M3.
+  - Artifact-evaluation rejection for each of the four builtins, and capability-discovery rejection for `Entropy.Seed`.
+  - Go tests in `internal/octrandom` with an injected source: the rejection loop, classification of precondition against source failure, and a short read.
+  - Source failure as an ordinary `Error`: `testdata/entropy_source_failure`, run in both lanes by `cmd/oct/entropy_source_failure_test.go` and `entropy_source_failure_compiled_test.go` against a source that always fails. The interpreted lane replaces the source in process. The compiled lane builds the generated program with the `octentropyfail` build tag, under which `internal/octrandom` reads from a failing source.
 - **Exit:** Both lanes green.
+- **Verdict:** SUCCESS — see `internal/random/RANDOM_V2_M5.md`.
 
 ### M6 — Migration and v1 removal
 - **Scope:**
@@ -256,11 +271,14 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
   - Regenerate `m2_random_*_summary.octagon` and any other recorded outputs, noting in each experiment's report that the regeneration came from the Random v2 stream change.
   - Delete:
     - `Rng`, `Rand*`, `RngSeed`, all `*Result` records, `Crypto*` from `Random`
+    - the `Legacy` flag and the three arity-check forms in the builtin table, which exist only for v1
     - the v1 natives, the xoshiro code, and the v1 `CompiledDispatch.*` tests
+  - Move the three fixtures that call `Random.CryptoRandBytes` to `Entropy.Bytes`: `Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest`, `Language/Testing/CompiledOctxiliary/valid/file_bytes_and_directory_m4.octest` and `Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest`. They call it without `import Random`, which v1 allows and v2 does not.
   - Update `Language/Types/Tuples/invalid/random_tuple_threading_rejected.octfail` so it no longer depends on `Random` (rename it to a neutral tuple contract).
   - Docs:
     - Retire `internal/random/Random.{Core,CoinToss,Dice,Distributions}.md` into one `Random.md` generated from this spec.
-    - Update `Libraries/Random/README.md` and add an `Entropy` README.
+    - Update `Libraries/Random/README.md` and `Libraries/Entropy/README.md` (written in M5).
+    - Add Random and Entropy to `Language/reference` (see `FEEDBACK.md`).
     - Mark the "Random API updates" section of `LIBRARY_MODERNIZATION_AFTER_POW_UNITS_RANDOM.md` superseded.
     - Bump the manifest to `0.2.0` and add a CHANGELOG entry.
 - **Exit:**

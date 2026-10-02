@@ -16,11 +16,11 @@ record Dependency {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "RandomUsage"
+        Name: "Entropy"
         Version: "0.1.0"
         Authors: ["Claude"]
         Date: "2026-10-02"
-        Description: "Contracts for using the Random v2 stream builtins and Entropy from another package"
-        Dependencies: [Dependency { Name: "Random" VersionRequirement: "0.1.0" }, Dependency { Name: "Entropy" VersionRequirement: "0.1.0" }]
+        Description: "Draws from the operating system random source: not reproducible, fallible, rejected in artifact evaluation"
+        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
     }
 }

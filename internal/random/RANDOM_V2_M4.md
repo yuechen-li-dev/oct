@@ -160,3 +160,18 @@ No `Assert.True(false, ...)` dispatch stub remains in the v2 sources
 
 - Windows and arm64.
 - The `toolchain`-tagged Go lane and the slow wrapper lanes.
+
+## Addendum (2026-10-02, from M5)
+
+The interpreted row of the evidence table above is wrong. Its figures, 2148
+pass / 59 fail before and 2162 pass / 58 fail after, were read from the sweep
+files when the interpreted sweep had covered 340 of the 348 directories. The
+completed files give 2359 pass / 60 fail before and 2373 pass / 59 fail after.
+The eight directories that were missing are `Libraries/Tensor2D` through
+`Libraries/Wireless`; none of them uses Random.
+
+The comparison itself is unchanged: the lines that differ between the two
+completed files are the 12 removed and 25 added Random tests and the one
+load-sensitive test named above. The compiled row was read from completed
+files and is correct. M5 checks for the sweep's completion marker before it
+reads a count.

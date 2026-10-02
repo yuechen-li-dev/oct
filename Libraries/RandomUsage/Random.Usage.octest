@@ -1,6 +1,7 @@
 package RandomUsage
 
 import Random
+import Entropy
 
 // The Random v2 builtins are named only in their qualified spelling outside
 // package Random, so these ordinary words stay free for other packages.
@@ -100,6 +101,22 @@ fn StreamsDriveAFlowByTick() -> Void {
     let total = Assert.LGTM(Result(machine), "flow result")
     let noise = Random.Fork(Random.Seeded(42), "flow")
     Assert.Equal(Random.Unit(noise, 0) + Random.Unit(noise, 1) + Random.Unit(noise, 2), total, "the flow draws by tick index")
+}
+
+// Entropy is the one place nondeterminism enters. A program draws a seed
+// once, and every draw after that is a function of the seed. Entropy is a
+// compiler-owned namespace, so the import above is allowed and not required.
+[Fact]
+fn AnEntropySeedStartsAReproducibleStream() -> Void {
+    let seed: Int = Entropy.Seed()!
+    let root = Random.Seeded(seed)
+    let replay = Random.Seeded(seed)
+    Assert.Equal(replay, root, "the same seed gives the same stream")
+    for i in 0..20 {
+        Assert.Equal(Random.Unit(replay, i), Random.Unit(root, i), "a recorded seed replays every draw")
+    }
+    let roll = Random.IntBetween(Random.Fork(root, "dice"), 0, 1, 6)
+    Assert.True(roll >= 1 and roll <= 6, "a stream seeded from entropy draws in range")
 }
 
 // The library layer above the builtins is ordinary Oct code in package Random.

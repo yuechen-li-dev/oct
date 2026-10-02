@@ -1,0 +1,7 @@
+expect error: "function 'Entropy.Bytes' expects 1 argument, got 0"
+
+package Main
+
+fn Main() -> Int {
+    return Len(Entropy.Bytes()!)
+}

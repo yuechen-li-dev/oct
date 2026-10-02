@@ -12,12 +12,16 @@ import (
 )
 
 // isUnreservedRandomBuiltinCall reports whether callee, as called from package
-// pkgName, is a Random builtin that builtin.IsName does not report: an
-// unqualified Random v2 name, which resolves only inside package Random. The
-// package comparison comes first because this runs on every direct call the
-// interpreter evaluates.
+// pkgName, is a Random or Entropy builtin that builtin.IsName does not report:
+// an unqualified non-legacy name, which resolves only inside the builtin's own
+// package. The package comparison comes first because this runs on every
+// direct call the interpreter evaluates.
 func isUnreservedRandomBuiltinCall(callee string, pkgName string) bool {
-	return pkgName == builtin.RandomNamespace && builtin.IsRandomSymbol(callee)
+	if !builtin.IsRandomNamespace(pkgName) {
+		return false
+	}
+	_, ok := builtin.LookupRandomIn(pkgName, callee)
+	return ok
 }
 
 // randomStreamValue builds the record Stream for code running in package
@@ -93,11 +97,45 @@ func evalRandomStreamBuiltin(random builtin.RandomBuiltin, pkgName string, args 
 	return value, nil
 }
 
-// isEntropyRandomBuiltin reports whether callee, in either spelling, is a
-// Random builtin that reads ambient operating-system entropy.
-func isEntropyRandomBuiltin(callee string) bool {
-	random, ok := builtin.LookupRandom(callee)
+// isEntropyRandomBuiltin reports whether callee, as called from package
+// pkgName, is a builtin that reads ambient operating-system entropy.
+func isEntropyRandomBuiltin(callee string, pkgName string) bool {
+	random, ok := builtin.ResolveRandomCall(callee, pkgName)
 	return ok && random.Kind == builtin.RandomEntropy
+}
+
+// evalEntropyBuiltin executes an Entropy builtin. A violated precondition is a
+// runtime error, as it is for a Random builtin. A failure of the operating
+// system's random source is the only Error the call returns to the program.
+func evalEntropyBuiltin(random builtin.RandomBuiltin, args []Value) (evalResult, error) {
+	if len(args) != len(random.Parameters) {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects %d arguments, got %d", random.Name(), len(random.Parameters), len(args))
+	}
+	var value Value
+	var err error
+	switch random.Implementation() {
+	case "Entropy.Seed":
+		value.Kind = ValueInt
+		value.Int, err = octrandom.EntropySeed()
+	case "Entropy.IntBetween":
+		value.Kind = ValueInt
+		value.Int, err = octrandom.EntropyIntBetween(args[0].Int, args[1].Int)
+	case "Entropy.Unit":
+		value.Kind = ValueFloat
+		value.Float, err = octrandom.EntropyUnit()
+	case "Entropy.Bytes":
+		value.Kind = ValueBytes
+		value.Bytes, err = octrandom.EntropyBytes(args[0].Int)
+	default:
+		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported built-in function %s", random.Name())
+	}
+	if err != nil {
+		if octrandom.IsPrecondition(err) {
+			return evalResult{}, fmt.Errorf("runtime error: %w", err)
+		}
+		return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil
+	}
+	return evalResult{value: value}, nil
 }
 
 func randomNext(s [4]uint64) ([4]uint64, uint64) {

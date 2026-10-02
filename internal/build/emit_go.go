@@ -352,7 +352,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		importSet["encoding/binary"] = struct{}{}
 		importSet["math/big"] = struct{}{}
 	}
-	if usesRandomStreamBuiltins(usedBuiltins) {
+	if usesRandomStreamBuiltins(usedBuiltins) || usesEntropyBuiltins(usedBuiltins) {
 		importSet[octrandomImportPath] = struct{}{}
 	}
 	imports := make([]string, 0, len(importSet))
@@ -568,6 +568,9 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	if usesRandomStreamBuiltins(usedBuiltins) {
 		b.WriteString(randomStreamHelpers)
+	}
+	if usesEntropyBuiltins(usedBuiltins) {
+		b.WriteString(entropyHelpers)
 	}
 	if usedBuiltins["PrometheusMatMulMM"] {
 		b.WriteString(__octPrometheusHelpers)
@@ -1882,6 +1885,8 @@ func goStmt(s MIRStmt) (string, error) {
 					st.Target, goElemType, args[0], args[1], goElemType, goElemType, args[2]), nil
 			case "Random.Seeded", "Random.Fork", "Random.Child", "Random.Unit", "Random.Between", "Random.IntBetween", "Random.Normal":
 				return emitRandomStreamCall(st.Callee, st.Target, args)
+			case "Entropy.Seed", "Entropy.IntBetween", "Entropy.Unit", "Entropy.Bytes":
+				return emitEntropyCall(st.Callee, st.Target, args)
 			case "Random.RngSeed":
 				return fmt.Sprintf("%s = __octRandomRngSeed(%s)", st.Target, args[0]), nil
 			case "Random.RandInt":

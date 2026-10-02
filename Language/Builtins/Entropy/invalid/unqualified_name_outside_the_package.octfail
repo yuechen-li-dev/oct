@@ -1,0 +1,8 @@
+expect error: "undefined variable: Seed"
+
+package Main
+
+// Outside package Entropy only the qualified spelling names the builtin.
+fn Main() -> Int {
+    return Seed()!
+}

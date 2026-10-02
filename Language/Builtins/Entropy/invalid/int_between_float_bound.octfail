@@ -1,0 +1,7 @@
+expect error: "function 'Entropy.IntBetween' argument 1 expects Int, got Float"
+
+package Main
+
+fn Main() -> Int {
+    return Entropy.IntBetween(1.0, 6)!
+}

@@ -2,8 +2,8 @@ package RandomStreamPreconditions
 
 import Random
 
-// Every fact in this file violates one precondition of Random v2, in a native
-// builtin or in a library function, and is expected to stop with a
+// Every fact in this file violates one precondition of Random v2 or Entropy,
+// in a native builtin or in a library function, and is expected to stop with a
 // non-recoverable runtime failure. The file is a fixture for
 // cmd/oct/random_stream_preconditions_test.go, which checks that the
 // interpreted and compiled lanes report the same error. It is kept out of the
@@ -146,4 +146,37 @@ fn FlipCoinRejectsNegativeIndex() -> Void {
 fn RollDiceRejectsNegativeIndex() -> Void {
     let rolls = Random.RollDice(Random.Seeded(1), NegativeOne(), 2, 6)
     Assert.True(false, "unreachable")
+}
+
+// Entropy builtins are fallible, but only for a failure of the operating
+// system's random source. A violated precondition is the same non-recoverable
+// runtime failure as in package Random.
+[Fact]
+fn EntropyIntBetweenRejectsReversedBounds() -> Void {
+    let x = Entropy.IntBetween(6, 1)!
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn EntropyBytesRejectsNegativeCount() -> Void {
+    let payload = Entropy.Bytes(NegativeOne())!
+    Assert.True(false, "unreachable")
+}
+
+// If a violated precondition were an Error, the err arm would run and these
+// two facts would pass.
+[Fact]
+fn EntropyIntBetweenPreconditionIsNotAnError() -> Void {
+    match Entropy.IntBetween(6, 1) {
+        ok(value) => { Assert.True(false, "unreachable") }
+        err(reason) => { return }
+    }
+}
+
+[Fact]
+fn EntropyBytesPreconditionIsNotAnError() -> Void {
+    match Entropy.Bytes(NegativeOne()) {
+        ok(payload) => { Assert.True(false, "unreachable") }
+        err(reason) => { return }
+    }
 }

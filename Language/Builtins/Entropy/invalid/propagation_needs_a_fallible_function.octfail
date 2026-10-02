@@ -1,0 +1,7 @@
+expect error: "cannot use '?' in infallible function"
+
+package Main
+
+fn Main() -> Int {
+    return Entropy.Seed()?
+}

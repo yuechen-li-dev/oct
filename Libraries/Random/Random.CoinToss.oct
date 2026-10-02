@@ -52,34 +52,3 @@ fn CoinSideToString(side: CoinSide) -> String {
         else => "Tails"
     }
 }
-
-// Entropy-backed coins (Random v1). These move to the Entropy package in
-// ladder milestone M5.
-
-fn CryptoFlipCoin() -> CoinSide ! Error {
-    return CryptoFlipBiasedCoin(0.5)!
-}
-
-fn CryptoFlipBiasedCoin(pHeads: Float) -> CoinSide ! Error {
-    let draw = CryptoRandFloat01()!
-    if draw < pHeads {
-        return CoinSide.Heads
-    }
-    return CoinSide.Tails
-}
-
-fn CryptoFlipCoins(count: Int) -> CoinSide[] ! Error {
-    let flips: CoinSide[] = []
-    return CryptoFlipCoinsInto(flips, count)!
-}
-
-fn CryptoFlipCoinsInto(flips: CoinSide[], remaining: Int) -> CoinSide[] ! Error {
-    if remaining < 0 {
-        return error("CryptoFlipCoins requires count >= 0")
-    }
-    if remaining == 0 {
-        return flips
-    }
-    let next = Append(flips, CryptoFlipCoin()!)
-    return CryptoFlipCoinsInto(next, remaining - 1)!
-}

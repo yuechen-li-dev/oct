@@ -134,16 +134,3 @@ fn AdvantageAndDisadvantageKeepTheHigherAndLowerOfTheSameTwoDice() -> Void {
     }
     Assert.True(strictlyHigher > 400, "the two dice usually differ")
 }
-
-[Fact]
-fn CryptoDiceHelpersSmokeAndValidation() -> Void {
-    let cryptoD6 = CryptoRollDie(6)!
-    Assert.True(cryptoD6 >= 0, "crypto d6 non-negative smoke")
-    let cryptoD20 = CryptoRollD20()!
-    Assert.True(cryptoD20 >= 0, "crypto d20 non-negative smoke")
-    let cryptoMany = CryptoRollDice(3, 6)!
-    Assert.Equal(3, Len(cryptoMany), "crypto count")
-    Assert.Error(CryptoRollDie(1), "crypto roll die sides<2 should fail")
-    Assert.Error(CryptoRollDice(0 - 1, 6), "crypto roll dice count<0 should fail")
-    Assert.Error(CryptoRollDice(2, 1), "crypto roll dice sides<2 should fail")
-}

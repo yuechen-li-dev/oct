@@ -1,0 +1,28 @@
+package Entropy
+
+// The contracts for the Entropy builtins, as other packages use them, are in
+// Language/Builtins/Entropy. This file covers what only package Entropy can
+// show: inside the package the unqualified name is the builtin too, as it is
+// inside package Random.
+
+[Fact]
+fn UnqualifiedNamesAreTheBuiltinsInsidePackageEntropy() -> Void {
+    let seed: Int = Seed()!
+    let other: Int = Entropy.Seed()!
+    Assert.True(seed != other, "two seeds are equal with probability 2^-64")
+
+    let roll: Int = IntBetween(1, 6)!
+    Assert.True(roll >= 1 and roll <= 6, "IntBetween is in its closed range")
+    Assert.Equal(4, IntBetween(4, 4)!, "lo == hi returns lo")
+
+    let unit: Float = Unit()!
+    Assert.True(unit >= 0.0 and unit < 1.0, "Unit is in [0, 1)")
+
+    let payload: Bytes = Bytes(16)!
+    Assert.Equal(16, Len(payload), "Bytes has the requested length")
+}
+
+[Fact]
+fn NamespaceMarkerGivesThePackageADeclaration() -> Void {
+    Assert.Equal(0, _EntropyNamespaceMarker(), "import Entropy resolves to this package")
+}

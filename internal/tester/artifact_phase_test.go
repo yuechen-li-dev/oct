@@ -91,6 +91,7 @@ func TestConceptCapabilityDeclarationAndBrokerDiagnostics(t *testing.T) {
 		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "missing_provider.octest"), "is not a package-local function"},
 		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "request_must_be_concept.octest"), "requires a package-local record Concept"},
 		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "effectful_discovery.octest"), "not statically discoverable"},
+		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "entropy_discovery.octest"), "not statically discoverable: provider attempted effectful operation Entropy.Seed"},
 		{conceptCapabilitiesM2Fixture("no_request_artifact.octest"), "was not requested"},
 	}
 	for _, tc := range cases {
@@ -214,6 +215,10 @@ func TestArtifactCapabilityRejectsUnsafePathsDuplicatesEffectsAndFailures(t *tes
 		{"absolute_path.octest", "must be non-empty and relative"},
 		{"duplicate_output.octest", "duplicate artifact output path"},
 		{"ambient_write.octest", "outside Artifact.Write*"},
+		{"ambient_entropy_seed.octest", "artifact evaluation rejected ambient randomness operation Entropy.Seed"},
+		{"ambient_entropy_int_between.octest", "artifact evaluation rejected ambient randomness operation Entropy.IntBetween"},
+		{"ambient_entropy_unit.octest", "artifact evaluation rejected ambient randomness operation Entropy.Unit"},
+		{"ambient_entropy_bytes.octest", "artifact evaluation rejected ambient randomness operation Entropy.Bytes"},
 		{"fallible_failure.octest", "artifact failure is visible"},
 		{"static_assert_duplicate.octest", "static assertion failed in RejectDuplicateIDs: duplicate ID 7"},
 		{"static_assert_unsorted.octest", "static assertion failed in RejectUnsortedIndex: row-ID index is not sorted"},
@@ -227,7 +232,7 @@ func TestArtifactCapabilityRejectsUnsafePathsDuplicatesEffectsAndFailures(t *tes
 			if err == nil || !strings.Contains(stdout.String()+err.Error(), tc.want) {
 				t.Fatalf("expected %q, got err=%v output=%s", tc.want, err, stdout.String())
 			}
-			if tc.file == "fallible_failure.octest" {
+			if tc.file == "fallible_failure.octest" || strings.HasPrefix(tc.file, "ambient_entropy_") {
 				if _, statErr := os.Stat(filepath.Join(outputRoot, "must-not-publish.txt")); !os.IsNotExist(statErr) {
 					t.Fatalf("failed artifact evaluation published staged output: %v", statErr)
 				}

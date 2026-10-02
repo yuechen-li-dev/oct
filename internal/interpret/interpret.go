@@ -3042,7 +3042,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 	if err := builtin.ValidateCallShape(callee, len(argumentExprs), len(typeArguments)); err != nil {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %w", err)
 	}
-	if i.requestDiscovery && (callee == "Print" || isEntropyRandomBuiltin(callee) || callee == "WriteOctagon" || callee == "LoadOctagon" || callee == "JsonLoadStructured") {
+	if i.requestDiscovery && (callee == "Print" || isEntropyRandomBuiltin(callee, pkgName) || callee == "WriteOctagon" || callee == "LoadOctagon" || callee == "JsonLoadStructured") {
 		return evalResult{}, fmt.Errorf("capability request is not statically discoverable: provider attempted effectful operation %s", callee)
 	}
 	if callee == "PlotLine" || callee == "PlotScatter" {
@@ -3096,6 +3096,9 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 				return evalResult{hasError: true, errorVal: r.errorVal}, nil
 			}
 			args = append(args, r.value)
+		}
+		if random.Namespace == builtin.EntropyNamespace {
+			return evalEntropyBuiltin(random, args)
 		}
 		if !random.Legacy {
 			value, err := evalRandomStreamBuiltin(random, pkgName, args)

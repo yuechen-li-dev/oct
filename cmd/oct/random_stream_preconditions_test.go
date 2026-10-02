@@ -7,12 +7,14 @@ import (
 	"testing"
 )
 
-// A violated precondition in Random v2 is a non-recoverable runtime failure,
-// which an .octest cannot assert and an .octfail (compile-time only) cannot
-// express. This runtime-boundary check runs a fixture whose facts each violate
-// one precondition and requires both execution lanes to stop every fact with
-// the same text: a runtime error from internal/octrandom for a native
-// builtin, and a failed Assert.True for the Oct library layer above it.
+// A violated precondition in Random v2 or Entropy is a non-recoverable runtime
+// failure, which an .octest cannot assert and an .octfail (compile-time only)
+// cannot express. This runtime-boundary check runs a fixture whose facts each
+// violate one precondition and requires both execution lanes to stop every
+// fact with the same text: a runtime error from internal/octrandom for a
+// native builtin, and a failed Assert.True for the Oct library layer above it.
+// For Entropy it also shows that the failure is not an Error a program can
+// handle.
 func TestRandomStreamPreconditionsStopBothLanesWithTheSameError(t *testing.T) {
 	fixture := repoPath(t, "testdata", "random_stream_preconditions")
 	const negativeIndex = "runtime error: random: index must be >= 0"
@@ -40,6 +42,11 @@ func TestRandomStreamPreconditionsStopBothLanesWithTheSameError(t *testing.T) {
 		"RollWithAdvantageRejectsOneSide":  "assertion failed: RollDice requires sides >= 2",
 		"FlipCoinRejectsNegativeIndex":     negativeIndex,
 		"RollDiceRejectsNegativeIndex":     negativeIndex,
+
+		"EntropyIntBetweenRejectsReversedBounds":    "runtime error: entropy: IntBetween requires lo <= hi",
+		"EntropyBytesRejectsNegativeCount":          "runtime error: entropy: Bytes requires count >= 0",
+		"EntropyIntBetweenPreconditionIsNotAnError": "runtime error: entropy: IntBetween requires lo <= hi",
+		"EntropyBytesPreconditionIsNotAnError":      "runtime error: entropy: Bytes requires count >= 0",
 	}
 
 	for _, execution := range []string{"interpreted", "compiled"} {

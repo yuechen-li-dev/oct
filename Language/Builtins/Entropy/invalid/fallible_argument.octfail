@@ -1,0 +1,8 @@
+expect error: "fallible expression must be handled explicitly"
+
+package Main
+
+// A fallible argument must be handled before the call, as for any function.
+fn Main() -> Int {
+    return Entropy.IntBetween(Entropy.Seed(), 6)!
+}

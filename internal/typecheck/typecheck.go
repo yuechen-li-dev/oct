@@ -563,10 +563,12 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 	}
 
 	for _, function := range file.Functions {
-		if builtin.IsName(function.Name) && !(file.Package == builtin.RandomNamespace && builtin.IsRandomSymbol(function.Name)) {
-			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
-		}
-		if random, ok := builtin.ResolveRandomCall(function.Name, file.Package); ok && !random.Legacy {
+		// A legacy Random builtin is declared as a stub inside package Random.
+		// No other builtin may be declared: a reserved name in any package, or
+		// the unqualified name of a builtin inside the builtin's own package.
+		random, ownsBuiltin := builtin.LookupRandomIn(file.Package, function.Name)
+		isLegacyStub := ownsBuiltin && random.Legacy
+		if (builtin.IsName(function.Name) || ownsBuiltin) && !isLegacyStub {
 			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
 		}
 		if _, exists := c.functions[function.Name]; exists {
@@ -3327,7 +3329,7 @@ regularCall:
 	}
 	if hasDirectName {
 		if random, ok := builtin.ResolveRandomCall(calleeName, c.packageName); ok && !random.Legacy {
-			return c.checkRandomStreamCall(scope, calleeName, random, expr.TypeArguments, expr.Arguments, ctx)
+			return c.checkRandomTableCall(scope, calleeName, random, expr.TypeArguments, expr.Arguments, ctx)
 		}
 	}
 	if hasDirectName && builtin.IsName(calleeName) {
@@ -3368,6 +3370,11 @@ regularCall:
 			symbol := calleeName[dot+1:]
 			imported, ok := c.importedPackages[pkgName]
 			if !ok {
+				// A compiler-owned namespace exists without an import, so the
+				// missing thing is the function and not the package.
+				if builtin.IsCompilerOwnedNamespace(pkgName) {
+					return ExprType{}, fmt.Errorf("package '%s' has no function '%s'", pkgName, symbol)
+				}
 				return ExprType{}, fmt.Errorf("unknown package '%s'", pkgName)
 			}
 			if _, exists := imported.records[symbol]; exists {
@@ -3807,15 +3814,16 @@ func (c checker) randomPackageType(record string) Type {
 	return Type{Name: builtin.RandomNamespace + "." + record}
 }
 
-// checkRandomStreamCall types a call to a Random v2 builtin from its entry in
-// the builtin table: the import, the argument count and every argument type.
-// callee is the name as written. The caller has already established that the
-// name resolves from the checked package, so an unqualified callee only
-// arrives here from inside package Random.
-func (c checker) checkRandomStreamCall(scope *scope, callee string, random builtin.RandomBuiltin, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
-	if c.packageName != builtin.RandomNamespace {
-		if _, imported := c.importedPackages[builtin.RandomNamespace]; !imported {
-			return ExprType{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", builtin.RandomNamespace, builtin.RandomNamespace)
+// checkRandomTableCall types a call to a non-legacy Random or Entropy builtin
+// from its entry in the builtin table: the import, the argument count, every
+// argument type and fallibility. callee is the name as written. The caller has
+// already established that the name resolves from the checked package, so an
+// unqualified callee only arrives here from inside the builtin's own package.
+// A compiler-owned namespace, such as Entropy, needs no import.
+func (c checker) checkRandomTableCall(scope *scope, callee string, random builtin.RandomBuiltin, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if c.packageName != random.Namespace && !builtin.IsCompilerOwnedNamespace(random.Namespace) {
+		if _, imported := c.importedPackages[random.Namespace]; !imported {
+			return ExprType{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", random.Namespace, random.Namespace)
 		}
 	}
 	if len(typeArguments) > 0 {
@@ -3848,7 +3856,7 @@ func (c checker) checkRandomStreamCall(scope *scope, callee string, random built
 	if random.ResultInPackage {
 		result = c.randomPackageType(random.Result)
 	}
-	return ExprType{ValueType: result}, nil
+	return ExprType{ValueType: result, Fallible: random.Fallible}, nil
 }
 
 // checkLegacyRandomBuiltinCall types a call to a Random v1 builtin from its

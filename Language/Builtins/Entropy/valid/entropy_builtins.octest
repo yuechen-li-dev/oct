@@ -1,0 +1,126 @@
+package Main
+
+// Entropy is a compiler-owned namespace: its four builtins draw from the
+// operating system's random source and need no import. They are not
+// reproducible, so these facts assert types, ranges and fallibility. A fact
+// that says two draws differ can fail by chance; each states its probability.
+
+// The builtin names are reserved only in their qualified spelling, so these
+// ordinary words stay free for other packages.
+fn Seed() -> Int {
+    return 7
+}
+
+fn Unit() -> Float {
+    return 0.25
+}
+
+fn IntBetween(lo: Int, hi: Int) -> Int {
+    return hi - lo
+}
+
+fn Bytes(count: Int) -> Int {
+    return count + 1
+}
+
+fn RollPair() -> Int ! Error {
+    let first = Entropy.IntBetween(1, 6)?
+    let second = Entropy.IntBetween(1, 6)?
+    return first + second
+}
+
+fn SeedOr(fallback: Int) -> Int {
+    match Entropy.Seed() {
+        ok(seed) => { return seed }
+        err(reason) => { return fallback }
+    }
+}
+
+[Fact]
+fn SeedIsAFallibleIntThatDoesNotRepeat() -> Void {
+    let first: Int = Entropy.Seed()!
+    let second: Int = Entropy.Seed()!
+    Assert.True(first != second, "two seeds are equal with probability 2^-64")
+    Assert.True(SeedOr(0) != SeedOr(0), "a seed handled with match is still a fresh seed")
+}
+
+[Fact]
+fn IntBetweenStaysInItsClosedRangeAndReachesEveryValue() -> Void {
+    var counts = [0, 0, 0, 0, 0, 0]
+    for i in 0..600 {
+        let roll: Int = Entropy.IntBetween(1, 6)!
+        Assert.True(roll >= 1 and roll <= 6, "a d6 roll is in [1, 6]")
+        counts[roll - 1] = counts[roll - 1] + 1
+    }
+    for face in 0..6 {
+        Assert.True(counts[face] > 0, "600 rolls miss a face with probability below 10^-46")
+    }
+}
+
+[Fact]
+fn IntBetweenAcceptsDegenerateNegativeAndWideRanges() -> Void {
+    Assert.Equal(3, Entropy.IntBetween(3, 3)!, "lo == hi returns lo")
+    Assert.Equal(-9, Entropy.IntBetween(-9, -9)!, "lo == hi below zero")
+    for i in 0..200 {
+        let x = Entropy.IntBetween(-5, 5)!
+        Assert.True(x >= -5 and x <= 5, "a range that spans zero")
+    }
+    let low = -4611686018427387904
+    let high = 4611686018427387903
+    var distinct = false
+    let first = Entropy.IntBetween(low, high)!
+    for i in 0..8 {
+        let x = Entropy.IntBetween(low, high)!
+        Assert.True(x >= low and x <= high, "a 63-bit range")
+        if x != first {
+            distinct = true
+        }
+    }
+    Assert.True(distinct, "nine equal draws from a 63-bit range have probability 2^-504")
+}
+
+[Fact]
+fn UnitIsAFloatInTheHalfOpenUnitInterval() -> Void {
+    var sum = 0.0
+    for i in 0..2000 {
+        let u: Float = Entropy.Unit()!
+        Assert.True(u >= 0.0 and u < 1.0, "Unit is in [0, 1)")
+        sum = sum + u
+    }
+    let mean = sum / 2000.0
+    Assert.True(mean > 0.4 and mean < 0.6, "the mean of 2000 draws is 15 standard deviations inside (0.4, 0.6)")
+}
+
+[Fact]
+fn BytesHasTheRequestedLength() -> Void {
+    Assert.Equal(0, Len(Entropy.Bytes(0)!), "count 0 gives an empty payload")
+    Assert.Equal(1, Len(Entropy.Bytes(1)!), "count 1")
+    Assert.Equal(4096, Len(Entropy.Bytes(4096)!), "count 4096")
+
+    let payload: Bytes = Entropy.Bytes(32)!
+    Assert.Equal(32, Len(payload), "count 32")
+    var nonZero = 0
+    for i in 0..32 {
+        Assert.True(payload[i] >= 0 and payload[i] <= 255, "a byte is in [0, 255]")
+        if payload[i] != 0 {
+            nonZero = nonZero + 1
+        }
+    }
+    Assert.True(nonZero > 0, "32 zero bytes have probability 2^-256")
+}
+
+[Fact]
+fn EveryHandlingFormApplies() -> Void {
+    let pair = RollPair()!
+    Assert.True(pair >= 2 and pair <= 12, "? propagates through a fallible function")
+    let seed = SeedOr(0)
+    Assert.True(seed == seed, "match handles the Error arm")
+}
+
+[Fact]
+fn BuiltinNamesAreNotReservedOutsidePackageEntropy() -> Void {
+    Assert.Equal(7, Seed(), "a package may define its own Seed")
+    Assert.Equal(0.25, Unit(), "a package may define its own Unit")
+    Assert.Equal(4, IntBetween(1, 5), "a package may define its own IntBetween")
+    Assert.Equal(9, Bytes(8), "a package may define its own Bytes")
+}

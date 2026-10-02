@@ -1,0 +1,11 @@
+expect error: "function Bytes: cannot redeclare built-in function"
+
+package Entropy
+
+fn Bytes(count: Int) -> Int {
+    return count
+}
+
+fn Main() -> Int {
+    return Bytes(1)
+}

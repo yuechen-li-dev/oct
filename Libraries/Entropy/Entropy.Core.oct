@@ -1,0 +1,8 @@
+package Entropy
+
+// Entropy is a compiler-owned namespace: Seed, IntBetween, Unit and Bytes are
+// builtins, implemented in Go for both execution lanes, and need no import.
+// This file gives the namespace a package so that `import Entropy` resolves.
+fn _EntropyNamespaceMarker() -> Int {
+    return 0
+}

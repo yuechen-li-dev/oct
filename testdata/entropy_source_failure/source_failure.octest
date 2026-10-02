@@ -1,0 +1,59 @@
+package EntropySourceFailure
+
+// This file is a fixture for cmd/oct/entropy_source_failure_test.go, which
+// runs it with the operating system's random source replaced by one that
+// fails. It is the only way to reach the Error an Entropy builtin returns.
+// It is kept out of the Libraries and Language lanes because its facts are
+// written for a failing source: two fail by design, and with a working source
+// most of the others fail too.
+
+fn SeedOrMinusOne() -> Int {
+    match Entropy.Seed() {
+        ok(seed) => { return seed }
+        err(reason) => { return -1 }
+    }
+}
+
+fn Propagated() -> Int ! Error {
+    let roll = Entropy.IntBetween(1, 6)?
+    return roll
+}
+
+[Fact]
+fn EveryBuiltinReturnsAnError() -> Void {
+    Assert.Error(Entropy.Seed(), "Seed")
+    Assert.Error(Entropy.IntBetween(1, 6), "IntBetween")
+    Assert.Error(Entropy.IntBetween(3, 3), "IntBetween with lo == hi still reads the source")
+    Assert.Error(Entropy.Unit(), "Unit")
+    Assert.Error(Entropy.Bytes(16), "Bytes")
+}
+
+[Fact]
+fn AnEmptyPayloadNeedsNoEntropy() -> Void {
+    Assert.Equal(0, Len(Entropy.Bytes(0)!), "count 0 reads nothing")
+}
+
+[Fact]
+fn MatchTakesTheErrArm() -> Void {
+    Assert.Equal(-1, SeedOrMinusOne(), "the program handles the failure")
+}
+
+[Fact]
+fn TheErrorPropagates() -> Void {
+    Assert.Error(Propagated(), "? passes the failure to the caller")
+}
+
+// Expected to fail: asserting success on a failed read stops the program with
+// the source failure.
+[Fact]
+fn UnwrapStopsWithTheSourceFailure() -> Void {
+    let seed = Entropy.Seed()!
+    Assert.True(false, "unreachable")
+}
+
+// Expected to fail: a precondition is checked before the source is read, and
+// stays a runtime error.
+[Fact]
+fn APreconditionIsStillARuntimeError() -> Void {
+    Assert.Error(Entropy.IntBetween(6, 1), "unreachable")
+}
