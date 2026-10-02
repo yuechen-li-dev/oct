@@ -1,5 +1,7 @@
 # Random.Core (M0 Oct-Shaped Edition)
 
+> **Superseded (2026-10-01).** The record-result / `Next` threading model described here is retired by Random v2. The source of truth for the Random API shape is now `internal/random/RANDOM_V2_LADDER.md`. This document describes the v1 API, which stays in service until ladder milestone M6 removes it.
+
 This document defines the **Oct-shaped** public design for `Random.Core`.
 
 Tuple-threaded public APIs are rejected for Random. Random draws are modeled as explicit state transitions using **records** with named fields.
