@@ -1,6 +1,6 @@
 # Random v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-01.** M0 and M1 are closed (`RANDOM_V2_M1.md`); M2–M6 are not started.
+Status: **ACCEPTED 2026-10-01.** M0, M1 and M2 are closed (`RANDOM_V2_M1.md`, `RANDOM_V2_M2.md`); M3–M6 are not started.
 Date: 2026-10-01
 
 This document supersedes `internal/random/Random.Core.md` as the
@@ -175,7 +175,7 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
 
 ### M2 — Builtin registry consolidation (no behavior change)
 - **Scope:**
-  - Replace the scattered Random name lists (F9) with one table in `internal/builtin`: qualified name, unqualified alias policy, signature, lane hooks.
+  - Replace the scattered Random name lists (F9) with one table in `internal/builtin`: qualified name, unqualified alias policy, signature, and the name of the implementing builtin. Execution stays in the interpreter and the backend, keyed by that name, as `internal/builtin/definition.go` already requires for every other builtin.
   - `typecheck`, `interpret`, `build/lower*` and `emit_go*` consult the table.
   - The v1 API is still the one being served.
 - **Exit:**
@@ -183,10 +183,12 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
   - `go test ./internal/builtin ./internal/typecheck ./internal/interpret ./internal/build` is green.
   - `oct test Libraries/Random` is green in both the default and `--execution compiled` lanes, with no test edits.
 - **Rationale:** Separating plumbing from the API change keeps one variable per milestone. If M3 breaks, the registry is already proven.
+- **Verdict:** SUCCESS — see `internal/random/RANDOM_V2_M2.md`.
 
 ### M3 — Native v2 primitives wired, both lanes
 - **Scope:**
   - Register the §3.3 natives through the M2 table.
+  - The table rows for the v2 natives carry parameter types, and the typechecker checks both argument count and argument types from them. v1 checks neither argument types nor the entropy builtins' argument count (M2 report, "v1 defects"); v2 must not inherit that.
   - The interpreter calls `octrandom` directly. Generated programs import `github.com/yuechen-li-dev/oct/internal/octrandom` through the existing staged-build path.
   - Add a new `Random.Stream.oct` declaring `Stream` and the native signatures. The v1 API stays side by side, untouched.
 - **Tests:** `Libraries/Random/Random.Stream.octest`, run in both lanes:

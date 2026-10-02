@@ -6,7 +6,16 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+
+	"github.com/yuechen-li-dev/oct/internal/builtin"
 )
+
+// isEntropyRandomBuiltin reports whether callee, in either spelling, is a
+// Random builtin that reads ambient operating-system entropy.
+func isEntropyRandomBuiltin(callee string) bool {
+	random, ok := builtin.LookupRandom(callee)
+	return ok && random.Kind == builtin.RandomEntropy
+}
 
 func randomNext(s [4]uint64) ([4]uint64, uint64) {
 	result := rotl(s[1]*5, 7) * 9
