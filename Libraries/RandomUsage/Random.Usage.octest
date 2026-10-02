@@ -101,3 +101,74 @@ fn StreamsDriveAFlowByTick() -> Void {
     let noise = Random.Fork(Random.Seeded(42), "flow")
     Assert.Equal(Random.Unit(noise, 0) + Random.Unit(noise, 1) + Random.Unit(noise, 2), total, "the flow draws by tick index")
 }
+
+// The library layer above the builtins is ordinary Oct code in package Random.
+[Fact]
+fn LibraryFunctionsWorkFromAnotherPackage() -> Void {
+    let root = Random.Seeded(42)
+    let sampling = Random.Fork(root, "sampling")
+    let dice = Random.Fork(root, "dice")
+    let coins = Random.Fork(root, "coins")
+
+    Assert.Equal(true, Random.Chance(sampling, 5, 0.3), "Chance")
+    Assert.Equal(3.0, Random.Spike(sampling, 0, 0.4, 3.0), "Spike")
+    Assert.Near(0.6987032165017828, Random.Exponential(sampling, 0, 2.0), 0.000000000001, "Exponential")
+
+    let units: Float[] = Random.Units(sampling, 5)
+    Assert.Equal(5, Len(units), "Units count")
+    Assert.Equal(0.7527626402155055, units[0], "Units element 0")
+    let normals: Float[] = Random.Normals(sampling, 4, 1.0, 2.0)
+    Assert.Near(2.431621370716273, normals[0], 0.000000000001, "Normals element 0")
+
+    Assert.Equal(1, Random.RollDie(dice, 0, 6), "RollDie")
+    let rolls: Int[] = Random.RollDice(dice, 0, 5, 6)
+    Assert.Equal(5, Len(rolls), "RollDice count")
+    Assert.Equal(2, rolls[0], "RollDice die 0")
+    Assert.Equal(6, rolls[3], "RollDice die 3")
+    Assert.Equal(17, Random.RollWithAdvantage(dice, 0, 20), "RollWithAdvantage")
+    Assert.Equal(16, Random.RollWithDisadvantage(dice, 0, 20), "RollWithDisadvantage")
+
+    let side: Random.CoinSide = Random.FlipCoin(coins, 0)
+    Assert.Equal(Random.CoinSide.Heads, side, "FlipCoin")
+    let flips: Random.CoinSide[] = Random.FlipCoins(coins, 0, 10)
+    Assert.Equal(4, Random.CountHeads(flips), "CountHeads")
+    Assert.Equal(6, Random.CountTails(flips), "CountTails")
+    Assert.Equal("Heads", Random.CoinSideToString(side), "CoinSideToString")
+}
+
+// The measurement loop that motivated Random v2: a slow drift, Gaussian
+// jitter, and occasional spikes. Each noise source is its own stream, so
+// turning the jitter off leaves every spike where it was.
+fn Measure(seed: Int, steps: Int, jitter: Float) -> Float[] {
+    let noise = Random.Seeded(seed)
+    let jitterNoise = Random.Fork(noise, "jitter")
+    let spikeNoise = Random.Fork(noise, "spike")
+    var readings: Float[] = []
+    for i in 0..steps {
+        let truth = 10.0 + 0.01 * Float(i)
+        readings = Append(readings, truth + Random.Normal(jitterNoise, i, 0.0, jitter) + Random.Spike(spikeNoise, i, 0.1, 3.0))
+    }
+    return readings
+}
+
+[Fact]
+fn TurningOneNoiseSourceOffLeavesTheOthersInPlace() -> Void {
+    let noisy = Measure(2026, 400, 0.2)
+    let quiet = Measure(2026, 400, 0.0)
+    let spikes = Random.Fork(Random.Seeded(2026), "spike")
+    var spikeCount = 0
+    for i in 0..400 {
+        let truth = 10.0 + 0.01 * Float(i)
+        let spike = Random.Spike(spikes, i, 0.1, 3.0)
+        Assert.Equal(truth + spike, quiet[i], "with jitter off the reading is the truth plus the same spike")
+        if spike != 0.0 {
+            spikeCount = spikeCount + 1
+            Assert.True(noisy[i] - truth > 1.5 or noisy[i] - truth < -1.5, "the spike is at the same step with jitter on")
+        }
+    }
+    Assert.True(spikeCount >= 20 and spikeCount <= 60, "about one step in ten spikes")
+    for k in 0..16 {
+        let i = k * 25
+        Assert.Equal(noisy[i], Measure(2026, i + 1, 0.2)[i], "a reading does not depend on how many steps were run")
+    }
+}

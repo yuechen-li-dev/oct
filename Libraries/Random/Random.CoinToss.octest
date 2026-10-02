@@ -1,41 +1,89 @@
 package Random
 
-[Fact]
-fn FlipCoinsSameSeedProducesSameSequence() -> Void {
-    let a = FlipCoins(RngSeed(42), 10)
-    let b = FlipCoins(RngSeed(42), 10)
+// Expected flips were computed from internal/octrandom outside the Oct
+// library code. 1 stands for Heads and 0 for Tails.
 
-    Assert.Equal(10, Len(a.Flips), "flip count")
-    Assert.Equal(10, Len(b.Flips), "flip count reproducible")
-    for i in 0..Len(a.Flips) {
-        Assert.Equal(a.Flips[i], b.Flips[i], "same seed same side sequence")
+fn ExpectSides(expected: Int[], flips: CoinSide[], message: String) -> Void {
+    Assert.Equal(Len(expected), Len(flips), message)
+    for k in 0..Len(expected) {
+        let side = if expected[k] == 1 { CoinSide.Heads } else { CoinSide.Tails }
+        Assert.Equal(side, flips[k], message)
+    }
+}
+
+fn SameSides(a: CoinSide[], b: CoinSide[]) -> Bool {
+    if Len(a) != Len(b) {
+        return false
+    }
+    for k in 0..Len(a) {
+        if a[k] != b[k] {
+            return false
+        }
+    }
+    return true
+}
+
+[Fact]
+fn FlipCoinDrawsTheExpectedSides() -> Void {
+    let c = Fork(Seeded(42), "coins")
+    var flips: CoinSide[] = []
+    for i in 0..12 {
+        flips = Append(flips, FlipCoin(c, i))
+    }
+    ExpectSides([1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1], flips, "expected sides at indices 0..11")
+
+    for i in 0..200 {
+        let expected = if Chance(c, i, 0.5) { CoinSide.Heads } else { CoinSide.Tails }
+        Assert.Equal(expected, FlipCoin(c, i), "Heads exactly when Chance(s, i, 0.5)")
     }
 }
 
 [Fact]
-fn FlipBiasedCoinExtremesAndCounts() -> Void {
-    Assert.Equal(CoinSide.Tails, FlipBiasedCoin(RngSeed(7), 0.0).Side, "pHeads=0 tails")
+fn FlipCoinsDrawsTheExpectedSides() -> Void {
+    let c = Fork(Seeded(42), "coins")
+    ExpectSides([1, 1, 1, 0, 0, 0, 0, 0, 0, 1], FlipCoins(c, 0, 10), "index 0")
+    ExpectSides([0, 0, 0, 0, 0, 1, 0, 1, 1, 1], FlipCoins(c, 1, 10), "index 1")
+    ExpectSides([0, 0, 0, 0, 0, 0, 1, 0, 1, 0], FlipCoins(c, 7, 10), "index 7")
+}
 
+// The flips at one index come from the child stream of that index, so they do
+// not consume the draws of neighbouring indices.
+[Fact]
+fn FlipCoinsUsesTheChildStreamOfItsIndex() -> Void {
+    let c = Fork(Seeded(7), "coins-definition")
+    for i in 0..20 {
+        let flips = FlipCoins(c, i, 16)
+        Assert.Equal(16, Len(flips), "count")
+        let step = Child(c, i)
+        for k in 0..16 {
+            Assert.Equal(FlipCoin(step, k), flips[k], "flip k is FlipCoin(Child(s, i), k)")
+        }
+        let shorter = FlipCoins(c, i, 5)
+        for k in 0..5 {
+            Assert.Equal(flips[k], shorter[k], "a shorter request is a prefix of a longer one")
+        }
+    }
+    Assert.Equal(0, Len(FlipCoins(c, 3, 0)), "count 0 gives an empty array")
+    Assert.True(not SameSides(FlipCoins(c, 0, 32), FlipCoins(c, 1, 32)), "different indices flip differently")
+    Assert.True(SameSides(FlipCoins(c, 4, 32), FlipCoins(c, 4, 32)), "the same index flips the same way")
+}
+
+[Fact]
+fn CoinsAreFair() -> Void {
+    let flips = FlipCoins(Fork(Seeded(7), "coins-fair"), 0, 4000)
+    let heads = CountHeads(flips)
+    Assert.Equal(4000, heads + CountTails(flips), "every flip is heads or tails")
+    Assert.True(heads >= 1880 and heads <= 2120, "about half of 4000 flips are heads")
+}
+
+[Fact]
+fn CountHeadsAndCountTailsCountSides() -> Void {
     let known = [CoinSide.Heads, CoinSide.Tails, CoinSide.Heads]
     Assert.Equal(2, CountHeads(known), "count heads")
     Assert.Equal(1, CountTails(known), "count tails")
-}
-
-[Fact]
-fn FlipCoinsZeroCountIsEmptyAndKeepsRngState() -> Void {
-    let rng = RngSeed(123)
-    let zero = FlipCoins(rng, 0)
-    Assert.Equal(0, Len(zero.Flips), "zero count returns empty")
-
-    let fromOriginal = FlipCoin(rng)
-    let fromNext = FlipCoin(zero.Next)
-    Assert.Equal(fromOriginal.Side, fromNext.Side, "zero count keeps next deterministic")
-}
-
-[Fact]
-fn FlipCoinsCountMatchesRequestedCount() -> Void {
-    let many = FlipCoins(RngSeed(1), 4)
-    Assert.Equal(4, Len(many.Flips), "flip count matches requested count")
+    let none: CoinSide[] = []
+    Assert.Equal(0, CountHeads(none), "no flips, no heads")
+    Assert.Equal(0, CountTails(none), "no flips, no tails")
 }
 
 [Fact]

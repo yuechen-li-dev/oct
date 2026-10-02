@@ -29,6 +29,8 @@ Distribution helpers:
 - `Random.Spike`
 - `Random.DriftStep`
 
+Note (2026-10-02): the Random v1 library layer that provided these three helpers was replaced by Random v2. The experiment now carries them as `M2JitterV1`, `M2SpikeV1` and `M2DriftStepV1`, defined exactly as v1 defined them on the same v1 native draws. The recorded results are unchanged.
+
 ## Smoke-test results
 
 - Uniform `[0,1)` smoke: bounded, varied, mean in broad sanity band.

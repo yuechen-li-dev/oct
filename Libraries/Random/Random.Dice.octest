@@ -1,68 +1,138 @@
 package Random
 
-fn Sum(values: Int[]) -> Int {
-    var total = 0
-    for i in 0..Len(values) {
-        total = total + values[i]
-    }
-    return total
-}
+// Expected rolls were computed from internal/octrandom outside the Oct
+// library code.
 
-fn AssertInRange(value: Int, low: Int, high: Int, message: String) -> Void {
-    Assert.True(value >= low, message)
-    Assert.True(value <= high, message)
-}
-
-[Fact]
-fn RollDiceSameSeedProducesSameSequence() -> Void {
-    let a = RollDice(RngSeed(42), 10, 6)
-    let b = RollDice(RngSeed(42), 10, 6)
-
-    Assert.Equal(10, Len(a.Values), "same seed roll count")
-    Assert.Equal(10, Len(b.Values), "same seed roll count reproducible")
-    Assert.Equal(a.Total, b.Total, "same seed total")
-    for i in 0..Len(a.Values) {
-        Assert.Equal(a.Values[i], b.Values[i], "same seed sequence")
+fn ExpectFaces(expected: Int[], actual: Int[], message: String) -> Void {
+    Assert.Equal(Len(expected), Len(actual), message)
+    for k in 0..Len(expected) {
+        Assert.Equal(expected[k], actual[k], message)
     }
 }
 
-[Fact]
-fn StandardDiceStayInRange() -> Void {
-    let rng = RngSeed(42)
-    AssertInRange(RollD4(rng).Value, 1, 4, "d4 range")
-    AssertInRange(RollD6(rng).Value, 1, 6, "d6 range")
-    AssertInRange(RollD8(rng).Value, 1, 8, "d8 range")
-    AssertInRange(RollD10(rng).Value, 1, 10, "d10 range")
-    AssertInRange(RollD12(rng).Value, 1, 12, "d12 range")
-    AssertInRange(RollD20(rng).Value, 1, 20, "d20 range")
-    AssertInRange(RollD100(rng).Value, 1, 100, "d100 range")
+fn SameFaces(a: Int[], b: Int[]) -> Bool {
+    if Len(a) != Len(b) {
+        return false
+    }
+    for k in 0..Len(a) {
+        if a[k] != b[k] {
+            return false
+        }
+    }
+    return true
 }
 
 [Fact]
-fn RollDicePoolLengthAndTotalAreConsistent() -> Void {
-    let pool = RollDice(RngSeed(2), 5, 6)
-    Assert.Equal(5, Len(pool.Values), "pool length")
-    Assert.Equal(Sum(pool.Values), pool.Total, "pool total equals value sum")
+fn RollDieDrawsTheExpectedFaces() -> Void {
+    let d = Fork(Seeded(42), "dice")
+    var d6: Int[] = []
+    for i in 0..12 {
+        d6 = Append(d6, RollDie(d, i, 6))
+    }
+    ExpectFaces([1, 3, 4, 4, 1, 3, 3, 2, 3, 5, 2, 5], d6, "d6 at indices 0..11")
+
+    var d20: Int[] = []
+    for i in 0..8 {
+        d20 = Append(d20, RollDie(d, i, 20))
+    }
+    ExpectFaces([9, 11, 16, 14, 15, 3, 7, 12], d20, "d20 at indices 0..7")
+
+    for i in 0..100 {
+        Assert.Equal(IntBetween(d, i, 1, 12), RollDie(d, i, 12), "RollDie is IntBetween(s, i, 1, sides)")
+    }
 }
 
 [Fact]
-fn RollDiceZeroCountReturnsEmptyAndZeroTotal() -> Void {
-    let zero = RollDice(RngSeed(8), 0, 6)
-    Assert.Equal(0, Len(zero.Values), "zero-count values empty")
-    Assert.Equal(0, zero.Total, "zero-count total is zero")
+fn RollDieStaysOnTheDie() -> Void {
+    let d = Fork(Seeded(7), "dice-range")
+    let sizes = [2, 4, 6, 8, 10, 12, 20, 100]
+    for n in 0..Len(sizes) {
+        let sides = sizes[n]
+        var sawLowest = false
+        var sawHighest = false
+        for i in 0..2000 {
+            let face = RollDie(d, i, sides)
+            Assert.True(face >= 1 and face <= sides, "a face is between 1 and the number of sides")
+            if face == 1 { sawLowest = true }
+            if face == sides { sawHighest = true }
+        }
+        Assert.True(sawLowest, "the lowest face comes up")
+        Assert.True(sawHighest, "the highest face comes up")
+    }
 }
 
 [Fact]
-fn RollD20AdvantageAndDisadvantageUseMaxMin() -> Void {
-    let rng = RngSeed(11)
+fn RollDiceDrawsTheExpectedFaces() -> Void {
+    let d = Fork(Seeded(42), "dice")
+    ExpectFaces([2, 5, 2, 6, 5], RollDice(d, 0, 5, 6), "index 0")
+    ExpectFaces([3, 4, 4, 1, 1], RollDice(d, 1, 5, 6), "index 1")
+    ExpectFaces([2, 2, 3, 1, 6], RollDice(d, 7, 5, 6), "index 7")
+}
 
-    let adv = RollD20Advantage(rng)
-    let maxValue = if adv.Values[0] >= adv.Values[1] { adv.Values[0] } else { adv.Values[1] }
-    Assert.Equal(maxValue, adv.Total, "advantage picks max")
+// The dice at one index come from the child stream of that index, so they do
+// not consume the draws of neighbouring indices.
+[Fact]
+fn RollDiceUsesTheChildStreamOfItsIndex() -> Void {
+    let d = Fork(Seeded(7), "dice-definition")
+    for i in 0..20 {
+        let rolls = RollDice(d, i, 12, 6)
+        Assert.Equal(12, Len(rolls), "count")
+        let step = Child(d, i)
+        for k in 0..12 {
+            Assert.Equal(RollDie(step, k, 6), rolls[k], "die k is RollDie(Child(s, i), k, sides)")
+        }
+        let shorter = RollDice(d, i, 4, 6)
+        for k in 0..4 {
+            Assert.Equal(rolls[k], shorter[k], "a shorter request is a prefix of a longer one")
+        }
+    }
+    Assert.Equal(0, Len(RollDice(d, 3, 0, 6)), "count 0 gives an empty array")
+    Assert.True(not SameFaces(RollDice(d, 0, 24, 6), RollDice(d, 1, 24, 6)), "different indices roll differently")
+    Assert.True(SameFaces(RollDice(d, 4, 24, 6), RollDice(d, 4, 24, 6)), "the same index rolls the same way")
+}
 
-    let dis = RollD20Disadvantage(rng)
-    let minValue = if dis.Values[0] <= dis.Values[1] { dis.Values[0] } else { dis.Values[1] }
-    Assert.Equal(minValue, dis.Total, "disadvantage picks min")
+[Fact]
+fn DiceAreFair() -> Void {
+    let rolls = RollDice(Fork(Seeded(7), "dice-fair"), 0, 6000, 6)
+    var counts = [0, 0, 0, 0, 0, 0]
+    for k in 0..Len(rolls) {
+        counts[rolls[k] - 1] = counts[rolls[k] - 1] + 1
+    }
+    for face in 0..6 {
+        Assert.True(counts[face] >= 850 and counts[face] <= 1150, "each face comes up about 1000 times in 6000 rolls")
+    }
+}
+
+[Fact]
+fn AdvantageAndDisadvantageDrawTheExpectedFaces() -> Void {
+    let d = Fork(Seeded(42), "dice")
+    var advantage: Int[] = []
+    var disadvantage: Int[] = []
+    for i in 0..8 {
+        advantage = Append(advantage, RollWithAdvantage(d, i, 20))
+        disadvantage = Append(disadvantage, RollWithDisadvantage(d, i, 20))
+    }
+    ExpectFaces([17, 2, 10, 8, 20, 18, 10, 6], advantage, "advantage at indices 0..7")
+    ExpectFaces([16, 1, 8, 2, 11, 11, 1, 4], disadvantage, "disadvantage at indices 0..7")
+}
+
+// Advantage and disadvantage at one index are the higher and the lower of the
+// same two dice.
+[Fact]
+fn AdvantageAndDisadvantageKeepTheHigherAndLowerOfTheSameTwoDice() -> Void {
+    let d = Fork(Seeded(7), "dice-advantage")
+    var strictlyHigher = 0
+    for i in 0..500 {
+        let pair = RollDice(d, i, 2, 20)
+        let high = RollWithAdvantage(d, i, 20)
+        let low = RollWithDisadvantage(d, i, 20)
+        Assert.True(high >= low, "advantage is never below disadvantage")
+        Assert.Equal(pair[0] + pair[1], high + low, "together they are the two dice")
+        Assert.True(high == pair[0] or high == pair[1], "advantage is one of the two dice")
+        Assert.True(low == pair[0] or low == pair[1], "disadvantage is one of the two dice")
+        if high > low { strictlyHigher = strictlyHigher + 1 }
+    }
+    Assert.True(strictlyHigher > 400, "the two dice usually differ")
 }
 
 [Fact]

@@ -2,11 +2,12 @@ package RandomStreamPreconditions
 
 import Random
 
-// Every fact in this file violates one precondition of a Random v2 builtin
-// and is expected to stop with a non-recoverable runtime error. The file is a
-// fixture for cmd/oct/random_stream_preconditions_test.go, which checks that
-// the interpreted and compiled lanes report the same error. It is kept out of
-// the Libraries and Language lanes because every fact in it fails by design.
+// Every fact in this file violates one precondition of Random v2, in a native
+// builtin or in a library function, and is expected to stop with a
+// non-recoverable runtime failure. The file is a fixture for
+// cmd/oct/random_stream_preconditions_test.go, which checks that the
+// interpreted and compiled lanes report the same error. It is kept out of the
+// Libraries and Language lanes because every fact in it fails by design.
 
 fn NegativeOne() -> Int {
     return 0 - 1
@@ -57,5 +58,92 @@ fn IntBetweenRejectsReversedBounds() -> Void {
 [Fact]
 fn NormalRejectsNegativeStddev() -> Void {
     let x = Random.Normal(Random.Seeded(1), 0, 0.0, 0.0 - 1.0)
+    Assert.True(false, "unreachable")
+}
+
+// The library layer checks its own preconditions with Assert.True before it
+// reaches a native draw.
+
+[Fact]
+fn ChanceRejectsProbabilityAboveOne() -> Void {
+    let x = Random.Chance(Random.Seeded(1), 0, 1.5)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn ChanceRejectsNegativeProbability() -> Void {
+    let x = Random.Chance(Random.Seeded(1), 0, 0.0 - 0.1)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn ExponentialRejectsZeroRate() -> Void {
+    let x = Random.Exponential(Random.Seeded(1), 0, 0.0)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn UnitsRejectsNegativeCount() -> Void {
+    let xs = Random.Units(Random.Seeded(1), NegativeOne())
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn NormalsRejectsNegativeCount() -> Void {
+    let xs = Random.Normals(Random.Seeded(1), NegativeOne(), 0.0, 1.0)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn SpikeRejectsNegativeAmplitude() -> Void {
+    let x = Random.Spike(Random.Seeded(1), 0, 0.5, 0.0 - 1.0)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn SpikeRejectsProbabilityAboveOne() -> Void {
+    let x = Random.Spike(Random.Seeded(1), 0, 1.5, 1.0)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn FlipCoinsRejectsNegativeCount() -> Void {
+    let flips = Random.FlipCoins(Random.Seeded(1), 0, NegativeOne())
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn RollDieRejectsOneSide() -> Void {
+    let face = Random.RollDie(Random.Seeded(1), 0, 1)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn RollDiceRejectsNegativeCount() -> Void {
+    let rolls = Random.RollDice(Random.Seeded(1), 0, NegativeOne(), 6)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn RollDiceRejectsOneSide() -> Void {
+    let rolls = Random.RollDice(Random.Seeded(1), 0, 0, 1)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn RollWithAdvantageRejectsOneSide() -> Void {
+    let face = Random.RollWithAdvantage(Random.Seeded(1), 0, 1)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn FlipCoinRejectsNegativeIndex() -> Void {
+    let side = Random.FlipCoin(Random.Seeded(1), NegativeOne())
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn RollDiceRejectsNegativeIndex() -> Void {
+    let rolls = Random.RollDice(Random.Seeded(1), NegativeOne(), 2, 6)
     Assert.True(false, "unreachable")
 }

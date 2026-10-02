@@ -7,22 +7,39 @@ import (
 	"testing"
 )
 
-// A violated precondition of a Random v2 builtin is a non-recoverable runtime
-// error, which an .octest cannot assert and an .octfail (compile-time only)
-// cannot express. This runtime-boundary check runs a fixture whose facts each
-// violate one precondition and requires both execution lanes to stop every
-// fact with the same error text from internal/octrandom.
+// A violated precondition in Random v2 is a non-recoverable runtime failure,
+// which an .octest cannot assert and an .octfail (compile-time only) cannot
+// express. This runtime-boundary check runs a fixture whose facts each violate
+// one precondition and requires both execution lanes to stop every fact with
+// the same text: a runtime error from internal/octrandom for a native
+// builtin, and a failed Assert.True for the Oct library layer above it.
 func TestRandomStreamPreconditionsStopBothLanesWithTheSameError(t *testing.T) {
 	fixture := repoPath(t, "testdata", "random_stream_preconditions")
+	const negativeIndex = "runtime error: random: index must be >= 0"
 	want := map[string]string{
-		"ChildRejectsNegativeIndex":       "random: index must be >= 0",
-		"UnitRejectsNegativeIndex":        "random: index must be >= 0",
-		"BetweenRejectsNegativeIndex":     "random: index must be >= 0",
-		"IntBetweenRejectsNegativeIndex":  "random: index must be >= 0",
-		"NormalRejectsNegativeIndex":      "random: index must be >= 0",
-		"BetweenRejectsReversedBounds":    "random: Between requires lo <= hi",
-		"IntBetweenRejectsReversedBounds": "random: IntBetween requires lo <= hi",
-		"NormalRejectsNegativeStddev":     "random: Normal requires stddev >= 0",
+		"ChildRejectsNegativeIndex":       negativeIndex,
+		"UnitRejectsNegativeIndex":        negativeIndex,
+		"BetweenRejectsNegativeIndex":     negativeIndex,
+		"IntBetweenRejectsNegativeIndex":  negativeIndex,
+		"NormalRejectsNegativeIndex":      negativeIndex,
+		"BetweenRejectsReversedBounds":    "runtime error: random: Between requires lo <= hi",
+		"IntBetweenRejectsReversedBounds": "runtime error: random: IntBetween requires lo <= hi",
+		"NormalRejectsNegativeStddev":     "runtime error: random: Normal requires stddev >= 0",
+
+		"ChanceRejectsProbabilityAboveOne": "assertion failed: Chance requires p in [0, 1]",
+		"ChanceRejectsNegativeProbability": "assertion failed: Chance requires p in [0, 1]",
+		"ExponentialRejectsZeroRate":       "assertion failed: Exponential requires rate > 0",
+		"UnitsRejectsNegativeCount":        "assertion failed: Units requires count >= 0",
+		"NormalsRejectsNegativeCount":      "assertion failed: Normals requires count >= 0",
+		"SpikeRejectsNegativeAmplitude":    "assertion failed: Spike requires amplitude >= 0",
+		"SpikeRejectsProbabilityAboveOne":  "assertion failed: Chance requires p in [0, 1]",
+		"FlipCoinsRejectsNegativeCount":    "assertion failed: FlipCoins requires count >= 0",
+		"RollDieRejectsOneSide":            "assertion failed: RollDie requires sides >= 2",
+		"RollDiceRejectsNegativeCount":     "assertion failed: RollDice requires count >= 0",
+		"RollDiceRejectsOneSide":           "assertion failed: RollDice requires sides >= 2",
+		"RollWithAdvantageRejectsOneSide":  "assertion failed: RollDice requires sides >= 2",
+		"FlipCoinRejectsNegativeIndex":     negativeIndex,
+		"RollDiceRejectsNegativeIndex":     negativeIndex,
 	}
 
 	for _, execution := range []string{"interpreted", "compiled"} {
@@ -46,8 +63,8 @@ func TestRandomStreamPreconditionsStopBothLanesWithTheSameError(t *testing.T) {
 					t.Errorf("fact %s did not fail\nstdout:\n%s", fact, stdout)
 					continue
 				}
-				if !strings.HasSuffix(line, "runtime error: "+message) {
-					t.Errorf("fact %s failed with the wrong error:\n%s\nwant suffix %q", fact, line, "runtime error: "+message)
+				if !strings.HasSuffix(line, ": "+message) {
+					t.Errorf("fact %s failed with the wrong error:\n%s\nwant suffix %q", fact, line, message)
 				}
 				if execution == "compiled" && !strings.Contains(line, "compiled test run failed") {
 					t.Errorf("fact %s did not run as a compiled test:\n%s", fact, line)
