@@ -2044,14 +2044,10 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		if x.Name == "BoolIntProbe" {
 			return "BoolIntProbe", "(Bool, Int)", true, false, nil
 		}
-		if c.pkg.Name == "Random" {
-			switch x.Name {
-			case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
-				resolved, ret, _, fallible, err := c.resolveCall(ast.FieldAccessExpr{Target: ast.IdentifierExpr{Name: "Random"}, Field: x.Name})
-				if err == nil {
-					return resolved, ret, true, fallible, nil
-				}
-			}
+		// Inside package Random an unqualified call to a Random builtin is the
+		// qualified builtin; outside it the unqualified name is not one.
+		if random, ok := builtin.ResolveRandomCall(x.Name, c.pkg.Name); ok {
+			return random.Name(), random.ResultType(), true, random.Fallible, nil
 		}
 		for _, fn := range c.pkg.Functions {
 			if fn.Name == x.Name {
@@ -2079,27 +2075,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		if builtin.IsName(x.Name) {
 			normalized := x.Name
-			if c.pkg.Name == "Random" {
-				switch x.Name {
-				case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
-					normalized = "Random." + x.Name
-				}
-			}
 			switch normalized {
-			case "Random.RngSeed":
-				return normalized, "Random.Rng", true, false, nil
-			case "Random.RandInt":
-				return normalized, "Random.RandIntResult", true, false, nil
-			case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal", "Random.Gaussian":
-				return normalized, "Random.RandFloatResult", true, false, nil
-			case "Random.RandBernoulli":
-				return normalized, "Random.RandBoolResult", true, false, nil
-			case "Random.CryptoRandInt":
-				return normalized, "Int", true, true, nil
-			case "Random.CryptoRandFloat01":
-				return normalized, "Float", true, true, nil
-			case "Random.CryptoRandBytes":
-				return normalized, "Bytes", true, true, nil
 			case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
 				ret := "String"
 				switch normalized {
@@ -2189,6 +2165,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			if isMarkdownCompiledBuiltin(canonical) {
 				return canonical, compiledMarkdownBuiltinReturnType(canonical), true, false, nil
 			}
+			if random, ok := builtin.LookupRandomQualified(builtinName); ok {
+				return random.Name(), random.ResultType(), true, random.Fallible, nil
+			}
 			switch builtinName {
 			case "Query.First":
 				return builtinName, "", true, true, nil
@@ -2196,24 +2175,6 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return builtinName, "Bool", true, false, nil
 			case "Query.Count":
 				return builtinName, "Int", true, false, nil
-			case "Random.RngSeed":
-				return builtinName, "Random.Rng", true, false, nil
-			case "Random.RandInt":
-				return builtinName, "Random.RandIntResult", true, false, nil
-			case "Random.RandFloat01":
-				return builtinName, "Random.RandFloatResult", true, false, nil
-			case "Random.RandFloatRange":
-				return builtinName, "Random.RandFloatResult", true, false, nil
-			case "Random.RandBernoulli":
-				return builtinName, "Random.RandBoolResult", true, false, nil
-			case "Random.RandNormal", "Random.Gaussian":
-				return builtinName, "Random.RandFloatResult", true, false, nil
-			case "Random.CryptoRandInt":
-				return builtinName, "Int", true, true, nil
-			case "Random.CryptoRandFloat01":
-				return builtinName, "Float", true, true, nil
-			case "Random.CryptoRandBytes":
-				return builtinName, "Bytes", true, true, nil
 			case "Array.CrossSection":
 				return "ArrayCrossSection", "Void", true, false, nil
 			case "Array.Where":

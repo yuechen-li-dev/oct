@@ -17,6 +17,10 @@ func TestBuiltinDefinitionsHaveImplementationCoverage(t *testing.T) {
 	compiledLiterals := implementationStringLiterals(t, filepath.Join("..", "build"))
 
 	for _, definition := range Definitions() {
+		if _, tableDriven := LookupRandom(definition.Name); tableDriven {
+			// Random builtins are covered by TestRandomBuiltinsHaveImplementationCoverage.
+			continue
+		}
 		if !definitionMentioned(typecheckLiterals, definition) {
 			t.Errorf("public builtin %q has no typechecker implementation coverage", definition.Name)
 		}
@@ -27,6 +31,70 @@ func TestBuiltinDefinitionsHaveImplementationCoverage(t *testing.T) {
 			t.Errorf("compiled-capable builtin %q has no compiled implementation coverage", definition.Name)
 		}
 	}
+}
+
+// Random builtins are typed from the table in random.go, so the typechecker
+// names none of them. Its coverage is the table lookup itself; the execution
+// lanes must each implement every builtin that has its own implementation.
+func TestRandomBuiltinsHaveImplementationCoverage(t *testing.T) {
+	typecheckSelectors := implementationSelectors(t, filepath.Join("..", "typecheck"))
+	if _, ok := typecheckSelectors["builtin.LookupRandom"]; !ok {
+		t.Errorf("typechecker does not consult builtin.LookupRandom, so Random builtins have no typechecker coverage")
+	}
+	typecheckLiterals := implementationStringLiterals(t, filepath.Join("..", "typecheck"))
+	interpreterLiterals := implementationStringLiterals(t, filepath.Join("..", "interpret"))
+	compiledLiterals := implementationStringLiterals(t, filepath.Join("..", "build"))
+
+	for _, random := range RandomBuiltins() {
+		for _, spelling := range []string{random.Symbol, random.Name()} {
+			if _, ok := typecheckLiterals[spelling]; ok {
+				t.Errorf("typechecker names Random builtin %q; it must come from the table in random.go", spelling)
+			}
+		}
+		if !random.HasOwnImplementation() {
+			continue
+		}
+		if _, ok := interpreterLiterals[random.Implementation()]; !ok {
+			t.Errorf("Random builtin %q has no interpreter implementation", random.Implementation())
+		}
+		if _, ok := compiledLiterals[random.Implementation()]; !ok {
+			t.Errorf("Random builtin %q has no compiled implementation", random.Implementation())
+		}
+	}
+}
+
+// implementationSelectors collects every qualified identifier, such as
+// "builtin.LookupRandom", used by the non-test Go files under root.
+func implementationSelectors(t *testing.T, root string) map[string]struct{} {
+	t.Helper()
+	selectors := map[string]struct{}{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if qualifier, ok := selector.X.(*ast.Ident); ok {
+				selectors[qualifier.Name+"."+selector.Sel.Name] = struct{}{}
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return selectors
 }
 
 func implementationStringLiterals(t *testing.T, root string) map[string]struct{} {

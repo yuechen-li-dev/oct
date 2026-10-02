@@ -346,13 +346,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Conj"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] {
 		importSet["math/cmplx"] = struct{}{}
 	}
-	if usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] {
-		importSet["math"] = struct{}{}
-		importSet["crypto/rand"] = struct{}{}
-		importSet["encoding/binary"] = struct{}{}
-		importSet["math/big"] = struct{}{}
-	}
-	if usedBuiltins["Random.CryptoRandInt"] || usedBuiltins["Random.CryptoRandFloat01"] || usedBuiltins["Random.CryptoRandBytes"] {
+	if usesRandomHelpers(usedBuiltins) {
 		importSet["math"] = struct{}{}
 		importSet["crypto/rand"] = struct{}{}
 		importSet["encoding/binary"] = struct{}{}
@@ -462,7 +456,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		}
 		b.WriteString("}\n\n")
 	}
-	needsRandomHelpers := usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] || usedBuiltins["Random.CryptoRandInt"] || usedBuiltins["Random.CryptoRandFloat01"] || usedBuiltins["Random.CryptoRandBytes"]
+	needsRandomHelpers := usesRandomHelpers(usedBuiltins)
 	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
 		if _, ok := emittedRecordTypes["Csv.Table"]; !ok {
 			b.WriteString("type Csv_Table struct{}\n\n")
@@ -1921,17 +1915,10 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s, %s = 1, 2", st.Targets[0], st.Targets[1]), nil
 			case "BoolIntProbe":
 				return fmt.Sprintf("%s, %s = true, 7", st.Targets[0], st.Targets[1]), nil
-			case "Random.RandInt":
-				return "", fmt.Errorf("destructuring Random.RandInt is not supported")
-			case "Random.RandFloat01":
-				return "", fmt.Errorf("destructuring Random.RandFloat01 is not supported")
-			case "Random.RandFloatRange":
-				return "", fmt.Errorf("destructuring Random.RandFloatRange is not supported")
-			case "Random.RandBernoulli":
-				return "", fmt.Errorf("destructuring Random.RandBernoulli is not supported")
-			case "Random.RandNormal":
-				return "", fmt.Errorf("destructuring Random.RandNormal is not supported")
 			default:
+				if isRandomDrawImplementation(st.Callee) {
+					return "", fmt.Errorf("destructuring %s is not supported", st.Callee)
+				}
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
 		}

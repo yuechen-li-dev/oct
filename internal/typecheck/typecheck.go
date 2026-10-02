@@ -457,15 +457,6 @@ func (c checker) checkFile(file ast.File) error {
 	return c.checkPackageFunctions(file)
 }
 
-func isRandomBuiltinAlias(name string) bool {
-	switch name {
-	case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
-		return true
-	default:
-		return false
-	}
-}
-
 func (c checker) registerPackageDeclarations(file ast.File) error {
 	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeBytes), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI), string(BaseTypeIndex)} {
 		c.typeNames[builtinTypeName] = struct{}{}
@@ -567,7 +558,7 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 	}
 
 	for _, function := range file.Functions {
-		if builtin.IsName(function.Name) && !(file.Package == "Random" && isRandomBuiltinAlias(function.Name)) {
+		if builtin.IsName(function.Name) && !(file.Package == builtin.RandomNamespace && builtin.IsRandomSymbol(function.Name)) {
 			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
 		}
 		if _, exists := c.functions[function.Name]; exists {
@@ -3793,6 +3784,36 @@ func directMakeHostPrimitiveName(callee string) (string, bool) {
 	return name, ok
 }
 
+// checkRandomBuiltinCall types a call to a compiler-owned Random builtin from
+// its entry in the builtin table. callee is the name as written, so a result
+// record keeps the spelling of the call: package-qualified for a qualified
+// call and bare for an unqualified one.
+func checkRandomBuiltinCall(callee string, random builtin.RandomBuiltin, typeArguments []ast.TypeRef, arguments []ast.Expr) (ExprType, error) {
+	if len(typeArguments) > 0 {
+		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+	}
+	if len(arguments) != random.Arguments {
+		switch random.ArityCheck {
+		case builtin.RandomArityCounted:
+			noun := "arguments"
+			if random.Arguments == 1 {
+				noun = "argument"
+			}
+			return ExprType{}, fmt.Errorf("function '%s' expects %d %s, got %d", callee, random.Arguments, noun, len(arguments))
+		case builtin.RandomArityMismatch:
+			return ExprType{}, fmt.Errorf("function '%s' arity mismatch", callee)
+		}
+	}
+	result := Type{Base: BaseType(random.Result)}
+	if random.ResultInPackage {
+		result = Type{Name: random.Result}
+		if strings.Contains(callee, ".") {
+			result = Type{Name: random.ResultType()}
+		}
+	}
+	return ExprType{ValueType: result, Fallible: random.Fallible}, nil
+}
+
 func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	callee = builtin.CanonicalName(callee)
 	if err := builtin.ValidateCallShape(callee, len(arguments), len(typeArguments)); err != nil {
@@ -3810,51 +3831,8 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{{Base: BaseTypeBool}, {Base: BaseTypeInt}}}}}, nil
 	}
-	randomBuiltin := callee
-	switch callee {
-	case "RngSeed", "RandInt", "RandFloat01", "RandFloatRange", "RandBernoulli", "RandNormal", "Gaussian", "CryptoRandInt", "CryptoRandFloat01", "CryptoRandBytes":
-		randomBuiltin = "Random." + callee
-	}
-	if randomBuiltin == "Random.RngSeed" || randomBuiltin == "Random.RandInt" || randomBuiltin == "Random.RandFloat01" || randomBuiltin == "Random.RandFloatRange" || randomBuiltin == "Random.RandBernoulli" || randomBuiltin == "Random.RandNormal" || randomBuiltin == "Random.Gaussian" || randomBuiltin == "Random.CryptoRandInt" || randomBuiltin == "Random.CryptoRandFloat01" || randomBuiltin == "Random.CryptoRandBytes" {
-		if len(typeArguments) > 0 {
-			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
-		}
-		resultPrefix := "Random."
-		if !strings.Contains(callee, ".") {
-			resultPrefix = ""
-		}
-		rngType := Type{Name: resultPrefix + "Rng"}
-		randIntResultType := Type{Name: resultPrefix + "RandIntResult"}
-		randFloatResultType := Type{Name: resultPrefix + "RandFloatResult"}
-		randBoolResultType := Type{Name: resultPrefix + "RandBoolResult"}
-		switch randomBuiltin {
-		case "Random.RngSeed":
-			if len(arguments) != 1 {
-				return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
-			}
-			return ExprType{ValueType: rngType}, nil
-		case "Random.RandInt":
-			if len(arguments) != 3 {
-				return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
-			}
-			return ExprType{ValueType: randIntResultType}, nil
-		case "Random.RandFloat01", "Random.RandFloatRange", "Random.RandNormal", "Random.Gaussian":
-			if (randomBuiltin == "Random.RandFloat01" && len(arguments) != 1) || (randomBuiltin != "Random.RandFloat01" && len(arguments) != 3) {
-				return ExprType{}, fmt.Errorf("function '%s' arity mismatch", callee)
-			}
-			return ExprType{ValueType: randFloatResultType}, nil
-		case "Random.RandBernoulli":
-			if len(arguments) != 2 {
-				return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
-			}
-			return ExprType{ValueType: randBoolResultType}, nil
-		case "Random.CryptoRandInt":
-			return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
-		case "Random.CryptoRandFloat01":
-			return ExprType{ValueType: Type{Base: BaseTypeFloat}, Fallible: true}, nil
-		default:
-			return ExprType{ValueType: Type{Base: BaseTypeBytes}, Fallible: true}, nil
-		}
+	if random, ok := builtin.LookupRandom(callee); ok {
+		return checkRandomBuiltinCall(callee, random, typeArguments, arguments)
 	}
 	if callee == "PlotLine" || callee == "PlotScatter" || callee == "PlotRenderLine" || callee == "PlotRenderScatter" || callee == "PlotRenderHistogram" {
 		if len(typeArguments) > 0 {

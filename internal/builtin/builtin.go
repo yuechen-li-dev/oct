@@ -1,6 +1,8 @@
 package builtin
 
-var names = map[string]struct{}{
+// names reserves every compiler-owned builtin name. The Random builtins are
+// not listed here: both of their spellings come from the table in random.go.
+var names = withRandomBuiltinNames(map[string]struct{}{
 	"Len":                      {},
 	"Append":                   {},
 	"ArrayCrossSection":        {},
@@ -216,28 +218,7 @@ var names = map[string]struct{}{
 	"Matrix.fill":              {},
 	"Matrix.identity":          {},
 	"FFT":                      {},
-
-	"RngSeed":                  {},
-	"RandInt":                  {},
-	"RandFloat01":              {},
-	"RandFloatRange":           {},
-	"RandBernoulli":            {},
-	"RandNormal":               {},
-	"Gaussian":                 {},
-	"CryptoRandInt":            {},
-	"CryptoRandFloat01":        {},
-	"CryptoRandBytes":          {},
-	"Random.RngSeed":           {},
-	"Random.RandInt":           {},
-	"Random.RandFloat01":       {},
-	"Random.RandFloatRange":    {},
-	"Random.RandBernoulli":     {},
-	"Random.RandNormal":        {},
-	"Random.Gaussian":          {},
-	"Random.CryptoRandInt":     {},
-	"Random.CryptoRandFloat01": {},
-	"Random.CryptoRandBytes":   {},
-}
+})
 
 func IsName(name string) bool {
 	_, ok := names[name]
