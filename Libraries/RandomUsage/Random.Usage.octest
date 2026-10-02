@@ -1,0 +1,103 @@
+package RandomUsage
+
+import Random
+
+// The Random v2 builtins are named only in their qualified spelling outside
+// package Random, so these ordinary words stay free for other packages.
+fn Unit() -> Int {
+    return 7
+}
+
+fn Normal(x: Float) -> Float {
+    return x + 1.0
+}
+
+fn Between(lo: Int, hi: Int) -> Int {
+    return hi - lo
+}
+
+record Sensor {
+    Name: String
+    Noise: Random.Stream
+}
+
+fn Reading(sensor: Sensor, step: Int) -> Float {
+    return 20.0 + Random.Normal(sensor.Noise, step, 0.0, 0.5)
+}
+
+fn NoiseFor(root: Random.Stream, name: String) -> Random.Stream {
+    return Random.Fork(root, name)
+}
+
+// A flow keeps only the stream and its own tick on the board. The draw at a
+// tick is a function of those two values, so nothing else has to be stored to
+// resume or replay it.
+flow NoisyFlow(seed: Int, steps: Int) -> Float {
+    board {
+        Noise: Random.Stream
+        Tick: Int
+        Sum: Float
+    }
+    state Start {
+        board.Noise = Random.Fork(Random.Seeded(seed), "flow")
+        board.Tick = 0
+        board.Sum = 0.0
+        goto Sample
+    }
+    state Sample {
+        board.Sum = board.Sum + Random.Unit(board.Noise, board.Tick)
+        board.Tick = board.Tick + 1
+        if board.Tick >= steps {
+            return board.Sum
+        }
+        goto Sample
+    }
+}
+
+[Fact]
+fn QualifiedBuiltinsHaveTheirDeclaredTypes() -> Void {
+    let root: Random.Stream = Random.Seeded(42)
+    let jitter: Random.Stream = Random.Fork(root, "jitter")
+    let step: Random.Stream = Random.Child(jitter, 3)
+    let u: Float = Random.Unit(root, 0)
+    let x: Float = Random.Between(jitter, 1, -2.0, 3.0)
+    let d: Int = Random.IntBetween(jitter, 0, 1, 6)
+    let z: Float = Random.Normal(jitter, 0, 0.0, 1.0)
+
+    Assert.Equal(0.4685865183391049, u, "Unit from another package")
+    Assert.Equal(1.2825057764109595, x, "Between from another package")
+    Assert.Equal(5, d, "IntBetween from another package")
+    Assert.Near(0.3064695015507731, z, 0.000000000001, "Normal from another package")
+    Assert.Equal(0.8373582262553242, Random.Unit(jitter, 0), "Fork from another package")
+    Assert.Equal(Random.Unit(Random.Child(Random.Fork(Random.Seeded(42), "jitter"), 3), 0), Random.Unit(step, 0), "Child from another package")
+}
+
+[Fact]
+fn BuiltinNamesAreNotReservedOutsidePackageRandom() -> Void {
+    Assert.Equal(7, Unit(), "a package may define its own Unit")
+    Assert.Equal(3.0, Normal(2.0), "a package may define its own Normal")
+    Assert.Equal(4, Between(1, 5), "a package may define its own Between")
+}
+
+[Fact]
+fn StreamsAreOrdinaryValues() -> Void {
+    let root = Random.Seeded(42)
+    let sensor = Sensor { Name: "thermo" Noise: NoiseFor(root, "thermo") }
+    Assert.Equal(Reading(sensor, 4), Reading(sensor, 4), "a reading at a step is repeatable")
+    Assert.True(Reading(sensor, 4) != Reading(sensor, 5), "different steps draw differently")
+
+    let streams = [Random.Fork(root, "a"), Random.Fork(root, "b")]
+    Assert.True(Random.Unit(streams[0], 0) != Random.Unit(streams[1], 0), "streams in an array stay distinct")
+
+    Assert.Equal(root, Random.Stream { _Key: 42 }, "a stream is its key")
+    Assert.Equal(Random.Fork(root, "thermo"), sensor.Noise, "a stream stored in a record is unchanged")
+}
+
+[Fact]
+fn StreamsDriveAFlowByTick() -> Void {
+    let machine = NoisyFlow(42, 3)
+    Step(machine)
+    let total = Assert.LGTM(Result(machine), "flow result")
+    let noise = Random.Fork(Random.Seeded(42), "flow")
+    Assert.Equal(Random.Unit(noise, 0) + Random.Unit(noise, 1) + Random.Unit(noise, 2), total, "the flow draws by tick index")
+}

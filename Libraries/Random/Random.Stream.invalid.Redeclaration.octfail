@@ -1,0 +1,13 @@
+expect error: "function Unit: cannot redeclare built-in function"
+
+package Random
+
+// Package Random cannot declare a function with the name of one of its
+// builtins.
+fn Unit(x: Int) -> Int {
+    return x
+}
+
+fn Main() -> Int {
+    return 0
+}

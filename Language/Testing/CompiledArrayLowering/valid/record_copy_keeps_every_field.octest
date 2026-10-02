@@ -1,0 +1,53 @@
+package CompiledArrayLowering
+
+// A record value copied into or out of an array keeps every field, whatever
+// the field is named. Field names that begin with an underscore or a
+// lower-case letter are legal Oct and must survive the copy the same way
+// PascalCase fields do.
+
+record Token {
+    _Secret: Int
+    lower: Int
+    Public: Int
+}
+
+record Holder {
+    Label: String
+    Inner: Token
+}
+
+fn MakeToken(seed: Int) -> Token {
+    return Token { _Secret: seed lower: seed + 1 Public: seed + 2 }
+}
+
+[Fact]
+fn ArrayOfRecordsKeepsEveryField() -> Void {
+    let tokens = [MakeToken(10), MakeToken(20)]
+    Assert.Equal(10, tokens[0]._Secret, "underscore field of element 0")
+    Assert.Equal(11, tokens[0].lower, "lower-case field of element 0")
+    Assert.Equal(12, tokens[0].Public, "PascalCase field of element 0")
+    Assert.Equal(20, tokens[1]._Secret, "underscore field of element 1")
+    Assert.Equal(21, tokens[1].lower, "lower-case field of element 1")
+    Assert.Equal(22, tokens[1].Public, "PascalCase field of element 1")
+}
+
+[Fact]
+fn AppendedRecordsKeepEveryField() -> Void {
+    var tokens: Token[] = []
+    for i in 0..3 {
+        tokens = Append(tokens, MakeToken(i * 100))
+    }
+    Assert.Equal(200, tokens[2]._Secret, "underscore field after Append")
+    Assert.Equal(201, tokens[2].lower, "lower-case field after Append")
+    Assert.Equal(202, tokens[2].Public, "PascalCase field after Append")
+}
+
+[Fact]
+fn NestedRecordsInArraysKeepEveryField() -> Void {
+    let holders = [Holder { Label: "a" Inner: MakeToken(7) }, Holder { Label: "b" Inner: MakeToken(8) }]
+    Assert.Equal(7, holders[0].Inner._Secret, "nested underscore field")
+    Assert.Equal(9, holders[1].Inner.lower, "nested lower-case field")
+    let copy = holders
+    Assert.Equal(holders[1].Inner, copy[1].Inner, "copied array holds equal records")
+    Assert.Equal(8, copy[1].Inner._Secret, "nested underscore field after copying the array")
+}

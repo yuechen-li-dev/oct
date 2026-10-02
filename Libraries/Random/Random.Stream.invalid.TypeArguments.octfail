@@ -1,0 +1,7 @@
+expect error: "function 'Unit' does not accept type arguments"
+
+package Random
+
+fn Main() -> Float {
+    return Unit<Float>(Seeded(1), 0)
+}

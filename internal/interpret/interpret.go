@@ -2583,7 +2583,7 @@ regularCall:
 	if hasDirectName && calleeName == "Int" && len(expr.Arguments) == 1 {
 		return evalResult{}, fmt.Errorf("runtime error: Int(...) is not a conversion in Oct because float-to-int conversion must choose a rounding policy explicitly. Use FloorToInt(x), CeilToInt(x), or RoundToInt(x). For sample counts, FloorToInt(sampleRate * duration) is usually intended.")
 	}
-	if hasDirectName && builtin.IsName(calleeName) {
+	if hasDirectName && (builtin.IsName(calleeName) || isUnreservedRandomBuiltinCall(calleeName, pkgName)) {
 		return i.evalBuiltinCallExpr(env, pkgName, calleeName, expr.TypeArguments, expr.Arguments)
 	}
 	if hasDirectName {
@@ -3096,6 +3096,13 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 				return evalResult{hasError: true, errorVal: r.errorVal}, nil
 			}
 			args = append(args, r.value)
+		}
+		if !random.Legacy {
+			value, err := evalRandomStreamBuiltin(random, pkgName, args)
+			if err != nil {
+				return evalResult{}, err
+			}
+			return evalResult{value: value}, nil
 		}
 		switch random.Implementation() {
 		case "Random.RngSeed":

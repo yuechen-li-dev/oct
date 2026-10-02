@@ -1,0 +1,27 @@
+package Random
+
+// Random v2: counter-based streams.
+//
+// Every draw is a pure function of (stream, index, parameters). Nothing is
+// threaded and nothing is returned except the value drawn. The native
+// primitives below are compiler-owned builtins implemented in Go; they have no
+// Oct bodies.
+//
+//   Seeded(seed: Int) -> Stream
+//   Fork(s: Stream, label: String) -> Stream
+//   Child(s: Stream, i: Int) -> Stream
+//   Unit(s: Stream, i: Int) -> Float                           // [0, 1)
+//   Between(s: Stream, i: Int, lo: Float, hi: Float) -> Float  // [lo, hi)
+//   IntBetween(s: Stream, i: Int, lo: Int, hi: Int) -> Int     // inclusive
+//   Normal(s: Stream, i: Int, mean: Float, stddev: Float) -> Float
+//
+// An index must be >= 0. A violated precondition is a non-recoverable runtime
+// error. Specification: internal/random/RANDOM_V2_LADDER.md, section 3.
+
+/// A stream of pseudorandom draws, addressed by index.
+/// Make one with Seeded, and derive independent streams from it with Fork
+/// (by name) or Child (by index). Every Int is a valid key, so there is no
+/// invalid stream.
+record Stream {
+    _Key: Int
+}

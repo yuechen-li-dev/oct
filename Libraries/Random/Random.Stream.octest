@@ -1,0 +1,223 @@
+package Random
+
+// Expected values in this file were produced by internal/octrandom, whose
+// Philox4x32-10 core is checked against the published Random123 vectors. They
+// lock the stream layout and prove that the interpreted and compiled lanes
+// produce the same draws.
+
+[Fact]
+fn SeededUsesTheSeedAsTheKey() -> Void {
+    Assert.Equal(42, Seeded(42)._Key, "seed 42")
+    Assert.Equal(0, Seeded(0)._Key, "seed 0")
+    Assert.Equal(-1, Seeded(-1)._Key, "negative seed")
+    Assert.Equal(Seeded(42), Stream { _Key: 42 }, "a stream is an ordinary record")
+}
+
+[Fact]
+fn ForkDerivesTheExpectedStreams() -> Void {
+    let root = Seeded(42)
+    Assert.Equal(7628312760735130121, Fork(root, "")._Key, "empty label")
+    Assert.Equal(8550303138658124672, Fork(root, "jitter")._Key, "jitter")
+    Assert.Equal(3783582559745550604, Fork(root, "spike")._Key, "spike")
+    Assert.Equal(9031963068383954488, Fork(root, "spike-sign")._Key, "spike-sign")
+    Assert.Equal(-114061917960418665, Fork(root, "噪声")._Key, "label is hashed as UTF-8 bytes")
+    Assert.Equal(-6080617435707177599, Fork(Seeded(0), "jitter")._Key, "seed 0")
+    Assert.Equal(7176254043941091340, Fork(Seeded(-1), "jitter")._Key, "seed -1")
+    Assert.Equal(4717311384727426991, Fork(Fork(root, "a"), "b")._Key, "nested fork")
+}
+
+[Fact]
+fn ChildDerivesTheExpectedStreams() -> Void {
+    let root = Seeded(42)
+    Assert.Equal(-7491773017932719356, Child(root, 0)._Key, "child 0")
+    Assert.Equal(6526683383576497442, Child(root, 1)._Key, "child 1")
+    Assert.Equal(-3080868698777271549, Child(root, 7)._Key, "child 7")
+    Assert.Equal(5093456074601268509, Child(root, 4294967296)._Key, "index above 32 bits")
+    Assert.Equal(1388210464538099294, Child(root, 9223372036854775807)._Key, "largest index")
+    Assert.Equal(-9010548280513645815, Child(Fork(root, "jitter"), 3)._Key, "child of a fork")
+}
+
+[Fact]
+fn UnitDrawsTheExpectedValues() -> Void {
+    Assert.Equal(0.8805201978886142, Unit(Seeded(0), 0), "seed 0 index 0")
+    Assert.Equal(0.36209111566940344, Unit(Seeded(0), 1), "seed 0 index 1")
+    Assert.Equal(0.3194457679100915, Unit(Seeded(0), 2), "seed 0 index 2")
+    Assert.Equal(0.9146024159661605, Unit(Seeded(0), 4294967296), "seed 0 index above 32 bits")
+    Assert.Equal(0.5208900817501131, Unit(Seeded(0), 9223372036854775807), "seed 0 largest index")
+    Assert.Equal(0.4685865183391049, Unit(Seeded(42), 0), "seed 42 index 0")
+    Assert.Equal(0.32706338120338474, Unit(Seeded(42), 1), "seed 42 index 1")
+    Assert.Equal(0.6583155272123093, Unit(Seeded(42), 2), "seed 42 index 2")
+    Assert.Equal(0.49120127602043595, Unit(Seeded(42), 4294967296), "seed 42 index above 32 bits")
+    Assert.Equal(0.7390756227945282, Unit(Seeded(42), 9223372036854775807), "seed 42 largest index")
+    Assert.Equal(0.08311886932882984, Unit(Seeded(-1), 0), "seed -1 index 0")
+    Assert.Equal(0.2945537688447033, Unit(Seeded(-1), 1), "seed -1 index 1")
+    Assert.Equal(0.8393094922604589, Unit(Seeded(-1), 9223372036854775807), "seed -1 largest index")
+
+    let jitter = Fork(Seeded(42), "jitter")
+    Assert.Equal(0.8373582262553242, Unit(jitter, 0), "fork index 0")
+    Assert.Equal(0.6565011552821919, Unit(jitter, 1), "fork index 1")
+    Assert.Equal(0.12735625260453953, Unit(jitter, 2), "fork index 2")
+}
+
+[Fact]
+fn BetweenDrawsTheExpectedValues() -> Void {
+    let jitter = Fork(Seeded(42), "jitter")
+    Assert.Equal(2.186791131276621, Between(jitter, 0, -2.0, 3.0), "[-2, 3) index 0")
+    Assert.Equal(1.2825057764109595, Between(jitter, 1, -2.0, 3.0), "[-2, 3) index 1")
+    Assert.Equal(2.652636298511106, Between(jitter, 5, -2.0, 3.0), "[-2, 3) index 5")
+    Assert.Equal(Unit(jitter, 0), Between(jitter, 0, 0.0, 1.0), "[0, 1) is Unit")
+    Assert.Equal(10.418679113127663, Between(jitter, 0, 10.0, 10.5), "[10, 10.5) index 0")
+    Assert.Equal(10.328250577641096, Between(jitter, 1, 10.0, 10.5), "[10, 10.5) index 1")
+    Assert.Equal(674716.4525106484, Between(jitter, 0, -1000000.0, 1000000.0), "wide range index 0")
+    Assert.Equal(861054.5194044423, Between(jitter, 5, -1000000.0, 1000000.0), "wide range index 5")
+    Assert.Equal(4.5, Between(jitter, 9, 4.5, 4.5), "lo == hi returns lo")
+}
+
+[Fact]
+fn IntBetweenDrawsTheExpectedValues() -> Void {
+    let jitter = Fork(Seeded(42), "jitter")
+    Assert.Equal(5, IntBetween(jitter, 0, 1, 6), "d6 index 0")
+    Assert.Equal(3, IntBetween(jitter, 1, 1, 6), "d6 index 1")
+    Assert.Equal(5, IntBetween(jitter, 5, 1, 6), "d6 index 5")
+    Assert.Equal(-3, IntBetween(jitter, 0, -5, 5), "[-5, 5] index 0")
+    Assert.Equal(4, IntBetween(jitter, 1, -5, 5), "[-5, 5] index 1")
+    Assert.Equal(29, IntBetween(jitter, 0, 1, 100), "[1, 100] index 0")
+    Assert.Equal(17, IntBetween(jitter, 1, 1, 100), "[1, 100] index 1")
+    Assert.Equal(-242814, IntBetween(jitter, 0, -1000000, 1000000), "wide range index 0")
+    Assert.Equal(878800, IntBetween(jitter, 1, -1000000, 1000000), "wide range index 1")
+    Assert.Equal(6223160860892568620, IntBetween(jitter, 0, 0, 9223372036854775807), "non-negative Int index 0")
+    Assert.Equal(2886936758730473208, IntBetween(jitter, 1, 0, 9223372036854775807), "non-negative Int index 1")
+    Assert.Equal(-3000211175962207187, IntBetween(jitter, 0, -9223372036854775807, 0), "non-positive Int index 0")
+    Assert.Equal(7, IntBetween(jitter, 3, 7, 7), "lo == hi returns lo")
+}
+
+// A range just over half of all Int values rejects about half of the words
+// it is offered, so these draws exercise the rejection path and the move to
+// the next word.
+[Fact]
+fn IntBetweenRejectionPathDrawsTheExpectedValues() -> Void {
+    let jitter = Fork(Seeded(42), "jitter")
+    Assert.Equal(-1786816437788016207, IntBetween(jitter, 0, -9223372036854775807, 1), "index 0")
+    Assert.Equal(-3018382308264101206, IntBetween(jitter, 1, -9223372036854775807, 1), "index 1")
+    Assert.Equal(-6874063838872129356, IntBetween(jitter, 2, -9223372036854775807, 1), "index 2")
+    Assert.Equal(-4817925320873256688, IntBetween(jitter, 3, -9223372036854775807, 1), "index 3")
+}
+
+// Normal goes through logarithm and cosine, whose last bits can differ between
+// processor architectures. The expected values are therefore compared with a
+// tolerance far below any statistical significance; the integer-derived draws
+// above are compared exactly.
+[Fact]
+fn NormalDrawsTheExpectedValues() -> Void {
+    let jitter = Fork(Seeded(42), "jitter")
+    Assert.Near(0.3064695015507731, Normal(jitter, 0, 0.0, 1.0), 0.000000000001, "standard index 0")
+    Assert.Near(-0.47380102288212184, Normal(jitter, 1, 0.0, 1.0), 0.000000000001, "standard index 1")
+    Assert.Near(0.45911366984613056, Normal(jitter, 2, 0.0, 1.0), 0.000000000001, "standard index 2")
+    Assert.Near(-0.30759518611472697, Normal(jitter, 5, 0.0, 1.0), 0.000000000001, "standard index 5")
+    Assert.Near(10.766173753876933, Normal(jitter, 0, 10.0, 2.5), 0.000000000001, "mean 10 stddev 2.5 index 0")
+    Assert.Near(8.815497442794696, Normal(jitter, 1, 10.0, 2.5), 0.000000000001, "mean 10 stddev 2.5 index 1")
+    Assert.Equal(-7.25, Normal(jitter, 4, -7.25, 0.0), "stddev 0 returns the mean exactly")
+}
+
+[Fact]
+fn DrawsArePureAndOrderIndependent() -> Void {
+    let s = Fork(Seeded(7), "purity")
+    var forward: Float[] = []
+    for i in 0..50 {
+        forward = Append(forward, Unit(s, i))
+    }
+    for k in 0..50 {
+        let i = 49 - k
+        Assert.Equal(forward[i], Unit(s, i), "same value in reverse order")
+    }
+    Assert.Equal(Normal(s, 3, 0.0, 1.0), Normal(s, 3, 0.0, 1.0), "Normal repeats")
+    Assert.Equal(IntBetween(s, 3, 1, 6), IntBetween(s, 3, 1, 6), "IntBetween repeats")
+    Assert.Equal(Fork(s, "a"), Fork(s, "a"), "Fork repeats")
+    Assert.Equal(Child(s, 9), Child(s, 9), "Child repeats")
+}
+
+// The measurement-lab shape that motivated v2: with threaded state, setting
+// one noise source's parameters to zero shifted every later draw. Here the
+// spike stream cannot be moved by anything done with the jitter stream.
+[Fact]
+fn ParametersOfOneStreamDoNotMoveAnother() -> Void {
+    let noise = Seeded(1234)
+    let jitter = Fork(noise, "jitter")
+    let spike = Fork(noise, "spike")
+    for i in 0..200 {
+        let before = Unit(spike, i)
+        let quiet = Normal(jitter, i, 0.0, 0.0)
+        let loud = Normal(jitter, i, 0.0, 5.0)
+        Assert.Equal(0.0, quiet, "stddev 0 draws the mean")
+        Assert.Equal(before, Unit(spike, i), "spike draw is unchanged by jitter draws")
+    }
+    for i in 0..50 {
+        Assert.Equal(Unit(jitter, i), Between(jitter, i, 0.0, 1.0), "changing a draw's parameters does not move its index")
+    }
+}
+
+[Fact]
+fn ForksAndChildrenAreDistinctStreams() -> Void {
+    let root = Seeded(2026)
+    let a = Fork(root, "jitter")
+    let b = Fork(root, "spike")
+    Assert.True(a._Key != b._Key, "different labels fork differently")
+    Assert.True(a._Key != root._Key, "a fork is not its parent")
+    Assert.True(Fork(root, "jitter")._Key != Fork(root, "Jitter")._Key, "labels are case-sensitive")
+    Assert.True(Fork(root, "jitter")._Key != Fork(root, "jitter ")._Key, "labels are compared exactly")
+    Assert.True(Fork(Seeded(1), "jitter")._Key != Fork(Seeded(2), "jitter")._Key, "different parents fork differently")
+    Assert.True(Child(root, 0)._Key != Child(root, 1)._Key, "different indices give different children")
+
+    var differing = 0
+    for i in 0..100 {
+        if Unit(a, i) != Unit(b, i) {
+            differing = differing + 1
+        }
+    }
+    Assert.Equal(100, differing, "two forks do not share draws")
+}
+
+[Fact]
+fn DrawsStayInRange() -> Void {
+    let s = Fork(Seeded(99), "range")
+    var sum = 0.0
+    for i in 0..2000 {
+        let u = Unit(s, i)
+        Assert.True(u >= 0.0 and u < 1.0, "Unit in [0, 1)")
+        sum = sum + u
+
+        let x = Between(s, i, -3.5, 12.25)
+        Assert.True(x >= -3.5 and x < 12.25, "Between in [lo, hi)")
+
+        let d = IntBetween(s, i, 1, 6)
+        Assert.True(d >= 1 and d <= 6, "IntBetween in [lo, hi]")
+    }
+    let mean = sum / 2000.0
+    Assert.True(mean > 0.47 and mean < 0.53, "Unit mean near one half")
+}
+
+// Inside package Random both spellings name the same builtin and the same
+// Stream type.
+[Fact]
+fn QualifiedSpellingWorksInsidePackageRandom() -> Void {
+    let s: Stream = Random.Seeded(42)
+    let f: Stream = Random.Fork(s, "jitter")
+    Assert.Equal(Fork(s, "jitter"), f, "Fork")
+    Assert.Equal(Child(s, 5), Random.Child(s, 5), "Child")
+    Assert.Equal(Unit(f, 3), Random.Unit(f, 3), "Unit")
+    Assert.Equal(Between(f, 3, 1.0, 2.0), Random.Between(f, 3, 1.0, 2.0), "Between")
+    Assert.Equal(IntBetween(f, 3, 1, 6), Random.IntBetween(f, 3, 1, 6), "IntBetween")
+    Assert.Equal(Normal(f, 3, 0.0, 1.0), Random.Normal(f, 3, 0.0, 1.0), "Normal")
+}
+
+// A Stream is an ordinary immutable record. Constructing or updating one by
+// hand gives the stream with that key.
+[Fact]
+fn StreamBehavesAsAnOrdinaryRecord() -> Void {
+    let s = Seeded(42)
+    let hand = Stream { _Key: 42 }
+    Assert.Equal(Unit(s, 3), Unit(hand, 3), "hand-built stream draws the same")
+    let moved = s with { _Key: 43 }
+    Assert.Equal(Seeded(43), moved, "with gives the stream for the new key")
+    Assert.Equal(42, s._Key, "the source stream is unchanged")
+}

@@ -1,0 +1,7 @@
+expect error: "function 'Unit' argument 1 expects Stream, got Int"
+
+package Random
+
+fn Main() -> Float {
+    return Unit(42, 0)
+}

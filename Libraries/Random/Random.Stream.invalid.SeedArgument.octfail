@@ -1,0 +1,7 @@
+expect error: "function 'Seeded' argument 1 expects Int, got Float"
+
+package Random
+
+fn Main() -> Float {
+    return Unit(Seeded(1.5), 0)
+}

@@ -1,0 +1,8 @@
+expect error: "function 'Seeded' expects 1 argument, got 0"
+
+package Random
+
+fn Main() -> Int {
+    let s = Seeded()
+    return 0
+}

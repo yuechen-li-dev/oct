@@ -181,6 +181,7 @@ func Check(file ast.File) error {
 	}
 	file = expanded
 	checker := checker{
+		packageName:      file.Package,
 		functions:        make(map[string]functionSignature),
 		wrapperFunctions: make(map[string]functionSignature),
 		functionTypes:    make(map[string]functionSignature),
@@ -198,6 +199,7 @@ func CheckProgram(program project.Program) error {
 	for name, pkg := range program.Packages {
 		file := ast.File{Package: name, Imports: pkg.Imports, Concepts: pkg.Concepts, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := checker{
+			packageName:                  name,
 			functions:                    make(map[string]functionSignature),
 			wrapperFunctions:             make(map[string]functionSignature),
 			functionTypes:                make(map[string]functionSignature),
@@ -343,6 +345,9 @@ func (c checker) rebindRecordTypes(file ast.File) error {
 }
 
 type checker struct {
+	// packageName is the package whose declarations and bodies this checker
+	// checks.
+	packageName                  string
 	functions                    map[string]functionSignature
 	wrapperFunctions             map[string]functionSignature
 	functionTypes                map[string]functionSignature
@@ -559,6 +564,9 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 
 	for _, function := range file.Functions {
 		if builtin.IsName(function.Name) && !(file.Package == builtin.RandomNamespace && builtin.IsRandomSymbol(function.Name)) {
+			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
+		}
+		if random, ok := builtin.ResolveRandomCall(function.Name, file.Package); ok && !random.Legacy {
 			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
 		}
 		if _, exists := c.functions[function.Name]; exists {
@@ -3317,6 +3325,11 @@ regularCall:
 	if hasDirectName && calleeName == "Int" && len(expr.Arguments) == 1 {
 		return ExprType{}, fmt.Errorf("Int(...) is not a conversion in Oct because float-to-int conversion must choose a rounding policy explicitly. Use FloorToInt(x), CeilToInt(x), or RoundToInt(x). For sample counts, FloorToInt(sampleRate * duration) is usually intended.")
 	}
+	if hasDirectName {
+		if random, ok := builtin.ResolveRandomCall(calleeName, c.packageName); ok && !random.Legacy {
+			return c.checkRandomStreamCall(scope, calleeName, random, expr.TypeArguments, expr.Arguments, ctx)
+		}
+	}
 	if hasDirectName && builtin.IsName(calleeName) {
 		return c.checkBuiltinCallExpr(scope, calleeName, expr.TypeArguments, expr.Arguments, ctx)
 	}
@@ -3784,11 +3797,66 @@ func directMakeHostPrimitiveName(callee string) (string, bool) {
 	return name, ok
 }
 
-// checkRandomBuiltinCall types a call to a compiler-owned Random builtin from
-// its entry in the builtin table. callee is the name as written, so a result
+// randomPackageType is the type of a record declared in package Random, as
+// code in the checked package names it: bare inside package Random and
+// package-qualified everywhere else.
+func (c checker) randomPackageType(record string) Type {
+	if c.packageName == builtin.RandomNamespace {
+		return Type{Name: record}
+	}
+	return Type{Name: builtin.RandomNamespace + "." + record}
+}
+
+// checkRandomStreamCall types a call to a Random v2 builtin from its entry in
+// the builtin table: the import, the argument count and every argument type.
+// callee is the name as written. The caller has already established that the
+// name resolves from the checked package, so an unqualified callee only
+// arrives here from inside package Random.
+func (c checker) checkRandomStreamCall(scope *scope, callee string, random builtin.RandomBuiltin, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if c.packageName != builtin.RandomNamespace {
+		if _, imported := c.importedPackages[builtin.RandomNamespace]; !imported {
+			return ExprType{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", builtin.RandomNamespace, builtin.RandomNamespace)
+		}
+	}
+	if len(typeArguments) > 0 {
+		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+	}
+	if len(arguments) != len(random.Parameters) {
+		noun := "arguments"
+		if len(random.Parameters) == 1 {
+			noun = "argument"
+		}
+		return ExprType{}, fmt.Errorf("function '%s' expects %d %s, got %d", callee, len(random.Parameters), noun, len(arguments))
+	}
+	for index, parameter := range random.Parameters {
+		argumentType, err := c.checkExpr(scope, arguments[index], ctx)
+		if err != nil {
+			return ExprType{}, err
+		}
+		if argumentType.Fallible {
+			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		want := Type{Base: BaseType(parameter)}
+		if parameter == builtin.RandomParameterStream {
+			want = c.randomPackageType(string(parameter))
+		}
+		if argumentType.ValueType != want {
+			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, index+1, want, argumentType.ValueType)
+		}
+	}
+	result := Type{Base: BaseType(random.Result)}
+	if random.ResultInPackage {
+		result = c.randomPackageType(random.Result)
+	}
+	return ExprType{ValueType: result}, nil
+}
+
+// checkLegacyRandomBuiltinCall types a call to a Random v1 builtin from its
+// entry in the builtin table. callee is the name as written, so a result
 // record keeps the spelling of the call: package-qualified for a qualified
-// call and bare for an unqualified one.
-func checkRandomBuiltinCall(callee string, random builtin.RandomBuiltin, typeArguments []ast.TypeRef, arguments []ast.Expr) (ExprType, error) {
+// call and bare for an unqualified one. Arguments are not type-checked; that
+// is v1 behavior, preserved until v1 is removed.
+func checkLegacyRandomBuiltinCall(callee string, random builtin.RandomBuiltin, typeArguments []ast.TypeRef, arguments []ast.Expr) (ExprType, error) {
 	if len(typeArguments) > 0 {
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 	}
@@ -3831,8 +3899,8 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{{Base: BaseTypeBool}, {Base: BaseTypeInt}}}}}, nil
 	}
-	if random, ok := builtin.LookupRandom(callee); ok {
-		return checkRandomBuiltinCall(callee, random, typeArguments, arguments)
+	if random, ok := builtin.LookupRandom(callee); ok && random.Legacy {
+		return checkLegacyRandomBuiltinCall(callee, random, typeArguments, arguments)
 	}
 	if callee == "PlotLine" || callee == "PlotScatter" || callee == "PlotRenderLine" || callee == "PlotRenderScatter" || callee == "PlotRenderHistogram" {
 		if len(typeArguments) > 0 {

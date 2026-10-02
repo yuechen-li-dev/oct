@@ -1,0 +1,61 @@
+package RandomStreamPreconditions
+
+import Random
+
+// Every fact in this file violates one precondition of a Random v2 builtin
+// and is expected to stop with a non-recoverable runtime error. The file is a
+// fixture for cmd/oct/random_stream_preconditions_test.go, which checks that
+// the interpreted and compiled lanes report the same error. It is kept out of
+// the Libraries and Language lanes because every fact in it fails by design.
+
+fn NegativeOne() -> Int {
+    return 0 - 1
+}
+
+[Fact]
+fn ChildRejectsNegativeIndex() -> Void {
+    let s = Random.Child(Random.Seeded(1), NegativeOne())
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn UnitRejectsNegativeIndex() -> Void {
+    let x = Random.Unit(Random.Seeded(1), NegativeOne())
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn BetweenRejectsNegativeIndex() -> Void {
+    let x = Random.Between(Random.Seeded(1), NegativeOne(), 0.0, 1.0)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn IntBetweenRejectsNegativeIndex() -> Void {
+    let x = Random.IntBetween(Random.Seeded(1), NegativeOne(), 1, 6)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn NormalRejectsNegativeIndex() -> Void {
+    let x = Random.Normal(Random.Seeded(1), NegativeOne(), 0.0, 1.0)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn BetweenRejectsReversedBounds() -> Void {
+    let x = Random.Between(Random.Seeded(1), 0, 2.0, 1.0)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn IntBetweenRejectsReversedBounds() -> Void {
+    let x = Random.IntBetween(Random.Seeded(1), 0, 6, 1)
+    Assert.True(false, "unreachable")
+}
+
+[Fact]
+fn NormalRejectsNegativeStddev() -> Void {
+    let x = Random.Normal(Random.Seeded(1), 0, 0.0, 0.0 - 1.0)
+    Assert.True(false, "unreachable")
+}

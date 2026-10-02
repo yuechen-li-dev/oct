@@ -1,0 +1,7 @@
+expect error: "function 'Fork' argument 2 expects String, got Int"
+
+package Random
+
+fn Main() -> Float {
+    return Unit(Fork(Seeded(1), 7), 0)
+}

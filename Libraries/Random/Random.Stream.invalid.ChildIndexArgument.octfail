@@ -1,0 +1,8 @@
+expect error: "function 'Child' argument 2 expects Int, got String"
+
+package Random
+
+// Child takes an index. A named substream is Fork.
+fn Main() -> Float {
+    return Unit(Child(Seeded(1), "3"), 0)
+}

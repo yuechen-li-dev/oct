@@ -1,0 +1,10 @@
+expect error: "undefined variable: Seeded"
+
+package Main
+
+// Outside package Random the v2 builtins exist only in their qualified
+// spelling, Random.Seeded. The bare name is an ordinary identifier.
+fn Main() -> Int {
+    let s = Seeded(42)
+    return 0
+}

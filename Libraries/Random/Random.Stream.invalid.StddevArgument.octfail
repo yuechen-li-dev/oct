@@ -1,0 +1,7 @@
+expect error: "function 'Normal' argument 4 expects Float, got Int"
+
+package Random
+
+fn Main() -> Float {
+    return Normal(Seeded(1), 0, 0.0, 1)
+}
