@@ -161,7 +161,7 @@ func formatRegularSource(path string, src string, resolved settings) (string, De
 	return out, DecisionDiagnostics{}, err
 }
 
-var octFailHeaderPattern = regexp.MustCompile(`^expect error:\s*"(.*)"\s*$`)
+var octFailHeaderPattern = regexp.MustCompile(`^expect (runtime )?error:\s*"(.*)"\s*$`)
 
 func formatOctFailSource(src string, resolved settings) (string, error) {
 	lines := strings.Split(src, "\n")

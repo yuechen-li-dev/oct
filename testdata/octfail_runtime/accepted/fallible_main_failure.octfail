@@ -1,0 +1,7 @@
+expect runtime error: "no route"
+
+package Main
+
+fn Main() -> Int ! Error {
+    return error("no route")
+}

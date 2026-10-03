@@ -518,3 +518,32 @@ func TestVerifyComparesTokensLinesAndUnitJunctions(t *testing.T) {
 		t.Errorf("an arrow left in the other spelling was accepted")
 	}
 }
+
+// Both expectation headers of an .octfail are kept as written, and the source
+// below either one is formatted.
+func TestFormatOctFailKeepsEitherExpectationHeader(t *testing.T) {
+	for _, header := range []string{`expect error: "bad"`, `expect runtime error: "array length mismatch"`} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "case.octfail")
+		if err := os.WriteFile(path, []byte(header+"\n\npackage Main\nfn Main()->Int{return 1}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := FormatPath(path); err != nil {
+			t.Fatalf("%s: %v", header, err)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := header + "\n\npackage Main\nfn Main() -> Int { return 1 }\n"; string(got) != want {
+			t.Errorf("%s: got %q, want %q", header, got, want)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "case.octfail")
+	if err := os.WriteFile(path, []byte("expect warning: \"bad\"\n\npackage Main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := FormatPath(path); err == nil || !strings.Contains(err.Error(), "malformed expectation header") {
+		t.Fatalf("expected a malformed header to be refused, got %v", err)
+	}
+}

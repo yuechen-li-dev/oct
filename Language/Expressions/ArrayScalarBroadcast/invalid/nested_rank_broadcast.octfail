@@ -1,7 +1,9 @@
-expect error: "operator + not defined"
+expect runtime error: "array length mismatch: 3 vs 1"
 
 package MainInvalid
 
+// Shapes (3, 1) and (1, 3) are not combined into (3, 3). Arrays of equal
+// nesting depth combine element by element, and the outer lengths differ.
 fn Main() -> Void {
     let a: Float[][] = [[1.0], [2.0], [3.0]]
     let b: Float[][] = [[10.0, 20.0, 30.0]]

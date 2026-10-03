@@ -1,0 +1,7 @@
+expect runtime error: "anything"
+
+package Main
+
+fn Main() -> Int {
+    return "text"
+}

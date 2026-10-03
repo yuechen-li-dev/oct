@@ -1,0 +1,11 @@
+expect runtime error: "sensor offline"
+
+package Main
+
+fn Reading() -> Int ! Error {
+    return error("sensor offline")
+}
+
+fn Main() -> Int {
+    return Reading()!
+}
