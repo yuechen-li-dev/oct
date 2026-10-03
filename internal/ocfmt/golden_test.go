@@ -56,7 +56,9 @@ func TestGoldenOutput(t *testing.T) {
 				if err != nil {
 					t.Fatalf("read golden (run with -update to create it): %v", err)
 				}
-				if got != string(want) {
+				// The fixtures' extensions are not covered by .gitattributes, so a
+				// checkout that converts line endings hands them over as CRLF.
+				if got != strings.ReplaceAll(string(want), "\r\n", "\n") {
 					t.Errorf("output differs from %s\n--- got ---\n%s\n--- want ---\n%s", goldenPath, got, want)
 				}
 
