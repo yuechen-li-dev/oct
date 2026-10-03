@@ -316,10 +316,10 @@ Ten sources in the tree that are not `.octfail` do not parse, so `oct fmt` refus
 Suggestion:
 Repair or retire each one. A fixture under `valid/` that does not parse is not asserting anything.
 
-Status: Open
+Status: Resolved
 
 Resolution:
-The eight under `Language/` are repaired and run in both lanes. Two remain: `Libraries/IfErrNotEqualNil/IfErrNotEqualNil.Core.oct`, whose parameter has a fallible type, which Oct does not have, and `testdata/m34a/CollectionIteration/collection_iteration.octest`, which no test runs.
+The eight under `Language/` are repaired and run in both lanes. `Libraries/IfErrNotEqualNil` is rewritten (see its entry below). The `testdata/m34a` probe failed on a parameter named `matrix`: `matrix[` always began a matrix literal. The parser now reads a literal only for `matrix[[` and `matrix[]`, so a value named `matrix` can be indexed. The probe is rewritten with `Append` as `Language/ControlFlow/Loops/valid/counted_loop_array_traversal.octest`, and its report is kept as `docs/internal/collection_iteration_pressure_m34a.md`.
 
 ---
 
@@ -472,7 +472,10 @@ The compiled lane evaluates every candidate value of a `when utility` expression
 Suggestion:
 Select the candidate first and lower each value in its own block.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+The defect was wider than the refusal. For every utility `when`, the compiled lane evaluated the value and the score of each case, and the `else` value, before it selected. A case whose condition was false, or an `else` that was not needed, could fail or propagate an error the interpreter never raised: three wrong answers in a function and two in a flow state, none covered by a fixture. A standalone `when utility` is now lowered to ordinary blocks in the order the reference gives, enum-targeted payloads included, in functions and in flow states; `when policy` gathers its candidates in source order and takes `else` as a thunk. Contracts: `Language/Expressions/UtilityWhen/valid/standalone_utility_evaluation_order.octest`, `Language/ControlFlow/OctomataUtilityWhen/valid/utility_evaluation_order.octest` and `.../runtime/invalid/policy_evaluates_every_value_whose_condition_holds.octfail`. The selection runs in the generated program, which cannot import `internal/judgment`, so that package was not used.
 
 ---
 
@@ -481,6 +484,111 @@ Observation:
 
 Suggestion:
 Retire the library, or decide that fallible parameter types exist.
+
+Status: Resolved
+
+Resolution:
+Kept, as the identity template `IfErrNotEqualNil<T>(value: T) -> T`. Oct does not let an unhandled error reach a parameter, so by the time the wrapper is called there is nothing left to check; the library says so in its doc comment and returns its argument. It has tests in both lanes and a contract that passing an unhandled fallible is rejected.
+
+---
+
+Observation:
+Expected failures under `Language/` were `.octest` or `.oct` files that only a particular Go test knew to expect a failure from: fourteen artifact failures, four Concept capability failures, four wrapper manifest mismatches and one template provenance failure. `oct test <directory>` on any of them reported a failure, and the Go tests held the expected messages, which is semantics in Go.
+
+Suggestion:
+Make each an `.octfail`.
+
+Status: Resolved
+
+Resolution:
+`.octfail` gains `expect artifact error:` for `[Artifact]` entry points that must fail and publish nothing, and may state several expectation lines that the one failure must all contain. A failure that needs a second file or a manifest is a package in `Packages/<Name>/` beside the fixture, which the fixture imports. The Go assertions are removed; `cmd/oct/language_corpus_test.go` lists one directory another test owns, down from twelve. `Language/Tooling/ConceptCapabilitiesM2/valid` remains: it holds two artifacts that are expected to be refused, and they need a manifest beside them and native approvals passed by the host, which an `.octfail` cannot state.
+
+---
+
+Observation:
+Two wrapper fixture directories pass in one execution lane only, and nothing in the source said so. `Language/Testing/CompiledOctxiliary/valid` has stub bodies that only the compiled lane replaces with sidecar calls; `Language/Testing/InterpretedOctxiliary/valid` pins that the interpreted lane runs a source body the manifest also names.
+
+Suggestion:
+Let a test state the lane it belongs to, with a reason.
+
+Status: Resolved
+
+Resolution:
+`[Interpreted("reason")]` and `[Compiled("reason")]` on a `[Fact]` or `[Theory]`. The reason is required. The other lane reports the test as skipped and does not build it, and under `--execution auto` a `[Compiled]` test does not fall back to the interpreter. `Language/reference/tooling/31-octest.md` says when not to use it: a feature one lane is missing is not a reason.
+
+---
+
+Observation:
+A function that a wrapper manifest names and that also has a source body means two things. The interpreted lane runs the source body. The compiled lane replaces the body with the sidecar call. `Libraries/IO` relies on this: `IO.Read` has a body that calls the `CsvRead` builtin and a manifest entry for the `CsvRead` wire function, and the two agree. Nothing requires them to agree, and the two generic wrapper fixtures each pin one side.
+
+Suggestion:
+Decide which is the definition. If the manifest is, the interpreted lane should dispatch a manifest-named function to the sidecar and the source body should be a declaration without a body; if the source is, the compiled lane should not replace it.
+
+Status: Open
+
+---
+
+Observation:
+A package manifest that existed and did not parse or validate was dropped without a message whenever the program's root did not require manifests, which includes a single file that imports a library. The package then loaded with no wrapper declarations, and its stub bodies ran in place of the sidecar calls.
+
+Suggestion:
+Report the manifest error.
+
+Status: Resolved
+
+Resolution:
+`internal/project` reports a manifest that exists and is wrong in every case. `Language/Testing/CompiledOctxiliary/invalid/wrapper_undeclared_record_arg.octfail` is the contract.
+
+---
+
+Observation:
+A value named `vector` cannot be indexed: `vector[i]` is a one-element vector literal. Unlike `matrix[[...]]`, the literal and the index have the same shape, so the parser cannot tell them apart by looking ahead. The result is a type error far from the cause, such as "Assert.Near supports only Float scalars".
+
+Suggestion:
+Either resolve it by scope (a `vector[...]` whose name is bound to a value is an index), or reject `vector` as a binding name with a diagnostic that says why.
+
+Status: Open
+
+---
+
+Observation:
+An ordinary program that reaches `Artifact.WriteText` is rejected at different times: the interpreted lane stops when the call runs, and the compiled lane refuses to build the program. The compiled message used to be "does not yet support builtin ArtifactWriteText", which was wrong twice: the name is internal and the feature is not pending.
+
+Suggestion:
+Reject it in the typechecker, in both lanes, when an `Artifact.*` call is reachable from `Main`.
+
+Status: Open
+
+Resolution:
+The compiled message is now "Artifact.WriteText is available only during `oct artifact` evaluation; a compiled program cannot call it". The difference in timing remains; `Language/Tooling/Artifacts/invalid/artifact_write_outside_phase.octfail` holds the compiled half and `internal/tester/artifact_phase_test.go` the interpreted half.
+
+---
+
+Observation:
+An array index out of bounds stops both lanes with different messages: interpreted "runtime error: index 9 out of bounds for array of length 1", compiled the Go runtime's "index out of range [9] with length 1". A runtime `.octfail` for it cannot be written with one expectation.
+
+Suggestion:
+Have the compiled lane report the interpreter's message.
+
+Status: Open
+
+---
+
+Observation:
+The two standalone forms of `when utility` evaluate values differently, and the reference specifies both: the plain form evaluates the value of every case whose condition holds, the enum-targeted form the selected value alone. Separately, the plain standalone form accepts `hysteresis` and `min_commit`, which have no effect without a controller.
+
+Suggestion:
+Evaluate only the selected value in both standalone forms, and reject policy fields on a standalone form.
+
+Status: Open
+
+---
+
+Observation:
+`Assert.Equal` does not accept arrays ("does not support type Int[] in M24a"), so a test that builds an array asserts its length and each element.
+
+Suggestion:
+Accept arrays of the types it already compares, and report the first differing index.
 
 Status: Open
 

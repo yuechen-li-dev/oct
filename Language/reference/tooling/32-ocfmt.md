@@ -27,6 +27,7 @@ not enabled.
 
 - Every `.oct`, `.octest` and `.octfail` file under the directory is attempted. A file that is refused does not stop the others; every refusal is reported and the command fails.
 - An `.octfail` whose body does not lex or parse is a contract for that error. It cannot be formatted, so it is left unchanged and is not a failure, in `--check` mode as well.
+- The expectation lines of an `.octfail` are kept as written. The source below them is formatted as ordinary source, or as a test source when the file states `expect artifact error:`.
 
 ### Indentation
 

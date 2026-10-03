@@ -17,6 +17,14 @@
 - Import resolution continues to the nearest ancestor with `Libraries/`; a nested `Packages/` directory adds packages and no longer hides the repository's libraries.
 - Add `TestLanguageCorpusRunsInBothLanes` (integration lane): every `Language` fixture directory runs in both execution lanes. Ten directories that no longer loaded are repaired.
 - Reference: fallible `match` is a statement with block arms. The expression form shown before was never implemented.
+- Add `[Interpreted("reason")]` and `[Compiled("reason")]` for a `[Fact]` or `[Theory]` that belongs to one execution lane. The reason is required; the other lane reports the test as skipped, and a `[Compiled]` test does not fall back to the interpreter under `--execution auto`.
+- `.octfail` gains `expect artifact error: "..."` for `[Artifact]` entry points that must fail and publish nothing, and may state several expectation lines that one failure must all contain. The expected failures under `Language/` that Go tests used to drive are `.octfail` contracts.
+- Fix compiled execution of utility `when`. An enum-targeted `when utility` with payload candidates now compiles. Every utility `when` used to evaluate the value and score of each case and the `else` value before selecting, so a case whose condition was false could fail the program; both lanes now evaluate in the order the reference gives.
+- **Breaking:** a `manifest.oct` that exists and does not parse or validate is an error for any program that imports its package. It used to be ignored when the program's root required no manifests, which silently removed the package's wrapper declarations.
+- A value named `matrix` can be indexed; only `matrix[[...]]` is a literal.
+- `Libraries/IfErrNotEqualNil` parses and has tests: it is the identity template.
+- The compiled lane reports that an `Artifact.*` builtin is available only during `oct artifact` evaluation, in place of "does not yet support builtin".
+- Test sidecars are built once into a cache keyed by their sources (`internal/sidecarcache`, `OCT_SIDECAR_CACHE_DIR`) and reused across test runs. `TestLanguageCorpusRunsInBothLanes` runs the wrapper fixture directories with them.
 
 ## v0.1.0 — initial preview
 
