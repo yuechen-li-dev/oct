@@ -1,0 +1,14 @@
+expect artifact error: "the artifact stops here"
+expect artifact error: "a text the failure does not contain"
+
+package Main
+
+// Synthetic fixture: the failure contains the first text and not the second.
+[Artifact]
+fn Fails() -> Void ! Error {
+    let _value = Stop()?
+}
+
+fn Stop() -> Int ! Error {
+    return error("the artifact stops here")
+}

@@ -3162,7 +3162,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		}
 		return "String[]", nil
 	default:
-		return "", fmt.Errorf("compiled mode does not yet support builtin %s", name)
+		return "", unsupportedBuiltin(name)
 	}
 }
 

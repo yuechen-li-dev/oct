@@ -1873,7 +1873,7 @@ func goStmt(s MIRStmt) (string, error) {
 			case "Entropy.Seed", "Entropy.IntBetween", "Entropy.Unit", "Entropy.Bytes":
 				return emitEntropyCall(st.Callee, st.Target, args)
 			default:
-				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
+				return "", unsupportedBuiltin(st.Callee)
 			}
 		}
 		if st.FunctionValue {
@@ -1898,7 +1898,7 @@ func goStmt(s MIRStmt) (string, error) {
 			case "BoolIntProbe":
 				return fmt.Sprintf("%s, %s = true, 7", st.Targets[0], st.Targets[1]), nil
 			default:
-				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
+				return "", unsupportedBuiltin(st.Callee)
 			}
 		}
 		return fmt.Sprintf("%s = fn_%s(%s)", strings.Join(st.Targets, ", "), strings.ReplaceAll(st.Callee, ".", "_"), strings.Join(args, ", ")), nil

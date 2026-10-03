@@ -1,6 +1,7 @@
 package tester
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,33 +9,40 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/yuechen-li-dev/oct/internal/build"
 	"github.com/yuechen-li-dev/oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/octfailheader"
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
-// An .octfail fixture begins with one expectation header.
-//
-//	expect error: "text"          the source is rejected before it can run
-//	expect runtime error: "text"  the source compiles, and running Main stops
-//	                              with a failure whose message contains text
-var octFailHeaderPattern = regexp.MustCompile(`^expect (runtime )?error:\s*"(.*)"\s*$`)
-
 // octFailRunLimit bounds one compiled run of a runtime fixture.
 const octFailRunLimit = 30 * time.Second
 
+// octFailCase is one .octfail fixture: when it must fail, the texts its
+// failure must contain, and the Oct source below the expectation lines.
 type octFailCase struct {
-	path          string
-	displayName   string
-	expectedError string
-	runtime       bool
-	source        string
+	path        string
+	displayName string
+	phase       octfailheader.Phase
+	expected    []string
+	source      string
+}
+
+// expectationLabel names what the fixture expects, for the failure report.
+func (c octFailCase) expectationLabel() string {
+	switch c.phase {
+	case octfailheader.Runtime:
+		return "expected runtime error containing"
+	case octfailheader.Artifact:
+		return "expected artifact error containing"
+	default:
+		return "expected error containing"
+	}
 }
 
 func discoverOctFailCases(root string) ([]octFailCase, error) {
@@ -62,7 +70,7 @@ func discoverOctFailCases(root string) ([]octFailCase, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read .octfail fixture %s: %w", path, err)
 		}
-		expectedError, runtime, source, err := parseOctFailExpectation(string(data))
+		header, source, err := octfailheader.Split(string(data))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
@@ -71,72 +79,44 @@ func discoverOctFailCases(root string) ([]octFailCase, error) {
 			rel = filepath.Base(path)
 		}
 		cases = append(cases, octFailCase{
-			path:          path,
-			displayName:   filepath.ToSlash(rel),
-			expectedError: expectedError,
-			runtime:       runtime,
-			source:        source,
+			path:        path,
+			displayName: filepath.ToSlash(rel),
+			phase:       header.Phase,
+			expected:    header.Texts,
+			source:      source,
 		})
 	}
 	return cases, nil
 }
 
-// parseOctFailFixture reads a compile-time fixture. A runtime fixture is not
-// one: its source is valid, so a caller that only compiles would report it as
-// a fixture that failed to fail.
-func parseOctFailFixture(content string) (string, string, error) {
-	expected, runtime, source, err := parseOctFailExpectation(content)
+// ParseOctFailFixture exposes the fixture header grammar to language-specific
+// invalid corpora that compile a fixture themselves. It serves the plain form
+// only: one compile-time expectation. A runtime or artifact fixture, or one
+// with several expectation lines, is an error here and not a fixture that
+// "failed to fail". Callers retain ownership of compilation and
+// diagnostic-code checks.
+func ParseOctFailFixture(content string) (string, string, error) {
+	header, source, err := octfailheader.Split(content)
 	if err != nil {
 		return "", "", err
 	}
-	if runtime {
-		return "", "", fmt.Errorf("runtime expectation header is not a compile-time expectation")
+	if header.Phase != octfailheader.Compile {
+		return "", "", fmt.Errorf("%s expectation header is not a compile-time expectation", header.Phase)
 	}
-	return expected, source, nil
+	if len(header.Texts) != 1 {
+		return "", "", fmt.Errorf("this corpus takes one expectation line, found %d", len(header.Texts))
+	}
+	return header.Texts[0], source, nil
 }
 
-func parseOctFailExpectation(content string) (string, bool, string, error) {
-	lines := strings.Split(content, "\n")
-
-	headerIndex := -1
-	for i, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		headerIndex = i
-		break
-	}
-	if headerIndex == -1 {
-		return "", false, "", fmt.Errorf("missing expectation header")
-	}
-
-	header := strings.TrimSpace(lines[headerIndex])
-	match := octFailHeaderPattern.FindStringSubmatch(header)
-	if match == nil {
-		return "", false, "", fmt.Errorf("malformed expectation header")
-	}
-	runtime := match[1] != ""
-	expected := match[2]
-	if expected == "" {
-		return "", false, "", fmt.Errorf("expected error substring must be non-empty")
-	}
-
-	for i := headerIndex + 1; i < len(lines); i++ {
-		trimmed := strings.TrimSpace(lines[i])
-		if strings.HasPrefix(trimmed, "expect error:") || strings.HasPrefix(trimmed, "expect runtime error:") {
-			return "", false, "", fmt.Errorf("multiple expectation headers are not allowed")
+// missingText returns the first expected text that actual does not contain.
+func missingText(expected []string, actual string) (string, bool) {
+	for _, text := range expected {
+		if !strings.Contains(actual, text) {
+			return text, true
 		}
 	}
-
-	source := strings.Join(lines[headerIndex+1:], "\n")
-	return expected, runtime, source, nil
-}
-
-// ParseOctFailFixture exposes the established fixture header grammar to
-// language-specific invalid corpora. Callers retain ownership of compilation
-// and diagnostic-code checks; this helper owns only expectation parsing.
-func ParseOctFailFixture(content string) (string, string, error) {
-	return parseOctFailFixture(content)
+	return "", false
 }
 
 func runOctFailCase(testCase octFailCase, executionMode string) (string, error) {
@@ -146,7 +126,13 @@ func runOctFailCase(testCase octFailCase, executionMode string) (string, error) 
 	}
 	defer os.RemoveAll(tempDir)
 
-	sourcePath := filepath.Join(tempDir, "fixture.oct")
+	// An artifact fixture is a test source: it declares [Artifact] entry
+	// points, which an ordinary source may not.
+	sourceName := "fixture.oct"
+	if testCase.phase == octfailheader.Artifact {
+		sourceName = "fixture.octest"
+	}
+	sourcePath := filepath.Join(tempDir, sourceName)
 	if err := os.WriteFile(sourcePath, []byte(testCase.source), 0o644); err != nil {
 		return "", fmt.Errorf("write temp source: %w", err)
 	}
@@ -157,17 +143,86 @@ func runOctFailCase(testCase octFailCase, executionMode string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("resolve fixture directory: %w", err)
 	}
-	if testCase.runtime {
+	switch testCase.phase {
+	case octfailheader.Runtime:
 		return runRuntimeOctFailCase(testCase, sourcePath, importAnchor, executionMode)
+	case octfailheader.Artifact:
+		return runArtifactOctFailCase(testCase, sourcePath, importAnchor, filepath.Join(tempDir, "published"))
 	}
 
 	_, compileErr := build.CompileWithImportAnchor(sourcePath, importAnchor)
-	return judgeCompileTimeOctFail(testCase.expectedError, compileErr)
+	return judgeCompileTimeOctFail(testCase.expected, compileErr)
+}
+
+// runArtifactOctFailCase checks a fixture whose [Artifact] entry points must
+// fail when evaluated. Artifact evaluation is a build-time phase with one
+// implementation, so the check is the same in every execution mode. A failed
+// evaluation publishes nothing: an output left in the output root fails the
+// fixture even when the message matches.
+func runArtifactOctFailCase(testCase octFailCase, sourcePath string, importAnchor string, outputRoot string) (string, error) {
+	if err := os.MkdirAll(outputRoot, 0o755); err != nil {
+		return "", fmt.Errorf("create artifact output root: %w", err)
+	}
+	var stdout bytes.Buffer
+	evalErr := ExecuteArtifactsWithOptions(sourcePath, &stdout, ArtifactOptions{OutputRoot: outputRoot, ImportAnchor: importAnchor})
+	published, err := publishedFiles(outputRoot)
+	if err != nil {
+		return "", err
+	}
+	return judgeArtifactOctFail(testCase.expected, stdout.String(), evalErr, published)
+}
+
+// judgeArtifactOctFail decides an artifact fixture from what evaluating it
+// did. The first return value describes what happened.
+func judgeArtifactOctFail(expected []string, stdout string, evalErr error, published []string) (string, error) {
+	if evalErr == nil {
+		return "artifact evaluation completed", fmt.Errorf("expected artifact evaluation to fail")
+	}
+	actual := artifactFailureText(stdout, evalErr)
+	if text, missing := missingText(expected, actual); missing {
+		return actual, fmt.Errorf("expected artifact error containing: %q", text)
+	}
+	if len(published) > 0 {
+		return "the evaluation failed as expected and still published " + strings.Join(published, ", "), fmt.Errorf("a failed artifact evaluation must publish nothing")
+	}
+	return actual, nil
+}
+
+// artifactFailureText is what a person sees when artifact evaluation fails:
+// the FAIL lines the runner printed, then the error it returned.
+func artifactFailureText(stdout string, evalErr error) string {
+	var parts []string
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.HasPrefix(line, "FAIL ") {
+			parts = append(parts, strings.TrimSpace(line))
+		}
+	}
+	parts = append(parts, evalErr.Error())
+	return strings.Join(parts, "; ")
+}
+
+func publishedFiles(root string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() {
+			rel, _ := filepath.Rel(root, path)
+			files = append(files, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("inspect artifact output root: %w", err)
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 // judgeCompileTimeOctFail decides a compile-time fixture from the result of
 // compiling it. The first return value describes what happened.
-func judgeCompileTimeOctFail(expected string, compileErr error) (string, error) {
+func judgeCompileTimeOctFail(expected []string, compileErr error) (string, error) {
 	if compileErr == nil {
 		return "", fmt.Errorf("expected compilation failure but build succeeded")
 	}
@@ -178,8 +233,8 @@ func judgeCompileTimeOctFail(expected string, compileErr error) (string, error) 
 	if errors.Is(compileErr, build.ErrGeneratedProgramDidNotBuild) {
 		return "the source was accepted, and the generated program did not build: " + actual, fmt.Errorf("expected the compiler to reject the source")
 	}
-	if !strings.Contains(actual, expected) {
-		return actual, fmt.Errorf("expected error containing: %q", expected)
+	if text, missing := missingText(expected, actual); missing {
+		return actual, fmt.Errorf("expected error containing: %q", text)
 	}
 	return actual, nil
 }
@@ -187,7 +242,7 @@ func judgeCompileTimeOctFail(expected string, compileErr error) (string, error) 
 // runRuntimeOctFailCase checks a fixture whose source is valid and whose Main
 // must stop with a failure.
 func runRuntimeOctFailCase(testCase octFailCase, sourcePath string, importAnchor string, executionMode string) (string, error) {
-	return checkRuntimeOctFail(testCase.expectedError, executionMode, []octFailLane{
+	return checkRuntimeOctFail(testCase.expected, executionMode, []octFailLane{
 		{name: "interpreted", run: func() (string, bool, error) { return runOctFailInterpreted(sourcePath, importAnchor) }},
 		{name: "compiled", run: func() (string, bool, error) { return runOctFailCompiled(sourcePath, importAnchor) }},
 	})
@@ -205,7 +260,7 @@ type octFailLane struct {
 // contracts: under "auto" every lane must fail with the expected text, and a
 // named mode checks that lane alone. Nothing falls back from one lane to the
 // other. The first return value describes what happened when the check fails.
-func checkRuntimeOctFail(want string, executionMode string, lanes []octFailLane) (string, error) {
+func checkRuntimeOctFail(want []string, executionMode string, lanes []octFailLane) (string, error) {
 	for _, lane := range lanes {
 		if executionMode != "auto" && executionMode != lane.name {
 			continue
@@ -215,9 +270,11 @@ func checkRuntimeOctFail(want string, executionMode string, lanes []octFailLane)
 		case err != nil:
 			return lane.name + ": did not compile: " + err.Error(), fmt.Errorf("expected the source to compile and fail when run")
 		case !failed:
-			return lane.name + ": the program ran to completion", fmt.Errorf("expected runtime error containing: %q", want)
-		case !strings.Contains(message, want):
-			return lane.name + ": " + message, fmt.Errorf("expected runtime error containing: %q", want)
+			return lane.name + ": the program ran to completion", fmt.Errorf("expected runtime error containing: %q", want[0])
+		default:
+			if text, missing := missingText(want, message); missing {
+				return lane.name + ": " + message, fmt.Errorf("expected runtime error containing: %q", text)
+			}
 		}
 	}
 	return "", nil

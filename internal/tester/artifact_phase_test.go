@@ -87,11 +87,10 @@ func TestConceptModeledNativeCapabilityIsDeniedThenExactlyGranted(t *testing.T) 
 }
 
 func TestConceptCapabilityDeclarationAndBrokerDiagnostics(t *testing.T) {
+	// The declaration diagnostics are contracts under
+	// Language/Tooling/ConceptCapabilitiesM2/invalid. This case needs a
+	// manifest beside it, so it stays here.
 	cases := []struct{ path, want string }{
-		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "missing_provider.octest"), "is not a package-local function"},
-		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "request_must_be_concept.octest"), "requires a package-local record Concept"},
-		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "effectful_discovery.octest"), "not statically discoverable"},
-		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "entropy_discovery.octest"), "not statically discoverable: provider attempted effectful operation Entropy.Seed"},
 		{conceptCapabilitiesM2Fixture("no_request_artifact.octest"), "was not requested"},
 	}
 	for _, tc := range cases {
@@ -206,56 +205,13 @@ func TestBuildTimeArtifactEvaluationPublishesTypedOutputsWithoutBackend(t *testi
 	}
 }
 
-func TestArtifactCapabilityRejectsUnsafePathsDuplicatesEffectsAndFailures(t *testing.T) {
-	cases := []struct {
-		file string
-		want string
-	}{
-		{"path_traversal.octest", "escapes the artifact output root"},
-		{"absolute_path.octest", "must be non-empty and relative"},
-		{"duplicate_output.octest", "duplicate artifact output path"},
-		{"ambient_write.octest", "outside Artifact.Write*"},
-		{"ambient_entropy_seed.octest", "artifact evaluation rejected ambient randomness operation Entropy.Seed"},
-		{"ambient_entropy_int_between.octest", "artifact evaluation rejected ambient randomness operation Entropy.IntBetween"},
-		{"ambient_entropy_unit.octest", "artifact evaluation rejected ambient randomness operation Entropy.Unit"},
-		{"ambient_entropy_bytes.octest", "artifact evaluation rejected ambient randomness operation Entropy.Bytes"},
-		{"fallible_failure.octest", "artifact failure is visible"},
-		{"static_assert_duplicate.octest", "static assertion failed in RejectDuplicateIDs: duplicate ID 7"},
-		{"static_assert_unsorted.octest", "static assertion failed in RejectUnsortedIndex: row-ID index is not sorted"},
-		{"table_with_extent_mismatch.octest", "replacement column 'Name' has extent 1; expected 2"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.file, func(t *testing.T) {
-			var stdout bytes.Buffer
-			outputRoot := t.TempDir()
-			err := ExecuteArtifactsWithOptions(artifactLanguageFixture("invalid", tc.file), &stdout, ArtifactOptions{OutputRoot: outputRoot})
-			if err == nil || !strings.Contains(stdout.String()+err.Error(), tc.want) {
-				t.Fatalf("expected %q, got err=%v output=%s", tc.want, err, stdout.String())
-			}
-			if tc.file == "fallible_failure.octest" || strings.HasPrefix(tc.file, "ambient_entropy_") {
-				if _, statErr := os.Stat(filepath.Join(outputRoot, "must-not-publish.txt")); !os.IsNotExist(statErr) {
-					t.Fatalf("failed artifact evaluation published staged output: %v", statErr)
-				}
-			}
-			if tc.file == "static_assert_duplicate.octest" || tc.file == "static_assert_unsorted.octest" {
-				if _, statErr := os.Stat(filepath.Join(outputRoot, "must-not-publish.go")); !os.IsNotExist(statErr) {
-					t.Fatalf("failed proof assertion emitted specialized artifact: %v", statErr)
-				}
-			}
-		})
-	}
-}
-
-func TestArtifactEntryPointAndCapabilityCannotBeUsedAsOrdinaryRuntime(t *testing.T) {
-	program, err := project.LoadForTest(artifactLanguageFixture("invalid", "direct_entry_call.octest"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := typecheck.CheckProgram(program); err == nil || !strings.Contains(err.Error(), "directly calls artifact entry point") {
-		t.Fatalf("expected direct artifact entry diagnostic, got %v", err)
-	}
-
-	program, err = project.Load(artifactLanguageFixture("invalid", "artifact_write_outside_phase.oct"))
+// The interpreted lane stops an ordinary program when it reaches
+// Artifact.Write*: only `oct artifact` evaluation holds the capability. The
+// compiled lane refuses to build the same program, which is the contract in
+// Language/Tooling/Artifacts/invalid/artifact_write_outside_phase.octfail. An
+// .octfail cannot state one lane's run-time half of that, so it is here.
+func TestArtifactWriteOutsideThePhaseStopsAnInterpretedProgram(t *testing.T) {
+	program, err := project.Load(filepath.Join("..", "..", "testdata", "artifact_phase", "write_outside_phase.oct"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +224,7 @@ func TestArtifactEntryPointAndCapabilityCannotBeUsedAsOrdinaryRuntime(t *testing
 }
 
 func TestArtifactDiscoveryOrderIsDeterministic(t *testing.T) {
-	target := artifactLanguageFixture("invalid", "duplicate_output.octest")
+	target := filepath.Join("..", "..", "testdata", "artifact_phase", "two_writers.octest")
 	program, err := project.LoadForTest(target)
 	if err != nil {
 		t.Fatal(err)

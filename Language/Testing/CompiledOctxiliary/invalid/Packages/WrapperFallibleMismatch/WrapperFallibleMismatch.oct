@@ -1,0 +1,5 @@
+package WrapperFallibleMismatch
+
+fn BadFallible(value: String) -> String {
+    return value
+}

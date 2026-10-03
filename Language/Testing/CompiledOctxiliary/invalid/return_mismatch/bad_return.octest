@@ -1,7 +1,0 @@
-package Main
-
-[Fact]
-fn GenericWrapperM6ReturnMismatchFailsBeforeSidecar() -> Void ! Error {
-    let value = BadReturn("x")?
-    Assert.Equal("x", value, "unreachable")
-}

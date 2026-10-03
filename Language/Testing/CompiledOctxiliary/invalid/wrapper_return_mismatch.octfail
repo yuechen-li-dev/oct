@@ -1,0 +1,10 @@
+expect error: "wrapper function WrapperReturnMismatch.BadReturn manifest return Int does not match Oct stub return String"
+
+package Main
+
+import WrapperReturnMismatch
+
+// The manifest declares an Int return and the Oct stub returns a String.
+fn Main() -> Int ! Error {
+    return Len(WrapperReturnMismatch.BadReturn("x")?)
+}

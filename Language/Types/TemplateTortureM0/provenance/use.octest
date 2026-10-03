@@ -1,7 +1,0 @@
-package TemplateTortureProvenance
-
-[Fact]
-fn CrossFileFailureRetainsTemplateOrigins() -> Void {
-    let invalid = CallsDimensionallyInvalid<Float<m>>(2.0m)
-    Assert.Equal(2.0m, invalid, "unreachable")
-}

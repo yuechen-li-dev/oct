@@ -1,0 +1,10 @@
+expect error: "wrapper function WrapperRecordArgMismatch.BadRecordArgMismatch argument 1 expects WrapperRecordArgMismatch.TestOptions, got String"
+
+package Main
+
+import WrapperRecordArgMismatch
+
+// The manifest declares a record argument and the Oct stub takes a String.
+fn Main() -> Int ! Error {
+    return Len(WrapperRecordArgMismatch.BadRecordArgMismatch("x")?)
+}

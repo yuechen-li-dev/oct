@@ -71,28 +71,6 @@ func TestTemplateTortureM0SpecializationIdentityIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestTemplateTortureM0CrossFileErrorRetainsInstantiationChain(t *testing.T) {
-	program, err := project.LoadForTest(templateTortureRoot + "/provenance/use.octest")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = typecheck.CheckProgram(program)
-	if err == nil {
-		t.Fatal("expected dimensional specialization to fail")
-	}
-	message := err.Error()
-	for _, want := range []string{
-		"TemplateTortureProvenance.CallsDimensionallyInvalid<Float<m>>",
-		"TemplateTortureProvenance.DimensionallyInvalid<Float<m>>",
-		"b_invalid.oct",
-		"return is Float<m^2>",
-	} {
-		if !strings.Contains(message, want) {
-			t.Fatalf("diagnostic %q does not contain %q", message, want)
-		}
-	}
-}
-
 func TestImportedTemplateFunctionRejectsDifferentSiblingTemplateRecordIdentity(t *testing.T) {
 	program, err := project.LoadForTest("../../Language/Types/ParametricsM0/packages-invalid")
 	if err != nil {

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/judgment"
 	"github.com/yuechen-li-dev/oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/octfailheader"
 	"github.com/yuechen-li-dev/oct/internal/parse"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
@@ -161,36 +161,28 @@ func formatRegularSource(path string, src string, resolved settings) (string, De
 	return out, DecisionDiagnostics{}, err
 }
 
-var octFailHeaderPattern = regexp.MustCompile(`^expect (runtime )?error:\s*"(.*)"\s*$`)
-
+// formatOctFailSource formats the Oct source of a fixture and leaves its
+// expectation lines as written. An artifact fixture is a test source, so its
+// body is formatted as one.
 func formatOctFailSource(src string, resolved settings) (string, error) {
-	lines := strings.Split(src, "\n")
-	headerIndex := -1
-	for i, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		headerIndex = i
-		break
+	header, body, err := octfailheader.Split(src)
+	if err != nil {
+		return "", err
 	}
-	if headerIndex == -1 {
-		return "", fmt.Errorf("missing expectation header")
+	bodyPath := "<format>.octfail"
+	if header.Phase == octfailheader.Artifact {
+		bodyPath = "<format>.octest"
 	}
-	header := strings.TrimSpace(lines[headerIndex])
-	if !octFailHeaderPattern.MatchString(header) {
-		return "", fmt.Errorf("malformed expectation header")
-	}
-	formattedSource, _, err := formatRegularSource("<format>.octfail", strings.Join(lines[headerIndex+1:], "\n"), resolved)
+	formattedSource, _, err := formatRegularSource(bodyPath, body, resolved)
 	if err != nil {
 		return "", err
 	}
 	var b strings.Builder
-	for i := 0; i < headerIndex; i++ {
-		b.WriteString(lines[i])
+	b.WriteString(strings.Repeat("\n", header.Leading))
+	for _, line := range header.Lines {
+		b.WriteString(line)
 		b.WriteByte('\n')
 	}
-	b.WriteString(header)
-	b.WriteByte('\n')
 	b.WriteString(formattedSource)
 	return b.String(), nil
 }

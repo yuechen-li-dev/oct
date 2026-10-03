@@ -1,0 +1,17 @@
+expect artifact error: "the artifact stops here"
+
+package Main
+
+import IfErrNotEqualNil
+
+// Synthetic fixture: an artifact fixture may import a library of its
+// repository, like every other .octfail.
+[Artifact]
+fn Fails() -> Void ! Error {
+    Artifact.WriteText("staged.txt", IfErrNotEqualNil.IfErrNotEqualNil<String>("staged before the failure"))
+    let _value = Stop()?
+}
+
+fn Stop() -> Int ! Error {
+    return error("the artifact stops here")
+}

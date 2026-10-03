@@ -1,0 +1,13 @@
+expect error: "Artifact.WriteText is available only during `oct artifact` evaluation"
+
+package Main
+
+// An ordinary program reaches Artifact.WriteText. The compiled lane refuses to
+// build it. The interpreted lane stops when the call runs, which
+// internal/tester/artifact_phase_test.go checks: the two lanes reject this at
+// different times, and that difference is recorded in FEEDBACK.md.
+
+fn Main() -> Int {
+    Artifact.WriteText("outside.txt", "not allowed")
+    return 0
+}

@@ -1,6 +1,0 @@
-package Main
-
-[Fact]
-fn GenericWrapperM6FallibleMismatchFailsBeforeSidecar() -> Void {
-    Assert.Equal("x", BadFallible("x"), "unreachable")
-}

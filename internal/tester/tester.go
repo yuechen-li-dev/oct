@@ -277,11 +277,9 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 		if err != nil {
 			failed++
 			_, _ = fmt.Fprintf(stdout, "FAIL %s\n", octFailCase.displayName)
-			expectation := "expected error containing"
-			if octFailCase.runtime {
-				expectation = "expected runtime error containing"
+			for _, text := range octFailCase.expected {
+				_, _ = fmt.Fprintf(stdout, "  %s: %q\n", octFailCase.expectationLabel(), text)
 			}
-			_, _ = fmt.Fprintf(stdout, "  %s: %q\n", expectation, octFailCase.expectedError)
 			if actual == "" {
 				actual = err.Error()
 			}

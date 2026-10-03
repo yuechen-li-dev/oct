@@ -1,0 +1,8 @@
+expect artifact error: "escapes the artifact output root"
+
+package Main
+
+[Artifact]
+fn EscapesRoot() -> Void {
+    Artifact.WriteText("../escape.txt", "not allowed")
+}

@@ -1,0 +1,15 @@
+expect error: "instantiating TemplateTortureProvenance.CallsDimensionallyInvalid<Float<m>> -> TemplateTortureProvenance.DimensionallyInvalid<Float<m>> from"
+expect error: "b_invalid.oct"
+expect error: "function expects Float<m>, but return is Float<m^2>"
+
+package Main
+
+import TemplateTortureProvenance
+
+// CallsDimensionallyInvalid is declared in one file of the imported package
+// and DimensionallyInvalid in another. Squaring a length is the failure; the
+// diagnostic has to name the whole instantiation chain and the file the
+// failing template came from.
+fn Main() -> Float<m> {
+    return TemplateTortureProvenance.CallsDimensionallyInvalid<Float<m>>(2.0m)
+}

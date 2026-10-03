@@ -1,0 +1,8 @@
+expect artifact error: "must be non-empty and relative"
+
+package Main
+
+[Artifact]
+fn UsesAbsolutePath() -> Void {
+    Artifact.WriteText("C:/absolute-artifact.txt", "not allowed")
+}

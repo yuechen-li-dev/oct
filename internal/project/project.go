@@ -83,6 +83,12 @@ func LoadWithImportAnchor(path string, anchor string) (Program, error) {
 	return loadFromFileAnchored(path, filepath.Dir(path), false, nil, anchor)
 }
 
+// LoadForTestWithImportAnchor is LoadWithImportAnchor for a test source: the
+// copied file may declare test attributes such as [Artifact].
+func LoadForTestWithImportAnchor(path string, anchor string) (Program, error) {
+	return loadFromFileAnchored(path, filepath.Dir(path), true, nil, anchor)
+}
+
 func load(path string, includeTests bool) (Program, error) {
 	return loadWithSelectedFiles(path, includeTests, nil)
 }
@@ -603,24 +609,18 @@ func (b *builder) validateManifest(packageName string, directory string) (manife
 			return manifestValidationResult{}, fmt.Errorf("read package manifest %s: %w", manifestPath, err)
 		}
 	}
+	// A manifest that exists is read, and one that is wrong is an error even
+	// where a manifest is not required. Dropping it would silently remove the
+	// package's wrapper declarations and leave its stub bodies to run.
 	manifestFile, err := parseFile(manifestPath)
 	if err != nil {
-		if !b.requireManifests {
-			return manifestValidationResult{}, nil
-		}
 		return manifestValidationResult{}, err
 	}
 	if err := validateManifestFile(packageName, manifestFile); err != nil {
-		if !b.requireManifests {
-			return manifestValidationResult{}, nil
-		}
 		return manifestValidationResult{}, err
 	}
 	metadata, err := pkgmgr.LoadManifestMetadata(manifestPath)
 	if err != nil {
-		if !b.requireManifests {
-			return manifestValidationResult{}, nil
-		}
 		return manifestValidationResult{}, err
 	}
 	return manifestValidationResult{Dependencies: manifestDependencySet(manifestFile), Wrappers: metadata.Wrappers}, nil

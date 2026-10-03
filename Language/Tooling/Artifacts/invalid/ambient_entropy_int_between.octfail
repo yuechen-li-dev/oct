@@ -1,0 +1,11 @@
+expect artifact error: "artifact evaluation rejected ambient randomness operation Entropy.IntBetween"
+
+package Main
+
+// Artifact evaluation is deterministic: it rejects a read of the operating
+// system's random source before the read happens, and publishes nothing.
+[Artifact]
+fn UsesEntropyIntBetween() -> Void {
+    Artifact.WriteText("must-not-publish.txt", "staged before the rejected read")
+    let roll = Entropy.IntBetween(1, 6)!
+}
