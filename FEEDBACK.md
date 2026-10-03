@@ -593,3 +593,13 @@ Accept arrays of the types it already compares, and report the first differing i
 Status: Open
 
 ---
+
+Observation:
+Running the tests rewrites tracked files. `Libraries/Pdf/Pdf.CompiledText.octest` writes `m21_pdf_compiled_styled.pdf` and `m21_pdf_compiled_text.pdf` to the repository root when a PDF sidecar is found, and a `cmd/oct` test rewrites `cmd/oct/analysis_output.png`. A full test run therefore leaves a modified working tree, and `git add -A` after one commits regenerated binaries.
+
+Suggestion:
+Write those outputs to the test's artifact scope or a temporary directory, or stop tracking them.
+
+Status: Open
+
+---
