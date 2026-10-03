@@ -418,8 +418,11 @@ func lowerFallibleFlowCall(call ast.CallExpr, env map[string]string, locals map[
 func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, error) {
 	switch expression := expr.(type) {
 	case ast.UtilityWhenExpr:
-		if expression.EnumTarget != nil && utilityWhenHasPayloadCandidate(expression) {
-			return nil, unsupported("compiled enum-targeted utility payload candidates require delayed payload lowering")
+		// Only `when policy` keeps commitment state in the flow instance. The
+		// standalone form is an ordinary expression that selects before it
+		// evaluates a value, and is lowered as one.
+		if !expression.ControllerBound {
+			return lowerSharedFlowExpression(expr, env, locals)
 		}
 		hysteresis, err := lowerFlowExpr(expression.Policy.Hysteresis, env, locals, pkg, boardFieldTypes)
 		if err != nil {

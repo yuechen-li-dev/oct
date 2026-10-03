@@ -1177,8 +1177,8 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.BatchExpr:
 		return c.lowerBatchExpr(e)
 	case ast.UtilityWhenExpr:
-		if e.EnumTarget != nil && utilityWhenHasPayloadCandidate(e) {
-			return "", "", false, unsupported("compiled enum-targeted utility payload candidates require delayed payload lowering")
+		if !e.ControllerBound {
+			return c.lowerStandaloneUtilityWhen(e)
 		}
 		h, _, _, err := c.lowerExpr(e.Policy.Hysteresis)
 		if err != nil {
@@ -1210,8 +1210,8 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", cond, v, score))
 		}
 		c.usesUtilityWhen = true
-		return fmt.Sprintf("__octUtilSelect[%s](map[int]__octUtilitySiteState{}, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
-			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), resultType, false, nil
+		return fmt.Sprintf("__octUtilSelect[%s](map[int]__octUtilitySiteState{}, %d, %s, %s, []__octUtilCandidate[%s]{%s}, func() %s { return %s })",
+			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), valueType, elseExpr), resultType, false, nil
 	case ast.ParenExpr:
 		return c.lowerExpr(e.Inner)
 	default:
@@ -1219,16 +1219,150 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	}
 }
 
-func utilityWhenHasPayloadCandidate(e ast.UtilityWhenExpr) bool {
-	if _, ok := e.Else.(ast.CallExpr); ok {
-		return true
+// lowerStandaloneUtilityWhen lowers `when utility` outside a controller: the
+// plain form and the enum-targeted form, in a function or in a flow state.
+// Neither keeps commitment state, so both are ordinary control flow.
+//
+// Both forms evaluate the policy fields first, which have no effect here,
+// then visit the cases in source order: a condition, and its score only when
+// the condition holds. The highest score wins and the earliest case wins a
+// tie. They differ in when a value is evaluated, as
+// Language/reference/runtime/21-octomata.md specifies:
+//
+//   - the plain form evaluates the value of every case whose condition holds,
+//     right after its score, and the `else` value only when no condition held;
+//   - the enum-targeted form evaluates the value of the selected case alone,
+//     or the `else` value, so a losing payload is never evaluated.
+//
+// The interpreter follows the same order in both forms.
+func (c *lowerCtx) lowerStandaloneUtilityWhen(e ast.UtilityWhenExpr) (string, string, bool, error) {
+	if _, _, _, err := c.lowerExpr(e.Policy.Hysteresis); err != nil {
+		return "", "", false, err
 	}
-	for _, c := range e.Cases {
-		if _, ok := c.Value.(ast.CallExpr); ok {
-			return true
+	if _, _, _, err := c.lowerExpr(e.Policy.MinCommit); err != nil {
+		return "", "", false, err
+	}
+	delayValues := e.EnumTarget != nil
+
+	newBlock := func() int {
+		id := len(c.blocks)
+		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", id)})
+		return id
+	}
+	assign := func(target string, expression string, typ string) {
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: target, Value: lowerMIRValue(expression, typ)})
+	}
+	out := ""
+	resultType := ""
+	// evaluate lowers a value in the current block and returns a temporary
+	// that holds it. The first value fixes the result type.
+	evaluate := func(valueExpr ast.Expr) (string, error) {
+		value, valueType, _, err := c.lowerExpr(valueExpr)
+		if err != nil {
+			return "", err
+		}
+		if out == "" {
+			out = c.temp(valueType)
+			resultType = valueType
+		}
+		held := c.temp(resultType)
+		assign(held, value, resultType)
+		return held, nil
+	}
+
+	// selected is the index of the leading case, or -1 while no condition
+	// has held.
+	selected := c.temp("Int")
+	selectedScore := c.temp("Int")
+	assign(selected, "0 - 1", "Int")
+	assign(selectedScore, "0", "Int")
+
+	for index, candidate := range e.Cases {
+		condition, _, _, err := c.lowerExpr(candidate.Condition)
+		if err != nil {
+			return "", "", false, err
+		}
+		conditionEnd := c.cur
+		scoreID := newBlock()
+		leadID := newBlock()
+		nextID := newBlock()
+		c.blocks[conditionEnd].Terminator = MIRBranch{Cond: lowerMIRValue(condition, "Bool"), TrueTarget: c.blocks[scoreID].Label, FalseTarget: c.blocks[nextID].Label}
+
+		c.cur = scoreID
+		score, _, _, err := c.lowerExpr(candidate.Score)
+		if err != nil {
+			return "", "", false, err
+		}
+		// Hold the score in a temporary: the comparison and the assignment
+		// below must see one evaluation of it.
+		heldScore := c.temp("Int")
+		assign(heldScore, score, "Int")
+		heldValue := ""
+		if !delayValues {
+			if heldValue, err = evaluate(candidate.Value); err != nil {
+				return "", "", false, err
+			}
+		}
+		leads := c.temp("Bool")
+		assign(leads, fmt.Sprintf("%s < 0 || %s > %s", selected, heldScore, selectedScore), "Bool")
+		c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(leads, "Bool"), TrueTarget: c.blocks[leadID].Label, FalseTarget: c.blocks[nextID].Label}
+
+		c.cur = leadID
+		assign(selected, fmt.Sprint(index), "Int")
+		assign(selectedScore, heldScore, "Int")
+		if !delayValues {
+			assign(out, heldValue, resultType)
+		}
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[nextID].Label}
+
+		c.cur = nextID
+	}
+
+	mergeID := newBlock()
+	// branchOn sends control to a new block when the comparison holds and to
+	// another when it does not, and returns both.
+	branchOn := func(comparison string) (int, int) {
+		holds := c.temp("Bool")
+		assign(holds, comparison, "Bool")
+		testEnd := c.cur
+		thenID := newBlock()
+		elseID := newBlock()
+		c.blocks[testEnd].Terminator = MIRBranch{Cond: lowerMIRValue(holds, "Bool"), TrueTarget: c.blocks[thenID].Label, FalseTarget: c.blocks[elseID].Label}
+		return thenID, elseID
+	}
+	deliver := func(valueExpr ast.Expr) error {
+		held, err := evaluate(valueExpr)
+		if err != nil {
+			return err
+		}
+		assign(out, held, resultType)
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		return nil
+	}
+
+	if delayValues {
+		for index, candidate := range e.Cases {
+			valueID, nextID := branchOn(fmt.Sprintf("%s == %d", selected, index))
+			c.cur = valueID
+			if err := deliver(candidate.Value); err != nil {
+				return "", "", false, err
+			}
+			c.cur = nextID
+		}
+		if err := deliver(e.Else); err != nil {
+			return "", "", false, err
+		}
+	} else {
+		// A case that held has already delivered its value.
+		elseID, selectedID := branchOn(fmt.Sprintf("%s < 0", selected))
+		c.blocks[selectedID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		c.cur = elseID
+		if err := deliver(e.Else); err != nil {
+			return "", "", false, err
 		}
 	}
-	return false
+	c.cur = mergeID
+	return out, resultType, false, nil
 }
 
 func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error) {

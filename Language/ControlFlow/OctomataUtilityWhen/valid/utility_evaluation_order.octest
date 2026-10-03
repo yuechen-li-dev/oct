@@ -1,0 +1,118 @@
+package MainValid
+
+// What a utility `when` evaluates inside a flow state
+// (Language/reference/runtime/21-octomata.md, "Utility `when`").
+//
+// `when policy` and the plain `when utility` evaluate, in source order, the
+// score and the value of every case whose condition holds. They evaluate
+// nothing of a case whose condition is false, and the else value only when no
+// condition held. The enum-targeted `when utility` evaluates the value of the
+// selected case alone, so a losing payload is not evaluated.
+//
+// OutOfRange stops the program when it is called, so a fact that passes shows
+// the expression was not evaluated.
+
+fn OutOfRange(values: Int[]) -> Int {
+    return values[9]
+}
+
+flow PolicySkipsTheValueOfAFalseCase(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case OutOfRange(values) when false score 100
+            case 7 when true score 1
+            else 0
+        }
+        return next
+    }
+}
+
+flow PolicySkipsTheScoreOfAFalseCase(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case 1 when false score OutOfRange(values)
+            case 7 when true score 1
+            else 0
+        }
+        return next
+    }
+}
+
+flow PolicySkipsElseWhenACaseHolds(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case 7 when true score 1
+            else OutOfRange(values)
+        }
+        return next
+    }
+}
+
+flow StandaloneSkipsAFalseCaseAndElse(values: Int[]) -> Int {
+    state Decide {
+        let next = when utility {
+            case OutOfRange(values) when false score OutOfRange(values)
+            case 7 when true score 5
+            else OutOfRange(values)
+        }
+        return next
+    }
+}
+
+enum Dispatch {
+    Idle
+    Send(Int)
+}
+
+fn DispatchCode(dispatch: Dispatch) -> Int {
+    return match dispatch {
+        case Dispatch.Idle => 0
+        case Dispatch.Send(value) => value
+    }
+}
+
+flow EnumTargetedPayloadIsDelayed(values: Int[]) -> Int {
+    state Decide {
+        let next = when utility Dispatch {
+            case Dispatch.Send(OutOfRange(values)) when true score 1
+            case Dispatch.Send(7) when true score 5
+            else Dispatch.Idle
+        }
+        return DispatchCode(next)
+    }
+}
+
+[Fact]
+fn PolicyEvaluatesOnlyTheCasesWhoseConditionHolds() -> Void {
+    let value = PolicySkipsTheValueOfAFalseCase([1])
+    Step(value)
+    Assert.Equal(7, Assert.LGTM(Result(value), "result"), "the value of a false case is not evaluated")
+
+    let score = PolicySkipsTheScoreOfAFalseCase([1])
+    Step(score)
+    Assert.Equal(7, Assert.LGTM(Result(score), "result"), "the score of a false case is not evaluated")
+
+    let fallback = PolicySkipsElseWhenACaseHolds([1])
+    Step(fallback)
+    Assert.Equal(7, Assert.LGTM(Result(fallback), "result"), "else is not evaluated while a case holds")
+}
+
+[Fact]
+fn StandaloneUtilityInAStateSkipsWhatItDoesNotNeed() -> Void {
+    let plain = StandaloneSkipsAFalseCaseAndElse([1])
+    Step(plain)
+    Assert.Equal(7, Assert.LGTM(Result(plain), "result"), "a false case and the else value are not evaluated")
+
+    let targeted = EnumTargetedPayloadIsDelayed([1])
+    Step(targeted)
+    Assert.Equal(7, Assert.LGTM(Result(targeted), "result"), "a losing payload is not evaluated")
+}

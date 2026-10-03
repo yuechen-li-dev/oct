@@ -1655,14 +1655,14 @@ type __octUtilitySiteState struct {
 	CommitAge int
 }
 
-func __octUtilSelect[T any](sites map[int]__octUtilitySiteState, siteID int, hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue T) T {
+func __octUtilSelect[T any](sites map[int]__octUtilitySiteState, siteID int, hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue func() T) T {
 	valid := make([]__octUtilCandidate[T], 0, len(candidates))
 	for _, c := range candidates {
 		if c.Valid {
 			valid = append(valid, c)
 		}
 	}
-	next := __octUtilCandidate[T]{Valid: true, Value: elseValue, Score: 0}
+	var next __octUtilCandidate[T]
 	if len(valid) > 0 {
 		next = valid[0]
 		for _, c := range valid[1:] {
@@ -1670,6 +1670,8 @@ func __octUtilSelect[T any](sites map[int]__octUtilitySiteState, siteID int, hys
 				next = c
 			}
 		}
+	} else {
+		next = __octUtilCandidate[T]{Valid: true, Value: elseValue(), Score: 0}
 	}
 	site := sites[siteID]
 	if site.HasCurrent {
@@ -1707,7 +1709,7 @@ type __octScalarUtilitySiteState[T comparable] struct {
 	CommitAge int
 }
 
-func __octUtilSelectScalar[T comparable](site *__octScalarUtilitySiteState[T], hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue T) T {
+func __octUtilSelectScalar[T comparable](site *__octScalarUtilitySiteState[T], hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue func() T) T {
 	next := __octUtilCandidate[T]{}
 	for _, candidate := range candidates {
 		if candidate.Valid && (!next.Valid || candidate.Score > next.Score) {
@@ -1715,7 +1717,7 @@ func __octUtilSelectScalar[T comparable](site *__octScalarUtilitySiteState[T], h
 		}
 	}
 	if !next.Valid {
-		next = __octUtilCandidate[T]{Valid: true, Value: elseValue, Score: 0}
+		next = __octUtilCandidate[T]{Valid: true, Value: elseValue(), Score: 0}
 	}
 	if site.HasCurrent {
 		currentStillValid := false

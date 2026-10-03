@@ -62,9 +62,7 @@ type corpusGap struct {
 	contains  string
 }
 
-var languageKnownGaps = []corpusGap{
-	{"Language/Expressions/UtilityWhen/valid", laneCompiled, "compiled enum-targeted utility payload candidates require delayed payload lowering"},
-}
+var languageKnownGaps = []corpusGap{}
 
 var corpusFactAttribute = regexp.MustCompile(`(?m)^\s*\[(Fact|Theory)\b`)
 

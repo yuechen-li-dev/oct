@@ -1,0 +1,30 @@
+expect runtime error: "the losing value was evaluated"
+
+package Main
+
+// `when policy` evaluates the value of every case whose condition holds, in
+// order, because it compares those values with the one it is committed to.
+// The first case loses on score and its value is still evaluated.
+fn LosingValue() -> Int ! Error {
+    return error("the losing value was evaluated")
+}
+
+flow Controller() -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case LosingValue()! when true score 1
+            case 7 when true score 100
+            else 0
+        }
+        return next
+    }
+}
+
+fn Main() -> Int {
+    let controller = Controller()
+    Step(controller)
+    return Result(controller)!
+}

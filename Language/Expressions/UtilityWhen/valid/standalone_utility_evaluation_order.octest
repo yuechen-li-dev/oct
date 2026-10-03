@@ -1,0 +1,99 @@
+package MainValid
+
+// What a plain standalone `when utility` evaluates, in source order
+// (Language/reference/runtime/21-octomata.md, "Utility `when`"):
+//
+//   - each condition, once;
+//   - the score and the value of every case whose condition holds;
+//   - nothing of a case whose condition is false;
+//   - the else value only when no condition held.
+//
+// The enum-targeted form differs in one respect: it evaluates the value of
+// the selected case alone. enum_targeted_utility_when.octest holds that.
+
+fn OrderBoom() -> Int ! Error {
+    return error("evaluated")
+}
+
+fn ValueOfAFalseCase() -> Int ! Error {
+    return when utility {
+        case OrderBoom()? when false score 100
+        case 7 when true score 1
+        else 0
+    }
+}
+
+fn ScoreOfAFalseCase() -> Int ! Error {
+    return when utility {
+        case 1 when false score OrderBoom()?
+        case 7 when true score 1
+        else 0
+    }
+}
+
+fn ElseWhileACaseHolds() -> Int ! Error {
+    return when utility {
+        case 7 when true score 1
+        else OrderBoom()?
+    }
+}
+
+fn ValueOfALosingCaseThatHolds() -> Int ! Error {
+    return when utility {
+        case OrderBoom()? when true score 1
+        case 7 when true score 10
+        else 0
+    }
+}
+
+fn ScoreOfACaseThatHolds() -> Int ! Error {
+    return when utility {
+        case 1 when true score OrderBoom()?
+        else 0
+    }
+}
+
+fn ElseWhenNoCaseHolds() -> Int ! Error {
+    return when utility {
+        case 1 when false score 1
+        else OrderBoom()?
+    }
+}
+
+// Was the marked expression evaluated? Its error propagates when it was.
+fn Evaluated(which: Int) -> Bool {
+    var evaluated = false
+    if which == 0 {
+        match ValueOfALosingCaseThatHolds() {
+            ok(_) => { evaluated = false }
+            err(_) => { evaluated = true }
+        }
+    }
+    if which == 1 {
+        match ScoreOfACaseThatHolds() {
+            ok(_) => { evaluated = false }
+            err(_) => { evaluated = true }
+        }
+    }
+    if which == 2 {
+        match ElseWhenNoCaseHolds() {
+            ok(_) => { evaluated = false }
+            err(_) => { evaluated = true }
+        }
+    }
+    return evaluated
+}
+
+[Fact]
+fn StandaloneUtilitySkipsCasesWhoseConditionIsFalse() -> Void {
+    Assert.Equal(7, Assert.LGTM(ValueOfAFalseCase(), "the value of a false case was evaluated"), "the true case is selected")
+    Assert.Equal(7, Assert.LGTM(ScoreOfAFalseCase(), "the score of a false case was evaluated"), "the true case is selected")
+    Assert.Equal(7, Assert.LGTM(ElseWhileACaseHolds(), "the else value was evaluated while a case held"), "the case is selected")
+}
+
+[Fact]
+fn StandaloneUtilityEvaluatesEveryCaseWhoseConditionHolds() -> Void {
+    Assert.True(Evaluated(0), "the value of a case that holds is evaluated even when it loses")
+    Assert.True(Evaluated(1), "the score of a case that holds is evaluated")
+    Assert.True(Evaluated(2), "the else value is evaluated when no condition held")
+}

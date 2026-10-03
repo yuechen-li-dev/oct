@@ -1023,8 +1023,13 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		cases := make([]string, 0, len(value.Cases))
+		// The candidates are gathered in source order, as the interpreter
+		// does: a condition first, and the score and the value only when the
+		// condition holds. The else value is a thunk, evaluated only when no
+		// condition held.
 		valueType := goType(value.ResultType)
+		var gather strings.Builder
+		fmt.Fprintf(&gather, "func() %s { __octCandidates := make([]__octUtilCandidate[%s], 0, %d); ", valueType, valueType, len(value.Cases))
 		for _, candidate := range value.Cases {
 			candidateValue, err := emitGoFlowExpr(candidate.Value, pkg)
 			if err != nil {
@@ -1038,18 +1043,21 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", condition, candidateValue, score))
+			fmt.Fprintf(&gather, "if %s { __octScore := %s; __octCandidates = append(__octCandidates, __octUtilCandidate[%s]{Valid: true, Value: %s, Score: __octScore}) }; ", condition, score, valueType, candidateValue)
+		}
+		elseThunk := fmt.Sprintf("func() %s { return %s }", valueType, elseExpr)
+		if value.ControllerBound && isDirectPolicyScalarType(value.ResultType) {
+			fmt.Fprintf(&gather, "return __octUtilSelectScalar[%s](&f.utilitySite%d, %s, %s, __octCandidates, %s) }()",
+				valueType, value.SiteID, hysteresis, minCommit, elseThunk)
+			return gather.String(), nil
 		}
 		sites := "map[int]__octUtilitySiteState{}"
 		if value.ControllerBound {
-			if isDirectPolicyScalarType(value.ResultType) {
-				return fmt.Sprintf("__octUtilSelectScalar[%s](&f.utilitySite%d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
-					valueType, value.SiteID, hysteresis, minCommit, valueType, strings.Join(cases, ", "), elseExpr), nil
-			}
 			sites = "f.utilitySites"
 		}
-		return fmt.Sprintf("__octUtilSelect[%s](%s, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
-			valueType, sites, value.SiteID, hysteresis, minCommit, valueType, strings.Join(cases, ", "), elseExpr), nil
+		fmt.Fprintf(&gather, "return __octUtilSelect[%s](%s, %d, %s, %s, __octCandidates, %s) }()",
+			valueType, sites, value.SiteID, hysteresis, minCommit, elseThunk)
+		return gather.String(), nil
 	default:
 		return "", fmt.Errorf("internal error: unsupported FLOW expression representation %T", expr)
 	}

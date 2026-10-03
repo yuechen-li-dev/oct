@@ -540,6 +540,19 @@ the expression returns that type directly. Because scores are `Int`, NaN is
 not representable in the established utility surface. `Float` scores and a
 separate decision-evidence result are not part of this form.
 
+Controller-bound `when policy` visits its cases the same way: nothing of a
+case whose condition is false is evaluated, the score and value of every case
+whose condition is true are, and `else` is evaluated only when no condition is
+true. It then applies `hysteresis` and `min_commit` to the cases whose
+condition was true.
+
+A standalone form keeps no commitment between evaluations. Its policy fields,
+when written, are evaluated and have no effect on the selection.
+
+The interpreted and the compiled lane follow this order, in functions and in
+flow states. An expression that is not evaluated cannot fail: a `?` in it does
+not propagate and a call in it does not run.
+
 Use this when multiple valid choices compete and you need explicit arbitration.
 Avoid this when a single guard decides the branch; guard `when` is the simpler form.
 
@@ -558,7 +571,7 @@ when utility PumpJudgment {
 }
 ```
 
-This enum-targeted form is still one-shot utility selection. It supports tag-only variants and explicit single-payload variant construction such as `LabDecision.Retest(3)`, `LabDecision.Treat(2.5)`, and `LabDecision.Escalate("critical")`. Payload expressions are evaluated only for the selected candidate or selected `else` fallback; losing candidate payloads are not evaluated. Utility cases do not bind payloads, and selected payloads are analyzed later with ordinary `match`.
+This enum-targeted form is still one-shot utility selection. It supports tag-only variants and explicit single-payload variant construction such as `LabDecision.Retest(3)`, `LabDecision.Treat(2.5)`, and `LabDecision.Escalate("critical")`. Payload expressions are evaluated only for the selected candidate or selected `else` fallback; losing candidate payloads are not evaluated. This is where the enum-targeted form differs from the plain form above, which evaluates the value of every case whose condition is true. Both lanes implement the delay, with or without payloads, in functions and in flow states. Utility cases do not bind payloads, and selected payloads are analyzed later with ordinary `match`.
 
 It does not add hidden state, controller commitment memory, hysteresis, `min_commit`, or enum-attached policy. Octomata remains responsible for behavioral progression through states, boards, guard `when`, and controller-bound `when policy`.
 
