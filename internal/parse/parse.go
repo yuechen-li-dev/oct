@@ -2810,7 +2810,7 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 	switch modeToken.Lexeme {
 	case "policy":
 		controllerBound = true
-		policy, err = p.parseUtilityWhenPolicy(true)
+		policy, err = p.parseUtilityWhenPolicy()
 		if err != nil {
 			return nil, err
 		}
@@ -2822,15 +2822,10 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			enumTarget = &target
-			policy = ast.UtilityWhenPolicy{
-				Hysteresis: ast.IntegerLiteral{Value: "0"},
-				MinCommit:  ast.IntegerLiteral{Value: "0"},
-			}
-		} else {
-			policy, err = p.parseStandaloneUtilityWhenPolicy()
-			if err != nil {
-				return nil, err
-			}
+		}
+		policy, err = p.parseStandaloneUtilityWhenPolicy()
+		if err != nil {
+			return nil, err
 		}
 	default:
 		return nil, p.errorAtToken(modeToken, "expected 'policy' or 'utility' after 'when'")
@@ -2903,23 +2898,21 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 	}, nil
 }
 
+// parseStandaloneUtilityWhenPolicy supplies the policy of a `when utility`.
+// A standalone utility `when` is a one-shot choice that keeps no commitment
+// between evaluations, so hysteresis and min_commit could not do anything
+// there. A policy block is rejected instead of being accepted and ignored.
 func (p *parser) parseStandaloneUtilityWhenPolicy() (ast.UtilityWhenPolicy, error) {
-	if p.current().Kind != lex.LeftBrace {
-		return ast.UtilityWhenPolicy{
-			Hysteresis: ast.IntegerLiteral{Value: "0"},
-			MinCommit:  ast.IntegerLiteral{Value: "0"},
-		}, nil
+	if p.current().Kind == lex.LeftBrace && p.position+1 < len(p.tokens) && p.tokens[p.position+1].Kind == lex.Identifier {
+		return ast.UtilityWhenPolicy{}, p.errorAtToken(p.tokens[p.position+1], "`when utility` keeps no commitment between evaluations, so it takes no policy fields; `hysteresis` and `min_commit` belong to `when policy` inside a flow state")
 	}
-	if p.position+1 >= len(p.tokens) || p.tokens[p.position+1].Kind != lex.Identifier {
-		return ast.UtilityWhenPolicy{
-			Hysteresis: ast.IntegerLiteral{Value: "0"},
-			MinCommit:  ast.IntegerLiteral{Value: "0"},
-		}, nil
-	}
-	return p.parseUtilityWhenPolicy(false)
+	return ast.UtilityWhenPolicy{
+		Hysteresis: ast.IntegerLiteral{Value: "0"},
+		MinCommit:  ast.IntegerLiteral{Value: "0"},
+	}, nil
 }
 
-func (p *parser) parseUtilityWhenPolicy(requireAllFields bool) (ast.UtilityWhenPolicy, error) {
+func (p *parser) parseUtilityWhenPolicy() (ast.UtilityWhenPolicy, error) {
 	if _, err := p.expect(lex.LeftBrace, "expected '{' to start utility when policy"); err != nil {
 		return ast.UtilityWhenPolicy{}, err
 	}
@@ -2958,17 +2951,11 @@ func (p *parser) parseUtilityWhenPolicy(requireAllFields bool) (ast.UtilityWhenP
 		}
 	}
 	p.advance()
-	if hysteresis == nil && requireAllFields {
+	if hysteresis == nil {
 		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'hysteresis'")
 	}
-	if minCommit == nil && requireAllFields {
-		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'min_commit'")
-	}
-	if hysteresis == nil {
-		hysteresis = ast.IntegerLiteral{Value: "0"}
-	}
 	if minCommit == nil {
-		minCommit = ast.IntegerLiteral{Value: "0"}
+		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'min_commit'")
 	}
 	return ast.UtilityWhenPolicy{Hysteresis: hysteresis, MinCommit: minCommit}, nil
 }

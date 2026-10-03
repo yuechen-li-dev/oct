@@ -1,0 +1,15 @@
+expect error: "`when utility` keeps no commitment between evaluations, so it takes no policy fields"
+
+package Main
+
+// A standalone utility `when` is a one-shot choice. It has nothing to hold a
+// choice against, so hysteresis and min_commit are rejected, not ignored.
+fn Main() -> Int {
+    return when utility {
+        hysteresis: 7
+        min_commit: 3
+    } {
+        case 1 when true score 10
+        else 0
+    }
+}

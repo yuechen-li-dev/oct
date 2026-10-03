@@ -1325,21 +1325,15 @@ func TestBuildFileParsesRecordTableCellSchema(t *testing.T) {
 	}
 }
 
-func TestBuildFileParsesStandaloneUtilityWhenWithExplicitPolicy(t *testing.T) {
-	file := parseSource(t, "fn Main(flag: Bool) -> Int { return when utility { hysteresis: 5 } { case 1 when flag score 10 else 0 } }")
-	returnStmt, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
-	if !ok {
-		t.Fatalf("expected return statement, got %T", file.Functions[0].Body.Statements[0])
+// A standalone utility `when` keeps no commitment, so policy fields could not
+// do anything there. They are rejected, not accepted and ignored.
+func TestBuildFileRejectsPolicyFieldsOnStandaloneUtilityWhen(t *testing.T) {
+	for _, policy := range []string{"{ hysteresis: 5 }", "{ min_commit: 2 }", "{ hysteresis: 0 min_commit: 0 }"} {
+		assertParseErrorContains(t, "fn Main(flag: Bool) -> Int { return when utility "+policy+" { case 1 when flag score 10 else 0 } }", "`when utility` keeps no commitment between evaluations, so it takes no policy fields")
 	}
-	whenExpr, ok := returnStmt.Value.(ast.UtilityWhenExpr)
-	if !ok {
-		t.Fatalf("expected utility when expression, got %T", returnStmt.Value)
-	}
-	if _, ok := whenExpr.Policy.Hysteresis.(ast.IntegerLiteral); !ok {
-		t.Fatalf("expected explicit hysteresis policy literal, got %T", whenExpr.Policy.Hysteresis)
-	}
-	if _, ok := whenExpr.Policy.MinCommit.(ast.IntegerLiteral); !ok {
-		t.Fatalf("expected default min_commit literal, got %T", whenExpr.Policy.MinCommit)
+	file := parseSource(t, "fn Main(flag: Bool) -> Int { return when utility { case 1 when flag score 10 else 0 } }")
+	if _, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt).Value.(ast.UtilityWhenExpr); !ok {
+		t.Fatalf("a standalone utility when without a policy block did not parse")
 	}
 }
 

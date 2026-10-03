@@ -59,7 +59,7 @@ Octomata and records are complementary:
 - Board writes are valid only inside flow state bodies (including nested `if`/`when` inside a state body).
 - Controller utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
 - Standalone utility form `when utility { case value when condition score Int ... else value }` is an expression form valid wherever expressions are allowed.
-- Standalone `when utility` also accepts optional policy fields via `when utility { hysteresis: Int min_commit: Int } { ... }`; omitted fields default to `0`.
+- Standalone `when utility` takes no policy fields. It keeps no commitment between evaluations, so `hysteresis` and `min_commit` would have nothing to act on; writing them is an error.
 - `remember` stores the current state as a resume target.
 - `resume` jumps to the remembered target.
 - Resume storage is a single slot.
@@ -530,28 +530,30 @@ fn LocalOwner(a: Int, b: Int) -> Int {
 In utility `when`, the `else` arm is the default selected value when no case qualifies as the winner.
 It is not a statement-style `return`; it is the fallback candidate in the selection set.
 
-Standalone utility selection evaluates policy expressions first, then visits
-cases in source order. Each condition is evaluated once. A false condition
-skips its score and value. For each true condition, its dimensionless `Int`
-score and value are evaluated once. The greatest score wins; equal scores keep
-the earliest source case. If no condition is true, only the required `else`
-value is evaluated. All case values and `else` must have one result type, and
-the expression returns that type directly. Because scores are `Int`, NaN is
-not representable in the established utility surface. `Float` scores and a
-separate decision-evidence result are not part of this form.
+Standalone utility selection visits the cases in source order. Each condition
+is evaluated once. A false condition skips its score. For each true condition
+its dimensionless `Int` score is evaluated once. The greatest score wins; equal
+scores keep the earliest source case. Then the value of the selected case is
+evaluated, and no other value: a case that lost, or whose condition was false,
+contributes nothing but its condition and, when that held, its score. If no
+condition is true, the required `else` value is evaluated. All case values and
+`else` must have one result type, and the expression returns that type
+directly. Because scores are `Int`, NaN is not representable in the established
+utility surface. `Float` scores and a separate decision-evidence result are not
+part of this form.
 
-Controller-bound `when policy` visits its cases the same way: nothing of a
-case whose condition is false is evaluated, the score and value of every case
-whose condition is true are, and `else` is evaluated only when no condition is
-true. It then applies `hysteresis` and `min_commit` to the cases whose
-condition was true.
+This is the rule `if`, `switch` and `match` follow: an expression that is not
+selected is not evaluated. It cannot fail, a `?` in it does not propagate, and
+a call in it does not run. The plain form and the enum-targeted form below
+follow it alike, in the interpreted and in the compiled lane, in functions and
+in flow states.
 
-A standalone form keeps no commitment between evaluations. Its policy fields,
-when written, are evaluated and have no effect on the selection.
-
-The interpreted and the compiled lane follow this order, in functions and in
-flow states. An expression that is not evaluated cannot fail: a `?` in it does
-not propagate and a call in it does not run.
+Controller-bound `when policy` visits its cases the same way up to the
+selection. It evaluates the score and the value of every case whose condition
+is true, because it compares those values with the one it is committed to; it
+evaluates nothing of a case whose condition is false, and `else` only when no
+condition is true. It then applies `hysteresis` and `min_commit` to the cases
+whose condition was true.
 
 Use this when multiple valid choices compete and you need explicit arbitration.
 Avoid this when a single guard decides the branch; guard `when` is the simpler form.
@@ -571,7 +573,7 @@ when utility PumpJudgment {
 }
 ```
 
-This enum-targeted form is still one-shot utility selection. It supports tag-only variants and explicit single-payload variant construction such as `LabDecision.Retest(3)`, `LabDecision.Treat(2.5)`, and `LabDecision.Escalate("critical")`. Payload expressions are evaluated only for the selected candidate or selected `else` fallback; losing candidate payloads are not evaluated. This is where the enum-targeted form differs from the plain form above, which evaluates the value of every case whose condition is true. Both lanes implement the delay, with or without payloads, in functions and in flow states. Utility cases do not bind payloads, and selected payloads are analyzed later with ordinary `match`.
+This enum-targeted form is still one-shot utility selection. It supports tag-only variants and explicit single-payload variant construction such as `LabDecision.Retest(3)`, `LabDecision.Treat(2.5)`, and `LabDecision.Escalate("critical")`. Payload expressions are evaluated only for the selected candidate or selected `else` fallback; losing candidate payloads are not evaluated. That is the standalone rule above, applied to payloads. Utility cases do not bind payloads, and selected payloads are analyzed later with ordinary `match`.
 
 It does not add hidden state, controller commitment memory, hysteresis, `min_commit`, or enum-attached policy. Octomata remains responsible for behavioral progression through states, boards, guard `when`, and controller-bound `when policy`.
 

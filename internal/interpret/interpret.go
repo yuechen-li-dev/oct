@@ -2228,6 +2228,11 @@ func (i interpreter) evalIfExpr(env *environment, pkgName string, expr ast.IfExp
 }
 
 func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr ast.UtilityWhenExpr) (evalResult, error) {
+	// A standalone `when utility`, plain or enum-targeted, is a one-shot
+	// choice. It has no policy and no commitment.
+	if !expr.ControllerBound {
+		return i.evalStandaloneUtilityWhenExpr(env, pkgName, expr)
+	}
 	var instance *FlowRuntimeInstance
 	if expr.ControllerBound {
 		flowBinding, ok := env.lookup(flowInstanceBindingName)
@@ -2261,9 +2266,6 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 	hysteresis := hysteresisResult.value.Int
 	minCommit := minCommitResult.value.Int
 
-	if expr.EnumTarget != nil && !expr.ControllerBound {
-		return i.evalEnumTargetedUtilityWhenExpr(env, pkgName, expr)
-	}
 
 	type candidate struct {
 		value Value
@@ -2365,7 +2367,11 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 	return evalResult{value: next.value}, nil
 }
 
-func (i interpreter) evalEnumTargetedUtilityWhenExpr(env *environment, pkgName string, expr ast.UtilityWhenExpr) (evalResult, error) {
+// evalStandaloneUtilityWhenExpr evaluates the conditions in source order, a
+// score only when its condition holds, and then the value of the selected
+// case alone, or the else value when no condition held. The highest score
+// wins and the earliest case wins a tie.
+func (i interpreter) evalStandaloneUtilityWhenExpr(env *environment, pkgName string, expr ast.UtilityWhenExpr) (evalResult, error) {
 	type candidate struct {
 		valueExpr ast.Expr
 		score     int64

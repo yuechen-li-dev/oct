@@ -8,17 +8,6 @@ fn PickWithDefaults(aOpen: Bool, bOpen: Bool) -> Int {
     }
 }
 
-fn PickWithExplicitPolicy(aOpen: Bool, bOpen: Bool) -> Int {
-    return when utility {
-        hysteresis: 7
-        min_commit: 3
-    } {
-        case 1 when aOpen score 10
-        case 2 when bOpen score 8
-        else 0
-    }
-}
-
 fn LocalJunctionOwner(probeA: Int, probeB: Int) -> Int {
     return when utility {
         case 100 when probeA > 0 score probeA
@@ -32,24 +21,6 @@ fn StandaloneUtilityDefaultsSelectWinner() -> Void {
     Assert.Equal(1, PickWithDefaults(true, true), "higher score should win")
     Assert.Equal(2, PickWithDefaults(false, true), "only valid candidate should win")
     Assert.Equal(0, PickWithDefaults(false, false), "else should win when no candidate is valid")
-}
-
-[Fact]
-fn StandaloneUtilityDefaultsMatchExplicitZeroPolicy() -> Void {
-    let withDefaults = when utility {
-        case 1 when true score 50
-        case 2 when true score 40
-        else 0
-    }
-    let withExplicitZeros = when utility {
-        hysteresis: 0
-        min_commit: 0
-    } {
-        case 1 when true score 50
-        case 2 when true score 40
-        else 0
-    }
-    Assert.Equal(withDefaults, withExplicitZeros, "omitted policy should default to zero values")
 }
 
 [Fact]

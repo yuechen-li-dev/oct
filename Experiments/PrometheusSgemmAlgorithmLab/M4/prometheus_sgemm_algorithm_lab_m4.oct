@@ -285,8 +285,12 @@ fn ChooseDecision(m: Int, n: Int, k: Int) -> MatMulDecision {
     return DecisionForStrategy(strategy, m, n, k)
 }
 
+// hysteresis and minCommit are accepted and have no effect: a standalone
+// `when utility` keeps no commitment, so there is nothing for them to hold.
+// The policy block that used to pass them on was a silent no-op and is now
+// rejected by the parser. A choice that must hold needs `when policy` in a flow.
 fn ChooseDecisionWithPolicy(m: Int, n: Int, k: Int, hysteresis: Int, minCommit: Int) -> MatMulDecision {
-    let strategy = when utility { hysteresis: hysteresis min_commit: minCommit } {
+    let strategy = when utility {
         case MatMulStrategy.KBlocked when true score ScoreKDecomposition(m, n, k)
         case MatMulStrategy.Baseline when true score ScoreSingleCall(m, n, k)
         case MatMulStrategy.Blocked when true score ScoreBlocked(m, n, k)

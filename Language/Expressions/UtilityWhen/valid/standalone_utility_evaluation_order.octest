@@ -1,15 +1,16 @@
 package MainValid
 
-// What a plain standalone `when utility` evaluates, in source order
+// What a standalone `when utility` evaluates, in source order
 // (Language/reference/runtime/21-octomata.md, "Utility `when`"):
 //
 //   - each condition, once;
-//   - the score and the value of every case whose condition holds;
-//   - nothing of a case whose condition is false;
-//   - the else value only when no condition held.
+//   - a score only when its condition holds;
+//   - the value of the selected case alone, or the else value when no
+//     condition held.
 //
-// The enum-targeted form differs in one respect: it evaluates the value of
-// the selected case alone. enum_targeted_utility_when.octest holds that.
+// Nothing else is evaluated: not the value of a case that lost, and not
+// anything of a case whose condition is false. The enum-targeted form follows
+// the same rule; enum_targeted_utility_when.octest holds that.
 
 fn OrderBoom() -> Int ! Error {
     return error("evaluated")
@@ -38,10 +39,26 @@ fn ElseWhileACaseHolds() -> Int ! Error {
     }
 }
 
-fn ValueOfALosingCaseThatHolds() -> Int ! Error {
+fn ValueOfALosingCase() -> Int ! Error {
     return when utility {
         case OrderBoom()? when true score 1
         case 7 when true score 10
+        else 0
+    }
+}
+
+fn ValueOfALaterTiedCase() -> Int ! Error {
+    return when utility {
+        case 7 when true score 5
+        case OrderBoom()? when true score 5
+        else 0
+    }
+}
+
+fn ValueOfTheSelectedCase() -> Int ! Error {
+    return when utility {
+        case OrderBoom()? when true score 10
+        case 7 when true score 1
         else 0
     }
 }
@@ -64,7 +81,7 @@ fn ElseWhenNoCaseHolds() -> Int ! Error {
 fn Evaluated(which: Int) -> Bool {
     var evaluated = false
     if which == 0 {
-        match ValueOfALosingCaseThatHolds() {
+        match ValueOfTheSelectedCase() {
             ok(_) => { evaluated = false }
             err(_) => { evaluated = true }
         }
@@ -85,15 +102,17 @@ fn Evaluated(which: Int) -> Bool {
 }
 
 [Fact]
-fn StandaloneUtilitySkipsCasesWhoseConditionIsFalse() -> Void {
+fn StandaloneUtilityEvaluatesOnlyWhatItSelects() -> Void {
     Assert.Equal(7, Assert.LGTM(ValueOfAFalseCase(), "the value of a false case was evaluated"), "the true case is selected")
     Assert.Equal(7, Assert.LGTM(ScoreOfAFalseCase(), "the score of a false case was evaluated"), "the true case is selected")
     Assert.Equal(7, Assert.LGTM(ElseWhileACaseHolds(), "the else value was evaluated while a case held"), "the case is selected")
+    Assert.Equal(7, Assert.LGTM(ValueOfALosingCase(), "the value of a case with a lower score was evaluated"), "the higher score is selected")
+    Assert.Equal(7, Assert.LGTM(ValueOfALaterTiedCase(), "the value of a later tied case was evaluated"), "the earliest tied case is selected")
 }
 
 [Fact]
-fn StandaloneUtilityEvaluatesEveryCaseWhoseConditionHolds() -> Void {
-    Assert.True(Evaluated(0), "the value of a case that holds is evaluated even when it loses")
-    Assert.True(Evaluated(1), "the score of a case that holds is evaluated")
+fn StandaloneUtilityEvaluatesWhatItNeeds() -> Void {
+    Assert.True(Evaluated(0), "the value of the selected case is evaluated")
+    Assert.True(Evaluated(1), "the score of a case whose condition holds is evaluated")
     Assert.True(Evaluated(2), "the else value is evaluated when no condition held")
 }
