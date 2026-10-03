@@ -262,9 +262,15 @@ type builder struct {
 	manifestDeps     map[string]map[string]string
 	cachedDeps       map[string]string
 	selectedFiles    map[string]map[string]struct{}
+	// entryPackage is the first package loaded: the program or the selected
+	// test file's package. See validateManifest.
+	entryPackage string
 }
 
 func (b *builder) loadPackage(packageName string, directory string) error {
+	if b.entryPackage == "" {
+		b.entryPackage = packageName
+	}
 	if _, ok := b.visited[packageName]; ok {
 		return nil
 	}
@@ -587,12 +593,17 @@ func isMilestoneDir(name string) bool {
 
 func (b *builder) validateManifest(packageName string, directory string) (manifestValidationResult, error) {
 	manifestPath := filepath.Join(directory, "manifest.oct")
+	// ownManifest is false when a milestone directory borrows the manifest of
+	// its experiment family. That manifest names the family, not the
+	// milestone's package.
+	ownManifest := true
 	if _, err := os.Stat(manifestPath); err != nil {
 		if os.IsNotExist(err) {
 			if isMilestoneDir(filepath.Base(directory)) && isExperimentFamilyRoot(filepath.Dir(directory)) {
 				parentManifestPath := filepath.Join(filepath.Dir(directory), "manifest.oct")
 				if _, parentErr := os.Stat(parentManifestPath); parentErr == nil {
 					manifestPath = parentManifestPath
+					ownManifest = false
 				} else if parentErr != nil && !os.IsNotExist(parentErr) {
 					return manifestValidationResult{}, fmt.Errorf("read package manifest %s: %w", parentManifestPath, parentErr)
 				} else if b.requireManifests {
@@ -609,18 +620,34 @@ func (b *builder) validateManifest(packageName string, directory string) (manife
 			return manifestValidationResult{}, fmt.Errorf("read package manifest %s: %w", manifestPath, err)
 		}
 	}
-	// A manifest that exists is read, and one that is wrong is an error even
-	// where a manifest is not required. Dropping it would silently remove the
-	// package's wrapper declarations and leave its stub bodies to run.
+	// The manifest of an imported package is read whenever it exists, and one
+	// that is wrong is an error even where a manifest is not required.
+	// Dropping it would silently remove the package's wrapper declarations
+	// and leave its stub bodies to run.
+	//
+	// Two manifests are checked only where manifests are required: the one a
+	// milestone borrows from its family, and the entry package's own. A file
+	// selected on its own runs beside a manifest that is wrong, which
+	// cmd/oct's single-file target tests pin.
+	strict := b.requireManifests || (ownManifest && packageName != b.entryPackage)
 	manifestFile, err := parseFile(manifestPath)
 	if err != nil {
+		if !strict {
+			return manifestValidationResult{}, nil
+		}
 		return manifestValidationResult{}, err
 	}
 	if err := validateManifestFile(packageName, manifestFile); err != nil {
+		if !strict {
+			return manifestValidationResult{}, nil
+		}
 		return manifestValidationResult{}, err
 	}
 	metadata, err := pkgmgr.LoadManifestMetadata(manifestPath)
 	if err != nil {
+		if !strict {
+			return manifestValidationResult{}, nil
+		}
 		return manifestValidationResult{}, err
 	}
 	return manifestValidationResult{Dependencies: manifestDependencySet(manifestFile), Wrappers: metadata.Wrappers}, nil

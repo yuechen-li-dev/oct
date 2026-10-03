@@ -180,7 +180,7 @@ invalid/
       WrapperReturnMismatch.oct
 ```
 
-A manifest that exists is always read. One that does not parse or validate is an error for the program that imports its package, including for a program in a directory that requires no manifest.
+The manifest of an imported package is read whenever it exists. One that does not parse or validate is an error for the program that imports the package, including for a program in a directory that requires no manifest.
 
 A file with a malformed expectation line, an empty substring, expectation lines of different kinds, or an expectation line after the source has begun is an error.
 
