@@ -1,0 +1,17 @@
+expect error: "compiled mode does not yet support builtin UIMount"
+
+package Main
+
+// Selected-reachable lowering compiles what the entry point can reach. A
+// builtin the compiled lane does not support is reported when it is reachable;
+// the sibling `unreachable` fixture holds the other half of the contract.
+// This fixture changes when the compiled lane gains the UI builtins.
+fn UnsupportedPath() -> Int {
+    let mount = UIMount(UIText("idle"))
+    let events = UIDrainEvents(mount)
+    return Len(events)
+}
+
+fn Main() -> Int {
+    return UnsupportedPath()
+}
