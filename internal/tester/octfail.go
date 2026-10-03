@@ -151,11 +151,17 @@ func runOctFailCase(testCase octFailCase, executionMode string) (string, error) 
 		return "", fmt.Errorf("write temp source: %w", err)
 	}
 
+	// The fixture is checked as a copy, away from its neighbours, but it may
+	// import the libraries of the repository it lives in.
+	importAnchor, err := filepath.Abs(filepath.Dir(testCase.path))
+	if err != nil {
+		return "", fmt.Errorf("resolve fixture directory: %w", err)
+	}
 	if testCase.runtime {
-		return runRuntimeOctFailCase(testCase, sourcePath, executionMode)
+		return runRuntimeOctFailCase(testCase, sourcePath, importAnchor, executionMode)
 	}
 
-	_, compileErr := build.Compile(sourcePath)
+	_, compileErr := build.CompileWithImportAnchor(sourcePath, importAnchor)
 	if compileErr == nil {
 		return "", fmt.Errorf("expected compilation failure but build succeeded")
 	}
@@ -169,10 +175,10 @@ func runOctFailCase(testCase octFailCase, executionMode string) (string, error) 
 
 // runRuntimeOctFailCase checks a fixture whose source is valid and whose Main
 // must stop with a failure.
-func runRuntimeOctFailCase(testCase octFailCase, sourcePath string, executionMode string) (string, error) {
+func runRuntimeOctFailCase(testCase octFailCase, sourcePath string, importAnchor string, executionMode string) (string, error) {
 	return checkRuntimeOctFail(testCase.expectedError, executionMode, []octFailLane{
-		{name: "interpreted", run: func() (string, bool, error) { return runOctFailInterpreted(sourcePath) }},
-		{name: "compiled", run: func() (string, bool, error) { return runOctFailCompiled(sourcePath) }},
+		{name: "interpreted", run: func() (string, bool, error) { return runOctFailInterpreted(sourcePath, importAnchor) }},
+		{name: "compiled", run: func() (string, bool, error) { return runOctFailCompiled(sourcePath, importAnchor) }},
 	})
 }
 
@@ -206,8 +212,8 @@ func checkRuntimeOctFail(want string, executionMode string, lanes []octFailLane)
 	return "", nil
 }
 
-func runOctFailInterpreted(sourcePath string) (message string, failed bool, err error) {
-	program, err := project.Load(sourcePath)
+func runOctFailInterpreted(sourcePath string, importAnchor string) (message string, failed bool, err error) {
+	program, err := project.LoadWithImportAnchor(sourcePath, importAnchor)
 	if err != nil {
 		return "", false, err
 	}
@@ -220,8 +226,8 @@ func runOctFailInterpreted(sourcePath string) (message string, failed bool, err 
 	return "", false, nil
 }
 
-func runOctFailCompiled(sourcePath string) (message string, failed bool, err error) {
-	result, err := build.Compile(sourcePath)
+func runOctFailCompiled(sourcePath string, importAnchor string) (message string, failed bool, err error) {
+	result, err := build.CompileWithImportAnchor(sourcePath, importAnchor)
 	if err != nil {
 		return "", false, err
 	}

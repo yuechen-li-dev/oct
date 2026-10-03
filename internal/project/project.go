@@ -74,6 +74,15 @@ func LoadForTestWithSelectedFilesInPackage(path string, packageDir string, selec
 	return loadFromFileInPackage(path, packageDir, true, selectedFiles)
 }
 
+// LoadWithImportAnchor loads a source file that is stored outside the tree it
+// belongs to, such as a fixture copied to a scratch directory. Its imports are
+// resolved against the import roots of anchor, the directory the source came
+// from, so it can import the libraries of the repository it was taken from.
+// Packages beside the original file are not visible: only the file moved.
+func LoadWithImportAnchor(path string, anchor string) (Program, error) {
+	return loadFromFileAnchored(path, filepath.Dir(path), false, nil, anchor)
+}
+
 func load(path string, includeTests bool) (Program, error) {
 	return loadWithSelectedFiles(path, includeTests, nil)
 }
@@ -98,6 +107,13 @@ func loadFromFile(path string, includeTests bool, explicitSelected []string) (Pr
 }
 
 func loadFromFileInPackage(path string, packageDir string, includeTests bool, explicitSelected []string) (Program, error) {
+	return loadFromFileAnchored(path, packageDir, includeTests, explicitSelected, "")
+}
+
+// loadFromFileAnchored is loadFromFileInPackage with the repository import
+// roots taken from importAnchor when it is set, and from the load root when
+// it is empty.
+func loadFromFileAnchored(path string, packageDir string, includeTests bool, explicitSelected []string, importAnchor string) (Program, error) {
 	entryFile, err := parseFile(path)
 	if err != nil {
 		return Program{}, err
@@ -113,9 +129,12 @@ func loadFromFileInPackage(path string, packageDir string, includeTests bool, ex
 	if includeTests && (filepath.Ext(path) == ".octest" || filepath.Ext(path) == ".oct") {
 		requireManifests = false
 	}
+	if importAnchor == "" {
+		importAnchor = root
+	}
 	builder := builder{
 		root:             root,
-		repoRoots:        detectRepoRoots(root),
+		repoRoots:        detectRepoRoots(importAnchor),
 		includeTests:     includeTests,
 		requireManifests: requireManifests,
 		packages:         make(map[string]Package),

@@ -1,0 +1,11 @@
+expect error: "function 'Random.Unit' argument 2 expects Int, got Float"
+
+package RandomUsage
+
+import Random
+
+// A compile-time contract for calling a library from another package: the
+// fixture imports the library it misuses.
+fn Main() -> Float {
+    return Random.Unit(Random.Seeded(1), 1.5)
+}

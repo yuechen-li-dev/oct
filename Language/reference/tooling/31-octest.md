@@ -108,7 +108,7 @@ fn FallibleSmoke() -> Void {
 }
 ```
 
-An `.octfail` file holds a program that must fail. Its first non-blank line is one expectation header, and the rest is ordinary Oct source checked as a `.oct` file.
+An `.octfail` file holds a program that must fail. Its first non-blank line is one expectation header, and the rest is ordinary Oct source checked as a `.oct` file. The source is checked as a copy, on its own: it may `import` a library of the repository it lives in, but files and packages beside it are not part of it.
 
 - `expect error: "<non-empty substring>"` is a compile-time contract. The file passes when compilation fails with an error containing the substring. It fails if the source compiles.
 - `expect runtime error: "<non-empty substring>"` is a runtime contract. The source must compile, and running its `Main` must stop with a failure whose message contains the substring: a runtime error, a failed `Assert.True`, a failed `!` unwrap, or an `Error` returned from a fallible `Main`. The file fails if the source does not compile, if `Main` runs to completion, or if the message does not contain the substring.

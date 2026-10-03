@@ -67,6 +67,16 @@ func Compile(path string) (Result, error) {
 	return compileProgram(program, compileOptions{})
 }
 
+// CompileWithImportAnchor compiles a source file stored outside its tree,
+// resolving library imports as project.LoadWithImportAnchor does.
+func CompileWithImportAnchor(path string, anchor string) (Result, error) {
+	program, err := project.LoadWithImportAnchor(path, anchor)
+	if err != nil {
+		return Result{}, err
+	}
+	return compileProgram(program, compileOptions{})
+}
+
 // CompileOptimized is the explicit Chapter 4 path. Compile remains unchanged
 // so existing generated output stays reproducible unless optimization is
 // requested.
