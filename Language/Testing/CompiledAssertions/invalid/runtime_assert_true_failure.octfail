@@ -1,0 +1,8 @@
+expect runtime error: "assertion failed: expected failure message"
+
+package Main
+
+// A failed Assert.True stops the program with its message, in both lanes.
+fn Main() -> Void {
+    Assert.True(false, "expected failure message")
+}

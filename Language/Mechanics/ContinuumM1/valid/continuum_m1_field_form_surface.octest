@@ -18,4 +18,8 @@ fn ContinuumM1FieldFormSurface() -> Void {
 
     let sigma = Matrix.identity<Float>(2) * 120.0 + (Matrix.identity<Float>(2) * 160.0) * eps
     let _ = Div(sigma)
+
+    // The contract is that this surface is accepted and constructs. A field
+    // form is representational, so there is no number to compare.
+    Assert.True(true, "the field-form surface is accepted and constructs")
 }

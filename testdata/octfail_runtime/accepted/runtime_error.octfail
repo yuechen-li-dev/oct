@@ -1,0 +1,10 @@
+expect runtime error: "array length mismatch: 2 vs 3"
+
+package Main
+
+fn Main() -> Int {
+    let short = [1, 2]
+    let long = [1, 2, 3]
+    let sum = short + long
+    return Len(sum)
+}

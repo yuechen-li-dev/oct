@@ -1,6 +1,4 @@
-package Main
-
-import Assert
+package MainValid
 
 flow DoneFlow() -> Int {
     state Start {
@@ -8,9 +6,10 @@ flow DoneFlow() -> Int {
     }
 }
 
-test "Result(machine)! after guaranteed completion" {
+[Fact]
+fn ResultUnwrapAfterGuaranteedCompletion() -> Void {
     let machine = DoneFlow()
     Step(machine)
     let result = Result(machine)!
-    Assert.Equal(7, result)
+    Assert.Equal(7, result, "Result(machine)! after guaranteed completion")
 }

@@ -3319,7 +3319,13 @@ regularCall:
 				if _, imported := c.importedPackages[namespace]; !imported && !builtin.IsCompilerOwnedNamespace(namespace) {
 					return ExprType{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", namespace, namespace)
 				}
-				return c.checkBuiltinCallExpr(scope, builtinName, expr.TypeArguments, expr.Arguments, ctx)
+				result, err := c.checkBuiltinCallExpr(scope, builtinName, expr.TypeArguments, expr.Arguments, ctx)
+				if err != nil {
+					// The builtin behind a namespaced call has an internal
+					// name. A diagnostic names the function as it was written.
+					return ExprType{}, errors.New(strings.ReplaceAll(err.Error(), "'"+builtinName+"'", "'"+calleeName+"'"))
+				}
+				return result, nil
 			}
 		}
 	}
@@ -3373,6 +3379,13 @@ regularCall:
 				// missing thing is the function and not the package.
 				if builtin.IsCompilerOwnedNamespace(pkgName) {
 					return ExprType{}, fmt.Errorf("package '%s' has no function '%s'", pkgName, symbol)
+				}
+				// The checker sees only what the file imports, so it cannot
+				// tell a missing import from a package that does not exist.
+				// A capitalized qualifier is spelled like a package, and a
+				// missing import is the usual cause.
+				if pkgName != "" && pkgName[0] >= 'A' && pkgName[0] <= 'Z' {
+					return ExprType{}, fmt.Errorf("unknown package '%s'; did you forget `import %s`?", pkgName, pkgName)
 				}
 				return ExprType{}, fmt.Errorf("unknown package '%s'", pkgName)
 			}
@@ -3623,6 +3636,9 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 		if err != nil {
 			return ExprType{}, err
 		}
+		if condType.Fallible {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1: %s", callee, genericUnhandledFallibleMessage())
+		}
 		if condType.ValueType != (Type{Base: BaseTypeBool}) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bool, got %s", callee, condType.ValueType)
 		}
@@ -3645,6 +3661,14 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 		actualType, err := c.checkExpr(scope, arguments[1], ctx)
 		if err != nil {
 			return ExprType{}, err
+		}
+		// Only Assert.Error and Assert.LGTM take a fallible expression. An
+		// assertion on a value needs the value: the result must be handled
+		// first, as for any other argument.
+		for i, operand := range []ExprType{expectedType, actualType} {
+			if operand.Fallible {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d: %s", callee, i+1, genericUnhandledFallibleMessage())
+			}
 		}
 		if !isAssignable(actualType.ValueType, expectedType.ValueType) || !isAssignable(expectedType.ValueType, actualType.ValueType) {
 			return ExprType{}, fmt.Errorf("function '%s' arguments 1 and 2 must have the same type", callee)
@@ -3675,6 +3699,11 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 		toleranceType, err := c.checkExpr(scope, arguments[2], ctx)
 		if err != nil {
 			return ExprType{}, err
+		}
+		for i, operand := range []ExprType{expectedType, actualType, toleranceType} {
+			if operand.Fallible {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d: %s", callee, i+1, genericUnhandledFallibleMessage())
+			}
 		}
 		if expectedType.ValueType.Base != BaseTypeFloat || actualType.ValueType.Base != BaseTypeFloat || toleranceType.ValueType.Base != BaseTypeFloat ||
 			expectedType.ValueType.IsArray || actualType.ValueType.IsArray || toleranceType.ValueType.IsArray ||

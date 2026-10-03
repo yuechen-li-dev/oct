@@ -47,7 +47,7 @@
 
 - Lane roles are intentionally partitioned: `test` = correctness contracts, `bench` = performance measurement, `artifact` = generated evidence outputs.
 - Mixed `.octest` files are allowed; each command still executes only its matching lane attributes.
-- `oct fmt <path> [--mode en-llm|en-llm-compact] [--check]` formats one file or a directory tree in place (or checks formatting with `--check`).
+- `oct fmt <path> [--mode en-llm|en-llm-compact] [--arrows keep|thin|fat] [--check]` formats one file or a directory tree in place (or checks formatting with `--check`).
 - `oct new <experiment|library|wrapper-library> <Name>` creates a deterministic package scaffold in the current working directory.
 - `oct init <experiment|library|wrapper-library>` creates `manifest.oct` in the current existing directory and refuses to overwrite an existing manifest.
 - `oct new` and `oct init` use strict PascalCase package names; `oct new` rejects an existing target directory, and `oct init` derives the name from the current directory basename.

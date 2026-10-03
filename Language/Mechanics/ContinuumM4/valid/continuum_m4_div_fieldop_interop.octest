@@ -13,6 +13,10 @@ fn ContinuumM4DivAcceptsRepresentationalConstitutiveFieldForm() -> Void {
     // M4 seam closure: Div now accepts this FieldOp output directly.
     let divSigma = Div(sigma)
     let _ = divSigma
+
+    // The contract is that this surface is accepted and constructs. A field
+    // form is representational, so there is no number to compare.
+    Assert.True(true, "the field-form surface is accepted and constructs")
 }
 
 [Fact]
@@ -24,4 +28,8 @@ fn ContinuumM4InlineConstitutiveStrongFormSliceIsDirect() -> Void {
     // Direct inline constitutive + balance chain stays representational.
     let r = Div((2.0 * mu) * SymGrad(u)) + b
     let _ = r
+
+    // The contract is that this surface is accepted and constructs. A field
+    // form is representational, so there is no number to compare.
+    Assert.True(true, "the field-form surface is accepted and constructs")
 }

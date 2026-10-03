@@ -1,0 +1,14 @@
+expect error: "function 'StaticAssert.Equal' argument 2: fallible expression must be handled explicitly"
+
+package Main
+
+// An assertion on a value takes the value, not a fallible result. Assert.Equal,
+// Assert.Near and Assert.False are test-file forms, so this contract is written
+// with StaticAssert.Equal, which is legal in ordinary source and shares their operand rule.
+fn Reading() -> Int ! Error {
+    return 7
+}
+
+fn Main() -> Void {
+    StaticAssert.Equal(7, Reading(), "an assertion compares values, not results")
+}

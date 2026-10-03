@@ -1,7 +1,9 @@
-expect error: "operator + not defined"
+expect runtime error: "array length mismatch: 3 vs 1"
 
 package MainInvalid
 
+// A length-1 array is not a scalar: it does not broadcast. Array lengths are
+// not part of the type, so the mismatch is found when the program runs.
 fn Main() -> Void {
     let xs: Float[] = [1.0, 2.0, 3.0]
     let ys: Float[] = [10.0]

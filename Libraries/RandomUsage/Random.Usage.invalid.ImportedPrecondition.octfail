@@ -1,0 +1,10 @@
+expect runtime error: "Chance requires p in [0, 1]"
+
+package RandomUsage
+
+import Random
+
+// A library precondition written in Oct stops the program in both lanes.
+fn Main() -> Bool {
+    return Random.Chance(Random.Seeded(1), 0, 1.5)
+}

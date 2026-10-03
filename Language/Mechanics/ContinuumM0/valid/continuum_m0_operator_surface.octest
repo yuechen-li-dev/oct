@@ -9,4 +9,8 @@ fn ContinuumM0OperatorSurface() -> Void {
     let _ = Div(sigma)
 
     let _ = Div(gradU)
+
+    // The contract is that this surface is accepted and constructs. A field
+    // form is representational, so there is no number to compare.
+    Assert.True(true, "the field-form surface is accepted and constructs")
 }

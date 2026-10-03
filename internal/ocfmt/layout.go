@@ -69,6 +69,7 @@ type sourceLine struct {
 type layout struct {
 	src     string
 	compact bool
+	arrow   string      // the spelling every arrow is written with; "" keeps each one
 	toks    []lex.Token // without the trailing EOF
 	lines   []sourceLine
 	spans   []ast.MarkupSpan // outermost markup elements, in source order
@@ -84,8 +85,8 @@ type layout struct {
 
 // formatLayout formats src, which has already been lexed and parsed
 // successfully and uses "\n" line endings.
-func formatLayout(src string, tokens []lex.Token, spans []ast.MarkupSpan, compact bool) (string, error) {
-	l := &layout{src: src, compact: compact}
+func formatLayout(src string, tokens []lex.Token, spans []ast.MarkupSpan, resolved settings) (string, error) {
+	l := &layout{src: src, compact: resolved.compact, arrow: resolved.arrow}
 	for _, tok := range tokens {
 		if tok.Kind != lex.EOF {
 			l.toks = append(l.toks, tok)
@@ -687,8 +688,8 @@ func (l *layout) renderLine(index int, place placement) string {
 			continue
 		}
 		text := l.src[tok.Offset:tok.EndOffset]
-		if tok.Kind == lex.Arrow {
-			text = "->"
+		if tok.Kind == lex.Arrow && l.arrow != "" {
+			text = l.arrow
 		}
 		pieces = append(pieces, piece{text: text, token: t, kind: pieceToken})
 		cursor = tok.EndOffset
@@ -906,7 +907,9 @@ func gluesSafely(a, b string) bool {
 
 // verify checks the one promise the formatter makes about meaning: the
 // output has the same tokens as the input, on the same lines, and every
-// number keeps or lacks its touching unit name exactly as before.
+// number keeps or lacks its touching unit name exactly as before. An arrow may
+// change its spelling only when a spelling was asked for, and then only to
+// that one.
 func (l *layout) verify(out string) error {
 	lexed, err := lex.Analyze(source.File{Text: out})
 	if err != nil {
@@ -921,7 +924,11 @@ func (l *layout) verify(out string) error {
 	}
 	for i, want := range l.toks {
 		have := got[i]
-		same := have.Kind == want.Kind && (have.Lexeme == want.Lexeme || want.Kind == lex.Arrow) && have.Line == want.Line
+		lexeme := want.Lexeme
+		if want.Kind == lex.Arrow && l.arrow != "" {
+			lexeme = l.arrow
+		}
+		same := have.Kind == want.Kind && have.Lexeme == lexeme && have.Line == want.Line
 		if same && i > 0 && want.Kind == lex.Identifier && (l.toks[i-1].Kind == lex.IntLiteral || l.toks[i-1].Kind == lex.FloatLiteral) {
 			same = (l.toks[i-1].EndOffset == want.Offset) == (got[i-1].EndOffset == have.Offset)
 		}

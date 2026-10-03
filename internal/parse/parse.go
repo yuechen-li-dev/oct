@@ -1403,7 +1403,7 @@ func (p *parser) parseOptionalTypeParameters(required bool, name lex.Token) ([]s
 			break
 		}
 	}
-	if _, err := p.expect(lex.RightAngle, "expected '>' after type parameters"); err != nil {
+	if _, err := p.expectTypeClose("expected '>' after type parameters"); err != nil {
 		return nil, err
 	}
 	return parameters, nil
@@ -1468,7 +1468,7 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 		if err != nil {
 			return ast.TypeRef{}, err
 		}
-		if _, err := p.expect(lex.RightAngle, fmt.Sprintf("expected '>' after %s element type", container)); err != nil {
+		if _, err := p.expectTypeClose(fmt.Sprintf("expected '>' after %s element type", container)); err != nil {
 			return ast.TypeRef{}, err
 		}
 		if container == "Vector" {
@@ -1493,7 +1493,7 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 			if err != nil {
 				return ast.TypeRef{}, err
 			}
-			if _, err := p.expect(lex.RightAngle, "expected '>' after dimension qualifier"); err != nil {
+			if _, err := p.expectTypeClose("expected '>' after dimension qualifier"); err != nil {
 				return ast.TypeRef{}, err
 			}
 			typeRef.Dimension = dim
@@ -1509,7 +1509,7 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 					break
 				}
 			}
-			if _, err := p.expect(lex.RightAngle, "expected '>' after type arguments"); err != nil {
+			if _, err := p.expectTypeClose("expected '>' after type arguments"); err != nil {
 				return ast.TypeRef{}, err
 			}
 		}
@@ -2330,7 +2330,7 @@ func (p *parser) parseTypeArguments() ([]ast.TypeRef, error) {
 			break
 		}
 	}
-	if _, err := p.expect(lex.RightAngle, "expected '>' after type arguments"); err != nil {
+	if _, err := p.expectTypeClose("expected '>' after type arguments"); err != nil {
 		return nil, err
 	}
 	return typeArguments, nil
@@ -3260,6 +3260,16 @@ func (p *parser) expect(kind lex.TokenKind, message string) (lex.Token, error) {
 	}
 	p.advance()
 	return token, nil
+}
+
+// expectTypeClose consumes the '>' that closes a type argument list or a
+// dimension qualifier. The lexer reads `>=` as one token, so `Float<m>=x`
+// arrives here as a comparison operator. The error says what to write.
+func (p *parser) expectTypeClose(message string) (lex.Token, error) {
+	if token := p.current(); token.Kind != lex.RightAngle && token.Lexeme == ">=" {
+		return lex.Token{}, p.errorAtCurrent(message + "; '>=' is one token, so write a space between '>' and '='")
+	}
+	return p.expect(lex.RightAngle, message)
 }
 
 func isContextualIdentifierToken(kind lex.TokenKind) bool {

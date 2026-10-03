@@ -1,0 +1,34 @@
+package MainValid
+
+// An assertion on a value takes the value. A fallible result is unwrapped or
+// propagated first; Assert.LGTM and Assert.Error are the two assertions that
+// take the result itself.
+
+fn Reading() -> Int ! Error {
+    return 7
+}
+
+fn Failing() -> Int ! Error {
+    return error("no reading")
+}
+
+fn Doubled() -> Int ! Error {
+    let value = Reading()?
+    Assert.Equal(7, value, "a propagated result is a value")
+    return value * 2
+}
+
+[Fact]
+fn UnwrappedResultsCompareAsValues() -> Void {
+    Assert.Equal(7, Reading()!, "unwrapped actual")
+    Assert.Equal(Reading()!, 7, "unwrapped expected")
+    Assert.True(Reading()! == 7, "unwrapped operand")
+    Assert.Equal(14, Doubled()!, "propagated inside a fallible function")
+}
+
+[Fact]
+fn LgtmAndErrorTakeTheResultItself() -> Void {
+    let value = Assert.LGTM(Reading(), "a successful result yields its value")
+    Assert.Equal(7, value, "the value LGTM returned")
+    Assert.Error(Failing(), "a failed result is asserted as a failure")
+}

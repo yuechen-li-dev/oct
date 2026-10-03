@@ -306,6 +306,19 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			})
 			return tmp, ret, false, nil
 		}
+		if _, ok := parseArrayElemType(lt); ok && isLinearElementwiseOperatorString(e.Operator) {
+			if _, ok := parseArrayElemType(rt); ok {
+				// Array-array arithmetic is element-wise over equal lengths,
+				// at every level of nesting.
+				ret, ok := arrayArrayResultTypeString(e.Operator, lt, rt)
+				if !ok {
+					return "", "", false, fmt.Errorf("compiled mode does not yet support operator %q on %s and %s", e.Operator, lt, rt)
+				}
+				tmp := c.temp(ret)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinaryAA:" + e.Operator, Args: lowerMIRValues([]string{l, r}, nil), ArgTypes: []string{lt, rt}, Builtin: true, RetType: ret})
+				return tmp, ret, false, nil
+			}
+		}
 		if leftElem, ok := parseArrayElemType(lt); ok && !strings.HasSuffix(leftElem, "[]") && isLinearElementwiseOperatorString(e.Operator) && isNumericTypeString(rt) {
 			retElem := scalarBinaryResultTypeString(e.Operator, leftElem, rt)
 			ret := retElem + "[]"
@@ -2565,6 +2578,27 @@ func isIntArrayTypeString(t string) bool {
 
 func isNumericTypeString(t string) bool {
 	return isIntScalarTypeString(t) || isFloatScalarTypeString(t)
+}
+
+// arrayArrayResultTypeString gives the type of an element-wise operation on
+// two arrays of equal nesting depth whose innermost elements are numeric.
+func arrayArrayResultTypeString(operator string, left string, right string) (string, bool) {
+	leftElem, leftOK := parseArrayElemType(left)
+	rightElem, rightOK := parseArrayElemType(right)
+	if !leftOK || !rightOK {
+		return "", false
+	}
+	if strings.HasSuffix(leftElem, "[]") || strings.HasSuffix(rightElem, "[]") {
+		inner, ok := arrayArrayResultTypeString(operator, leftElem, rightElem)
+		if !ok {
+			return "", false
+		}
+		return inner + "[]", true
+	}
+	if !isNumericTypeString(leftElem) || !isNumericTypeString(rightElem) {
+		return "", false
+	}
+	return scalarBinaryResultTypeString(operator, leftElem, rightElem) + "[]", true
 }
 
 func isLinearElementwiseOperatorString(operator string) bool {

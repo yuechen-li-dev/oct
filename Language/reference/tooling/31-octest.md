@@ -4,7 +4,7 @@
 
 `oct test` executes test contracts from `.octest` and `.octfail` files.
 `.octest` files are ordinary Oct package files with test-lane metadata; they use normal `package`, `import`, typechecking, and package-root resolution rules.
-`.octfail` files are negative compile-time contracts: they pass only when the declared error substring is produced.
+`.octfail` files are negative contracts: they pass only when the declared error substring is produced, either when the source is compiled or, for a runtime expectation, when its `Main` runs.
 
 `oct test <path>` discovers `.octest` and `.octfail` files recursively under `<path>`.
 A single `.octest` file may also contain `[Artifact]` and `[Benchmark]` functions, but `oct test` runs only `[Fact]` and `[Theory]` cases plus `.octfail` checks.
@@ -108,9 +108,28 @@ fn FallibleSmoke() -> Void {
 }
 ```
 
-`.octfail` is different from a runtime failure test.
-An `.octfail` file requires a first line of `expect error: "<non-empty substring>"` and passes when compilation/typechecking fails with an error containing that substring.
-It fails on missing rejection, malformed header, or substring mismatch.
+An `.octfail` file holds a program that must fail. Its first non-blank line is one expectation header, and the rest is ordinary Oct source checked as a `.oct` file. The source is checked as a copy, on its own: it may `import` a library of the repository it lives in, but files and packages beside it are not part of it.
+
+- `expect error: "<non-empty substring>"` is a compile-time contract. The file passes when compilation fails with an error containing the substring. It fails if the source compiles.
+- `expect runtime error: "<non-empty substring>"` is a runtime contract. The source must compile, and running its `Main` must stop with a failure whose message contains the substring: a runtime error, a failed `Assert.True`, a failed `!` unwrap, or an `Error` returned from a fallible `Main`. The file fails if the source does not compile, if `Main` runs to completion, or if the message does not contain the substring.
+
+A runtime contract is checked per execution lane. Under the default `--execution auto` the interpreted lane and the compiled lane must both fail with the expected text; `--execution interpreted` and `--execution compiled` check that lane alone. Neither lane stands in for the other. A compiled run that does not stop within 30 seconds fails the contract.
+
+Use a runtime contract for failures the type system cannot see, such as a length mismatch between two arrays or a violated builtin precondition. `Assert.Error` remains the form for an ordinary fallible result inside a `[Fact]`.
+
+```oct
+expect runtime error: "array length mismatch: 3 vs 1"
+
+package Main
+
+fn Main() -> Void {
+    let xs: Float[] = [1.0, 2.0, 3.0]
+    let ys: Float[] = [10.0]
+    let bad = xs + ys
+}
+```
+
+A file with a malformed header, an empty substring, or more than one header is an error.
 
 ## Skips and cycle time
 
@@ -138,7 +157,7 @@ In `interpreted`, tests run through source interpretation.
 Compiled test execution may build and run generated compiled artifacts internally, but users should treat this as a test execution mode rather than a stable artifact layout. When `OCT_KEEP_TEST_ARTIFACTS=1` is used for diagnostics, each owned runner scope retains distinct `<case>.generated.go` source and `<case>.octbin[.exe]` executable paths; the Windows executable suffix is `.octbin.exe`.
 Some packages still use language/library features that are not compiled-supported, and missing wrapper sidecars can affect compiled wrapper tests.
 Interpreted and compiled parity is tracked by package and test coverage, so do not assume every test package compiles until it has been run in compiled mode.
-`.octfail` remains a compile-time rejection check; it is not a compiled runtime test case.
+A compile-time `.octfail` is checked the same way in every execution mode. A runtime `.octfail` is run in the lanes that the execution mode selects.
 
 ## File and layout conventions
 
@@ -148,6 +167,7 @@ Interpreted and compiled parity is tracked by package and test coverage, so do n
 - `[Artifact]` functions must have no parameters and return `Void` or `Void ! Error`; `[Benchmark]` functions use `fn Name() -> Void`. Neither lane requires assertions.
 - Current Language fixtures commonly organize accepted behavior under `valid/` and rejected behavior under `invalid/`, with runtime-pass cases often under `runtime/valid/`.
 - Selecting a single `.octest` file limits execution to that selected source file; selecting a directory discovers tests recursively under that directory.
+- Declarations shared by several test files belong in a `.oct` file, or in a `.octest` file that declares no `[Fact]`, `[Theory]`, `[Artifact]` or `[Benchmark]`. The compiled lane builds each test file with those support sources and does not see what another test file declares; the interpreted lane loads the directory as one package and does. So a test file must not use a declaration from a sibling test file (the compiled lane rejects it), and two test files in one directory must not declare the same name (the interpreted lane rejects it).
 
 ## Lane policy
 

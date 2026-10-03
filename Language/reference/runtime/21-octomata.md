@@ -68,7 +68,7 @@ Octomata and records are complementary:
 - `resume` with an empty slot is a runtime error.
 - `Step(flow)` advances one scheduling step.
 - Input-bearing flows require `Step(flow, input)` with the declared input type; non-input flows reject a second argument.
-- One turn executes from the current continuation through ordinary `goto` transitions until `yield`, `suspend`, or final `return`.
+- One turn executes from the current continuation through ordinary `goto` and `resume` transitions until `yield`, `suspend`, or final `return`. A state entered by `goto` or `resume` runs from its first statement within the same turn.
 - `DidYield(flow)` reports whether the most recent turn ended at `yield`.
 - `Yielded(flow)` is fallible and extracts the most recent turn's typed yielded value.
 - Starting another `Step` clears prior-turn yield observability before execution;

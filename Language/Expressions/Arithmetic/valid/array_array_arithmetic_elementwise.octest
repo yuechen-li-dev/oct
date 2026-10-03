@@ -1,0 +1,59 @@
+package MainValid
+
+// Arithmetic on two arrays of equal length is element-wise, for each of the
+// four operators, in both execution lanes.
+
+fn Doubled(xs: Float[]) -> Float[] {
+    return xs + xs
+}
+
+[Fact]
+fn IntArraysCombineElementWise() -> Void {
+    let a = [6, 8, 10]
+    let b = [3, 2, 5]
+    let sum = a + b
+    let difference = a - b
+    let product = a * b
+    let quotient = a / b
+    Assert.Equal(9, sum[0], "sum 0")
+    Assert.Equal(15, sum[2], "sum 2")
+    Assert.Equal(3, difference[0], "difference 0")
+    Assert.Equal(6, difference[1], "difference 1")
+    Assert.Equal(18, product[0], "product 0")
+    Assert.Equal(50, product[2], "product 2")
+    Assert.Equal(2, quotient[0], "quotient 0")
+    Assert.Equal(4, quotient[1], "quotient 1")
+    Assert.Equal(3, Len(quotient), "the result has the operands' length")
+}
+
+[Fact]
+fn FloatArraysCombineElementWise() -> Void {
+    let a = [1.5, 4.0]
+    let b = [0.5, 8.0]
+    Assert.Equal(2.0, (a + b)[0], "sum")
+    Assert.Equal(-4.0, (a - b)[1], "difference")
+    Assert.Equal(32.0, (a * b)[1], "product")
+    Assert.Equal(3.0, (a / b)[0], "quotient")
+}
+
+[Fact]
+fn ArrayArithmeticCarriesUnits() -> Void {
+    let lengths: Float<m>[] = [2.0m, 3.0m]
+    let widths: Float<m>[] = [4.0m, 5.0m]
+    let durations: Float<s>[] = [2.0s, 10.0s]
+    let totals: Float<m>[] = lengths + widths
+    let areas: Float<m^2>[] = lengths * widths
+    let speeds: Float<m/s>[] = lengths / durations
+    Assert.Equal(6.0m, totals[0], "a sum keeps the unit")
+    Assert.Equal(15.0m^2, areas[1], "a product multiplies the units")
+    Assert.Equal(1.0m/s, speeds[0], "a quotient divides the units")
+}
+
+[Fact]
+fn ArrayArithmeticWorksOnParametersAndResults() -> Void {
+    let twice = Doubled([1.0, 2.5])
+    Assert.Equal(2.0, twice[0], "first element doubled")
+    Assert.Equal(5.0, twice[1], "second element doubled")
+    let empty: Float[] = []
+    Assert.Equal(0, Len(Doubled(empty)), "empty arrays combine to an empty array")
+}

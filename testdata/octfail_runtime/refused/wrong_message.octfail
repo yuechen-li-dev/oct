@@ -1,0 +1,8 @@
+expect runtime error: "index out of range"
+
+package Main
+
+fn Main() -> Int {
+    Assert.True(false, "a different failure")
+    return 0
+}

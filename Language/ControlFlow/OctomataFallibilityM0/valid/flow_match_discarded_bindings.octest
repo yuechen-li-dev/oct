@@ -1,0 +1,38 @@
+package Main
+
+// A fallible match inside a flow state may discard either binding with `_`.
+
+fn Checked(x: Int) -> Int ! Error {
+    if x <= 0 {
+        return error("not positive")
+    }
+    return x
+}
+
+flow Gate(x: Int) -> Int {
+    state Check {
+        match Checked(x) {
+            ok(_) => {
+                goto Open
+            }
+            err(_) => {
+                goto Shut
+            }
+        }
+    }
+    state Open {
+        return 1
+    }
+    state Shut {
+        return 0
+    }
+}
+
+[Theory]
+[InlineData(4, 1)]
+[InlineData(0, 0)]
+fn FlowMatchArmsMayDiscardTheirBindings(input: Int, expected: Int) -> Void {
+    let machine = Gate(input)
+    Step(machine)
+    Assert.Equal(expected, Result(machine)!, "the arm is chosen without binding the value or the error")
+}

@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Markdown"
+        Version: "0.1.0"
+        Description: "Deterministic Markdown helpers for report-like artifacts; the functions are compiler-owned builtins"
+        Authors: ["Claude"]
+        Date: "2026-10-03"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}

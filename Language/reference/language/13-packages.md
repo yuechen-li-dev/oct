@@ -19,7 +19,9 @@ Package loading is directory-based.
 - Resolver search order is deterministic:
   1. active package root sibling (`<active-root>/<ImportName>`)
   2. repository library roots when present (`<repo>/Libraries/<ImportName>`, then `<repo>/Packages/<ImportName>`)
-- The repository root for import resolution is discovered by walking upward to the nearest ancestor that contains `Libraries/` or `Packages/`.
+- The repository root for import resolution is the nearest ancestor that contains `Libraries/`, found by walking upward from the active root.
+- An ancestor passed on the way that contains only `Packages/` is searched before the repository root. A nested `Packages/` directory adds packages; it does not hide the repository's `Libraries/`.
+- When no ancestor contains `Libraries/`, the nearest ancestor that contains `Packages/` is the repository root.
 - `manifest.oct` is package metadata, not a regular source file.
 - When manifest mode is active for a root, every loaded package directory must include `manifest.oct`.
 - When manifest mode is not active, `manifest.oct` is optional.

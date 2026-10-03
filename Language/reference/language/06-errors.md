@@ -18,8 +18,10 @@ Note: enum variant payload binding uses the enum `match` form documented in [12 
 - `?` propagates `err` to the current fallible function.
 - `?` is invalid in an infallible function.
 - `?` requires a fallible expression.
-- Fallible `match expr { ok(v) => ... err(e) => ... }` requires a fallible expression (`->` is also accepted for the arm arrow).
-- Fallible `match` must include both `ok` and `err` arms.
+- Fallible `match expr { ok(v) => { ... } err(e) => { ... } }` requires a fallible expression (`->` is also accepted for the arm arrow).
+- Fallible `match` is a statement. It does not produce a value: each arm is a block, and an arm returns, assigns to a variable declared before the `match`, or falls through to the statement after it.
+- Fallible `match` must include both arms, `ok` first and `err` second.
+- An arm that does not need its binding discards it with `_`: `ok(_)` or `err(_)`.
 - `!` unwrap is explicit handling for a fallible expression.
 - Returning a fallible value from an infallible function is invalid.
 
@@ -56,9 +58,9 @@ fn ParseRetries(raw: String) -> Int ! Error {
 }
 
 fn RetriesOrDefault(raw: String) -> Int {
-    return match ParseRetries(raw) {
-        ok(v) => v
-        err(_) => 3
+    match ParseRetries(raw) {
+        ok(v) => { return v }
+        err(_) => { return 3 }
     }
 }
 ```
@@ -79,10 +81,20 @@ fn ParsePercent(raw: String) -> Int ! Error {
 }
 
 fn Bucket(raw: String) -> Int {
-    return match ParsePercent(raw) {
-        ok(v) => if v >= 90 { 2 } else { 1 }
-        err(_) => 0
+    var bucket = 0
+    match ParsePercent(raw) {
+        ok(v) => {
+            if v >= 90 {
+                bucket = 2
+            } else {
+                bucket = 1
+            }
+        }
+        err(_) => {
+            bucket = 0
+        }
     }
+    return bucket
 }
 ```
 
@@ -150,9 +162,9 @@ fn ReadTimeout(raw: String) -> Int ! Error {
 }
 
 fn TimeoutOr(raw: String) -> Int {
-    return match ReadTimeout(raw) {
-        ok(v) => v
-        err(_) => 30
+    match ReadTimeout(raw) {
+        ok(v) => { return v }
+        err(_) => { return 30 }
     }
 }
 ```

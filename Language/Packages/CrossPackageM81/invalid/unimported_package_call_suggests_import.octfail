@@ -1,0 +1,7 @@
+expect error: "unknown package 'Cooking'; did you forget `import Cooking`?"
+
+package Main
+
+fn Main() -> Int {
+    return Cooking.Servings(2)
+}

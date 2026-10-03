@@ -1,7 +1,5 @@
 package Main
 
-import Assert
-
 record Metrics {
     FinalA: Float
 }
@@ -22,7 +20,8 @@ fn BuildEnvelope() -> Envelope {
     }
 }
 
-fn Main() -> Void {
+[Fact]
+fn ChainedRecordFieldAccess() -> Void {
     let run = Run { AdaptiveKF: Metrics { FinalA: 2.25 } }
     Assert.Equal(2.25, run.AdaptiveKF.FinalA, "two-level chain should resolve")
 

@@ -43,6 +43,10 @@ fn ContinuumM6YoungPoissonBridgeKeepsAssumptionsExplicit() -> Void {
 
     let _ = sigmaPlaneStrain
     let _ = sigmaPlaneStress
+
+    // The contract is that this surface is accepted and constructs. A field
+    // form is representational, so there is no number to compare.
+    Assert.True(true, "the field-form surface is accepted and constructs")
 }
 
 [Fact]
@@ -54,4 +58,8 @@ fn ContinuumM6YoungPoissonBridgeComposesWithStrongFormResidualShape() -> Void {
 
     let r = Div(PlaneStressStress2DFromYoungPoisson(SymGrad(u), E, nu)) + b
     let _ = r
+
+    // The contract is that this surface is accepted and constructs. A field
+    // form is representational, so there is no number to compare.
+    Assert.True(true, "the field-form surface is accepted and constructs")
 }

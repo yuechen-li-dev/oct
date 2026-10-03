@@ -1,4 +1,4 @@
-expect error: "Array.CrossSection expects 2 arguments"
+expect error: "function 'Array.CrossSection' expects 2 arguments"
 
 package Main
 

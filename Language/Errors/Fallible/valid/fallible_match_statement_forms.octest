@@ -1,0 +1,74 @@
+package MainValid
+
+// The fallible match examples of Language/reference/language/06-errors.md,
+// as written there. Fallible match is a statement with block arms.
+
+fn ParseRetries(raw: String) -> Int ! Error {
+    if raw == "0" {
+        return 0
+    }
+    if raw == "1" {
+        return 1
+    }
+    return error("invalid retries")
+}
+
+fn RetriesOrDefault(raw: String) -> Int {
+    match ParseRetries(raw) {
+        ok(v) => { return v }
+        err(_) => { return 3 }
+    }
+}
+
+fn ParsePercent(raw: String) -> Int ! Error {
+    if raw == "95" {
+        return 95
+    }
+    if raw == "40" {
+        return 40
+    }
+    return error("invalid percent")
+}
+
+fn Bucket(raw: String) -> Int {
+    var bucket = 0
+    match ParsePercent(raw) {
+        ok(v) => {
+            if v >= 90 {
+                bucket = 2
+            } else {
+                bucket = 1
+            }
+        }
+        err(_) => {
+            bucket = 0
+        }
+    }
+    return bucket
+}
+
+fn ThinArrows(raw: String) -> Int {
+    match ParseRetries(raw) {
+        ok(v) -> { return v }
+        err(e) -> { return -1 }
+    }
+}
+
+[Fact]
+fn ArmsThatReturn() -> Void {
+    Assert.Equal(1, RetriesOrDefault("1"), "ok arm returns the value")
+    Assert.Equal(3, RetriesOrDefault("many"), "err arm returns the fallback")
+}
+
+[Fact]
+fn ArmsThatAssignAndFallThrough() -> Void {
+    Assert.Equal(2, Bucket("95"), "ok arm, high")
+    Assert.Equal(1, Bucket("40"), "ok arm, low")
+    Assert.Equal(0, Bucket("x"), "err arm")
+}
+
+[Fact]
+fn EitherArrowSpellingIsAccepted() -> Void {
+    Assert.Equal(0, ThinArrows("0"), "thin arrow, ok arm")
+    Assert.Equal(-1, ThinArrows("x"), "thin arrow, err arm")
+}

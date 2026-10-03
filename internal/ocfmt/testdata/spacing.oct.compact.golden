@@ -53,8 +53,8 @@ fn Calls()->Void{
     return
 }
 
-fn Arrows(k:Int)->Int{
-    return switch k{case 1->2 else->3}
+fn Arrows(k:Int)=>Int{
+    return switch k{case 1=>2 else->3}
 }
 
 flow Counter(limit:Int)->Int{

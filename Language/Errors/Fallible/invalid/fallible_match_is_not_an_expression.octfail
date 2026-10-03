@@ -1,0 +1,16 @@
+expect error: "expected 'case' in match"
+
+package Main
+
+// A fallible match is a statement. In expression position `match` is the enum
+// form, which takes `case` arms.
+fn Read() -> Int ! Error {
+    return 7
+}
+
+fn Main() -> Int {
+    return match Read() {
+        ok(v) => v
+        err(_) => 3
+    }
+}

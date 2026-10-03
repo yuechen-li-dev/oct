@@ -728,7 +728,14 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("__oct_match := %s\nif __oct_match.IsErr {\n%s := __oct_match.Err\n_ = %s\n%s\n} else {\n%s := __oct_match.Value\n_ = %s\n%s\n}\nf.instruction++\ncontinue", subject, s.ErrName, s.ErrName, errBody, s.OkName, s.OkName, okBody), nil
+		// An arm that discards its binding, `ok(_)` or `err(_)`, binds nothing.
+		bind := func(name string, field string) string {
+			if name == "_" {
+				return ""
+			}
+			return fmt.Sprintf("%s := __oct_match.%s\n_ = %s\n", name, field, name)
+		}
+		return fmt.Sprintf("__oct_match := %s\nif __oct_match.IsErr {\n%s%s\n} else {\n%s%s\n}\nf.instruction++\ncontinue", subject, bind(s.ErrName, "Err"), errBody, bind(s.OkName, "Value"), okBody), nil
 	case MIRFlowReturn:
 		if s.Value == nil {
 			if resultType == "Void" {

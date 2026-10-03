@@ -10,6 +10,8 @@ package is where "what an importing package sees" is checked.
   `Normal`, `Between`, ...) are not reserved outside package Random.
   It also seeds a stream from `Entropy.Seed()` and replays it, with
   `import Entropy`, which is allowed and not required.
+- `Random.Usage.invalid.Imported*.octfail`: contracts that import `Random`
+  and misuse it, one rejected at compile time and one stopped at run time.
 - `Random.Usage.invalid.*.octfail`: a missing `import Random`, and an
   unqualified builtin name used outside package Random, and a Random 0.1.0
   builtin (`Random.RngSeed`) called without an import, which 0.1.0 allowed.

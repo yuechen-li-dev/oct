@@ -66,7 +66,7 @@ flow Router(flag: Bool) => Int {
 }
 
 [Fact]
-fn arrow_surface_parity_mx102() -> Void {
+fn ArrowSurfaceParityMx102() -> Void {
     Assert.Equal(6, ThroughThin(5), "thin signature")
     Assert.Equal(6, ThroughFat(5), "fat signature")
     Assert.Equal(6, AcceptsFunctionTypeThin(ThroughThin), "thin function type")
@@ -80,6 +80,6 @@ fn arrow_surface_parity_mx102() -> Void {
     let miss = Router(false)
     Step(hit)
     Step(miss)
-    Assert.Equal(9, Result(hit), "fat flow and when")
-    Assert.Equal(5, Result(miss), "fat flow and when else")
+    Assert.Equal(9, Result(hit)!, "fat flow and when")
+    Assert.Equal(5, Result(miss)!, "fat flow and when else")
 }

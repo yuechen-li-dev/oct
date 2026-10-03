@@ -69,3 +69,45 @@ func TestFmtInvalidModeDiagnostic(t *testing.T) {
 		t.Fatalf("unexpected stderr: %q", errOut.String())
 	}
 }
+
+// The CLI leaves arrows as written unless --arrows asks for one spelling.
+func TestFmtArrowsSetting(t *testing.T) {
+	t.Parallel()
+	source := "package Main\nfn main() => Int { return switch 1 { case 1 => 2 else -> 3 } }\n"
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{nil, source},
+		{[]string{"--arrows", "keep"}, source},
+		{[]string{"--arrows", "thin"}, strings.ReplaceAll(source, "=>", "->")},
+		{[]string{"--arrows", "fat"}, strings.ReplaceAll(source, "->", "=>")},
+	}
+	for _, c := range cases {
+		path := writeSourceFileAtPath(t, filepath.Join(t.TempDir(), "arrows.oct"), source)
+		var out, errOut bytes.Buffer
+		if err := cli.Execute(append([]string{"fmt", path}, c.args...), &out, &errOut); err != nil {
+			t.Fatalf("fmt %v failed: %v stderr=%q", c.args, err, errOut.String())
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != c.want {
+			t.Errorf("fmt %v wrote %q, want %q", c.args, got, c.want)
+		}
+	}
+
+	path := writeSourceFileAtPath(t, filepath.Join(t.TempDir(), "arrows.oct"), source)
+	var out, errOut bytes.Buffer
+	if err := cli.Execute([]string{"fmt", path, "--arrows", "double"}, &out, &errOut); err == nil || !strings.Contains(errOut.String(), "expected keep|thin|fat") {
+		t.Fatalf("expected an invalid --arrows diagnostic, got %v stderr=%q", err, errOut.String())
+	}
+	if err := cli.Execute([]string{"fmt", path, "--arrows"}, &out, &errOut); err == nil {
+		t.Fatalf("expected --arrows without a value to fail")
+	}
+	var help, helpErr bytes.Buffer
+	if err := cli.Execute([]string{"fmt", "--help"}, &help, &helpErr); err != nil || !strings.Contains(help.String(), "--arrows keep|thin|fat") {
+		t.Fatalf("help does not describe --arrows: %v %q", err, help.String())
+	}
+}

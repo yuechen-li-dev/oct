@@ -1,0 +1,12 @@
+expect runtime error: "assertion failed: the gate is closed"
+
+package Main
+
+fn Open(gate: Bool) -> Int {
+    Assert.True(gate, "the gate is closed")
+    return 1
+}
+
+fn Main() -> Int {
+    return Open(false)
+}

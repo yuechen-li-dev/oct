@@ -1365,7 +1365,7 @@ type fmtOptions struct {
 
 func parseFmtOptions(args []string) (fmtOptions, error) {
 	if len(args) < 1 {
-		return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--check]")
+		return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--arrows keep|thin|fat] [--check]")
 	}
 	result := fmtOptions{path: args[0]}
 	for i := 1; i < len(args); i++ {
@@ -1378,8 +1378,14 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 			}
 			i++
 			result.options.Mode = ocfmt.Mode(args[i])
+		case "--arrows":
+			if i+1 >= len(args) {
+				return fmtOptions{}, fmt.Errorf("fmt --arrows requires a value")
+			}
+			i++
+			result.options.Arrows = ocfmt.Arrows(args[i])
 		default:
-			return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--check]")
+			return fmtOptions{}, fmt.Errorf("usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--arrows keep|thin|fat] [--check]")
 		}
 	}
 	return result, nil
@@ -1550,7 +1556,7 @@ func writeMakeHelp(out io.Writer) error {
 }
 
 func writeFmtHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--check]\nFormat Oct source files with deterministic structural whitespace normalization.\nDefault mode: en-llm.\nModes:\n  en-llm          LLM-oriented readable structural formatting.\n  en-llm-compact  LLM-oriented compact structural formatting.\nAuto line wrapping/reflow is intentionally not enabled in v0.1.\nExamples:\n  oct fmt Language/Testing --mode en-llm\n  oct fmt Language/Testing --mode en-llm-compact --check")
+	_, err := fmt.Fprintln(out, "usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--arrows keep|thin|fat] [--check]\nFormat Oct source files with deterministic structural whitespace normalization.\nDefault mode: en-llm.\nModes:\n  en-llm          LLM-oriented readable structural formatting.\n  en-llm-compact  LLM-oriented compact structural formatting.\nArrows ('->' and '=>' are one token):\n  keep            Leave each arrow as written (default).\n  thin            Write every arrow as '->'.\n  fat             Write every arrow as '=>'.\nAuto line wrapping/reflow is intentionally not enabled in v0.1.\nExamples:\n  oct fmt Language/Testing --mode en-llm\n  oct fmt Language/Testing --mode en-llm-compact --check")
 	return err
 }
 func writeSDSLvHelp(out io.Writer) error {

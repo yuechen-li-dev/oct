@@ -53,18 +53,67 @@ func TestFormatSourcePreservesComments(t *testing.T) {
 	mustContain(t, out, "// ordinary comment")
 }
 
-func TestFormatSourceNormalizesUnifiedArrowsToThinArrow(t *testing.T) {
+// `->` and `=>` are one token. The formatter has no opinion about which one
+// an author writes unless it is asked for one.
+func TestFormatSourceKeepsEachArrowAsWritten(t *testing.T) {
+	input := "package Main\nfn Main()=>Int{return switch 1 { case 1 => 2 else -> 3 }}\nfn Other()->Int{return 1}\n"
+	for _, options := range []Options{{}, {Arrows: ArrowsKeep}, {Mode: ModeEnLLMCompact}} {
+		out, err := FormatSourceWithOptions(input, options)
+		if err != nil {
+			t.Fatalf("%+v: format: %v", options, err)
+		}
+		compact := strings.ReplaceAll(out, " ", "")
+		for _, want := range []string{"fnMain()=>Int", "case1=>2", "else->3", "fnOther()->Int"} {
+			if !strings.Contains(compact, want) {
+				t.Errorf("%+v: expected %q to survive, got:\n%s", options, want, out)
+			}
+		}
+	}
+}
+
+func TestFormatSourceWritesOneArrowSpellingWhenAsked(t *testing.T) {
 	input := "package Main\nfn Main()=>Int{return switch 1 { case 1 => 2 else -> 3 }}\n"
-	out, err := FormatSource(input)
-	if err != nil {
-		t.Fatalf("format: %v", err)
+	cases := []struct {
+		arrows       Arrows
+		want, absent string
+	}{
+		{ArrowsThin, "fn Main() -> Int { return switch 1 { case 1 -> 2 else -> 3 } }", "=>"},
+		{ArrowsFat, "fn Main() => Int { return switch 1 { case 1 => 2 else => 3 } }", "->"},
 	}
-	if strings.Contains(out, "=>") {
-		t.Fatalf("expected formatter to normalize all arrows to '->', got:\n%s", out)
+	for _, c := range cases {
+		out, err := FormatSourceWithOptions(input, Options{Arrows: c.arrows})
+		if err != nil {
+			t.Fatalf("%s: format: %v", c.arrows, err)
+		}
+		mustContain(t, out, c.want)
+		if strings.Contains(out, c.absent) {
+			t.Errorf("%s: %q is still present:\n%s", c.arrows, c.absent, out)
+		}
+		again, err := FormatSourceWithOptions(out, Options{})
+		if err != nil || again != out {
+			t.Errorf("%s: the default mode changed the result: %v\n%s", c.arrows, err, again)
+		}
 	}
-	mustContain(t, out, "fn Main() -> Int")
-	mustContain(t, out, "case 1 -> 2")
-	mustContain(t, out, "else -> 3")
+}
+
+func TestFormatSourceRejectsAnUnknownArrowsSetting(t *testing.T) {
+	_, err := FormatSourceWithOptions("package Main\n", Options{Arrows: "double"})
+	if err == nil || !strings.Contains(err.Error(), "expected keep|thin|fat") {
+		t.Fatalf("expected the arrows setting to be rejected, got %v", err)
+	}
+}
+
+// A comparison written next to an assignment is not an arrow, and an arrow
+// setting does not touch it.
+func TestArrowsSettingLeavesComparisonsAlone(t *testing.T) {
+	input := "package Main\nfn Main() -> Bool {\n    let a = 1\n    return a >= 0 and a <= 2\n}\n"
+	for _, arrows := range []Arrows{ArrowsKeep, ArrowsThin, ArrowsFat} {
+		out, err := FormatSourceWithOptions(input, Options{Arrows: arrows})
+		if err != nil {
+			t.Fatalf("%s: %v", arrows, err)
+		}
+		mustContain(t, out, "return a >= 0 and a <= 2")
+	}
 }
 
 func TestFormatPathDirectory(t *testing.T) {
@@ -411,14 +460,14 @@ func TestFormatLayoutRefusesOutputWithDifferentTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := formatLayout(text, other.Tokens, nil, false); err == nil || !strings.Contains(err.Error(), "internal error") {
+	if _, err := formatLayout(text, other.Tokens, nil, settings{}); err == nil || !strings.Contains(err.Error(), "internal error") {
 		t.Fatalf("expected an internal error, got %v", err)
 	}
 	own, err := lex.Analyze(source.File{Path: "<test>.oct", Text: text})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := formatLayout(text, own.Tokens, nil, false); err != nil {
+	if _, err := formatLayout(text, own.Tokens, nil, settings{}); err != nil {
 		t.Fatalf("the text's own tokens were refused: %v", err)
 	}
 }
@@ -442,7 +491,7 @@ func TestVerifyComparesTokensLinesAndUnitJunctions(t *testing.T) {
 	}{
 		{"unchanged", text, true},
 		{"respaced", "package Main\nfn a()->Float<m>{return 2.0m-1.0 m}\n", true},
-		{"arrow spelling", strings.Replace(text, "->", "=>", 1), true},
+		{"arrow spelling", strings.Replace(text, "->", "=>", 1), false},
 		{"operator changed", strings.Replace(text, " - ", " + ", 1), false},
 		{"token dropped", strings.Replace(text, "return ", "", 1), false},
 		{"token moved to the next line", strings.Replace(text, "{ return", "{\nreturn", 1), false},
@@ -458,5 +507,43 @@ func TestVerifyComparesTokensLinesAndUnitJunctions(t *testing.T) {
 		if !c.ok && err == nil {
 			t.Errorf("%s: accepted", c.name)
 		}
+	}
+
+	// With a spelling asked for, that spelling is the only one accepted.
+	l.arrow = "=>"
+	if err := l.verify(strings.Replace(text, "->", "=>", 1)); err != nil {
+		t.Errorf("the requested arrow spelling was refused: %v", err)
+	}
+	if err := l.verify(text); err == nil {
+		t.Errorf("an arrow left in the other spelling was accepted")
+	}
+}
+
+// Both expectation headers of an .octfail are kept as written, and the source
+// below either one is formatted.
+func TestFormatOctFailKeepsEitherExpectationHeader(t *testing.T) {
+	for _, header := range []string{`expect error: "bad"`, `expect runtime error: "array length mismatch"`} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "case.octfail")
+		if err := os.WriteFile(path, []byte(header+"\n\npackage Main\nfn Main()->Int{return 1}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := FormatPath(path); err != nil {
+			t.Fatalf("%s: %v", header, err)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := header + "\n\npackage Main\nfn Main() -> Int { return 1 }\n"; string(got) != want {
+			t.Errorf("%s: got %q, want %q", header, got, want)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "case.octfail")
+	if err := os.WriteFile(path, []byte("expect warning: \"bad\"\n\npackage Main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := FormatPath(path); err == nil || !strings.Contains(err.Error(), "malformed expectation header") {
+		t.Fatalf("expected a malformed header to be refused, got %v", err)
 	}
 }
