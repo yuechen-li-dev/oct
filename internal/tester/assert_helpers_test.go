@@ -326,3 +326,34 @@ fn TheoryOverride(x: Int) -> Void {
 		t.Fatalf("expected non-timed-out row to continue, got %q", log)
 	}
 }
+
+// The zero-assertion rule holds in the compiled lane as well: a fact that
+// asserts nothing fails there, and one that asserts passes.
+func TestZeroAssertFactFailsCompiled(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeTestFile(t, root, "zero_fact.octest", `package Main
+
+[Fact]
+fn EmptyFact() -> Void {
+    let x = 1
+}
+
+[Fact]
+fn AssertedFact() -> Void {
+    Assert.Equal(2, 1 + 1, "math works")
+}
+`)
+	var out bytes.Buffer
+	err := ExecuteWithOptions(root, &out, TestOptions{Execution: "compiled"})
+	if err == nil {
+		t.Fatalf("expected failure for zero-assert fact, got pass (%s)", out.String())
+	}
+	log := out.String()
+	if !strings.Contains(log, "FAIL Main.EmptyFact") || !strings.Contains(log, "test completed with zero assertions") {
+		t.Fatalf("expected the zero-assert fact to fail in the compiled lane, got %q", log)
+	}
+	if !strings.Contains(log, "PASS Main.AssertedFact") || !strings.Contains(log, "Result: 1 passed, 1 failed, 0 skipped") {
+		t.Fatalf("expected the asserting fact to pass, got %q", log)
+	}
+}

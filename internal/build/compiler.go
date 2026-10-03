@@ -387,7 +387,13 @@ func injectTestHarnessMain(src, pkg string, cases []TestHarnessCase) (string, er
 	b.WriteString("\tdiagnostic := __octRunMain(func() {\n")
 	b.WriteString("\t\tswitch os.Args[2] {\n")
 	for _, tc := range cases {
-		fmt.Fprintf(&b, "\t\tcase %q:\n\t\t\tfn_%s_%s()\n\t\t\tfmt.Printf(\"{\\\"case_id\\\":%%q,\\\"status\\\":\\\"pass\\\"}\\n\", os.Args[2])\n", tc.ID, pkg, tc.Function)
+		// A case that makes no assertion fails, as in the interpreted lane.
+		fmt.Fprintf(&b, "\t\tcase %q:\n\t\t\tfn_%s_%s()\n", tc.ID, pkg, tc.Function)
+		b.WriteString("\t\t\tif os.Getenv(\"OCT_ENFORCE_ASSERTIONS\") == \"1\" && __octAssertionCount == 0 {\n")
+		b.WriteString("\t\t\t\tfmt.Fprintln(os.Stderr, \"test completed with zero assertions\")\n")
+		b.WriteString("\t\t\t\tos.Exit(1)\n")
+		b.WriteString("\t\t\t}\n")
+		b.WriteString("\t\t\tfmt.Printf(\"{\\\"case_id\\\":%q,\\\"status\\\":\\\"pass\\\"}\\n\", os.Args[2])\n")
 	}
 	b.WriteString("\t\tdefault: fmt.Fprintln(os.Stderr, \"unknown test case\"); os.Exit(2)\n\t\t}\n")
 	b.WriteString("\t})\n")
