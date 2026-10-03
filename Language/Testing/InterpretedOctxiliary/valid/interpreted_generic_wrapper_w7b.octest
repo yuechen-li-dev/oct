@@ -3,7 +3,7 @@ package Main
 [Fact]
 fn InterpretedGenericWrapperW7bSuccess() -> Void ! Error {
     Assert.Equal("hello", EchoString("hello")?, "String raw wrapper should echo through public function")
-    let bytes = Random.CryptoRandBytes(5)?
+    let bytes = Entropy.Bytes(5)?
     Assert.Equal(5, ByteLength(bytes)?, "Bytes raw wrapper should return length")
     Assert.False(BoolNot(true)?, "Bool raw wrapper should invert")
 }

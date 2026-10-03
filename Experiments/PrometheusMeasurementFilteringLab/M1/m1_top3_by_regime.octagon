@@ -6,13 +6,13 @@
 }, Top3Summary {
     Regime: "moderate-jitter"
     Rank1: "ema-0.1"
-    Rank2: "median-9"
-    Rank3: "ema-0.2"
+    Rank2: "ema-0.2"
+    Rank3: "median-9"
 }, Top3Summary {
     Regime: "spike-heavy"
     Rank1: "median-9"
-    Rank2: "ema-0.1"
-    Rank3: "hybrid-median3-ema02"
+    Rank2: "median-5"
+    Rank3: "trimmed-9"
 }, Top3Summary {
     Regime: "step-change"
     Rank1: "raw"
@@ -21,11 +21,11 @@
 }, Top3Summary {
     Regime: "slow-drift"
     Rank1: "ema-0.4"
-    Rank2: "median-5"
-    Rank3: "mean-5"
+    Rank2: "median-3"
+    Rank3: "mean-3"
 }, Top3Summary {
     Regime: "mixed-hostile"
-    Rank1: "median-5"
+    Rank1: "ema-0.4"
     Rank2: "median-3"
-    Rank3: "ema-0.4"
+    Rank3: "mean-3"
 }]

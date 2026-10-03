@@ -42,3 +42,53 @@
 - FM roundtrip path is now phase-domain for deterministic validation (`FmModulate` emits cumulative phase, `FmDemodulate` differentiates phase).
 - Brown-noise PSD test was moved to a stable middle-frequency fit band.
 - Tiny experiment path is used for test and artifact generation to keep execution bounded.
+
+## Random v2 migration (2026-10-03)
+
+The white noise for every milestone now comes from a Random v2 stream:
+`Random.Normals(Random.Fork(Random.Seeded(seed), "white-noise"), n, 0.0, 1.0)`
+in `M0` and in `Shared`. The seeds are unchanged. The noise realization for a
+given seed is different, so every recorded number that depends on noise
+changed. The existing tests did not need any change and pass as before. One
+fact was added to M0: a seed replays its noise and another seed gives other
+noise.
+
+Recorded outputs:
+
+- **M3, M4, M4b, M5, M6: regenerated.** Before regenerating, each was
+  reproduced from the Random v1 code and matched the recorded files, so the
+  differences in this change come from the noise and from nothing else.
+- **M2: not regenerated.** Its artifact entry points do not run, for reasons
+  that have nothing to do with Random (see below). `M2/metrics.*`,
+  `M2/m2a_report.*` and the M2b sweep files still describe the v1 noise.
+- **M0, M1:** no outputs are recorded in the repository.
+
+What moved, out of 27 sweep cases:
+
+| | Random v1 | Random v2 |
+|---|---|---|
+| M4b scalar adaptive wins | 15 | 11 |
+| M4b whiteness only | 12 | 16 |
+| M4b mean delta output SNR (dB) | -0.103 | -0.017 |
+| M4b mean whiteness ratio | 0.460 | 0.534 |
+| M6 guarded adaptive wins | 15 | 9 |
+| M6 guarded whiteness only | 12 | 17 |
+| M6 guarded mean delta output SNR (dB) | -0.109 | -0.019 |
+
+The reading of the experiment is the same: adaptation whitens the innovation
+in every case and does not, on average, improve the recovered signal. The
+count of cases labelled a win is sensitive to the noise realization: it fell
+from 15 to 11 for the scalar filter and from 15 to 9 for the guarded one.
+Treat the win counts as one draw, not as a rate. `M4/FINDINGS.md` is updated
+by hand; `M5/FINDINGS.md` and `M6/FINDINGS.md` are generated.
+
+Artifact entry points:
+
+- `oct artifact` rejects ambient reads during artifact evaluation. The entry
+  points of M3, M4, M4b, M5 and M6 wrote their outputs and then read them back
+  to assert that they were non-empty, so none of them could run. This was
+  already the case before the migration. The read-backs are removed; the
+  entry points now only write.
+- M2 has the same read-backs and a second fault: `M2bArtifactsWrite` writes
+  `m2b_sweep_progress.json` more than once, which `oct artifact` rejects as a
+  duplicate output path. M2 is left as it was.

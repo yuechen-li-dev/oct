@@ -563,12 +563,11 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 	}
 
 	for _, function := range file.Functions {
-		// A legacy Random builtin is declared as a stub inside package Random.
-		// No other builtin may be declared: a reserved name in any package, or
-		// the unqualified name of a builtin inside the builtin's own package.
-		random, ownsBuiltin := builtin.LookupRandomIn(file.Package, function.Name)
-		isLegacyStub := ownsBuiltin && random.Legacy
-		if (builtin.IsName(function.Name) || ownsBuiltin) && !isLegacyStub {
+		// No builtin may be declared: a reserved name in any package, or the
+		// unqualified name of a Random or Entropy builtin inside its own
+		// package.
+		_, ownsBuiltin := builtin.LookupRandomIn(file.Package, function.Name)
+		if builtin.IsName(function.Name) || ownsBuiltin {
 			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
 		}
 		if _, exists := c.functions[function.Name]; exists {
@@ -3328,7 +3327,7 @@ regularCall:
 		return ExprType{}, fmt.Errorf("Int(...) is not a conversion in Oct because float-to-int conversion must choose a rounding policy explicitly. Use FloorToInt(x), CeilToInt(x), or RoundToInt(x). For sample counts, FloorToInt(sampleRate * duration) is usually intended.")
 	}
 	if hasDirectName {
-		if random, ok := builtin.ResolveRandomCall(calleeName, c.packageName); ok && !random.Legacy {
+		if random, ok := builtin.ResolveRandomCall(calleeName, c.packageName); ok {
 			return c.checkRandomTableCall(scope, calleeName, random, expr.TypeArguments, expr.Arguments, ctx)
 		}
 	}
@@ -3814,7 +3813,7 @@ func (c checker) randomPackageType(record string) Type {
 	return Type{Name: builtin.RandomNamespace + "." + record}
 }
 
-// checkRandomTableCall types a call to a non-legacy Random or Entropy builtin
+// checkRandomTableCall types a call to a Random or Entropy builtin
 // from its entry in the builtin table: the import, the argument count, every
 // argument type and fallibility. callee is the name as written. The caller has
 // already established that the name resolves from the checked package, so an
@@ -3859,37 +3858,6 @@ func (c checker) checkRandomTableCall(scope *scope, callee string, random builti
 	return ExprType{ValueType: result, Fallible: random.Fallible}, nil
 }
 
-// checkLegacyRandomBuiltinCall types a call to a Random v1 builtin from its
-// entry in the builtin table. callee is the name as written, so a result
-// record keeps the spelling of the call: package-qualified for a qualified
-// call and bare for an unqualified one. Arguments are not type-checked; that
-// is v1 behavior, preserved until v1 is removed.
-func checkLegacyRandomBuiltinCall(callee string, random builtin.RandomBuiltin, typeArguments []ast.TypeRef, arguments []ast.Expr) (ExprType, error) {
-	if len(typeArguments) > 0 {
-		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
-	}
-	if len(arguments) != random.Arguments {
-		switch random.ArityCheck {
-		case builtin.RandomArityCounted:
-			noun := "arguments"
-			if random.Arguments == 1 {
-				noun = "argument"
-			}
-			return ExprType{}, fmt.Errorf("function '%s' expects %d %s, got %d", callee, random.Arguments, noun, len(arguments))
-		case builtin.RandomArityMismatch:
-			return ExprType{}, fmt.Errorf("function '%s' arity mismatch", callee)
-		}
-	}
-	result := Type{Base: BaseType(random.Result)}
-	if random.ResultInPackage {
-		result = Type{Name: random.Result}
-		if strings.Contains(callee, ".") {
-			result = Type{Name: random.ResultType()}
-		}
-	}
-	return ExprType{ValueType: result, Fallible: random.Fallible}, nil
-}
-
 func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	callee = builtin.CanonicalName(callee)
 	if err := builtin.ValidateCallShape(callee, len(arguments), len(typeArguments)); err != nil {
@@ -3906,9 +3874,6 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{{Base: BaseTypeInt}, {Base: BaseTypeInt}}}}}, nil
 		}
 		return ExprType{ValueType: Type{Tuple: &tupleType{Elements: []Type{{Base: BaseTypeBool}, {Base: BaseTypeInt}}}}}, nil
-	}
-	if random, ok := builtin.LookupRandom(callee); ok && random.Legacy {
-		return checkLegacyRandomBuiltinCall(callee, random, typeArguments, arguments)
 	}
 	if callee == "PlotLine" || callee == "PlotScatter" || callee == "PlotRenderLine" || callee == "PlotRenderScatter" || callee == "PlotRenderHistogram" {
 		if len(typeArguments) > 0 {

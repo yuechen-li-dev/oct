@@ -3100,95 +3100,11 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if random.Namespace == builtin.EntropyNamespace {
 			return evalEntropyBuiltin(random, args)
 		}
-		if !random.Legacy {
-			value, err := evalRandomStreamBuiltin(random, pkgName, args)
-			if err != nil {
-				return evalResult{}, err
-			}
-			return evalResult{value: value}, nil
+		value, err := evalRandomStreamBuiltin(random, pkgName, args)
+		if err != nil {
+			return evalResult{}, err
 		}
-		switch random.Implementation() {
-		case "Random.RngSeed":
-			return evalResult{value: rngValueFromState(seedState(args[0].Int))}, nil
-		case "Random.RandFloat01":
-			s, _ := rngStateFromValue(args[0])
-			s, x := randomNext(s)
-			return evalResult{value: randomFloatResultValue(rngValueFromState(s), toFloat01(x))}, nil
-		case "Random.RandInt":
-			s, _ := rngStateFromValue(args[0])
-			min, max := args[1].Int, args[2].Int
-			if min > max {
-				return evalResult{}, fmt.Errorf("runtime error: min must be <= max")
-			}
-			span := uint64(max - min + 1)
-			threshold := ^uint64(0) - (^uint64(0) % span)
-			var x uint64
-			for {
-				s, x = randomNext(s)
-				if x < threshold {
-					break
-				}
-			}
-			return evalResult{value: randomIntResultValue(rngValueFromState(s), min+int64(x%span))}, nil
-		case "Random.RandFloatRange":
-			s, _ := rngStateFromValue(args[0])
-			min, max := args[1].Float, args[2].Float
-			if min > max {
-				return evalResult{}, fmt.Errorf("runtime error: min must be <= max")
-			}
-			if min == max {
-				return evalResult{value: randomFloatResultValue(rngValueFromState(s), min)}, nil
-			}
-			s, x := randomNext(s)
-			return evalResult{value: randomFloatResultValue(rngValueFromState(s), min+(max-min)*toFloat01(x))}, nil
-		case "Random.RandBernoulli":
-			s, _ := rngStateFromValue(args[0])
-			p := args[1].Float
-			if p < 0 || p > 1 {
-				return evalResult{}, fmt.Errorf("runtime error: p must be in [0,1]")
-			}
-			if p == 0 || p == 1 {
-				return evalResult{value: randomBoolResultValue(rngValueFromState(s), p == 1)}, nil
-			}
-			s, x := randomNext(s)
-			return evalResult{value: randomBoolResultValue(rngValueFromState(s), toFloat01(x) < p)}, nil
-		case "Random.RandNormal":
-			s, _ := rngStateFromValue(args[0])
-			mean, std := args[1].Float, args[2].Float
-			if std < 0 {
-				return evalResult{}, fmt.Errorf("runtime error: stddev must be >= 0")
-			}
-			if std == 0 {
-				return evalResult{value: randomFloatResultValue(rngValueFromState(s), mean)}, nil
-			}
-			s, u1 := randomNext(s)
-			s, u2 := randomNext(s)
-			z := normalFromPair(math.Max(toFloat01(u1), 1e-12), toFloat01(u2))
-			return evalResult{value: randomFloatResultValue(rngValueFromState(s), mean+std*z)}, nil
-		case "Random.CryptoRandBytes":
-			count := args[0].Int
-			if count < 0 {
-				return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: "count must be >= 0"}}}, nil
-			}
-			b := make([]byte, count)
-			err := cryptoReadBytes(b)
-			if err != nil {
-				return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil
-			}
-			return evalResult{value: Value{Kind: ValueBytes, Bytes: b}}, nil
-		case "Random.CryptoRandInt":
-			v, err := cryptoInt(args[0].Int, args[1].Int)
-			if err != nil {
-				return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil
-			}
-			return evalResult{value: Value{Kind: ValueInt, Int: v}}, nil
-		case "Random.CryptoRandFloat01":
-			v, err := cryptoU64()
-			if err != nil {
-				return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil
-			}
-			return evalResult{value: Value{Kind: ValueFloat, Float: toFloat01(v)}}, nil
-		}
+		return evalResult{value: value}, nil
 	}
 	if i.wrappers.has(callee) {
 		if len(typeArguments) != 0 {

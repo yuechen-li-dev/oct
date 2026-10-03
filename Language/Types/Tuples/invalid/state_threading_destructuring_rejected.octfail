@@ -1,0 +1,15 @@
+expect error: "destructuring assignment is not supported"
+
+package Main
+
+// Threading a state through a call by assigning two results at once is not
+// Oct: a function returns one value, and state is passed and returned whole.
+fn Step(state: Int, lo: Int, hi: Int) -> Int {
+    return state + lo + hi
+}
+
+fn Main() -> Int {
+    state = 1
+    state, x = Step(state, 1, 6)
+    return x
+}

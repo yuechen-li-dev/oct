@@ -75,14 +75,7 @@ fn Nrmse(clean: Float[], recovered: Float[]) -> Float {
 }
 
 fn GenerateWhiteNoise(n: Int, seed: Int) -> Float[] {
-    var out: Float[] = []
-    var rng = Random.Gaussian(Random.RngSeed(seed), 0.0, 0.0).Next
-    for i in 0..n {
-        let d = Random.RandNormal(rng, 0.0, 1.0)
-        rng = d.Next
-        out = Append(out, d.Value)
-    }
-    return out
+    return Random.Normals(Random.Fork(Random.Seeded(seed), "white-noise"), n, 0.0, 1.0)
 }
 
 fn GenerateBrownNoise(n: Int, seed: Int) -> Float[] {

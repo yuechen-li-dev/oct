@@ -1,0 +1,10 @@
+expect error: "unknown package 'Random'"
+
+package RandomUsage
+
+// Random v1 builtins could be called with no import. They are removed, and
+// nothing in Random is reachable without `import Random`.
+fn Main() -> Int {
+    let roll = Random.RandInt(Random.RngSeed(1), 1, 6)
+    return 0
+}

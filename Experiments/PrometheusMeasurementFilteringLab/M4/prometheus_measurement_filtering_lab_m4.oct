@@ -148,7 +148,9 @@ fn M4ScenarioFromSegments(name: String, seed: Int, n: Int, segments: String[]) -
     var driftStart = -1
     var spikeAmplitude = 3.0
 
-    var rng = Random.Gaussian(Random.RngSeed(seed), 0.0, 0.0).Next
+    let noise = Random.Seeded(seed)
+    let jitterNoise = Random.Fork(noise, "jitter")
+    let spikes = Random.Fork(noise, "spike")
 
     for i in 0..n {
         let segment = segments[FloorToInt(Float(i * Len(segments)) / Float(n))]
@@ -203,20 +205,10 @@ fn M4ScenarioFromSegments(name: String, seed: Int, n: Int, segments: String[]) -
         base = base + driftPerSample
         trueValues = Append(trueValues, base)
 
-        let jitterSample = Random.RandNormal(rng, 0.0, jitter)
-        rng = jitterSample.Next
+        let jitterSample = Random.Normal(jitterNoise, i, 0.0, jitter)
+        let spike = Random.Spike(spikes, i, spikeProbability, spikeAmplitude)
 
-        let trigger = Random.RandBernoulli(rng, spikeProbability)
-        rng = trigger.Next
-
-        var spike = 0.0
-        if trigger.Value {
-            let sign = Random.RandBernoulli(rng, 0.5)
-            rng = sign.Next
-            spike = if sign.Value { spikeAmplitude } else { 0.0 - spikeAmplitude }
-        }
-
-        measurements = Append(measurements, base + jitterSample.Value + spike)
+        measurements = Append(measurements, base + jitterSample + spike)
     }
 
     return M4Scenario {

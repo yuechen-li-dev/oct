@@ -226,9 +226,9 @@ working directory. Empty, absolute, volume-qualified, and escaping paths are
 rejected. Duplicate paths are rejected case-insensitively. All selected entry
 points finish before publication begins; publication is sorted and each changed
 file is replaced from a same-directory temporary file. Equal content is left
-untouched. The phase exposes no ambient network, process, clock, crypto-random,
-environment, unrestricted filesystem, or wrapper-sidecar capability. Seeded
-Oct random functions remain deterministic. Reads are limited to outputs already
+untouched. The phase exposes no ambient network, process, clock, operating-system
+randomness (`Entropy`), environment, unrestricted filesystem, or wrapper-sidecar
+capability. `Random` draws are functions of their seed and remain available. Reads are limited to outputs already
 declared in the same phase.
 
 Artifact output cannot add source to the typed program being evaluated. A

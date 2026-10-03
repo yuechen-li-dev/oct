@@ -115,7 +115,9 @@ fn M1GenerateRegimeSeries(seed: Int, sampleCount: Int, cfg: RegimeConfig) -> Reg
     var trueValues: Float[] = []
     var measurements: Float[] = []
     var current = cfg.Base
-    var rngJ = Random.Gaussian(Random.RngSeed(seed * 1009 + 17), 0.0, 0.0).Next
+    let noise = Random.Seeded(seed * 1009 + 17)
+    let jitter = Random.Fork(noise, "jitter")
+    let spikes = Random.Fork(noise, "spike")
     for i in 0..sampleCount {
         if cfg.StepIndex >= 0 and i >= cfg.StepIndex {
             current = cfg.Base + cfg.StepDelta
@@ -123,17 +125,9 @@ fn M1GenerateRegimeSeries(seed: Int, sampleCount: Int, cfg: RegimeConfig) -> Reg
         current = current + cfg.DriftPerSample
         trueValues = Append(trueValues, current)
 
-        let jitter = Random.RandNormal(rngJ, 0.0, cfg.JitterStddev)
-        rngJ = jitter.Next
-        let trigger = Random.RandBernoulli(rngJ, cfg.SpikeProbability)
-        rngJ = trigger.Next
-        var spikeValue = 0.0
-        if trigger.Value {
-            let sign = Random.RandBernoulli(rngJ, 0.5)
-            rngJ = sign.Next
-            spikeValue = if sign.Value { cfg.SpikeAmplitude } else { 0.0 - cfg.SpikeAmplitude }
-        }
-        measurements = Append(measurements, current + jitter.Value + spikeValue)
+        let jitterValue = Random.Normal(jitter, i, 0.0, cfg.JitterStddev)
+        let spikeValue = Random.Spike(spikes, i, cfg.SpikeProbability, cfg.SpikeAmplitude)
+        measurements = Append(measurements, current + jitterValue + spikeValue)
     }
     return RegimeSeries { Name: cfg.Name TrueValues: trueValues Measurements: measurements StepIndex: cfg.StepIndex StepDelta: cfg.StepDelta SpikeAmplitude: cfg.SpikeAmplitude DriftPerSample: cfg.DriftPerSample }
 }

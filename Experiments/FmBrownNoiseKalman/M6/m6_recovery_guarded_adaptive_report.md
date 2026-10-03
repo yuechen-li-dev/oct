@@ -17,32 +17,32 @@ Bounded 27-case deterministic direct-message brown-noise sweep with fixed, scala
 
 | key | value |
 | --- | --- |
-| scalarAdaptiveWin | 15 |
+| scalarAdaptiveWin | 11 |
 | windowedAdaptiveWin | 1 |
-| guardedAdaptiveWin | 15 |
+| guardedAdaptiveWin | 9 |
 | guardedRecoveryOnly | 0 |
-| guardedWhitenessOnly | 12 |
-| guardedNoMeaningfulWin | 0 |
+| guardedWhitenessOnly | 17 |
+| guardedNoMeaningfulWin | 1 |
 
 ## Guard counters
 
 | key | value |
 | --- | --- |
-| guardAcceptedTotal | 12269 |
-| guardAttenuatedTotal | 1305 |
-| guardRejectedTotal | 13426 |
-| guardTriggerTotal | 1305 |
+| guardAcceptedTotal | 12561 |
+| guardAttenuatedTotal | 749 |
+| guardRejectedTotal | 13690 |
+| guardTriggerTotal | 749 |
 
 ## Means
 
 | key | value |
 | --- | --- |
-| scalarMeanDeltaOutputSNRDb | -0.10323719568627238 |
-| windowedMeanDeltaOutputSNRDb | -0.01281063531133515 |
-| guardedMeanDeltaOutputSNRDb | -0.1087721568272463 |
-| scalarMeanWhitenessRatio | 0.4599244600302107 |
-| windowedMeanWhitenessRatio | 0.9206405349794723 |
-| guardedMeanWhitenessRatio | 0.4998985063737361 |
+| scalarMeanDeltaOutputSNRDb | -0.016860697246958038 |
+| windowedMeanDeltaOutputSNRDb | -0.018297180959784037 |
+| guardedMeanDeltaOutputSNRDb | -0.019065477359533994 |
+| scalarMeanWhitenessRatio | 0.5343315017946046 |
+| windowedMeanWhitenessRatio | 0.929768192962623 |
+| guardedMeanWhitenessRatio | 0.6005838206223174 |
 
 ## Interpretation
 

@@ -30,16 +30,16 @@ Does scalar incremental adaptive AR(1) generally improve residual whiteness, rec
 
 | key | value |
 | --- | --- |
-| adaptiveWin | 15 |
+| adaptiveWin | 11 |
 | recoveryOnly | 0 |
-| whitenessOnly | 12 |
+| whitenessOnly | 16 |
 | noMeaningfulWin | 0 |
-| meanDeltaOutputSNRDb | -0.10323719568627238 |
-| meanWhitenessRatio | 0.4599244600302107 |
-| finalAMin | 0.8796228912983445 |
+| meanDeltaOutputSNRDb | -0.016860697246958038 |
+| meanWhitenessRatio | 0.5343315017946046 |
+| finalAMin | 0.8937193102307632 |
 | finalAMax | 0.99 |
-| finalAMean | 0.9727125543420385 |
-| clampTotal | 12512 |
+| finalAMean | 0.9853669893480004 |
+| clampTotal | 11369 |
 
 ## Interpretation
 

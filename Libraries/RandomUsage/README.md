@@ -1,6 +1,6 @@
 # RandomUsage
 
-Contracts for using the Random v2 stream builtins from a package other than
+Contracts for using the Random stream builtins from a package other than
 `Random`. It plays the same role for `Random` that `ArtifactUsage` plays for
 `Artifact`: the library's own tests run inside `package Random`, so this
 package is where "what an importing package sees" is checked.
@@ -11,6 +11,7 @@ package is where "what an importing package sees" is checked.
   It also seeds a stream from `Entropy.Seed()` and replays it, with
   `import Entropy`, which is allowed and not required.
 - `Random.Usage.invalid.*.octfail`: a missing `import Random`, and an
-  unqualified builtin name used outside package Random.
+  unqualified builtin name used outside package Random, and a Random 0.1.0
+  builtin (`Random.RngSeed`) called without an import, which 0.1.0 allowed.
 
 Run it with `oct test Libraries/RandomUsage` in both execution modes.

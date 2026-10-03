@@ -44,14 +44,14 @@
 
 | key | value |
 | --- | --- |
-| fixedOutputSNRDb | -12.130953357228389 |
-| adaptiveOutputSNRDb | -12.1218669837822 |
-| deltaOutputSNRDb | 0.009086373446189455 |
-| fixedWhitenessCost | 0.8698203626951433 |
-| adaptiveWhitenessCost | 0.3555717282901707 |
-| whitenessRatio | 0.408787542278294 |
+| fixedOutputSNRDb | -12.055415448531248 |
+| adaptiveOutputSNRDb | -12.088284342616662 |
+| deltaOutputSNRDb | -0.03286889408541427 |
+| fixedWhitenessCost | 0.8618491645432044 |
+| adaptiveWhitenessCost | 0.304157183711639 |
+| whitenessRatio | 0.3529123148509344 |
 | label | WhitenessOnly |
-| finalA | 0.9696708109653571 |
+| finalA | 0.9870536688383321 |
 
 ## Trace summary
 
@@ -74,12 +74,12 @@
 | recoveredCount | 1000 |
 | innovationCount | 1000 |
 | aTraceCount | 1000 |
-| firstInnovation | -1.0634717304050871 |
-| lastInnovation | -0.16097276888250633 |
-| firstRecovered | -0.6862324838892547 |
-| lastRecovered | 1.7743488085160892 |
+| firstInnovation | 4.802297018828295 |
+| lastInnovation | 0.019945107942414886 |
+| firstRecovered | 3.098805654522869 |
+| lastRecovered | -5.738415361203399 |
 | firstA | 0 |
-| finalA | 0.9696708109653571 |
+| finalA | 0.9870536688383321 |
 | clampCount | 0 |
 
 ## Limitations

@@ -4,6 +4,11 @@
 
 - Productize `oct-mcp` 0.1.0 with bounded source-only tools, stdio and streamable HTTP transports, structured results, temporary workspaces, artifact IDs, security/deployment documentation, and the local Codex plugin package.
 - Dogfood and simplify the agent workflow: local Codex is now skills-first around `oct test --json` and `oct artifact --json`; hosted MCP exposes `oct_workspace_info`, `oct_test`, `oct_artifact`, playground-only `oct_run`, and scoped `oct_get_artifact`. The CLI now reports stable structured test/artifact results, explicit test fallback counts, and interpreted artifact metadata.
+- **Breaking:** `Random@0.2.0` replaces the generator-state API with counter-based streams. A draw is a pure function of `(stream, index, parameters)`: `Random.Seeded`, `Fork`, `Child`, `Unit`, `Between`, `IntBetween`, `Normal`, and the helpers `Chance`, `Exponential`, `Units`, `Normals`, `Spike`, coins and dice. `Rng`, `RngSeed`, `Rand*`, `Gaussian`, every `*Result` record and the `Next`/`Value` threading idiom are removed with no deprecated wrappers. The bit generator is Philox4x32-10, implemented once in Go for both execution lanes, so seeded sequences changed and recorded outputs must be regenerated. Specification and migration table: `internal/random/Random.md`.
+- Add `Entropy` (`Seed`, `IntBetween`, `Unit`, `Bytes`), a compiler-owned namespace over the operating system's random source that needs no import. It replaces `Random.CryptoRand*`; the `Crypto*` coin and dice helpers are removed. Artifact evaluation and capability discovery reject it.
+- Regenerate the recorded outputs of `Experiments/PrometheusMeasurementFilteringLab` M1–M4 and `Experiments/FmBrownNoiseKalman` M3–M6 under `Random@0.2.0`. Each experiment's report states what moved.
+- Fix compiled execution of `if` expressions, which evaluated both branches before selecting one.
+- Rewrite `oct fmt` layout to work from the lexer's tokens. It now only sets indentation and spacing, never moves or changes a token, copies Oct-XML verbatim, and verifies that its output has the same tokens on the same lines before writing. Directory runs attempt every file and report every refusal.
 
 ## v0.1.0 — initial preview
 

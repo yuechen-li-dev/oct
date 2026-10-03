@@ -2,30 +2,30 @@
     Regime: "stable-low-jitter"
     Candidate: "ema-0.1"
     QualityWinner: "ema-0.1"
-    CompositeScore: (0.03746380315936081)
+    CompositeScore: (0.035592026966908295)
 }, RegimeRecommendation {
     Regime: "moderate-jitter"
     Candidate: "ema-0.1"
     QualityWinner: "ema-0.1"
-    CompositeScore: (0.08772097025796563)
+    CompositeScore: (0.10363001256903313)
 }, RegimeRecommendation {
     Regime: "spike-heavy"
     Candidate: "median-9"
     QualityWinner: "median-9"
-    CompositeScore: (0.09865610101294851)
+    CompositeScore: (0.08862010553898839)
 }, RegimeRecommendation {
     Regime: "step-change"
     Candidate: "raw"
     QualityWinner: "hysteresis-medium"
-    CompositeScore: (0.19903139475657355)
+    CompositeScore: (0.20437675189866764)
 }, RegimeRecommendation {
     Regime: "slow-drift"
     Candidate: "ema-0.4"
-    QualityWinner: "trimmed-5"
-    CompositeScore: (0.10308061455560458)
+    QualityWinner: "median-3"
+    CompositeScore: (0.11929991762108468)
 }, RegimeRecommendation {
     Regime: "mixed-hostile"
-    Candidate: "median-5"
-    QualityWinner: "median-5"
-    CompositeScore: (0.5440284404509098)
+    Candidate: "ema-0.4"
+    QualityWinner: "median-3"
+    CompositeScore: (0.41182381569673765)
 }]

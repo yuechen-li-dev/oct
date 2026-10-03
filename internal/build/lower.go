@@ -1030,9 +1030,6 @@ func usesLinearAlgebraHelpers(usedBuiltins map[string]bool) bool {
 
 func canonicalCompiledBuiltinName(name string) string {
 	name = builtin.CanonicalName(name)
-	if random, ok := builtin.LookupRandom(name); ok && !random.HasOwnImplementation() {
-		return random.Implementation()
-	}
 	switch name {
 	case "Markdown.H1", "Markdown.Title":
 		return "MarkdownH1"

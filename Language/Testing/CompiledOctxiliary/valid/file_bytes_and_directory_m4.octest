@@ -3,7 +3,7 @@ package Main
 [Fact]
 fn FileBytesCompiledViaSidecarM4() -> Void ! Error {
     let path = ".tmp/octxiliary_m4_bytes.bin"
-    let bytes = Random.CryptoRandBytes(8)?
+    let bytes = Entropy.Bytes(8)?
     let _w = FileWriteBytes(path, bytes)?
     let actual = FileReadBytes(path)?
 

@@ -47,10 +47,10 @@
 | innovationCount | 1000 |
 | firstState | Initialize |
 | lastState | Done |
-| firstRecovered | -0.6862324838892547 |
-| lastRecovered | 0.6543966399001935 |
-| firstInnovation | -1.0634717304050871 |
-| lastInnovation | 0.07280233233753985 |
+| firstRecovered | 3.098805654522869 |
+| lastRecovered | -6.568273276967075 |
+| firstInnovation | 4.802297018828295 |
+| lastInnovation | 0.3267652339824352 |
 
 ## Limitations
 

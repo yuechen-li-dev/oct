@@ -57,4 +57,4 @@ are builtins implemented in Go for both execution lanes, and they need no
   `Language/Tooling/ConceptCapabilitiesM2/invalid/entropy_discovery.octest`:
   rejection during artifact evaluation and capability discovery.
 
-Specification: `internal/random/RANDOM_V2_LADDER.md`, section 3.5.
+Specification: `internal/random/Random.md`, section 6.
