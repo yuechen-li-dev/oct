@@ -137,12 +137,17 @@ type FunctionDecl struct {
 	RequiresMakeAuthority      bool
 	InlineData                 []InlineDataRow
 	Suites                     []string
-	CycleTime                  Expr
-	Parameters                 []Parameter
-	ReturnType                 TypeRef
-	IsFallible                 bool
-	ErrorType                  TypeRef
-	Body                       Block
+	// TestLane restricts a [Fact] or [Theory] to one execution lane:
+	// "interpreted" or "compiled". Empty means both. TestLaneReason is the
+	// author's stated reason and is required whenever TestLane is set.
+	TestLane       string
+	TestLaneReason string
+	CycleTime      Expr
+	Parameters     []Parameter
+	ReturnType     TypeRef
+	IsFallible     bool
+	ErrorType      TypeRef
+	Body           Block
 	// IsRefinementConstructor marks compiler-generated, package-local checked
 	// construction. It permits the final base-representation return to acquire
 	// the declared refinement; user functions never receive this privilege.

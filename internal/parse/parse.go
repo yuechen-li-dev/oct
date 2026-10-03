@@ -84,6 +84,8 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	pendingInlineData := make([]ast.InlineDataRow, 0)
 	pendingSuites := make([]string, 0)
 	var pendingCycleTime ast.Expr
+	pendingLane := ""
+	pendingLaneReason := ""
 	pendingMakePlan := false
 	pendingMakePure := false
 	pendingMakeNoWhile := false
@@ -209,13 +211,23 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 					return ast.File{}, p.errorAtCurrent("duplicate [CycleTime] attribute on function")
 				}
 				pendingCycleTime = attribute.value
+			case "Interpreted", "Compiled":
+				lane := strings.ToLower(attribute.kind)
+				if pendingLane == lane {
+					return ast.File{}, p.errorAtCurrent(fmt.Sprintf("duplicate [%s] attribute on function", attribute.kind))
+				}
+				if pendingLane != "" {
+					return ast.File{}, p.errorAtCurrent("[Interpreted] and [Compiled] cannot both apply to the same function; a test that runs in both lanes takes neither")
+				}
+				pendingLane = lane
+				pendingLaneReason = attribute.reason
 			}
 			continue
 		}
 		switch p.current().Kind {
 		case lex.Identifier:
 			if p.current().Lexeme == "template" {
-				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 					return ast.File{}, p.errorAtCurrent("attributes cannot apply to a template declaration")
 				}
 				p.advance()
@@ -253,7 +265,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 					return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 				}
-				if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+				if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 					return ast.File{}, p.errorAtCurrent("test attributes cannot apply to a query declaration")
 				}
 				flow, err := p.parseQueryDecl()
@@ -266,7 +278,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if p.current().Lexeme != "go" {
 				return ast.File{}, p.errorAtCurrent("expected top-level declaration")
 			}
-			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("attributes cannot apply to an OctGo import declaration")
 			}
 			function, err := p.parseGoImportDecl()
@@ -278,7 +290,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 			}
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			conceptDecl, recordDecl, err := p.parseConceptDecl()
@@ -294,7 +306,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 			}
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			record, err := p.parseRecordDecl()
@@ -306,7 +318,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 			}
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			enumDecl, err := p.parseEnumDecl()
@@ -406,6 +418,15 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			} else if pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("[CycleTime] must apply to a [Theory] function")
 			}
+			if pendingLane != "" {
+				if !function.IsFact && !function.IsTheory {
+					return ast.File{}, p.errorAtCurrent("[Interpreted] and [Compiled] must apply to a [Fact] or [Theory] function")
+				}
+				function.TestLane = pendingLane
+				function.TestLaneReason = pendingLaneReason
+				pendingLane = ""
+				pendingLaneReason = ""
+			}
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				function.IsMakeFile = file.IsMakeFile
 				function.IsMakePlan = pendingMakePlan
@@ -438,7 +459,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 			}
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			flow, err := p.parseFlowDecl()
@@ -450,7 +471,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			return ast.File{}, p.errorAtCurrent("expected 'concept', 'record', 'enum', 'fn', 'async fn', 'flow', or 'query' at top level")
 		}
 	}
-	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 		return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 	}
 	if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
@@ -898,6 +919,7 @@ func stmtContainsWhile(stmt ast.Stmt) bool {
 
 type testAttribute struct {
 	kind      string
+	reason    string
 	values    []ast.Expr
 	value     ast.Expr
 	suiteName string
@@ -996,6 +1018,26 @@ func (p *parser) parseTestAttribute() (testAttribute, error) {
 			return testAttribute{}, err
 		}
 		return testAttribute{kind: "Suite", suiteName: strings.TrimSpace(stringLiteral.Value)}, nil
+	case "Interpreted", "Compiled":
+		// A lane restriction states why. Without the reason it would be a
+		// way to hide a failure in the other lane.
+		requirement := fmt.Sprintf("[%s] requires a reason: [%s(\"why this test belongs to one lane\")]", name.Lexeme, name.Lexeme)
+		if p.current().Kind != lex.LeftParen {
+			return testAttribute{}, p.errorAtCurrent(requirement)
+		}
+		p.advance()
+		if p.current().Kind != lex.StringLiteral || strings.TrimSpace(p.current().Lexeme) == "" {
+			return testAttribute{}, p.errorAtCurrent(requirement)
+		}
+		reason := strings.TrimSpace(p.current().Lexeme)
+		p.advance()
+		if _, err := p.expect(lex.RightParen, fmt.Sprintf("expected ')' after [%s] reason", name.Lexeme)); err != nil {
+			return testAttribute{}, err
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+			return testAttribute{}, err
+		}
+		return testAttribute{kind: name.Lexeme, reason: reason}, nil
 	default:
 		return testAttribute{}, p.errorAtToken(name, fmt.Sprintf("unsupported attribute [%s]", name.Lexeme))
 	}

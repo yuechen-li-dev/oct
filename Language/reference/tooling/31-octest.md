@@ -150,7 +150,7 @@ oct test <path> --execution auto
 ```
 
 `auto` is the default when `--execution` is omitted.
-In `auto`, the runner first tries compiled execution for each `.octest` case and falls back to interpreted execution when compiled execution is unsupported for that case.
+In `auto`, the runner first tries compiled execution for each `.octest` case and falls back to interpreted execution when compiled execution is unsupported for that case. Tests restricted to one lane are the exception; see [Execution lane restrictions](#execution-lane-restrictions-interpreted-and-compiled).
 In `compiled`, a test case must run through the compiled test path or it fails.
 In `interpreted`, tests run through source interpretation.
 
@@ -158,6 +158,34 @@ Compiled test execution may build and run generated compiled artifacts internall
 Some packages still use language/library features that are not compiled-supported, and missing wrapper sidecars can affect compiled wrapper tests.
 Interpreted and compiled parity is tracked by package and test coverage, so do not assume every test package compiles until it has been run in compiled mode.
 A compile-time `.octfail` is checked the same way in every execution mode. A runtime `.octfail` is run in the lanes that the execution mode selects.
+
+## Execution lane restrictions: `[Interpreted]` and `[Compiled]`
+
+A `[Fact]` or `[Theory]` may be restricted to one execution lane, interpreted or compiled:
+
+```oct
+[Fact]
+[Compiled("the source bodies are stubs; only the compiled lane replaces them with sidecar calls")]
+fn WrapperEchoesThroughTheSidecar() -> Void ! Error {
+    Assert.Equal("hello", EchoString("hello")?, "echo")
+}
+
+[Fact]
+[Interpreted("the interpreted lane runs the source body of a function the manifest also names")]
+fn SourceBodyRuns() -> Void ! Error {
+    Assert.Equal("source:value", ShadowRaw("value")?, "source body")
+}
+```
+
+- The reason is required. It is a non-empty string literal, and the runner prints it whenever it skips the test.
+- The attribute applies to `[Fact]` and `[Theory]` functions only. On a `[Theory]` it covers every `[InlineData]` row. It does not apply to `[Artifact]` or `[Benchmark]` functions.
+- `[Interpreted]` and `[Compiled]` cannot both apply to one function. A test that runs in both lanes takes neither.
+- `--execution interpreted` reports a `[Compiled]` test as `SKIP`, and `--execution compiled` reports an `[Interpreted]` test as `SKIP`. A skipped test is counted as skipped, not as passed.
+- `--execution auto` runs every test, each in its own lane. A `[Compiled]` test that the compiled lane cannot build or run fails; it does not fall back to interpreted execution. An `[Interpreted]` test is not counted as a fallback.
+- The compiled lane does not build an `[Interpreted]` test, so such a test may reach a builtin the compiled lane does not support without affecting the other tests in its file.
+- The whole file is still parsed and typechecked in every mode. A lane restriction selects execution; it does not excuse a type error.
+
+Use a lane restriction only when the lane is the subject of the test: the two lanes are specified to behave differently and the test pins one of those behaviours. Do not use it for a feature that one lane is missing. A test for a missing feature should fail in that lane until the feature is implemented; restricting it hides the gap.
 
 ## File and layout conventions
 

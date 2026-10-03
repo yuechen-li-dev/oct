@@ -30,6 +30,10 @@ type testCase struct {
 	isFallible  bool
 	cycleTime   time.Duration
 	suites      []string
+	// lane is "interpreted" or "compiled" when the test is restricted to one
+	// execution lane, with the author's reason; empty when it runs in both.
+	lane       string
+	laneReason string
 }
 
 type compiledHarnessGroup struct {
@@ -118,6 +122,8 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 						cycleTime:   defaultTestCycleTime,
 						isFallible:  fn.IsFallible,
 						suites:      append([]string{}, fn.Suites...),
+						lane:        fn.TestLane,
+						laneReason:  fn.TestLaneReason,
 					})
 				}
 				if fn.IsTheory {
@@ -140,6 +146,8 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 							cycleTime:   cycleTime,
 							isFallible:  fn.IsFallible,
 							suites:      append([]string{}, fn.Suites...),
+							lane:        fn.TestLane,
+							laneReason:  fn.TestLaneReason,
 						})
 					}
 				}
@@ -197,18 +205,23 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 	compiled := map[string]error{}
 	metrics := testMetrics{}
 	if executionMode != "interpreted" {
-		compiled, metrics = executeCompiledHarnessGroups(program, tests, stdout, options.WrapperPath)
+		compiled, metrics = executeCompiledHarnessGroups(program, compiledLaneTestCases(tests), stdout, options.WrapperPath)
 	}
 	for _, testCase := range tests {
 		total++
 		qualified := fmt.Sprintf("%s.%s", testCase.pkg, testCase.displayName)
+		if testCase.lane != "" && executionMode != "auto" && executionMode != testCase.lane {
+			skipped++
+			_, _ = fmt.Fprintf(stdout, "SKIP %s (%s): %s only: %s\n", qualified, shortPath(path, testCase.filePath), testCase.lane, testCase.laneReason)
+			continue
+		}
 		ranCompiled := false
-		if executionMode != "interpreted" {
+		if executionMode != "interpreted" && testCase.lane != "interpreted" {
 			err := compiled[testCaseID(testCase)]
 			if err == nil {
 				compiledCount++
 				ranCompiled = true
-			} else if executionMode == "compiled" {
+			} else if executionMode == "compiled" || testCase.lane == "compiled" {
 				failed++
 				_, _ = fmt.Fprintf(stdout, "FAIL %s (%s): compiled execution required: %v\n", qualified, shortPath(path, testCase.filePath), err)
 				continue
@@ -289,6 +302,18 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 		return fmt.Errorf("%d test(s) failed", failed)
 	}
 	return nil
+}
+
+// compiledLaneTestCases drops the tests restricted to the interpreted lane, so
+// that the compiled harness neither builds nor reaches them.
+func compiledLaneTestCases(tests []testCase) []testCase {
+	selected := make([]testCase, 0, len(tests))
+	for _, tc := range tests {
+		if tc.lane != "interpreted" {
+			selected = append(selected, tc)
+		}
+	}
+	return selected
 }
 
 func executeCompiledTestCase(program project.Program, tc testCase, diagnostic io.Writer) error {

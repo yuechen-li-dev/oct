@@ -21,6 +21,7 @@ fn InterpretedGenericWrapperW7bSidecarError() -> Void ! Error {
 }
 
 [Fact]
+[Interpreted("the interpreted lane runs the source body of a function the manifest also names; the compiled lane lowers that name to the sidecar call")]
 fn InterpretedGenericWrapperW7bSourcePrecedence() -> Void ! Error {
     Assert.Equal("source:value", ShadowRaw("value")?, "source function should take precedence over manifest raw metadata")
 }

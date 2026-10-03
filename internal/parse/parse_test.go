@@ -1526,3 +1526,41 @@ func TestBuildFileRejectsInvalidMakeAttributes(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildFileParsesLaneAttributes(t *testing.T) {
+	file := parseSourceWithPath(t, "x.octest", "package Main\n[Fact]\n[Interpreted(\"subject is the interpreter\")]\nfn Alpha() -> Void { return }\n[Compiled(\" subject is the harness \")]\n[Theory]\n[InlineData(1)]\nfn Beta(x: Int) -> Void { return }\n[Fact]\nfn Gamma() -> Void { return }\n")
+	want := []struct{ lane, reason string }{
+		{"interpreted", "subject is the interpreter"},
+		{"compiled", "subject is the harness"},
+		{"", ""},
+	}
+	for i, w := range want {
+		fn := file.Functions[i]
+		if fn.TestLane != w.lane || fn.TestLaneReason != w.reason {
+			t.Errorf("%s: lane = %q reason = %q, want %q %q", fn.Name, fn.TestLane, fn.TestLaneReason, w.lane, w.reason)
+		}
+	}
+}
+
+// A lane restriction without a stated reason is a way to hide a failure in
+// the other lane, so the reason is part of the syntax.
+func TestBuildFileRejectsInvalidLaneAttributes(t *testing.T) {
+	cases := []struct{ source, want string }{
+		{"[Fact]\n[Compiled]\nfn Bad() -> Void { return }\n", "[Compiled] requires a reason"},
+		{"[Fact]\n[Interpreted]\nfn Bad() -> Void { return }\n", "[Interpreted] requires a reason"},
+		{"[Fact]\n[Compiled()]\nfn Bad() -> Void { return }\n", "[Compiled] requires a reason"},
+		{"[Fact]\n[Compiled(\"  \")]\nfn Bad() -> Void { return }\n", "[Compiled] requires a reason"},
+		{"[Fact]\n[Compiled(7)]\nfn Bad() -> Void { return }\n", "[Compiled] requires a reason"},
+		{"[Fact]\n[Compiled(\"a\")]\n[Interpreted(\"b\")]\nfn Bad() -> Void { return }\n", "[Interpreted] and [Compiled] cannot both apply to the same function"},
+		{"[Fact]\n[Compiled(\"a\")]\n[Compiled(\"b\")]\nfn Bad() -> Void { return }\n", "duplicate [Compiled] attribute on function"},
+		{"[Compiled(\"a\")]\nfn Bad() -> Void { return }\n", "[Interpreted] and [Compiled] must apply to a [Fact] or [Theory] function"},
+		{"[Artifact]\n[Compiled(\"a\")]\nfn Bad() -> Void { return }\n", "[Interpreted] and [Compiled] must apply to a [Fact] or [Theory] function"},
+		{"[Benchmark]\n[Interpreted(\"a\")]\nfn Bad() -> Void { return }\n", "[Interpreted] and [Compiled] must apply to a [Fact] or [Theory] function"},
+		{"[Compiled(\"a\")]\nrecord Bad { Value: Int }\n", "test attributes must apply to a function declaration"},
+		{"[Fact]\nfn Good() -> Void { return }\n[Interpreted(\"a\")]\n", "test attributes must apply to a function declaration"},
+	}
+	for _, c := range cases {
+		assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n"+c.source, c.want)
+	}
+	assertParseErrorContainsWithPath(t, "bad.oct", "package Main\n[Compiled(\"a\")]\nfn Bad() -> Void { return }\n", "[Compiled] is only valid in .octest files or Make.oct")
+}

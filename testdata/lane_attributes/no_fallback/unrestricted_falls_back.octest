@@ -1,0 +1,10 @@
+package LaneFixture
+
+// Synthetic fixture: the same body with no lane attribute. Under
+// `--execution auto` it falls back to the interpreter and passes.
+
+[Fact]
+fn UnrestrictedFactFallsBack() -> Void {
+    let mount = UIMount(UIText("idle"))
+    Assert.Equal(0, Len(UIDrainEvents(mount)), "runs interpreted after the fallback")
+}

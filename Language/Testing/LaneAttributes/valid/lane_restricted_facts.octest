@@ -1,0 +1,39 @@
+package MainValid
+
+// [Interpreted("reason")] and [Compiled("reason")] restrict a [Fact] or a
+// [Theory] to one execution lane. The other lane reports the test as skipped
+// and neither builds nor runs it. A test that belongs to both lanes takes
+// neither attribute.
+
+fn Doubled(value: Int) -> Int {
+    return value * 2
+}
+
+[Fact]
+fn UnrestrictedFactRunsInBothLanes() -> Void {
+    Assert.Equal(8, Doubled(4), "runs wherever the file runs")
+}
+
+// UIMount is a builtin the compiled lane does not build. This fact shares a
+// file with facts that do compile, so the compiled lane has to leave it out of
+// the harness, not only out of the results.
+[Fact]
+[Interpreted("contract for the attribute: this fact reaches UIMount, which the compiled lane does not build")]
+fn InterpretedFactIsNotBuiltByTheCompiledLane() -> Void {
+    let mount = UIMount(UIText("idle"))
+    Assert.Equal(0, Len(UIDrainEvents(mount)), "no events before any input")
+}
+
+[Fact]
+[Compiled("contract for the attribute: the interpreted lane reports this fact as skipped")]
+fn CompiledFactIsSkippedByTheInterpretedLane() -> Void {
+    Assert.Equal(6, Doubled(3), "runs in the compiled lane")
+}
+
+[Theory]
+[InlineData(1)]
+[InlineData(5)]
+[Compiled("contract for the attribute: every row of a theory is restricted together")]
+fn CompiledTheoryRowsAreRestrictedTogether(value: Int) -> Void {
+    Assert.Equal(value + value, Doubled(value), "each row runs in the compiled lane")
+}
