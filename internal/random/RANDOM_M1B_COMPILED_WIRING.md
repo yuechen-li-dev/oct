@@ -1,5 +1,7 @@
 # Random M1b compiled wiring report (historical, superseded API shape)
 
+> **Historical (2026-10-03).** The API this report describes was removed in Random 0.2.0, along with the documents it cites (`Random.Core.md`, `Random.Distributions.md`). Current specification: `internal/random/Random.md`.
+
 > Status (2026-04-30): This report documents historical compiled wiring work that used tuple-return Random builtins. The **current public API direction** is the Oct-shaped record-result model in `internal/random/Random.Core.md`.
 
 ## Historical root cause

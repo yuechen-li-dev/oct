@@ -1,1 +1,1 @@
-["hysteresis-0.20", "ema-0.1", "median-9", "hysteresis-0.10", "ema-0.4", "ema-0.6"]
+["hysteresis-0.20", "ema-0.1", "hybrid-median5-ema02", "hysteresis-0.20", "median-5", "median-3"]

@@ -21,10 +21,10 @@ fn Manifest() -> PackageManifest {
         Name: "OrbitalDecay"
         Version: "0.1.0"
         Description: "Low Earth Orbit (LEO) atmospheric drag and multi-orbit altitude decay simulation"
-        Authors:["Antigravity"]
+        Authors: ["Antigravity"]
         Date: "2026-10-02"
         Kind: "experiment"
         EntryMilestone: "M0"
-        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

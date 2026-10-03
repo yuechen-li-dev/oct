@@ -1,0 +1,90 @@
+package OcfmtRawMarkup
+
+// This file is a fixture for cmd/oct/fmt_raw_markup_test.go. It is written
+// badly indented on purpose. Its facts state the exact value of each raw
+// Oct-XML body, and the test requires them to hold both before and after the
+// formatter has rewritten the file.
+
+record Listing {
+Lines: String[]
+}
+
+fn Code(lines: String[]) -> String[] {
+return lines
+}
+
+fn Block(lines: String[]) -> Listing {
+return Listing { Lines: lines }
+}
+
+fn Panel(children: Listing[]) -> Listing[] {
+return children
+}
+
+fn Relative() -> String[] {
+            return <Code>
+        total = 0
+            total = total + 1
+              odd = 3
+        done
+            </Code>
+}
+
+fn TrailingSpaces() -> String[] {
+return <Code>
+  hard break  
+  next
+</Code>
+}
+
+fn BodyOnTheOpeningLine() -> String[] {
+        return <Code>first
+      second
+   third
+        </Code>
+}
+
+fn Nested() -> Listing[] {
+  return <Panel>
+<Block>
+        outer
+          inner
+</Block>
+  </Panel>
+}
+
+[Fact]
+fn RelativeIndentationIsTheValue() -> Void {
+let lines = Relative()
+Assert.Equal(4, Len(lines), "four lines")
+Assert.Equal("total = 0", lines[0], "line 0")
+Assert.Equal("    total = total + 1", lines[1], "line 1 is four columns in")
+Assert.Equal("      odd = 3", lines[2], "line 2 is six columns in")
+Assert.Equal("done", lines[3], "line 3")
+}
+
+[Fact]
+fn TrailingSpacesAreTheValue() -> Void {
+let lines = TrailingSpaces()
+Assert.Equal(2, Len(lines), "two lines")
+Assert.Equal("hard break  ", lines[0], "two trailing spaces")
+Assert.Equal("next", lines[1], "line 1")
+}
+
+[Fact]
+fn ABodyThatStartsOnTheOpeningLineKeepsEveryColumn() -> Void {
+let lines = BodyOnTheOpeningLine()
+Assert.Equal(3, Len(lines), "three lines")
+Assert.Equal("first", lines[0], "line 0")
+Assert.Equal("      second", lines[1], "line 1 keeps its six columns")
+Assert.Equal("   third", lines[2], "line 2 keeps its three columns")
+}
+
+[Fact]
+fn ANestedRawBodyKeepsItsRelativeIndentation() -> Void {
+let panels = Nested()
+Assert.Equal(1, Len(panels), "one child")
+Assert.Equal(2, Len(panels[0].Lines), "two lines")
+Assert.Equal("outer", panels[0].Lines[0], "line 0")
+Assert.Equal("  inner", panels[0].Lines[1], "line 1 is two columns in")
+}

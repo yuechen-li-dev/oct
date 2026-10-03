@@ -1,8 +1,0 @@
-expect error: "function 'Unit' argument 1 expects Stream, got Rng"
-
-package Random
-
-// A Random v1 generator state is not a Random v2 stream.
-fn Main() -> Float {
-    return Unit(RngSeed(1), 0)
-}

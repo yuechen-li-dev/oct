@@ -242,7 +242,7 @@ Observation:
 Suggestion:
 Document compiler-owned library builtins in the reference (which names are builtins, the qualified-only rule outside the owning package), and correct the Random tests README when the v1 library layer is replaced.
 
-Status: Open
+Status: Resolved 2026-10-03. `Language/reference/language/17-standard-libraries.md` has `Random`, `Entropy` and "Compiler-owned namespaces" sections, and the tests README is corrected.
 
 ---
 
@@ -271,6 +271,86 @@ Observation:
 
 Suggestion:
 When the reference gains a page for compiler-owned library builtins, state there which namespaces need no import (`Array`, `Artifact`, `Entropy`) and tie `Entropy` to the `Crypto.Random` capability family.
+
+Status: Partly resolved 2026-10-03. The reference now documents `Entropy` and the namespaces that need no import. It does not tie `Entropy` to `Crypto.Random`: ordinary execution allows `Entropy` with no grant, so the tie would be a language decision, not a documentation fix. Open.
+
+---
+
+Observation:
+The repository's Oct sources are not in the formatter's style and nothing checks that they are. With the formatter as rewritten on 2026-10-03, 427 of 1,703 `.oct`/`.octest`/`.octfail` files would change under `oct fmt`; before the rewrite the figure was 1,251, because the formatter itself was wrong (`docs/internal/ocfmt_layout_rewrite.md`). The 427 are mostly experiments written one statement per line without spaces, unpadded record braces, and files that had been run through the old formatter. `Experiments/OrbitalDecay` was committed in the old formatter's output, which is how the fault was noticed.
+
+Suggestion:
+Decide whether the tree is meant to be formatted. If it is, run `oct fmt` over `Libraries`, `Language`, `Experiments` and `Examples` once, in a commit of its own, and add `oct fmt <root> --check` to CI. Note that `.octfail` expectations that quote a column would need their columns rechecked.
+
+Status: Open
+
+---
+
+Observation:
+Ten sources in the tree that are not `.octfail` do not parse, so `oct fmt` refuses them and the test sweeps report them as `test failed: parse ...`: `Language/ControlFlow/OctomataBoardIndexedAssignment/valid/manifest.oct`, `Language/ControlFlow/OctomataCoreA/runtime/valid/result_unwrap_after_completion.octest`, `Language/ControlFlow/OctomataCoreA/valid/flow_smoke_scalar_board_progression.octest`, `Language/ControlFlow/OctomataFlowRecordLiteral/valid/flow_return_record_literal_surface.octest`, `Language/ControlFlow/OctomataFlowRecordLiteral/valid/flow_when_return_record_literal_surface.octest`, `Language/Functions/Calls/valid/markdown_helpers_single_line_and_keyvalue_ok.octest`, `Language/Functions/Calls/valid/namespaced_calls_m0.octest`, `Language/Functions/Calls/valid/pow_builtin_float_exponentiation.octest`, `Libraries/IfErrNotEqualNil/IfErrNotEqualNil.Core.oct` and `testdata/m34a/CollectionIteration/collection_iteration.octest`. Eight of them sit in `valid/` directories.
+
+Suggestion:
+Repair or retire each one. A fixture under `valid/` that does not parse is not asserting anything.
+
+Status: Open
+
+---
+
+Observation:
+`oct fmt` rewrites every `=>` as `->`, as `Language/reference/tooling/32-ocfmt.md` says it does. The reference's own examples in `06-errors.md` and `12-enums.md`, and most match and switch arms in the repository, are written with `=>`. Formatting the tree would change all of them.
+
+Suggestion:
+Either keep the arrow the author wrote, or change the reference examples to `->`, so that the reference and the formatter describe one style.
+
+Status: Open
+
+---
+
+Observation:
+`let width: Float<m>=xs[0]` does not parse (`expected '>' after dimension qualifier`): the lexer reads the `>` that closes a type argument list and the `=` after it as one `>=` token. A space is required. The formatter never writes the two together, but a person can.
+
+Suggestion:
+Have the parser split a `>=` token where a type argument list is being closed, or report the error as "write a space between '>' and '='".
+
+Status: Open
+
+---
+
+Observation:
+In the compiled lane an `if` expression evaluated both branches before choosing one. `let x = if i > 0 { xs[i - 1] } else { 0.0 }` panicked with `index out of range [-1]` at `i == 0`, and a call in the untaken branch ran. The interpreted lane was correct. `lowerIfExpr` lowered both branch expressions into the block that held the condition and branched only to pick the result. This was the long-standing compiled failure of `Experiments/PrometheusMeasurementFilteringLab/M4` (0 of 7), and the existing contract `IfExpressionSkipsNonSelectedBranchEvaluation` failed in the compiled lane for the same reason.
+
+Suggestion:
+Lower each branch inside its own block.
+
+Status: Resolved 2026-10-03. `internal/build/lower_expr.go` does that; `Language/ControlFlow/IfExpression/valid/if_expression_evaluates_only_taken_branch.octest` adds four facts. That directory went from 4 pass / 5 fail to 9 / 0 in the compiled lane.
+
+---
+
+Observation:
+`oct artifact` rejects the artifact entry points of `Experiments/FmBrownNoiseKalman` M3, M4, M4b, M5 and M6 as committed: each one writes a file and then reads it back with an ordinary runtime call to check it, and artifact evaluation reports `artifact evaluation rejected ambient operation`. The recorded outputs in those directories therefore could not be regenerated by the documented command. M2 has that fault and a second one: two entry points publish `m2b_sweep_progress.json`, which is rejected as a duplicate output path.
+
+Suggestion:
+Keep read-back checks in `[Fact]` tests, not in `[Artifact]` entry points. For M2, give the progress file one owner.
+
+Status: Partly resolved 2026-10-03. The read-backs are removed from M3, M4, M4b, M5 and M6 and their outputs regenerate. M2 is unchanged and its recorded outputs are still the Random 0.1.0 ones. Open for M2.
+
+---
+
+Observation:
+Oct has no builtin that adds the elements of an `Int[]` or `Float[]`. The Random v2 contract described the removed `RollDiceSum` as the one-liner `Sum(RollDice(...))`, which does not exist; the replacement is a loop, or `Algorithms.Fold` with a named reducer.
+
+Suggestion:
+Add `Sum` over `Int[]` and `Float[]` (dimension-preserving for `Float<u>[]`), or stop describing reductions as one-liners.
+
+Status: Open
+
+---
+
+Observation:
+A call into a package that is not imported gets one of two diagnostics. If the function is a compiler-owned builtin of that package, the message is ``unknown namespace/module 'Random'; did you forget `import Random`?``. If it is any other name, including a function the package declares in Oct, the message is `unknown package 'Random'`, with no hint. The two contracts are `Libraries/RandomUsage/Random.Usage.invalid.MissingImport.octfail` and `Random.Usage.invalid.RemovedV1Builtin.octfail`.
+
+Suggestion:
+Give the import hint whenever the qualifier names a package the resolver can find.
 
 Status: Open
 

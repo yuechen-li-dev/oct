@@ -149,6 +149,22 @@ record InnovationRow {
     AdaptiveKFInnovation: Float
 }
 
+[Fact]
+[Suite("Experiments.FmBrownNoiseKalman.M0")]
+fn M0fWhiteNoiseFollowsItsSeed() -> Void {
+    let first = GenerateWhiteNoise(64, 7)
+    let replay = GenerateWhiteNoise(64, 7)
+    let other = GenerateWhiteNoise(64, 8)
+    var shared = 0
+    for i in 0..64 {
+        Assert.Equal(first[i], replay[i], "one seed gives one realization")
+        if first[i] == other[i] {
+            shared = shared + 1
+        }
+    }
+    Assert.Equal(0, shared, "another seed gives another realization")
+}
+
 [Artifact]
 [Suite("Experiments.FmBrownNoiseKalman.M0")]
 fn M0ArtifactMetricsOctagon() -> Void {

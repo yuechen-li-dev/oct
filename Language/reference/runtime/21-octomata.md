@@ -175,7 +175,7 @@ contract fixture at
 `Language/ControlFlow/OctomataCheckpointDeterminism/valid/` continuously checks
 this property for state/goto, nested control, board mutation, suspend,
 remember/resume, and deterministic utility selection. Ambient time, external
-effects, cryptographic randomness, and RNG state that is not explicitly stored
+effects, `Entropy` draws, and random streams or draw indices that are not stored
 in persistent flow data are outside this deterministic subset.
 
 

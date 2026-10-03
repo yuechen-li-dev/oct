@@ -7,41 +7,13 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/builtin"
 )
 
-// usesRandomHelpers reports whether the generated program calls a Random v1
-// builtin that needs the emitted v1 helper block, its record types and the Go
-// imports they use. Draws and entropy reads need them. Calls are
-// recorded under the name of the implementing builtin, so only table entries
-// with their own implementation are consulted.
-func usesRandomHelpers(usedBuiltins map[string]bool) bool {
-	for _, random := range builtin.RandomBuiltins() {
-		if !random.Legacy || !random.HasOwnImplementation() {
-			continue
-		}
-		if random.Kind != builtin.RandomDraw && random.Kind != builtin.RandomEntropy {
-			continue
-		}
-		if usedBuiltins[random.Name()] {
-			return true
-		}
-	}
-	return false
-}
-
-// isRandomDrawImplementation reports whether callee is the compiled name of a
-// Random draw. A draw returns a result record, so it cannot be the callee of a
-// destructuring call.
-func isRandomDrawImplementation(callee string) bool {
-	random, ok := builtin.LookupRandomQualified(callee)
-	return ok && random.Kind == builtin.RandomDraw && random.HasOwnImplementation()
-}
-
-// octrandomImportPath is the package that implements Random v2 and Entropy
+// octrandomImportPath is the package that implements Random and Entropy
 // for both lanes. A generated program imports it directly, so the compiled
 // lane runs the same Go code as the interpreter rather than an emitted copy.
 const octrandomImportPath = "github.com/yuechen-li-dev/oct/internal/octrandom"
 
 // usesRandomStreamBuiltins reports whether the generated program calls any
-// Random v2 builtin.
+// Random builtin.
 func usesRandomStreamBuiltins(usedBuiltins map[string]bool) bool {
 	return usesTableBuiltins(usedBuiltins, builtin.RandomNamespace)
 }
@@ -54,7 +26,7 @@ func usesEntropyBuiltins(usedBuiltins map[string]bool) bool {
 
 func usesTableBuiltins(usedBuiltins map[string]bool, namespace string) bool {
 	for _, random := range builtin.RandomBuiltins() {
-		if !random.Legacy && random.Namespace == namespace && usedBuiltins[random.Name()] {
+		if random.Namespace == namespace && usedBuiltins[random.Name()] {
 			return true
 		}
 	}
@@ -110,7 +82,7 @@ func __octRandomNormal(s Random_Stream, i int, mean float64, stddev float64) flo
 }
 `
 
-// emitRandomStreamCall emits a call to a Random v2 builtin. callee is the
+// emitRandomStreamCall emits a call to a Random builtin. callee is the
 // qualified builtin name, such as "Random.Unit"; the helper it calls is
 // "__octRandomUnit".
 func emitRandomStreamCall(callee string, target string, args []string) (string, error) {
@@ -166,7 +138,7 @@ func emitEntropyCall(callee string, target string, args []string) (string, error
 
 func tableBuiltinForEmit(callee string, namespace string, args []string) (builtin.RandomBuiltin, error) {
 	random, ok := builtin.LookupRandomQualified(callee)
-	if !ok || random.Legacy || random.Namespace != namespace {
+	if !ok || random.Namespace != namespace {
 		return builtin.RandomBuiltin{}, fmt.Errorf("compiled mode does not yet support builtin %s", callee)
 	}
 	if len(args) != len(random.Parameters) {

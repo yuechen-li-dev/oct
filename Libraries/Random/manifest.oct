@@ -17,10 +17,10 @@ record Dependency {
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Random"
-        Version: "0.1.0"
-        Authors: ["Codex"]
-        Date: "2026-08-23"
-        Description: "Seeded pseudorandom generation plus bounded distribution, coin, and dice sampling helpers"
-        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+        Version: "0.2.0"
+        Authors: ["Codex", "Claude"]
+        Date: "2026-10-03"
+        Description: "Reproducible counter-based random streams, with sampling, coin and dice helpers"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

@@ -1,0 +1,65 @@
+package Main
+
+fn Page(count:Int)->Node{
+    return <Panel Enabled={true} Title={String.From<Int>(count)}>
+        Hello <Label Text="world" />
+        <Row>
+        <Label Text="a < b" />
+        </Row>
+    </Panel>
+}
+
+fn Listing()->String[]{
+    let lines=<Code>
+        total = 0
+            total = total + 1
+        done
+    </Code>
+    return lines
+}
+
+fn Inline()->Node[]{
+    return[<Label Text="a"/>,<Label Text="b"/>]
+}
+
+fn After(xs:Float<m>[])->Node{
+    let width:Float<m> =xs[0]
+    return <Panel>
+            deep
+        shallow
+    </Panel>
+}
+
+fn Unbalanced()->String[]{
+    let text=<Code>
+        if (ready [ {
+        	go(
+    </Code>
+    let after=1
+    return text
+}
+
+fn Pinned()->String[]{
+    return <Code>first
+      second
+   third
+      </Code>
+}
+
+fn Trailing()->String[]{
+    return <Code>
+        hard break  
+
+        next
+    </Code>
+}
+
+fn MultiLineTag()->Node{
+    let node=<Panel Title={Join([
+        "a",
+        "b"])}>
+        text
+    </Panel>
+    let after=1
+    return node
+}

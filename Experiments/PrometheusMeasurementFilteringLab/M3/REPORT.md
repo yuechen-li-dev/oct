@@ -73,3 +73,20 @@ M4 should wire selected contracts into Dominatus policy simulation and validate 
 
 ## Inconsistency notes
 - Existing experiment code commonly uses helper patterns not explicitly documented in `Language/reference` (e.g., compact all-in-one function formatting). This lab kept repository style for consistency but this should be normalized against `Language/reference` in a follow-up documentation/style pass.
+
+## Random v2 migration (2026-10-03)
+
+The measurement generator now draws from Random v2 streams: one stream per
+noise source, forked by name from the scenario seed (`"jitter"` and
+`"spike"`), with `Random.Normal` and `Random.Spike` at the sample index. The
+seeds are unchanged. The noise realization for a given seed is different, and
+the recorded outputs were regenerated. Before regenerating, the recorded
+files were reproduced exactly from the Random v1 code, so every difference
+comes from the noise.
+
+What moved: the selected implementation set was `hysteresis-0.20`, `ema-0.1`,
+`median-9`, `hysteresis-0.10`, `ema-0.4`, `ema-0.6` and is now
+`hysteresis-0.20`, `ema-0.1`, `hybrid-median5-ema02`, `hysteresis-0.20`,
+`median-5`, `median-3`. The first two regimes agree; the other four changed,
+and the dominance table changed with them. The selection in those regimes
+rests on one seed and should not be read as settled.

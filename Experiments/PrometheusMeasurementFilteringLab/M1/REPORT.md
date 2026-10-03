@@ -65,3 +65,20 @@ These outputs are computed from rerun metrics (not hardcoded) and should superse
 
 ### 9) Next milestone recommendation
 Proceed to P14 implementation planning using this rerun as the baseline, then validate selected filters against broader scenario sets and runtime constraints in subsequent milestones.
+
+## Random v2 migration (2026-10-03)
+
+The measurement generator now draws from Random v2 streams: one stream per
+noise source, forked by name from the scenario seed (`"jitter"` and
+`"spike"`), with `Random.Normal` and `Random.Spike` at the sample index. The
+seeds are unchanged. The noise realization for a given seed is different, and
+the recorded outputs were regenerated. Before regenerating, the recorded
+files were reproduced exactly from the Random v1 code, so every difference
+comes from the noise.
+
+What moved: four of the six regime recommendations are identical. For
+`slow-drift` the recommended candidate is still `ema-0.4`; the quality-only
+winner changed from `trimmed-5` to `median-3`. For `mixed-hostile` the
+recommended candidate changed from `median-5` to `ema-0.4` and the
+quality-only winner from `median-5` to `median-3`. Those two regimes are
+decided by small score differences on one seed.

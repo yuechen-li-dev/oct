@@ -1,0 +1,9 @@
+expect error: "undefined variable: RngSeed"
+
+package Random
+
+// Random v1 is removed. Its generator state and its draws are not names in
+// package Random any more.
+fn Main() -> Float {
+    return Unit(RngSeed(1), 0)
+}

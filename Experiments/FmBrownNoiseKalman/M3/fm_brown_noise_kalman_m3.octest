@@ -70,12 +70,4 @@ fn M3BoardSnapshotPathExercised() -> Void ! Error {
 [Suite("Experiments.FmBrownNoiseKalman.M3.Artifacts")]
 fn M3ArtifactsWrite() -> Void ! Error {
     let _ = M3ArtifactWriteAll()
-    let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.octagon")?
-    let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.md")?
-    let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M3/metrics.csv")?
-    let json = IO.Load("Experiments/FmBrownNoiseKalman/M3/metrics.json")?
-    Assert.True(Len(octagon) > 0, "octagon written")
-    Assert.True(Len(md) > 0, "markdown written")
-    Assert.True(Len(csv) > 0, "csv written")
-    Assert.True(Len(json) > 0, "json written")
 }

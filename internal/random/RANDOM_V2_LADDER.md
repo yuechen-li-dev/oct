@@ -1,11 +1,12 @@
 # Random v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-01.** M0–M5 are closed (`RANDOM_V2_M1.md` through `RANDOM_V2_M5.md`); M6 is not started.
+Status: **CLOSED 2026-10-03.** M0–M6 are closed (`RANDOM_V2_M1.md` through `RANDOM_V2_M6.md`). The current specification is `internal/random/Random.md`; this document is kept as the record of the decisions and the milestones.
 Date: 2026-10-01
 
-This document supersedes `internal/random/Random.Core.md` as the
-source of truth for the `Random` API shape. The record-result / `Next` threading
-model it describes is retired by this ladder.
+This document superseded `internal/random/Random.Core.md` as the source of
+truth for the `Random` API shape while the ladder ran. The record-result /
+`Next` threading model that document described is retired, and M6 removed the
+document itself.
 
 ---
 
@@ -132,7 +133,7 @@ Removed with no replacement (each is a one-liner in the new API):
 - `Bernoulli` → `Chance`
 - `FlipBiasedCoin` → `Chance`
 - `RollD4`..`RollD100` → `RollDie`
-- `RollDiceSum` → `Sum(RollDice(...))`
+- `RollDiceSum` → add the elements of `RollDice(...)` in a loop. The accepted text said `Sum(RollDice(...))`; Oct has no `Sum` over `Int[]`, so this one is three lines, not one (corrected in M6).
 
 ### 3.5 `Entropy` package
 
@@ -269,6 +270,8 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
   - Migrate `Experiments/FmBrownNoiseKalman/{M0,Shared}` and `Experiments/PrometheusMeasurementFilteringLab/M1–M4` to v2, using one `Fork` per noise source and deleting the F3 idiom.
   - In `PrometheusMeasurementFilteringLab/M2`, replace the local `M2JitterV1`, `M2SpikeV1` and `M2DriftStepV1` functions that M4 introduced.
   - Regenerate `m2_random_*_summary.octagon` and any other recorded outputs, noting in each experiment's report that the regeneration came from the Random v2 stream change.
+    - Not regenerated: `FmBrownNoiseKalman/M2`. `oct artifact` rejects its entry points at the base commit for two reasons that have nothing to do with Random (a read-back of its own output and a duplicate output path). Its recorded outputs are still the v1 ones. See the M6 report.
+    - `FmBrownNoiseKalman/M1` has no recorded outputs that depend on noise.
   - Delete:
     - `Rng`, `Rand*`, `RngSeed`, all `*Result` records, `Crypto*` from `Random`
     - the `Legacy` flag and the three arity-check forms in the builtin table, which exist only for v1
@@ -281,10 +284,16 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
     - Add Random and Entropy to `Language/reference` (see `FEEDBACK.md`).
     - Mark the "Random API updates" section of `LIBRARY_MODERNIZATION_AFTER_POW_UNITS_RANDOM.md` superseded.
     - Bump the manifest to `0.2.0` and add a CHANGELOG entry.
+- **Tests:**
+  - `Libraries/Random/Random.Stream.invalid.RemovedGeneratorState.octfail` and `Libraries/RandomUsage/Random.Usage.invalid.RemovedV1Builtin.octfail`: the v1 names are undefined, inside package Random and from another package.
+  - `internal/builtin/random_test.go`: no v1 name resolves as a builtin in either namespace.
+  - `Language/ControlFlow/IfExpression/valid/if_expression_evaluates_only_taken_branch.octest`: the compiled-lane fix that M6 needed to run `PrometheusMeasurementFilteringLab/M4` (see the M6 report).
 - **Exit:**
   - `rg "RngSeed|RandInt|RandFloat01|RandNormal|\.Next\b" --type-add 'oct:*.{oct,octest,octfail}' -t oct` finds no Random v1 usages. Unrelated `.Next` fields are allowed.
   - `go test ./...` is green.
   - `oct test Libraries` and `oct test Experiments` are green in both lanes.
+  - As written, the last two lines cannot be met by any milestone: `go test ./...` and both test trees have failures at the base commit that come from tools and sidecars missing in the verification environment and from compiled-lane gaps unrelated to Random. The exit applied is "no test that passed at the base commit fails after M6". The M6 report lists what still fails and why.
+- **Verdict:** SUCCESS — see `internal/random/RANDOM_V2_M6.md`.
 
 ## 5. Explicitly out of scope
 

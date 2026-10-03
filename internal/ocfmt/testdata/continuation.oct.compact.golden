@@ -1,0 +1,30 @@
+package Main
+
+fn Eligible(sample:Sample,rake:Rake)->Bool{
+    return reserved and
+        sample.Confidence>=rake.Threshold and
+        sample.Warmup==false and
+        not sample.Pressure
+}
+
+fn Quadrature(f:Float,mid:Float,half:Float)->Float{
+    let sum=w0*f(mid+half*n0)
+        +w1*f(mid+half*n1)
+        +w2*f(mid+half*n2)
+    let scaled=
+        sum*half
+    return scaled
+}
+
+fn Negatives()->Float[]{
+    return[
+        -1.0,
+        -2.0
+    ]
+}
+
+fn Chain(doc:Doc)->Doc{
+    return doc
+        .WithTitle("t")
+        .WithAuthor("a")
+}

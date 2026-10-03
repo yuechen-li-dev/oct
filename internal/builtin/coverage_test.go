@@ -17,7 +17,7 @@ func TestBuiltinDefinitionsHaveImplementationCoverage(t *testing.T) {
 	compiledLiterals := implementationStringLiterals(t, filepath.Join("..", "build"))
 
 	for _, definition := range Definitions() {
-		if _, tableDriven := LookupRandom(definition.Name); tableDriven {
+		if _, tableDriven := LookupRandomQualified(definition.Name); tableDriven {
 			// Random builtins are covered by TestRandomBuiltinsHaveImplementationCoverage.
 			continue
 		}
@@ -33,45 +33,35 @@ func TestBuiltinDefinitionsHaveImplementationCoverage(t *testing.T) {
 	}
 }
 
-// Random builtins are typed from the table in random.go, so the typechecker
-// names none of them. Its coverage is the table lookup itself; the execution
-// lanes must each implement every builtin that has its own implementation.
+// Random and Entropy builtins are typed from the table in random.go, so the
+// typechecker names none of them. Its coverage is the table lookup itself;
+// each execution lane must implement every builtin in the table.
 func TestRandomBuiltinsHaveImplementationCoverage(t *testing.T) {
 	typecheckSelectors := implementationSelectors(t, filepath.Join("..", "typecheck"))
-	if _, ok := typecheckSelectors["builtin.LookupRandom"]; !ok {
-		t.Errorf("typechecker does not consult builtin.LookupRandom, so Random builtins have no typechecker coverage")
+	if _, ok := typecheckSelectors["builtin.ResolveRandomCall"]; !ok {
+		t.Errorf("typechecker does not consult builtin.ResolveRandomCall, so the table's builtins have no typechecker coverage")
 	}
 	typecheckLiterals := implementationStringLiterals(t, filepath.Join("..", "typecheck"))
 	interpreterLiterals := implementationStringLiterals(t, filepath.Join("..", "interpret"))
 	compiledLiterals := implementationStringLiterals(t, filepath.Join("..", "build"))
 
 	for _, random := range RandomBuiltins() {
-		// A v2 symbol such as "Unit" is an ordinary word that the typechecker
-		// may use for something else, so only the spellings that are reserved
-		// builtin names are checked.
-		spellings := []string{random.Name()}
-		if random.Legacy {
-			spellings = append(spellings, random.Symbol)
+		// A symbol such as "Unit" is an ordinary word that the typechecker may
+		// use for something else, so only the qualified name is checked.
+		if _, ok := typecheckLiterals[random.Name()]; ok {
+			t.Errorf("typechecker names builtin %q; it must come from the table in random.go", random.Name())
 		}
-		for _, spelling := range spellings {
-			if _, ok := typecheckLiterals[spelling]; ok {
-				t.Errorf("typechecker names Random builtin %q; it must come from the table in random.go", spelling)
-			}
+		if _, ok := interpreterLiterals[random.Name()]; !ok {
+			t.Errorf("builtin %q has no interpreter implementation", random.Name())
 		}
-		if !random.HasOwnImplementation() {
-			continue
-		}
-		if _, ok := interpreterLiterals[random.Implementation()]; !ok {
-			t.Errorf("Random builtin %q has no interpreter implementation", random.Implementation())
-		}
-		if _, ok := compiledLiterals[random.Implementation()]; !ok {
-			t.Errorf("Random builtin %q has no compiled implementation", random.Implementation())
+		if _, ok := compiledLiterals[random.Name()]; !ok {
+			t.Errorf("builtin %q has no compiled implementation", random.Name())
 		}
 	}
 }
 
 // implementationSelectors collects every qualified identifier, such as
-// "builtin.LookupRandom", used by the non-test Go files under root.
+// "builtin.ResolveRandomCall", used by the non-test Go files under root.
 func implementationSelectors(t *testing.T, root string) map[string]struct{} {
 	t.Helper()
 	selectors := map[string]struct{}{}

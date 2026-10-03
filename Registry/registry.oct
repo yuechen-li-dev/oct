@@ -410,13 +410,13 @@ fn Registry() -> RegistryIndex {
             },
             PackageEntry {
                 Name: "Random"
-                Version: "0.1.0"
+                Version: "0.2.0"
                 Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
                 Path: "Libraries/Random"
-                Description: "Seeded pseudorandom generation plus bounded distribution, coin, and dice sampling helpers"
+                Description: "Reproducible counter-based random streams, with sampling, coin and dice helpers"
             },
             PackageEntry {
                 Name: "Signal"

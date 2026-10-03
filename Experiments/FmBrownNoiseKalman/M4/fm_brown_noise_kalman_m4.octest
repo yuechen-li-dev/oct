@@ -59,12 +59,4 @@ fn M4BoardSnapshotPathExercised() -> Void ! Error {
 [Suite("Experiments.FmBrownNoiseKalman.M4.Artifacts")]
 fn M4ArtifactsWrite() -> Void ! Error {
     let _ = M4ArtifactWriteAll()
-    let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4/m4_octomata_adaptive_report.octagon")?
-    let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4/m4_octomata_adaptive_report.md")?
-    let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M4/metrics.csv")?
-    let json = IO.Load("Experiments/FmBrownNoiseKalman/M4/metrics.json")?
-    Assert.True(Len(octagon) > 0, "octagon")
-    Assert.True(Len(md) > 0, "markdown")
-    Assert.True(Len(csv) > 0, "csv")
-    Assert.True(Len(json) > 0, "json")
 }

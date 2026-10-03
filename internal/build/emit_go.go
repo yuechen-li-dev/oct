@@ -346,12 +346,6 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Conj"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] {
 		importSet["math/cmplx"] = struct{}{}
 	}
-	if usesRandomHelpers(usedBuiltins) {
-		importSet["math"] = struct{}{}
-		importSet["crypto/rand"] = struct{}{}
-		importSet["encoding/binary"] = struct{}{}
-		importSet["math/big"] = struct{}{}
-	}
 	if usesRandomStreamBuiltins(usedBuiltins) || usesEntropyBuiltins(usedBuiltins) {
 		importSet[octrandomImportPath] = struct{}{}
 	}
@@ -459,25 +453,10 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		}
 		b.WriteString("}\n\n")
 	}
-	needsRandomHelpers := usesRandomHelpers(usedBuiltins)
 	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
 		if _, ok := emittedRecordTypes["Csv.Table"]; !ok {
 			b.WriteString("type Csv_Table struct{}\n\n")
 			emittedRecordTypes["Csv.Table"] = struct{}{}
-		}
-	}
-	if needsRandomHelpers {
-		if _, ok := emittedRecordTypes["Random.Rng"]; !ok {
-			b.WriteString("type Random_Rng struct {\n\t_State0 int\n\t_State1 int\n\t_State2 int\n\t_State3 int\n}\n\n")
-		}
-		if _, ok := emittedRecordTypes["Random.RandIntResult"]; !ok {
-			b.WriteString("type Random_RandIntResult struct {\n\tNext Random_Rng\n\tValue int\n}\n\n")
-		}
-		if _, ok := emittedRecordTypes["Random.RandFloatResult"]; !ok {
-			b.WriteString("type Random_RandFloatResult struct {\n\tNext Random_Rng\n\tValue float64\n}\n\n")
-		}
-		if _, ok := emittedRecordTypes["Random.RandBoolResult"]; !ok {
-			b.WriteString("type Random_RandBoolResult struct {\n\tNext Random_Rng\n\tValue bool\n}\n\n")
 		}
 	}
 	if usesRandomStreamBuiltins(usedBuiltins) {
@@ -562,9 +541,6 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	if usedBuiltins["FFT"] {
 		b.WriteString(__octFFTHelpers)
-	}
-	if needsRandomHelpers {
-		b.WriteString(__octRandomHelpers)
 	}
 	if usesRandomStreamBuiltins(usedBuiltins) {
 		b.WriteString(randomStreamHelpers)
@@ -1887,27 +1863,6 @@ func goStmt(s MIRStmt) (string, error) {
 				return emitRandomStreamCall(st.Callee, st.Target, args)
 			case "Entropy.Seed", "Entropy.IntBetween", "Entropy.Unit", "Entropy.Bytes":
 				return emitEntropyCall(st.Callee, st.Target, args)
-			case "Random.RngSeed":
-				return fmt.Sprintf("%s = __octRandomRngSeed(%s)", st.Target, args[0]), nil
-			case "Random.RandInt":
-				return fmt.Sprintf("%s = __octRandomRandInt(%s, %s, %s)", st.Target, args[0], args[1], args[2]), nil
-			case "Random.RandFloat01":
-				return fmt.Sprintf("%s = __octRandomRandFloat01(%s)", st.Target, args[0]), nil
-			case "Random.RandFloatRange":
-				return fmt.Sprintf("%s = __octRandomRandFloatRange(%s, %s, %s)", st.Target, args[0], args[1], args[2]), nil
-			case "Random.RandBernoulli":
-				return fmt.Sprintf("%s = __octRandomRandBernoulli(%s, %s)", st.Target, args[0], args[1]), nil
-			case "Random.RandNormal":
-				return fmt.Sprintf("%s = __octRandomRandNormal(%s, %s, %s)", st.Target, args[0], args[1], args[2]), nil
-			case "Random.CryptoRandBytes":
-				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandBytes(%s); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
-					st.Target, goResultTypeName("Bytes"), args[0], goResultTypeName("Bytes"), goResultTypeName("Bytes")), nil
-			case "Random.CryptoRandInt":
-				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandInt(%s, %s); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
-					st.Target, goResultTypeName("Int"), args[0], args[1], goResultTypeName("Int"), goResultTypeName("Int")), nil
-			case "Random.CryptoRandFloat01":
-				return fmt.Sprintf("%s = func() %s { __v, __err := __octCryptoRandFloat01(); if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __v} }()",
-					st.Target, goResultTypeName("Float"), goResultTypeName("Float"), goResultTypeName("Float")), nil
 			default:
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
@@ -1934,9 +1889,6 @@ func goStmt(s MIRStmt) (string, error) {
 			case "BoolIntProbe":
 				return fmt.Sprintf("%s, %s = true, 7", st.Targets[0], st.Targets[1]), nil
 			default:
-				if isRandomDrawImplementation(st.Callee) {
-					return "", fmt.Errorf("destructuring %s is not supported", st.Callee)
-				}
 				return "", fmt.Errorf("compiled mode does not yet support builtin %s", st.Callee)
 			}
 		}

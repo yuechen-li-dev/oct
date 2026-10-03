@@ -1,0 +1,51 @@
+package OrbitalDecay
+
+concept Length=Float<m>
+concept Velocity=Float<m/s>
+concept Time=Float<s>
+concept Mass=Float<kg>
+concept Density=Float<kg*m^-3>
+concept GravParam=Float<m^3*s^-2>
+
+template record TimeSeries<T>{
+    Times:Float<s>[]
+    Values:T[]
+}
+
+template record Keyed<Record,Key>{KeyOf:Selector<Record,Key>}
+
+template fn Mean<T>(values:T[])->T{
+    var total=values[0]
+    for i in 1..Len(values){
+        total=total+values[i]
+    }
+    return total/Float(Len(values))
+}
+
+template fn identity<T>(value:T)->T{return value}
+
+fn AtmosphericDensity(altitude:Length)->Density{
+    let h0:Length=250000.0m
+    let rho0:Density=0.00000000007248kg*m^-3
+    let mu:GravParam=398600441800000.0m^3*s^-2
+    let g=9.81m/s^2
+    let scaleHeight:Length=45000.0m
+    let exponent=-BaseUnit((altitude-h0)/scaleHeight)
+    let series:Tensor<Float<m>>[]=[]
+    let label=String.From<Int>(3)
+    let same=identity<Int>(1)
+    let room=20C
+    let quarter=90deg*0.5
+    let tiny=1e-12
+    let pressure=stress/1kg/m/s^2
+    return rho0*Exp(exponent)
+}
+
+fn Area(radius:Length)->Float<m^2>!Error{
+    if radius<0.0m{return error("negative radius")}
+    return Pi()*radius*radius
+}
+
+fn Compare(state:OrbitState,limit:Length,floor:Length)->Bool{
+    return state.Altitude<limit and state.Altitude>floor
+}

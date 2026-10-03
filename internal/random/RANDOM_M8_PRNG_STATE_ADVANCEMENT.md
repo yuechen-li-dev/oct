@@ -1,5 +1,7 @@
 # RANDOM_M8_PRNG_STATE_ADVANCEMENT
 
+> **Historical (2026-10-03).** The API this report describes was removed in Random 0.2.0, along with the documents it cites (`Random.Core.md`, `Random.Distributions.md`). Current specification: `internal/random/Random.md`.
+
 Date: 2026-05-01
 
 ## 1) Root cause

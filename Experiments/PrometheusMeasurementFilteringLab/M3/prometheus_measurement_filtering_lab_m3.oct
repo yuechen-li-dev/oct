@@ -105,7 +105,9 @@ fn M3GenerateSeries(seed: Int, sampleCount: Int, cfg: M3RegimeConfig) -> M3Regim
     var trueValues: Float[] = []
     var measurements: Float[] = []
     var current = cfg.Base
-    var rng = Random.Gaussian(Random.RngSeed(seed * 1009 + 17), 0.0, 0.0).Next
+    let noise = Random.Seeded(seed * 1009 + 17)
+    let jitter = Random.Fork(noise, "jitter")
+    let spikes = Random.Fork(noise, "spike")
 
     for i in 0..sampleCount {
         if cfg.StepIndex >= 0 and i >= cfg.StepIndex {
@@ -115,20 +117,10 @@ fn M3GenerateSeries(seed: Int, sampleCount: Int, cfg: M3RegimeConfig) -> M3Regim
         current = current + cfg.DriftPerSample
         trueValues = Append(trueValues, current)
 
-        let jitter = Random.RandNormal(rng, 0.0, cfg.JitterStddev)
-        rng = jitter.Next
+        let jitterValue = Random.Normal(jitter, i, 0.0, cfg.JitterStddev)
+        let spike = Random.Spike(spikes, i, cfg.SpikeProbability, cfg.SpikeAmplitude)
 
-        let trigger = Random.RandBernoulli(rng, cfg.SpikeProbability)
-        rng = trigger.Next
-
-        var spike = 0.0
-        if trigger.Value {
-            let sign = Random.RandBernoulli(rng, 0.5)
-            rng = sign.Next
-            spike = if sign.Value { cfg.SpikeAmplitude } else { 0.0 - cfg.SpikeAmplitude }
-        }
-
-        measurements = Append(measurements, current + jitter.Value + spike)
+        measurements = Append(measurements, current + jitterValue + spike)
     }
 
     return M3RegimeSeries {

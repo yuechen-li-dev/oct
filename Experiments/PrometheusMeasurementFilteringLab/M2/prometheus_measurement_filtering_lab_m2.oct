@@ -26,94 +26,62 @@ record SpikeSummary {
     NegativeSpikeCount: Int
 }
 
-record StateThreadingSummary {
+record StreamSummary {
     SameSeedMatch: Bool
     DifferentSeedDiffers: Bool
-    ReusedStateRepeats: Bool
-    AdvancedStateDiffers: Bool
+    SameIndexRepeats: Bool
+    NextIndexDiffers: Bool
+    ForksDiffer: Bool
 }
 
-// Jitter, Spike and DriftStep were composites in the Random v1 library layer,
-// which Random v2 replaced. This experiment characterizes Random v1, so the
-// three composites are kept here exactly as v1 defined them, on the v1 native
-// draws, and its recorded results do not change. The experiment moves to
-// Random v2 with the other experiments in ladder milestone M6
-// (internal/random/RANDOM_V2_LADDER.md).
-
-fn M2JitterV1(rng: Random.Rng, amplitude: Float) -> Float {
-    return Random.RandFloatRange(rng, 0.0 - amplitude, amplitude).Value
-}
-
-fn M2SpikeV1(rng: Random.Rng, probability: Float, amplitude: Float) -> Float {
-    if probability == 0.0 {
-        return 0.0
-    }
-    if probability == 1.0 {
-        let signAlways = Random.RandBernoulli(rng, 0.5)
-        return if signAlways.Value { amplitude } else { 0.0 - amplitude }
-    }
-
-    let trigger = Random.RandBernoulli(rng, probability)
-    if trigger.Value == false {
-        return 0.0
-    }
-
-    let sign = Random.RandBernoulli(trigger.Next, 0.5)
-    return if sign.Value { amplitude } else { 0.0 - amplitude }
-}
-
-fn M2DriftStepV1(rng: Random.Rng, current: Float, stepStddev: Float) -> Float {
-    return current + Random.RandNormal(rng, 0.0, stepStddev).Value
+// Every collector draws from its own stream, forked by name from the seed.
+// Draw i is a function of that stream and of i, so nothing is threaded from
+// one draw to the next and no collector can disturb another.
+fn M2Stream(seed: Int, source: String) -> Random.Stream {
+    return Random.Fork(Random.Seeded(seed), source)
 }
 
 fn M2CollectFloat01(seed: Int, n: Int) -> Float[] {
-    var out: Float[] = []
-    for i in 0..n {
-        let draw = Random.RandFloat01(Random.RngSeed(seed * 10007 + i * 37 + 1))
-        out = Append(out, draw.Value)
-    }
-    return out
+    return Random.Units(M2Stream(seed, "unit"), n)
 }
 
 fn M2CollectFloatRange(seed: Int, n: Int, min: Float, max: Float) -> Float[] {
+    let range = M2Stream(seed, "range")
     var out: Float[] = []
     for i in 0..n {
-        let draw = Random.RandFloatRange(Random.RngSeed(seed * 10007 + i * 37 + 2), min, max)
-        out = Append(out, draw.Value)
+        out = Append(out, Random.Between(range, i, min, max))
     }
     return out
 }
 
 fn M2CollectNormal(seed: Int, n: Int, mean: Float, stddev: Float) -> Float[] {
-    var out: Float[] = []
-    for i in 0..n {
-        let draw = Random.RandNormal(Random.RngSeed(seed * 10007 + i * 37 + 3), mean, stddev)
-        out = Append(out, draw.Value)
-    }
-    return out
+    return Random.Normals(M2Stream(seed, "normal"), n, mean, stddev)
 }
 
 fn M2CollectJitter(seed: Int, n: Int, amplitude: Float) -> Float[] {
+    let jitter = M2Stream(seed, "jitter")
     var out: Float[] = []
     for i in 0..n {
-        out = Append(out, M2JitterV1(Random.RngSeed(seed * 10007 + i * 37 + 4), amplitude))
+        out = Append(out, Random.Between(jitter, i, -amplitude, amplitude))
     }
     return out
 }
 
 fn M2CollectSpike(seed: Int, n: Int, probability: Float, amplitude: Float) -> Float[] {
+    let spikes = M2Stream(seed, "spike")
     var out: Float[] = []
     for i in 0..n {
-        out = Append(out, M2SpikeV1(Random.RngSeed(seed * 10007 + i * 37 + 5), probability, amplitude))
+        out = Append(out, Random.Spike(spikes, i, probability, amplitude))
     }
     return out
 }
 
 fn M2DriftWalk(seed: Int, n: Int, start: Float, stepStddev: Float) -> Float[] {
+    let drift = M2Stream(seed, "drift")
     var out: Float[] = []
     var current = start
     for i in 0..n {
-        current = M2DriftStepV1(Random.RngSeed(seed * 10007 + i * 37 + 6), current, stepStddev)
+        current = current + Random.Normal(drift, i, 0.0, stepStddev)
         out = Append(out, current)
     }
     return out
@@ -157,10 +125,10 @@ fn M2Summarize(xs: Float[]) -> ScalarSummary {
 }
 
 fn M2BernoulliSummary(seed: Int, n: Int, p: Float) -> BernoulliSummary {
+    let chance = M2Stream(seed, "chance")
     var trueCount = 0
     for i in 0..n {
-        let draw = Random.RandBernoulli(Random.RngSeed(seed * 10007 + i * 37 + 7), p)
-        if draw.Value { trueCount = trueCount + 1 }
+        if Random.Chance(chance, i, p) { trueCount = trueCount + 1 }
     }
 
     return BernoulliSummary {
@@ -198,20 +166,23 @@ fn M2SameFloats(a: Float[], b: Float[]) -> Bool {
     return true
 }
 
-fn M2StateThreadingSummary() -> StateThreadingSummary {
+fn M2StreamSummary() -> StreamSummary {
     let first = M2CollectFloat01(1234, 12)
     let sameSeed = M2CollectFloat01(1234, 12)
     let differentSeed = M2CollectFloat01(4321, 12)
 
-    let r0 = Random.RngSeed(777)
-    let draw1 = Random.RandFloat01(r0)
-    let draw1Again = Random.RandFloat01(r0)
-    let draw2 = Random.RandFloat01(draw1.Next)
+    let root = Random.Seeded(777)
+    let draw = Random.Unit(root, 0)
+    let drawAgain = Random.Unit(root, 0)
+    let nextDraw = Random.Unit(root, 1)
+    let left = Random.Unit(Random.Fork(root, "left"), 0)
+    let right = Random.Unit(Random.Fork(root, "right"), 0)
 
-    return StateThreadingSummary {
+    return StreamSummary {
         SameSeedMatch: M2SameFloats(first, sameSeed)
         DifferentSeedDiffers: not M2SameFloats(first, differentSeed)
-        ReusedStateRepeats: draw1.Value == draw1Again.Value
-        AdvancedStateDiffers: draw2.Value != draw1.Value
+        SameIndexRepeats: draw == drawAgain
+        NextIndexDiffers: nextDraw != draw
+        ForksDiffer: left != right
     }
 }

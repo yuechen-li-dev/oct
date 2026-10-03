@@ -83,3 +83,24 @@ M5 should port selected policy contract to native Dominatus subsystem and valida
 
 ## Inconsistency notes
 No syntax-level inconsistency observed with `Language/reference`. Existing compact one-line style in prior experiments is retained, though less readable than reference prose examples.
+
+## Random v2 migration (2026-10-03)
+
+The measurement generator now draws from Random v2 streams: one stream per
+noise source, forked by name from the scenario seed (`"jitter"` and
+`"spike"`), with `Random.Normal` and `Random.Spike` at the sample index. The
+seeds are unchanged. The noise realization for a given seed is different, and
+the recorded outputs were regenerated. Before regenerating, the recorded
+files were reproduced exactly from the Random v1 code, so every difference
+comes from the noise.
+
+What moved: the selected policy is unchanged, `dominatus-mincommit-hysteresis`.
+It still switches zero times in every scenario, and the greedy policy still
+over-switches (6, 15, 3, 0, 6 and 3 switches across the six scenarios; 11,
+12, 3, 0, 12 and 3 before). The best non-oracle composite score changed in one
+scenario, `spike-heavy-to-stable`, from `static-smooth` to
+`static-conservative`.
+
+Because each noise source has its own stream, a segment with spike
+probability 0 or jitter 0 no longer shifts the draws of the segments after
+it. With Random v1 it did.

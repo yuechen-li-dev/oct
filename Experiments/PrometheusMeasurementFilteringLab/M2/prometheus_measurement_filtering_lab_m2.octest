@@ -71,12 +71,49 @@ fn DistributionHelpersAreNonDegenerate() -> Void {
 }
 
 [Fact]
-fn StateThreadingWorksFromExperimentPackage() -> Void {
-    let s = M2StateThreadingSummary()
+fn StreamsArePureFromExperimentPackage() -> Void {
+    let s = M2StreamSummary()
     Assert.True(s.SameSeedMatch, "same seed should match")
     Assert.True(s.DifferentSeedDiffers, "different seed should differ")
-    Assert.True(s.ReusedStateRepeats, "reusing same state repeats next draw")
-    Assert.True(s.AdvancedStateDiffers, "advanced state produces different draw")
+    Assert.True(s.SameIndexRepeats, "a draw at the same stream and index repeats")
+    Assert.True(s.NextIndexDiffers, "the next index gives a different draw")
+    Assert.True(s.ForksDiffer, "forks with different names draw differently")
+}
+
+// Turning one noise source off must not move any other. Random v1 could not
+// promise this: a draw with stddev 0 or probability 0 consumed no state, so
+// every later draw shifted.
+[Fact]
+fn SourcesAreIndependentOfEachOthersParameters() -> Void {
+    let jitterOn = M2CollectJitter(1700, 50, 0.05)
+    let spikesWithJitterOn = M2CollectSpike(1700, 50, 0.1, 4.0)
+    let jitterOff = M2CollectJitter(1700, 50, 0.0)
+    let spikesWithJitterOff = M2CollectSpike(1700, 50, 0.1, 4.0)
+    Assert.True(M2SameFloats(spikesWithJitterOn, spikesWithJitterOff), "spikes do not depend on jitter")
+    Assert.True(not M2SameFloats(jitterOn, jitterOff), "the jitter amplitude changes the jitter")
+
+    let rare = M2CollectSpike(1701, 200, 0.05, 4.0)
+    let common = M2CollectSpike(1701, 200, 0.5, 4.0)
+    for i in 0..Len(rare) {
+        if rare[i] != 0.0 {
+            Assert.Equal(rare[i], common[i], "a spike at a low probability is the same spike at a higher one")
+        }
+    }
+}
+
+[Fact]
+fn SourcesDrawFromDifferentStreams() -> Void {
+    // Between(s, i, 0.0, 1.0) is Unit(s, i). On one shared stream the two
+    // sources would be copies of each other.
+    let units = M2CollectFloat01(1702, 20)
+    let ranged = M2CollectFloatRange(1702, 20, 0.0, 1.0)
+    var equal = 0
+    for i in 0..Len(units) {
+        if units[i] == ranged[i] {
+            equal = equal + 1
+        }
+    }
+    Assert.Equal(0, equal, "two sources at one seed share no draw")
 }
 
 [Artifact]
@@ -111,7 +148,7 @@ fn EmitM2FinalVerdict() -> Void {
     let normal = M2Summarize(M2CollectNormal(2202, 200, 0.0, 1.0))
     let bernoulli = M2BernoulliSummary(2203, 200, 0.5)
     let spike = M2SpikeSummary(2204, 400, 0.1, 4.0)
-    let threading = M2StateThreadingSummary()
+    let streams = M2StreamSummary()
 
     let _status = WriteOctagon("Experiments/PrometheusMeasurementFilteringLab/M2/m2_final_verdict.octagon", [
         uniform.Min >= 0.0 and uniform.Max < 1.0 and uniform.Min != uniform.Max and uniform.Mean >= 0.25 and uniform.Mean <= 0.75,
@@ -119,6 +156,6 @@ fn EmitM2FinalVerdict() -> Void {
         normal.CountPositive > 0 and normal.CountNegative > 0 and normal.Mean >= -0.5 and normal.Mean <= 0.5,
         bernoulli.TrueCount > 0 and bernoulli.TrueCount < bernoulli.SampleCount,
         spike.ZeroCount > 0 and (spike.PositiveSpikeCount + spike.NegativeSpikeCount) > 0,
-        threading.SameSeedMatch and threading.DifferentSeedDiffers and threading.ReusedStateRepeats and threading.AdvancedStateDiffers
+        streams.SameSeedMatch and streams.DifferentSeedDiffers and streams.SameIndexRepeats and streams.NextIndexDiffers and streams.ForksDiffer
     ])
 }

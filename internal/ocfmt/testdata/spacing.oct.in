@@ -1,0 +1,80 @@
+package Main
+
+import Random
+
+fn Signs(a:Float,b:Float)->Float{
+let v=vector[0.001,-0.0004]
+let m=matrix[[-2.00,-0.25] [2.25,-1.75]]
+let cell=rows[0][1]
+let neg=a - -b
+let diff=a-b
+let grouped=(a+b)*-(a-b)
+if a<-0.99 { return -a }
+return E/(2.0*(1.0+nu))
+}
+
+fn Ranges(xs:Float[],n:Int)->Range{
+for i in 0 .. Len(xs) { Print(i) }
+for j in (n+1)..Len(xs) step 2 { Print(j) }
+for k in 0.. { return ..n }
+let head=Array.CrossSection(xs,..n)
+return 100..
+}
+
+fn Braces()->Vec2{
+let p=Vec2{X:1.0 Y:-2.0}
+while p.X<0.0 { }
+let q=p with {X:3.0}
+let label=if p.X>0.0 {"right"} else {"left"}
+return Vec2 { X: p.X   Y: q.Y }
+}
+
+fn Fallible(raw:String)->Int ! Error{
+let first=Parse(raw) !
+let second=Parse(raw) ?
+let third=Parse(raw)!+1
+let ok=first!=second
+return Check(first)!
+}
+
+fn Custom()->Int!MyError{
+return 1
+}
+
+fn Calls()->Void{
+let xs=[1,2,3]
+let ys:Int[]=[ ]
+let f=fn(x:Int)->Int{return x+1}
+Use(xs,[4,5],fn(x:Int)->Bool{return x>2})
+let key:Selector<Job,String> =.ID
+let sorted=OrderBy(jobs,.ID)
+let stream=Random.Fork(Random.Seeded(42),"jitter")
+let a=1;let b=2
+return
+}
+
+fn Arrows(k:Int)=>Int{
+return switch k { case 1 => 2 else -> 3 }
+}
+
+flow Counter(limit:Int)->Int{
+board{
+Count:Int
+}
+state Start{
+board.Count=0
+goto Run
+}
+state Run{
+board.Count=board.Count+1
+if board.Count>=limit { return board.Count }
+goto Run
+}
+}
+
+fn Names(state:Machine,step:Int,flow:Int)->Int{
+let next=state.Count+step
+let cell=state[0]
+let scaled=flow*step
+return next-step
+}

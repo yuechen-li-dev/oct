@@ -11,14 +11,14 @@ Octomata board remained scalar current-state only; recovered/innovation/aTrace/w
 | key | value |
 | --- | --- |
 | totalCases | 27 |
-| scalarAdaptiveWin | 15 |
+| scalarAdaptiveWin | 11 |
 | windowedAdaptiveWin | 1 |
-| scalarMeanDeltaOutputSNRDb | -0.10323719568627238 |
-| windowedMeanDeltaOutputSNRDb | -0.01281063531133515 |
-| scalarMeanWhitenessRatio | 0.4599244600302107 |
-| windowedMeanWhitenessRatio | 0.9206405349794723 |
-| windowedBetterRecovery | 10 |
-| windowedBetterWhiteness | 0 |
+| scalarMeanDeltaOutputSNRDb | -0.016860697246958038 |
+| windowedMeanDeltaOutputSNRDb | -0.018297180959784037 |
+| scalarMeanWhitenessRatio | 0.5343315017946046 |
+| windowedMeanWhitenessRatio | 0.929768192962623 |
+| windowedBetterRecovery | 11 |
+| windowedBetterWhiteness | 1 |
 | equivalencePassCount | 27 |
 
 ## Boundedness

@@ -32,23 +32,23 @@ Interpretation: the Octomata state-machine representation is **numerically faith
 
 ### Measured values
 
-- fixed outputSNRDb: `-12.130953357228389`
-- adaptive outputSNRDb: `-12.1218669837822`
-- delta outputSNRDb: `+0.009086373446189455 dB`
-- fixed NRMSE: `1.1937400491502088`
-- adaptive NRMSE: `1.2124871520622893`
-- fixed whitenessCost: `0.8698203626951433`
-- adaptive whitenessCost: `0.3555717282901707`
-- whiteness ratio (adaptive/fixed): `0.408787542278294`
-- fixed correlation: `0.28749234752600245`
-- adaptive correlation: `0.26493745304046656`
-- adaptive finalA: `0.9696708109653571`
+- fixed outputSNRDb: `-12.055415448531248`
+- adaptive outputSNRDb: `-12.088284342616662`
+- delta outputSNRDb: `-0.03286889408541427 dB`
+- fixed NRMSE: `1.2862907473137821`
+- adaptive NRMSE: `1.303998730944967`
+- fixed whitenessCost: `0.8618491645432044`
+- adaptive whitenessCost: `0.304157183711639`
+- whiteness ratio (adaptive/fixed): `0.3529123148509344`
+- fixed correlation: `0.1727280566858181`
+- adaptive correlation: `0.1497936548452546`
+- adaptive finalA: `0.9870536688383321`
 - clamp count: `0`
 - label: `WhitenessOnly`
 
 ### Interpretation
 
-In this tiny deterministic case, adaptive behavior strongly improves innovation whiteness (whiteness cost drops by ~59%), but does **not** show a meaningful recovery/SNR win under the configured label threshold (`snrEpsilonDb = 0.01`). The SNR delta is positive but only `~0.0091 dB`, i.e., below the meaningful-win threshold. NRMSE and correlation are slightly worse for adaptive than fixed in this case.
+In this tiny deterministic case, adaptive behavior strongly improves innovation whiteness (whiteness cost drops by ~65%), but does **not** show a recovery/SNR win under the configured label threshold (`snrEpsilonDb = 0.01`). The SNR delta is negative, `~-0.033 dB`: adaptive is slightly worse than fixed. NRMSE and correlation are slightly worse for adaptive than fixed in this case.
 
 So the most defensible reading is:
 
@@ -60,7 +60,7 @@ So the most defensible reading is:
 
 The core success of M4 is **representation fidelity** (adaptive Kalman structure made explicit in Octomata with exact procedural equivalence), not a broad claim of adaptive superiority.
 
-Scientifically, this single-case result suggests the scalar incremental adaptation mechanism can fit colored residual structure (final `A ≈ 0.97` without clamp saturation), but that fit does not automatically translate to better recovered-message fidelity on this setup. This is plausible: reducing residual autocorrelation and improving message reconstruction are related but not identical objectives.
+Scientifically, this single-case result suggests the scalar incremental adaptation mechanism can fit colored residual structure (final `A ≈ 0.99` without clamp saturation), but that fit does not automatically translate to better recovered-message fidelity on this setup. This is plausible: reducing residual autocorrelation and improving message reconstruction are related but not identical objectives.
 
 ## Important caveat: scalar incremental vs windowed adaptation
 
@@ -92,3 +92,7 @@ Next step depends on objective:
 3. **Continuity-with-M2b objective:** add a windowed adaptation variant using external innovation history (still no board arrays), then compare against a windowed procedural baseline.
 
 For now, M4 should be considered a strong representation milestone with a nuanced science outcome: **whiteness gains without a meaningful tiny-case recovery win**.
+
+## Regenerated 2026-10-03 (Random v2)
+
+The measured values above were regenerated after the white-noise generator moved from Random v1 to a Random v2 stream (`Random.Normals` on `Random.Fork(Random.Seeded(seed), "white-noise")`). The seed is the same and the noise realization is different, so every number changed. The conclusions did not: equivalence is still exact, the label is still `WhitenessOnly`, and whiteness still improves without a recovery win. One detail moved: the SNR delta was `+0.0091 dB` with the v1 noise and is `-0.033 dB` with the v2 noise. Both are within what one 1000-sample realization can do, and neither is a win.

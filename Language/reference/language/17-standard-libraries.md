@@ -165,6 +165,72 @@ Artifact guidance:
 - Paths are relative to the `oct artifact --output-root`; absolute, escaping, and duplicate paths are rejected.
 - `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` remain ordinary runtime APIs. Only legacy global `WriteOctagon` and confined directory creation are adapted to the artifact capability during the build phase.
 
+## Random
+
+`Libraries/Random` provides reproducible pseudorandom draws. Every draw is a
+pure function of a stream, an index and the draw's parameters. There is no
+generator state, so nothing is threaded between draws.
+
+```oct
+import Random
+
+fn Readings(truth: Float, seed: Int, n: Int) -> Float[] {
+    let noise = Random.Seeded(seed)
+    let jitter = Random.Fork(noise, "jitter")
+    let spikes = Random.Fork(noise, "spike")
+    var readings: Float[] = []
+    for i in 0..n {
+        readings = Append(readings, truth + Random.Normal(jitter, i, 0.0, 0.2) + Random.Spike(spikes, i, 0.1, 3.0))
+    }
+    return readings
+}
+```
+
+Rules:
+
+- `Random.Stream` is a record value. Make one with `Random.Seeded(seed: Int)`, and derive independent streams with `Random.Fork(stream, label: String)` or `Random.Child(stream, index: Int)`.
+- A draw takes `(stream, index, parameters...)`. The same arguments always give the same result, in any order of evaluation and in both execution lanes.
+- Use one `Fork` per independent source of randomness. Changing the parameters of one draw never changes another draw.
+- Native draws: `Random.Unit(s, i) -> Float` in `[0, 1)`; `Random.Between(s, i, lo: Float, hi: Float) -> Float` in `[lo, hi)`; `Random.IntBetween(s, i, lo: Int, hi: Int) -> Int` on the closed range; `Random.Normal(s, i, mean: Float, stddev: Float) -> Float`.
+- Library helpers: `Chance`, `Exponential`, `Units`, `Normals`, `Spike`, `FlipCoin`, `FlipCoins`, `CountHeads`, `CountTails`, `CoinSideToString`, `RollDie`, `RollDice`, `RollWithAdvantage`, `RollWithDisadvantage`.
+- `Seeded`, `Fork`, `Child`, `Unit`, `Between`, `IntBetween` and `Normal` are compiler-owned builtins of package Random. Outside that package only the qualified spelling names them, `import Random` is required, and the bare words are free for other packages to declare.
+- Arguments are dimensionless. `Random.Between(s, i, 0.0m, 1.0m)` is a type error.
+- `Random` is not fallible. A violated precondition (negative index, `lo > hi`, negative `stddev` or `count`, a probability outside `[0, 1]`) stops the program with a runtime error that `match` does not see.
+- `Random` is not a cryptographic source.
+
+Results that depend only on integer arithmetic (`Fork`, `Child`, `Unit`, `Between`, `IntBetween`, `Chance`, coins, dice) are identical on every platform. `Normal` and `Exponential` are guaranteed identical only within one CPU architecture.
+
+Full specification: `internal/random/Random.md`.
+
+## Entropy
+
+`Entropy` reads the operating system's random source. It is the only source of
+nondeterminism among the standard libraries.
+
+```oct
+import Random
+
+fn NoiseForThisRun() -> Random.Stream ! Error {
+    let seed = Entropy.Seed()?
+    Print(seed)
+    return Random.Seeded(seed)
+}
+```
+
+Rules:
+
+- `Entropy.Seed() -> Int ! Error`, `Entropy.IntBetween(lo: Int, hi: Int) -> Int ! Error` (closed range), `Entropy.Unit() -> Float ! Error` (in `[0, 1)`), `Entropy.Bytes(count: Int) -> Bytes ! Error`.
+- `Entropy` is a compiler-owned namespace. It needs no `import`; `import Entropy` is allowed.
+- Every call is fallible. The only `Error` is a failed read of the operating system's source. `lo > hi` and `count < 0` are runtime errors, not `Error` values.
+- Artifact evaluation and capability discovery reject every `Entropy` call.
+- Record the seed. A logged seed replays every draw made from `Random.Seeded(seed)`.
+
+### Compiler-owned namespaces
+
+`Array`, `Artifact` and `Entropy` are namespaces whose functions are builtins.
+Calling them needs no `import`. A call to a name the namespace does not have is
+reported as `package '<Namespace>' has no function '<Name>'`.
+
 ## Document (OctCument M1)
 
 `Libraries/Document` owns backend-neutral immutable document semantics. Its

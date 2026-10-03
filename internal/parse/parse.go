@@ -24,6 +24,7 @@ func BuildFile(result lex.Result) (ast.File, error) {
 	if err != nil {
 		return ast.File{}, fmt.Errorf("parse %s: %w", result.Source.Path, err)
 	}
+	file.MarkupSpans = parser.markupSpans
 	return file, nil
 }
 
@@ -34,6 +35,7 @@ type parser struct {
 	position              int
 	nextUtilityWhenSiteID int
 	docByLine             map[int]ast.DocComment
+	markupSpans           []ast.MarkupSpan
 }
 
 func (p *parser) parseFile(src source.File) (ast.File, error) {
@@ -2510,6 +2512,7 @@ func (p *parser) parseMarkupElement() (ast.Expr, error) {
 		return nil, err
 	}
 	element := ast.MarkupElementExpr{Tag: tag, Line: open.Line, Column: open.Column}
+	spansAtEntry := len(p.markupSpans)
 	seen := map[string]struct{}{}
 	for p.current().Kind != lex.RightAngle && !(p.current().Kind == lex.Slash && p.peek(1).Kind == lex.RightAngle) {
 		name, nameErr := p.expectIdentifierLike("expected markup attribute name")
@@ -2541,10 +2544,14 @@ func (p *parser) parseMarkupElement() (ast.Expr, error) {
 		}
 		element.Attributes = append(element.Attributes, ast.MarkupAttribute{Name: name.Lexeme, Value: value, Line: name.Line, Column: name.Column})
 	}
-	if p.match(lex.Slash) {
-		if _, err := p.expect(lex.RightAngle, "expected '>' after '/' in self-closing markup tag"); err != nil {
+	if p.current().Kind == lex.Slash {
+		slash := p.current()
+		p.advance()
+		end, err := p.expect(lex.RightAngle, "expected '>' after '/' in self-closing markup tag")
+		if err != nil {
 			return nil, err
 		}
+		p.markupSpans = append(p.markupSpans, ast.MarkupSpan{Offset: open.Offset, EndOffset: end.EndOffset, BodyOffset: end.EndOffset, TerminatorOffset: slash.Offset})
 		return element, nil
 	}
 	endOpen, err := p.expect(lex.RightAngle, "expected '>' after markup tag")
@@ -2557,6 +2564,7 @@ func (p *parser) parseMarkupElement() (ast.Expr, error) {
 	if parseErr == nil {
 		element.Children = children
 		element.RawBody = p.sourceText[bodyStart:closeStart]
+		p.markupSpans = append(p.markupSpans, ast.MarkupSpan{Offset: open.Offset, EndOffset: p.tokens[p.position-1].EndOffset, BodyOffset: bodyStart, TerminatorOffset: closeStart})
 		return element, nil
 	}
 
@@ -2576,6 +2584,9 @@ func (p *parser) parseMarkupElement() (ast.Expr, error) {
 	}
 	element.RawBody = p.sourceText[bodyStart:closeStart]
 	element.StructuredError = parseErr.Error()
+	// The failed structured parse may have recorded nested elements that the
+	// raw reading does not have.
+	p.markupSpans = append(p.markupSpans[:spansAtEntry], ast.MarkupSpan{Offset: open.Offset, EndOffset: closeEnd, BodyOffset: bodyStart, TerminatorOffset: closeStart})
 	return element, nil
 }
 

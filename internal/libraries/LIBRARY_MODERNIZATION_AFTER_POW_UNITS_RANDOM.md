@@ -5,7 +5,7 @@
 - Signed unit exponents (e.g. `s^-1`) and `Hz` alias.
 - `Require(condition, message)` for production preconditions.
 - Typed empty arrays in explicit typed contexts.
-- Random modules use record-result APIs (`Next`, `Value`) instead of tuple-threading.
+- Random modules use record-result APIs (`Next`, `Value`) instead of tuple-threading. (Superseded: see section 8.)
 
 ## 2) Audit patterns searched
 - Power workaround patterns: `Exp(Ln(` and `Exp(x * Ln(y))`.
@@ -36,6 +36,9 @@
 - No loop-shape changes were applied in this subset; existing loops touched here were already clear range loops.
 
 ## 8) Random API updates
+
+> **Superseded (2026-10-03).** Random 0.2.0 removed the record-result API (`draw.Next`, `draw.Value`). Draws are now pure functions of a stream and an index, and runtime preconditions use `Assert.True`, not `Require`. Current specification: `internal/random/Random.md`. The line below, and the `Require` note in section 6, describe Random 0.1.0.
+
 - Verified current `Libraries/Random` usage is record-result API based (`draw.Next`, `draw.Value`) and not tuple-threaded.
 
 ## 9) Tests / validation

@@ -16,13 +16,13 @@ Windowed lag-1 estimator with windowSize=32; smoothed A update with alpha=0.2; c
 
 | key | value |
 | --- | --- |
-| scalarAdaptiveWin | 15 |
+| scalarAdaptiveWin | 11 |
 | scalarRecoveryOnly | 0 |
-| scalarWhitenessOnly | 12 |
+| scalarWhitenessOnly | 16 |
 | scalarNoMeaningfulWin | 0 |
 | windowedAdaptiveWin | 1 |
 | windowedRecoveryOnly | 0 |
-| windowedWhitenessOnly | 22 |
-| windowedNoMeaningfulWin | 4 |
-| windowedBetterRecovery | 10 |
-| windowedBetterWhiteness | 0 |
+| windowedWhitenessOnly | 20 |
+| windowedNoMeaningfulWin | 6 |
+| windowedBetterRecovery | 11 |
+| windowedBetterWhiteness | 1 |
