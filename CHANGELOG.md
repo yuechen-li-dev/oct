@@ -9,6 +9,14 @@
 - Regenerate the recorded outputs of `Experiments/PrometheusMeasurementFilteringLab` M1–M4 and `Experiments/FmBrownNoiseKalman` M3–M6 under `Random@0.2.0`. Each experiment's report states what moved.
 - Fix compiled execution of `if` expressions, which evaluated both branches before selecting one.
 - Rewrite `oct fmt` layout to work from the lexer's tokens. It now only sets indentation and spacing, never moves or changes a token, copies Oct-XML verbatim, and verifies that its output has the same tokens on the same lines before writing. Directory runs attempt every file and report every refusal.
+- `oct fmt` keeps each arrow as written. `--arrows thin` and `--arrows fat` write one spelling throughout; before, every `=>` became `->`.
+- `.octfail` gains `expect runtime error: "..."`: a program that must compile and then fail when its `Main` runs, checked in both lanes. An `.octfail` may also import a library of its repository, and a failure of the Go toolchain on generated code no longer satisfies a contract.
+- **Breaking:** `Assert.Equal`, `Assert.Near`, `Assert.True` and `Assert.False` reject an unhandled fallible operand; write `F()!` or use `Assert.LGTM`. The interpreted lane used to unwrap it silently.
+- **Breaking:** a `[Fact]` with no assertion fails in the compiled lane, as it already did interpreted.
+- Fix compiled execution of a fallible `match` whose arm contains an `if` (the `if` was skipped) or discards its binding with `_` (did not build), and of element-wise arithmetic on two arrays (did not build).
+- Import resolution continues to the nearest ancestor with `Libraries/`; a nested `Packages/` directory adds packages and no longer hides the repository's libraries.
+- Add `TestLanguageCorpusRunsInBothLanes` (integration lane): every `Language` fixture directory runs in both execution lanes. Ten directories that no longer loaded are repaired.
+- Reference: fallible `match` is a statement with block arms. The expression form shown before was never implemented.
 
 ## v0.1.0 — initial preview
 

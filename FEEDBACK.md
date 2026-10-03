@@ -214,6 +214,9 @@ Give record values one canonical type identity (package-qualified), or qualify r
 
 Status: Open
 
+Resolution:
+Not fixed on 2026-10-03, and the suggestion as written is not safe. A call into another package strips that package's prefix from record and enum arguments, and the return adds it back to enums only. Adding it to records as well would rename a caller's own record that passes through a library and comes back. The fix is one canonical type identity at construction, which touches every place the interpreter keys on a type name.
+
 ---
 
 Observation:
@@ -222,7 +225,10 @@ An `.octest` cannot assert that a call stops with a non-recoverable runtime erro
 Suggestion:
 Add a test form for expected runtime failure, for example `Assert.Fails(<expression>, "<error substring>")` or an `.octfail` header such as `expect runtime error: "..."`, so these contracts can live beside the library in both lanes.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+An `.octfail` may begin with `expect runtime error: "..."`. The source must compile and its `Main` must fail with that text, in both lanes under `--execution auto`. `Language/reference/tooling/31-octest.md`; fixtures under `testdata/octfail_runtime`, `Language/Expressions/ArrayScalarBroadcast/invalid` and `Libraries/RandomUsage`. The Random and Entropy precondition fixtures still use the older Go-driven form.
 
 ---
 
@@ -232,7 +238,10 @@ An `.octfail` fixture is copied to a temporary directory before it is checked, s
 Suggestion:
 Resolve `.octfail` imports against the repository's `Libraries` and `Packages` roots, as `.octest` files already are.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+The copy resolves imports against the import roots of the fixture's own directory. `Libraries/RandomUsage/Random.Usage.invalid.ImportedArgumentType.octfail` imports `Random` and misuses it. Files and packages beside a fixture are still not part of it.
 
 ---
 
@@ -242,7 +251,10 @@ Observation:
 Suggestion:
 Document compiler-owned library builtins in the reference (which names are builtins, the qualified-only rule outside the owning package), and correct the Random tests README when the v1 library layer is replaced.
 
-Status: Resolved 2026-10-03. `Language/reference/language/17-standard-libraries.md` has `Random`, `Entropy` and "Compiler-owned namespaces" sections, and the tests README is corrected.
+Status: Resolved
+
+Resolution:
+`Language/reference/language/17-standard-libraries.md` has `Random`, `Entropy` and "Compiler-owned namespaces" sections, and the tests README is corrected.
 
 ---
 
@@ -252,7 +264,10 @@ Observation:
 Suggestion:
 Either implement the expression form of fallible `match` or correct the reference examples to the statement form, and add the chosen form to the `Language/` corpus.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+The reference is corrected: fallible `match` is a statement with block arms. Its examples are pinned in `Language/Errors/Fallible/valid/fallible_match_statement_forms.octest`, and `invalid/fallible_match_is_not_an_expression.octfail` pins the rejection. The expression form is not implemented.
 
 ---
 
@@ -262,7 +277,10 @@ In the compiled lane, a fallible `match` whose `err` arm discards its binding, `
 Suggestion:
 Lower a discarded `ok`/`err` binding without assigning from it, and add a both-lanes fixture for `ok(_)` and `err(_)`.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+A discarded binding binds nothing, in functions and in flow states. `Language/Errors/Fallible/valid/match_discarded_bindings_and_branching_arms.octest` and `Language/ControlFlow/OctomataFallibilityM0/valid/flow_match_discarded_bindings.octest`. The same lowering wrote an arm's closing jump to the arm's first block, so an `if` inside an arm was skipped in the compiled lane; that is fixed and covered by the first fixture.
 
 ---
 
@@ -272,7 +290,10 @@ Observation:
 Suggestion:
 When the reference gains a page for compiler-owned library builtins, state there which namespaces need no import (`Array`, `Artifact`, `Entropy`) and tie `Entropy` to the `Crypto.Random` capability family.
 
-Status: Partly resolved 2026-10-03. The reference now documents `Entropy` and the namespaces that need no import. It does not tie `Entropy` to `Crypto.Random`: ordinary execution allows `Entropy` with no grant, so the tie would be a language decision, not a documentation fix. Open.
+Status: Deferred
+
+Resolution:
+The reference documents `Entropy` and the namespaces that need no import. It does not tie `Entropy` to `Crypto.Random`: ordinary execution allows `Entropy` with no grant, so the tie is a language decision.
 
 ---
 
@@ -284,6 +305,9 @@ Decide whether the tree is meant to be formatted. If it is, run `oct fmt` over `
 
 Status: Open
 
+Resolution:
+Remeasured on 2026-10-03, after the formatter stopped rewriting arrows: 303 of 1,723 files would change (114 under Experiments, 120 under Libraries, 58 under Language).
+
 ---
 
 Observation:
@@ -294,6 +318,9 @@ Repair or retire each one. A fixture under `valid/` that does not parse is not a
 
 Status: Open
 
+Resolution:
+The eight under `Language/` are repaired and run in both lanes. Two remain: `Libraries/IfErrNotEqualNil/IfErrNotEqualNil.Core.oct`, whose parameter has a fallible type, which Oct does not have, and `testdata/m34a/CollectionIteration/collection_iteration.octest`, which no test runs.
+
 ---
 
 Observation:
@@ -302,7 +329,10 @@ Observation:
 Suggestion:
 Either keep the arrow the author wrote, or change the reference examples to `->`, so that the reference and the formatter describe one style.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+The formatter keeps each arrow as written. `--arrows thin` and `--arrows fat` are optional settings.
 
 ---
 
@@ -312,7 +342,10 @@ Observation:
 Suggestion:
 Have the parser split a `>=` token where a type argument list is being closed, or report the error as "write a space between '>' and '='".
 
-Status: Open
+Status: Resolved
+
+Resolution:
+The lexer is unchanged; the parse error now ends with "'>=' is one token, so write a space between '>' and '='". `Language/Types/UnitsM1/invalid/dimension_close_lexed_as_greater_equal.octfail`.
 
 ---
 
@@ -322,7 +355,10 @@ In the compiled lane an `if` expression evaluated both branches before choosing 
 Suggestion:
 Lower each branch inside its own block.
 
-Status: Resolved 2026-10-03. `internal/build/lower_expr.go` does that; `Language/ControlFlow/IfExpression/valid/if_expression_evaluates_only_taken_branch.octest` adds four facts. That directory went from 4 pass / 5 fail to 9 / 0 in the compiled lane.
+Status: Resolved
+
+Resolution:
+`internal/build/lower_expr.go` lowers each branch in its own block. `Language/ControlFlow/IfExpression/valid/if_expression_evaluates_only_taken_branch.octest`.
 
 ---
 
@@ -332,7 +368,10 @@ Observation:
 Suggestion:
 Keep read-back checks in `[Fact]` tests, not in `[Artifact]` entry points. For M2, give the progress file one owner.
 
-Status: Partly resolved 2026-10-03. The read-backs are removed from M3, M4, M4b, M5 and M6 and their outputs regenerate. M2 is unchanged and its recorded outputs are still the Random 0.1.0 ones. Open for M2.
+Status: Open
+
+Resolution:
+The read-backs are removed from M3, M4, M4b, M5 and M6 and their outputs regenerate. M2 is unchanged and its recorded outputs are still the Random 0.1.0 ones.
 
 ---
 
@@ -342,7 +381,10 @@ Oct has no builtin that adds the elements of an `Int[]` or `Float[]`. The Random
 Suggestion:
 Add `Sum` over `Int[]` and `Float[]` (dimension-preserving for `Float<u>[]`), or stop describing reductions as one-liners.
 
-Status: Open
+Status: Deferred
+
+Resolution:
+`Array.Sum` was started on 2026-10-03 and stopped. A global `Sum` would collide with functions named `Sum` in the repository. A namespaced one has to return a typed zero for an empty array, and the interpreter does not have the static element type at a call. That needs the typechecker to hand call-site types to the interpreter, which is its own change.
 
 ---
 
@@ -351,6 +393,94 @@ A call into a package that is not imported gets one of two diagnostics. If the f
 
 Suggestion:
 Give the import hint whenever the qualifier names a package the resolver can find.
+
+Status: Resolved
+
+Resolution:
+`unknown package 'X'` adds "did you forget `import X`?" when X is spelled like a package. `Language/Packages/CrossPackageM81/invalid/unimported_package_call_suggests_import.octfail`.
+
+---
+
+Observation:
+Nothing ran the `Language` corpus as a whole. CI runs six of its files for lane parity and individual Go tests name some directories. Nineteen directories under `Language/` could not be run with `oct test <directory>`: ten no longer loaded (old manifest forms, pre-`[Fact]` syntax, three package names in one directory), and the rest were package sets, artifact fixtures or expected failures that only a specific Go test knows how to run.
+
+Suggestion:
+Run every `Language` directory in both lanes from one test, with an explicit, checked list of the directories that cannot be run that way.
+
+Status: Resolved
+
+Resolution:
+`cmd/oct/language_corpus_test.go`, in the `integration` lane; about one minute. `Language/README.md` describes it.
+
+---
+
+Observation:
+A compile-time `.octfail` passed when compilation failed with the expected text, and compilation includes building the generated Go. `length_one_array_not_scalar.octfail` and `nested_rank_broadcast.octfail` expected "operator + not defined" and passed on the Go compiler's message about two slices. The typechecker accepts both programs; they are run-time length mismatches.
+
+Suggestion:
+Never let a failure of the Go toolchain satisfy a contract.
+
+Status: Resolved
+
+Resolution:
+`build.ErrGeneratedProgramDidNotBuild`; the tester reports it as "the source was accepted, and the generated program did not build". No other contract depended on it. The two fixtures are runtime contracts now, and the compiled lane implements element-wise array arithmetic.
+
+---
+
+Observation:
+The lanes disagreed in four more places, each found by a fixture that passed in one lane only. Value assertions accepted an unhandled fallible operand: interpreted unwrapped it, compiled compared the wrapper. A `[Fact]` with no assertion failed interpreted and passed compiled. `[1, 2] + [3, 4]` ran interpreted and did not build compiled. A fallible `match` arm containing an `if` gave the wrong answer compiled.
+
+Suggestion:
+Fix each, and keep both lanes in the corpus test so the next one is found when it is introduced.
+
+Status: Resolved
+
+Resolution:
+Fixed, each with a contract under `Language/`. See `docs/internal/language_corpus_cleanup_2026_10_03.md`.
+
+---
+
+Observation:
+A fixture under `Language/` could not import a library. Import roots were taken from the nearest ancestor holding `Libraries/` or `Packages/`, and `Language/Packages` is a fixture domain, so the resolver treated `Language/` as the repository. `Language/Packages/String` was a stub added to make `import String` work. `Libraries/Markdown` also had no `manifest.oct`, so a package with a manifest could not import it, which is why `Libraries/ArtifactUsage` did not load.
+
+Suggestion:
+Do not let a nested `Packages/` hide the repository's `Libraries/`.
+
+Status: Resolved
+
+Resolution:
+The walk continues to the nearest ancestor with `Libraries/`; a `Packages/` on the way is searched first. `Language/reference/language/13-packages.md`. The stub is removed and `Libraries/Markdown` has a manifest.
+
+---
+
+Observation:
+In the compiled lane a test file does not see declarations made in a sibling test file, and in the interpreted lane it does. A directory's test files therefore can neither share a declaration nor repeat one. The compiled behavior is deliberate (`contributesSelectedPackageDeclarations` in `internal/project`), and the reference did not say so.
+
+Suggestion:
+Either load a directory's test files the same way in both lanes, or document the rule.
+
+Status: Open
+
+Resolution:
+Documented in `Language/reference/tooling/31-octest.md`: shared declarations go in a `.oct` file or in a `.octest` with no test entry points. The lanes still differ.
+
+---
+
+Observation:
+The compiled lane evaluates every candidate value of a `when utility` expression before selecting one, and refuses enum-targeted candidates with payloads ("delayed payload lowering"). Three facts in `Language/Expressions/UtilityWhen/valid` fail compiled for that reason. It is the same shape as the `if` expression defect: operands lowered before the branch.
+
+Suggestion:
+Select the candidate first and lower each value in its own block.
+
+Status: Open
+
+---
+
+Observation:
+`Libraries/IfErrNotEqualNil` declares `fn IfErrNotEqualNil(value: Int ! Error) -> Int ! Error`. Oct has no fallible parameter types, so the library has never parsed. It is listed in the canonical registry.
+
+Suggestion:
+Retire the library, or decide that fallible parameter types exist.
 
 Status: Open
 
