@@ -1,4 +1,4 @@
-expect error: "Array.Where expects 2 arguments"
+expect error: "function 'Array.Where' expects 2 arguments"
 
 package Main
 

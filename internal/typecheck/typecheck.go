@@ -3319,7 +3319,13 @@ regularCall:
 				if _, imported := c.importedPackages[namespace]; !imported && !builtin.IsCompilerOwnedNamespace(namespace) {
 					return ExprType{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", namespace, namespace)
 				}
-				return c.checkBuiltinCallExpr(scope, builtinName, expr.TypeArguments, expr.Arguments, ctx)
+				result, err := c.checkBuiltinCallExpr(scope, builtinName, expr.TypeArguments, expr.Arguments, ctx)
+				if err != nil {
+					// The builtin behind a namespaced call has an internal
+					// name. A diagnostic names the function as it was written.
+					return ExprType{}, errors.New(strings.ReplaceAll(err.Error(), "'"+builtinName+"'", "'"+calleeName+"'"))
+				}
+				return result, nil
 			}
 		}
 	}
@@ -3373,6 +3379,13 @@ regularCall:
 				// missing thing is the function and not the package.
 				if builtin.IsCompilerOwnedNamespace(pkgName) {
 					return ExprType{}, fmt.Errorf("package '%s' has no function '%s'", pkgName, symbol)
+				}
+				// The checker sees only what the file imports, so it cannot
+				// tell a missing import from a package that does not exist.
+				// A capitalized qualifier is spelled like a package, and a
+				// missing import is the usual cause.
+				if pkgName != "" && pkgName[0] >= 'A' && pkgName[0] <= 'Z' {
+					return ExprType{}, fmt.Errorf("unknown package '%s'; did you forget `import %s`?", pkgName, pkgName)
 				}
 				return ExprType{}, fmt.Errorf("unknown package '%s'", pkgName)
 			}
