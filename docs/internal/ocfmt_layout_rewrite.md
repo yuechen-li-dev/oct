@@ -24,7 +24,7 @@ The old formatter worked line by line on text. Four faults, in order of damage:
    trailing `{` indented and only a leading `}` dedented, so the contents of a
    multi-line `(...)` or `[...]` were flattened to the surrounding level.
 3. **Spacing came from a rough private tokenizer.** It wrote `- 0.0004` for a
-   sign (54,704 lines in the repository), `1e - 12` for a float literal, which
+   sign (54,704 places in the repository), `1e - 12` for a float literal, which
    does not lex, `9.81m / s ^ 2` for a unit, `x =[1, 2]`, `return(a)`,
    `E /(2.0 *(1.0 + nu))`, `Parse(raw) !`, `0 .. n`, and `state.Altitude<limit`
    for a comparison whose left side is capitalized.
@@ -80,7 +80,7 @@ must be moved to real tokens before it is enabled.
 2. **`]` followed by `[` is written as the author spaced it.** `rows[0][1]`
    and the matrix rows `[1, 2] [3, 4]` are the same tokens.
 3. **Brace padding.** `Vec2 { X: 1.0 }`, not `Vec2 {X: 1.0}`. The repository
-   writes it padded about 9 times in 10.
+   writes it padded about four times in five.
 4. **Markup is not tidied.** Nested elements keep the indentation they were
    written with. Tidying them would need to know which bodies are raw, which
    depends on the callee's last parameter being named `lines`, which is not
