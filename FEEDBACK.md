@@ -537,7 +537,7 @@ Report the manifest error.
 Status: Resolved
 
 Resolution:
-`internal/project` reports the manifest of an imported package whenever it exists and is wrong. Two manifests keep the old leniency where none is required: the family manifest a milestone directory borrows, which names the family and not the milestone's package, and the entry package's own, because a file selected on its own is specified to run beside a wrong manifest (`cmd/oct` single-file target tests). `Language/Testing/CompiledOctxiliary/invalid/wrapper_undeclared_record_arg.octfail` is the contract.
+`internal/project` reports the manifest of an imported package whenever it exists and is wrong. The entry package's manifest keeps the old leniency where none is required: a file selected on its own is specified to run beside a wrong manifest (`cmd/oct` single-file target tests), and a milestone directory run on its own borrows a family manifest that names the family and not the milestone's package. `Language/Testing/CompiledOctxiliary/invalid/wrapper_undeclared_record_arg.octfail` is the contract.
 
 ---
 

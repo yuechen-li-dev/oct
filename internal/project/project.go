@@ -593,17 +593,12 @@ func isMilestoneDir(name string) bool {
 
 func (b *builder) validateManifest(packageName string, directory string) (manifestValidationResult, error) {
 	manifestPath := filepath.Join(directory, "manifest.oct")
-	// ownManifest is false when a milestone directory borrows the manifest of
-	// its experiment family. That manifest names the family, not the
-	// milestone's package.
-	ownManifest := true
 	if _, err := os.Stat(manifestPath); err != nil {
 		if os.IsNotExist(err) {
 			if isMilestoneDir(filepath.Base(directory)) && isExperimentFamilyRoot(filepath.Dir(directory)) {
 				parentManifestPath := filepath.Join(filepath.Dir(directory), "manifest.oct")
 				if _, parentErr := os.Stat(parentManifestPath); parentErr == nil {
 					manifestPath = parentManifestPath
-					ownManifest = false
 				} else if parentErr != nil && !os.IsNotExist(parentErr) {
 					return manifestValidationResult{}, fmt.Errorf("read package manifest %s: %w", parentManifestPath, parentErr)
 				} else if b.requireManifests {
@@ -625,11 +620,12 @@ func (b *builder) validateManifest(packageName string, directory string) (manife
 	// Dropping it would silently remove the package's wrapper declarations
 	// and leave its stub bodies to run.
 	//
-	// Two manifests are checked only where manifests are required: the one a
-	// milestone borrows from its family, and the entry package's own. A file
-	// selected on its own runs beside a manifest that is wrong, which
-	// cmd/oct's single-file target tests pin.
-	strict := b.requireManifests || (ownManifest && packageName != b.entryPackage)
+	// The entry package's manifest is checked only where manifests are
+	// required. A file selected on its own runs beside a manifest that is
+	// wrong, which cmd/oct's single-file target tests pin, and a milestone
+	// directory run on its own borrows a family manifest that names the
+	// family and not the milestone's package.
+	strict := b.requireManifests || packageName != b.entryPackage
 	manifestFile, err := parseFile(manifestPath)
 	if err != nil {
 		if !strict {

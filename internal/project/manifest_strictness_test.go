@@ -73,8 +73,9 @@ func TestImportedManifestIsValidatedWhereManifestsAreNotRequired(t *testing.T) {
 }
 
 // A milestone directory with no manifest borrows the one of its experiment
-// family. That manifest names the family, not the milestone's package, so it
-// is not held to the package name where manifests are not required.
+// family. That manifest names the family, not the milestone's package. A
+// milestone run on its own is the entry package, so the borrowed manifest is
+// not held to the package name where manifests are not required.
 func TestBorrowedFamilyManifestIsNotHeldToTheMilestonePackageName(t *testing.T) {
 	family := filepath.Join(t.TempDir(), "Experiments", "Signal")
 	writeStrictnessFile(t, filepath.Join(family, "manifest.oct"), strictnessManifest("Signal"))
