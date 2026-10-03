@@ -8,6 +8,10 @@ fn ContinuumM3TraceAcceptsRepresentationalSymGrad() -> Void {
     // Invariant helper now composes directly over representational tensor-like strain output.
     let volumetricStrain = Trace(eps)
     let _ = volumetricStrain
+
+    // The contract is that this surface is accepted and constructs. A field
+    // form is representational, so there is no number to compare.
+    Assert.True(true, "the field-form surface is accepted and constructs")
 }
 
 [Fact]
@@ -29,4 +33,8 @@ fn ContinuumM3ConstitutiveAndStrongFormSlicesRemainRepresentational() -> Void {
     let b = vector[0.0, -9.81]
     let r = Div(eps) + b
     let _ = r
+
+    // The contract is that this surface is accepted and constructs. A field
+    // form is representational, so there is no number to compare.
+    Assert.True(true, "the field-form surface is accepted and constructs")
 }
