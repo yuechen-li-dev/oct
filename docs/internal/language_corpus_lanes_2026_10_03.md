@@ -131,7 +131,8 @@ Recorded in `FEEDBACK.md`:
   the plain form accepts policy fields that do nothing.
 - An out-of-bounds index has a different message in each lane.
 - `Assert.Equal` does not accept arrays.
-- Test runs rewrite three tracked files.
+- A test run leaves four files in the working tree: three untracked outputs
+  at the repository root and one tracked image rewritten.
 
 ## Evidence
 

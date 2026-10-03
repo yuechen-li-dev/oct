@@ -595,10 +595,10 @@ Status: Open
 ---
 
 Observation:
-Running the tests rewrites tracked files. `Libraries/Pdf/Pdf.CompiledText.octest` writes `m21_pdf_compiled_styled.pdf` and `m21_pdf_compiled_text.pdf` to the repository root when a PDF sidecar is found, and a `cmd/oct` test rewrites `cmd/oct/analysis_output.png`. A full test run therefore leaves a modified working tree, and `git add -A` after one commits regenerated binaries.
+A test run leaves files in the working tree. `Libraries/Pdf/Pdf.CompiledText.octest` writes `m21_pdf_compiled_styled.pdf` and `m21_pdf_compiled_text.pdf` to the repository root when a PDF sidecar is found, and an `IO` test writes `io_xlsx_m0.xlsx` there; none of the three is tracked or ignored. A `cmd/oct` test rewrites the tracked `cmd/oct/analysis_output.png`. `git add -A` after a full run therefore commits generated binaries, which happened twice in this work and was undone both times.
 
 Suggestion:
-Write those outputs to the test's artifact scope or a temporary directory, or stop tracking them.
+Write those outputs to the test's artifact scope or a temporary directory.
 
 Status: Open
 
