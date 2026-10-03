@@ -3,9 +3,8 @@ package MainValid
 import String
 
 // The String namespace and the global spelling name the same builtin.
-// Namespaced IO, Csv, Json and Markdown calls are library contracts: they
-// need an import that a Language fixture cannot resolve, and they are covered
-// under Libraries/IO, Libraries/ArtifactUsage and Libraries/Markdown.
+// Namespaced IO, Csv and Json calls run wrapper sidecars and write files, so
+// they are covered under Libraries/IO and Libraries/ArtifactUsage.
 [Fact]
 fn StringJoinNamespaced() -> Void {
     Assert.Equal("a,b", String.Join(["a", "b"], ","), "String.Join should resolve via namespace alias")

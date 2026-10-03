@@ -115,7 +115,7 @@ func loadFromFileInPackage(path string, packageDir string, includeTests bool, ex
 	}
 	builder := builder{
 		root:             root,
-		repoRoot:         detectRepoRoot(root),
+		repoRoots:        detectRepoRoots(root),
 		includeTests:     includeTests,
 		requireManifests: requireManifests,
 		packages:         make(map[string]Package),
@@ -152,7 +152,7 @@ func loadFromDir(root string, includeTests bool) (Program, error) {
 	}
 	builder := builder{
 		root:             root,
-		repoRoot:         detectRepoRoot(root),
+		repoRoots:        detectRepoRoots(root),
 		includeTests:     includeTests,
 		requireManifests: requireManifests,
 		packages:         make(map[string]Package),
@@ -228,7 +228,7 @@ type manifestValidationResult struct {
 
 type builder struct {
 	root             string
-	repoRoot         string
+	repoRoots        []string // nearest first; see detectRepoRoots
 	includeTests     bool
 	requireManifests bool
 	packages         map[string]Package
@@ -741,16 +741,14 @@ func (b *builder) importSearchRoots() []string {
 	if experimentFamilyRoot, ok := containingExperimentFamilyRoot(b.root); ok {
 		roots = append(roots, experimentFamilyRoot)
 	}
-	if b.repoRoot == "" {
-		return roots
-	}
-	for _, name := range []string{"Libraries", "Packages"} {
-		root := filepath.Join(b.repoRoot, name)
-		info, err := os.Stat(root)
-		if err != nil || !info.IsDir() {
-			continue
+	for _, repoRoot := range b.repoRoots {
+		for _, name := range []string{"Libraries", "Packages"} {
+			root := filepath.Join(repoRoot, name)
+			if !hasDirectoryNamed(repoRoot, name) {
+				continue
+			}
+			roots = append(roots, root)
 		}
-		roots = append(roots, root)
 	}
 	return dedupePaths(roots)
 }
@@ -852,33 +850,62 @@ func detectSinglePackageName(root string, includeTests bool) (string, error) {
 	return packageName, nil
 }
 
+// detectRepoRoot returns the nearest ancestor of start that holds an import
+// root, or "" when there is none.
 func detectRepoRoot(start string) string {
+	if roots := detectRepoRoots(start); len(roots) > 0 {
+		return roots[0]
+	}
+	return ""
+}
+
+// detectRepoRoots returns the directories whose `Libraries/` and `Packages/`
+// an import is resolved against, nearest first.
+//
+// A `Libraries/` directory marks a repository: it is where the standard
+// libraries live. The walk upward stops at the first ancestor that has one.
+// An ancestor on the way that has only `Packages/` is searched first and does
+// not end the walk, so a nested package directory adds packages without
+// hiding the repository's libraries. When no ancestor has `Libraries/`, the
+// nearest `Packages/` is the only root.
+func detectRepoRoots(start string) []string {
+	var roots []string
 	current := start
 	for {
 		if hasRepoImportRoots(current) {
-			return current
+			roots = append(roots, current)
+			if hasDirectoryNamed(current, "Libraries") {
+				return roots
+			}
 		}
 		parent := filepath.Dir(current)
 		if parent == current {
-			return ""
+			break
 		}
 		current = parent
 	}
+	if len(roots) > 1 {
+		return roots[:1]
+	}
+	return roots
 }
 
 func hasRepoImportRoots(root string) bool {
-	for _, name := range []string{"Libraries", "Packages"} {
-		// A repository import root is deliberately case-sensitive.  On Windows
-		// os.Stat("Libraries") would also match an implementation directory named
-		// "libraries", incorrectly pinning nested packages below internal/.
-		entries, err := os.ReadDir(root)
-		if err != nil {
-			return false
-		}
-		for _, entry := range entries {
-			if entry.Name() == name && entry.IsDir() {
-				return true
-			}
+	return hasDirectoryNamed(root, "Libraries") || hasDirectoryNamed(root, "Packages")
+}
+
+// hasDirectoryNamed reports whether root has a directory with exactly this
+// name. The comparison is deliberately case-sensitive: on Windows
+// os.Stat("Libraries") would also match an implementation directory named
+// "libraries", incorrectly pinning nested packages below internal/.
+func hasDirectoryNamed(root string, name string) bool {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.Name() == name && entry.IsDir() {
+			return true
 		}
 	}
 	return false

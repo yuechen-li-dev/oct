@@ -1,0 +1,15 @@
+package MainValid
+
+import Markdown
+
+// Namespaced calls into an imported library resolve from a Language fixture.
+[Fact]
+fn MarkdownHelpersSingleLineAndKeyValue() -> Void {
+    let callout = Markdown.Callout("warning", ["message"])
+    Assert.Equal(1, Len(callout), "a single-line callout is one line")
+    Assert.Equal("> **Warning:** message", callout[0], "single-line callout text")
+
+    let kv = Markdown.KeyValueTable(["sampleRate"], ["2000"])
+    Assert.Equal(3, Len(kv), "a key-value table has a header, a rule and one row")
+    Assert.Equal("| sampleRate | 2000 |", kv[2], "key-value row")
+}
