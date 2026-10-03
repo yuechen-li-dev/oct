@@ -56,6 +56,13 @@ func TestDetectRepoRootsStopsAtTheNearestLibraries(t *testing.T) {
 		t.Errorf("ordinary directory: got %v, want %v", got, want)
 	}
 
+	// The search order is nearest first: the active root, then the nested
+	// Packages/, then the repository's Libraries/.
+	b := builder{root: start, repoRoots: detectRepoRoots(start)}
+	if got, want := b.importSearchRoots(), []string{start, filepath.Join(repo, "Language", "Packages"), filepath.Join(repo, "Libraries")}; !same(got, want) {
+		t.Errorf("import search roots: got %v, want %v", got, want)
+	}
+
 	// The walk does not go past the first Libraries/.
 	outer := t.TempDir()
 	mk(outer, "Libraries")

@@ -27,6 +27,23 @@ fn Classify(reading: Int) -> String {
     return label + "!"
 }
 
+fn Describe(reading: Int, strict: Bool) -> String {
+    var label = "unset"
+    match Level(reading) {
+        ok(_) => {
+            label = "valid"
+        }
+        err(problem) => {
+            if strict {
+                label = "rejected"
+            } else {
+                label = "ignored"
+            }
+        }
+    }
+    return label + "!"
+}
+
 fn Succeeded(reading: Int) -> Bool {
     match Level(reading) {
         ok(_) => { return true }
@@ -45,4 +62,11 @@ fn AnArmThatBranchesContinuesAfterTheMatch() -> Void {
     Assert.Equal("high!", Classify(20), "then branch inside the ok arm")
     Assert.Equal("low!", Classify(5), "else branch inside the ok arm")
     Assert.Equal("invalid!", Classify(-1), "err arm with a discarded binding")
+}
+
+[Fact]
+fn AnErrArmThatBranchesContinuesAfterTheMatch() -> Void {
+    Assert.Equal("valid!", Describe(3, true), "ok arm with a discarded binding")
+    Assert.Equal("rejected!", Describe(-1, true), "then branch inside the err arm")
+    Assert.Equal("ignored!", Describe(-1, false), "else branch inside the err arm")
 }
