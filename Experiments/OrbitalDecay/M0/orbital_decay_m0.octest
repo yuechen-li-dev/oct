@@ -8,7 +8,7 @@ fn M0SampleCountIsPositive() -> Void {
 [Fact]
 fn HigherOrbitHasLowerVelocityAndLongerPeriod() -> Void {
     let earthRadius: Length = 6371000.0m
-    let earthMu: GravParam = 398600441800000.0m ^ 3 * s ^ - 2
+    let earthMu: GravParam = 398600441800000.0m^3*s^-2
 
     let rLow = earthRadius + 200000.0m
     let rHigh = earthRadius + 500000.0m
@@ -37,7 +37,7 @@ fn DensityDecreasesExponentiallyWithAltitude() -> Void {
 fn DragDecayAcceleratesAtLowerAltitudes() -> Void {
     let earthRadius: Length = 6371000.0m
     let cd = 2.2
-    let area: Area = 1.5m ^ 2
+    let area: Area = 1.5m^2
     let mass: Mass = 500.0kg
 
     let r300 = earthRadius + 300000.0m
@@ -54,20 +54,20 @@ fn DragDecayAcceleratesAtLowerAltitudes() -> Void {
 [Fact]
 fn SimulationConvergesToTargetAltitude() -> Void {
     let earthRadius: Length = 6371000.0m
-    let earthMu: GravParam = 398600441800000.0m ^ 3 * s ^ - 2
+    let earthMu: GravParam = 398600441800000.0m^3*s^-2
     let cd = 2.2
-    let area: Area = 1.5m ^ 2
+    let area: Area = 1.5m^2
     let mass: Mass = 500.0kg
 
     let summary = SimulateOrbitalDecay(
-    300000.0m,
-    200000.0m,
-    2000,
-    earthRadius,
-    earthMu,
-    cd,
-    area,
-    mass
+        300000.0m,
+        200000.0m,
+        2000,
+        earthRadius,
+        earthMu,
+        cd,
+        area,
+        mass
     )
 
     Assert.True(summary.FinalAltitude <= 200000.0m, "simulation successfully drops below 200km target")

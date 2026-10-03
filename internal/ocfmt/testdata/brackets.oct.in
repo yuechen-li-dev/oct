@@ -1,0 +1,53 @@
+package Main
+
+record Vec2 {
+X: Float
+Y: Float
+}
+
+fn DragForce(
+cd: Float,
+area: Float,
+density: Float,
+v: Float
+) -> Float {
+return 0.5 * cd * area * density * v * v
+}
+
+fn Build() -> Vec2[] {
+let points = [
+Vec2 { X: 1.0 Y: 2.0 },
+Vec2 {
+X: 3.0
+Y: 4.0
+}
+]
+let total = Sum(
+points[0].X,
+Scale(
+points[1].X,
+2.0
+)
+)
+let nested = Wrap([
+total,
+total
+])
+if total > 1.0 {
+return points
+} else {
+return []
+}
+}
+
+	fn Tabs() -> Int {
+		return 1
+	}
+
+fn MeanResidual(a: Float, b: Float, c: Float) -> Float {
+return 0.25 * (
+a +
+b +
+c
+)
+}

@@ -1,0 +1,17 @@
+package Main
+
+///   Adds two values.
+/// The unit is Float<m>.
+fn Add(a:Int,b:Int)->Int{ // inline: a<b> stays put
+    // an ordinary comment
+    // a comment with tabs before it
+    let url="http://example.com//path" // trailing
+    let tag="<m> is not markup"
+    return a+b // result
+}
+
+fn Empty()->Void{
+    // only a comment
+
+    // and another after a blank line
+}

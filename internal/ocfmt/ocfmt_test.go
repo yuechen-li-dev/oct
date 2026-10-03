@@ -321,3 +321,142 @@ func TestOctXMLMarkupIndentationIsReadableAndIdempotent(t *testing.T) {
 	}
 	mustContain(t, first, "        Hello\n        <Panel />\n    </Panel>")
 }
+
+// An .octfail may be a contract for a parser error. It cannot be formatted,
+// and it must not stop the files around it from being formatted or checked.
+func TestFormatPathLeavesUnparsableOctFailAlone(t *testing.T) {
+	dir := t.TempDir()
+	unparsable := "expect error: \"expected parameter name\"\n\npackage Main\nfn bad( {\n"
+	bad := filepath.Join(dir, "a_parse_contract.octfail")
+	good := filepath.Join(dir, "b.oct")
+	if err := os.WriteFile(bad, []byte(unparsable), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(good, []byte("package Main\nfn main()->Int{return 1}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := FormatPath(dir); err != nil {
+		t.Fatalf("format directory: %v", err)
+	}
+	if got, _ := os.ReadFile(bad); string(got) != unparsable {
+		t.Fatalf("unparsable .octfail was rewritten:\n%s", got)
+	}
+	got, _ := os.ReadFile(good)
+	mustContain(t, string(got), "fn main() -> Int { return 1 }")
+	if err := FormatPathWithOptions(dir, Options{Check: true}); err != nil {
+		t.Fatalf("check after format: %v", err)
+	}
+	if err := FormatPath(bad); err != nil {
+		t.Fatalf("format the .octfail by itself: %v", err)
+	}
+}
+
+// A source file that does not parse is refused, but every other file in the
+// directory is still formatted and every refusal is reported.
+func TestFormatPathDirectoryFormatsTheRestAndReportsEveryRefusal(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"a_broken.oct": "package Main\nfn bad( {\n",
+		"b_good.oct":   "package Main\nfn main()->Int{return 1}\n",
+		"c_broken.oct": "package Main\nfn worse( {\n",
+		"d_good.oct":   "package Main\nfn other()->Int{return 2}\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := FormatPath(dir)
+	if err == nil {
+		t.Fatal("expected the broken files to be reported")
+	}
+	for _, name := range []string{"a_broken.oct", "c_broken.oct"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("refusal of %s is not reported: %v", name, err)
+		}
+		if got, _ := os.ReadFile(filepath.Join(dir, name)); string(got) != files[name] {
+			t.Errorf("%s was rewritten", name)
+		}
+	}
+	for _, name := range []string{"b_good.oct", "d_good.oct"} {
+		got, _ := os.ReadFile(filepath.Join(dir, name))
+		mustContain(t, string(got), "-> Int { return")
+	}
+}
+
+// The formatter writes "\n" line endings and keeps trailing blank lines.
+func TestFormatSourceLineEndings(t *testing.T) {
+	out, err := FormatSource("package Main\r\nfn main()->Int{\r\nreturn 1\r\n}\r\n\r\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "package Main\nfn main() -> Int {\n    return 1\n}\n\n"; out != want {
+		t.Fatalf("got %q, want %q", out, want)
+	}
+	out, err = FormatSource("package Main\nfn main()->Int{return 1}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "package Main\nfn main() -> Int { return 1 }\n"; out != want {
+		t.Fatalf("got %q, want %q", out, want)
+	}
+}
+
+// The formatter re-reads its own output and refuses to return it unless the
+// tokens are the ones it was given. Handing it tokens that do not belong to
+// the text makes that check fire.
+func TestFormatLayoutRefusesOutputWithDifferentTokens(t *testing.T) {
+	text := "package Main\nfn a() -> Int { return 1 }\n"
+	other, err := lex.Analyze(source.File{Path: "<test>.oct", Text: "package Main\nfn b() -> Int { return 1 }\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := formatLayout(text, other.Tokens, nil, false); err == nil || !strings.Contains(err.Error(), "internal error") {
+		t.Fatalf("expected an internal error, got %v", err)
+	}
+	own, err := lex.Analyze(source.File{Path: "<test>.oct", Text: text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := formatLayout(text, own.Tokens, nil, false); err != nil {
+		t.Fatalf("the text's own tokens were refused: %v", err)
+	}
+}
+
+func TestVerifyComparesTokensLinesAndUnitJunctions(t *testing.T) {
+	text := "package Main\nfn a() -> Float<m> { return 2.0m - 1.0 m }\n"
+	lexed, err := lex.Analyze(source.File{Path: "<test>.oct", Text: text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := &layout{src: text}
+	for _, tok := range lexed.Tokens {
+		if tok.Kind != lex.EOF {
+			l.toks = append(l.toks, tok)
+		}
+	}
+	cases := []struct {
+		name string
+		out  string
+		ok   bool
+	}{
+		{"unchanged", text, true},
+		{"respaced", "package Main\nfn a()->Float<m>{return 2.0m-1.0 m}\n", true},
+		{"arrow spelling", strings.Replace(text, "->", "=>", 1), true},
+		{"operator changed", strings.Replace(text, " - ", " + ", 1), false},
+		{"token dropped", strings.Replace(text, "return ", "", 1), false},
+		{"token moved to the next line", strings.Replace(text, "{ return", "{\nreturn", 1), false},
+		{"unit joined to its number", strings.Replace(text, "1.0 m", "1.0m", 1), false},
+		{"unit split from its number", strings.Replace(text, "2.0m", "2.0 m", 1), false},
+		{"does not lex", strings.Replace(text, "2.0m", "\"2.0m", 1), false},
+	}
+	for _, c := range cases {
+		err := l.verify(c.out)
+		if c.ok && err != nil {
+			t.Errorf("%s: refused: %v", c.name, err)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("%s: accepted", c.name)
+		}
+	}
+}

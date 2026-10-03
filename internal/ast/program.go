@@ -19,6 +19,25 @@ type File struct {
 	Enums     []EnumDecl
 	Functions []FunctionDecl
 	Flows     []FlowDecl
+	// MarkupSpans lists the source extent of every Oct-XML element in the
+	// file, nested elements included, in the order their parse completed.
+	// Tooling that must leave markup text alone, such as the formatter, reads
+	// it; no compilation phase does.
+	MarkupSpans []MarkupSpan
+}
+
+// MarkupSpan is the byte range of one Oct-XML element in its source file,
+// from the '<' of the opening tag to the end of the closing tag or of '/>'.
+type MarkupSpan struct {
+	Offset    int
+	EndOffset int
+	// BodyOffset is where the element's body begins, just after the '>' of
+	// its opening tag. A self-closing element has no body and BodyOffset
+	// equals EndOffset.
+	BodyOffset int
+	// TerminatorOffset is where the element's final delimiter begins: the
+	// '</' of its closing tag, or the '/' of a self-closing '/>'.
+	TerminatorOffset int
 }
 
 // ConceptDecl is a transparent named value description. Record-shaped
