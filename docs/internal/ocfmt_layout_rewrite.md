@@ -130,8 +130,10 @@ Recorded in `FEEDBACK.md`:
   tests treat `en-llm` and `en-llm-compact` as canonical and `readable` and
   `compact` as legacy; `32-ocfmt.md` and `35-cli.md` said the reverse. Both
   pages now state what the CLI does.
-- The formatter rewrites `=>` as `->` everywhere, which `32-ocfmt.md`
-  documents, while the reference's own examples write match arms with `=>`.
+- The formatter rewrote `=>` as `->` everywhere, which `32-ocfmt.md`
+  documented, while the reference's own examples write match arms with `=>`.
+  Changed after this report: the formatter now keeps each arrow as written,
+  and `--arrows thin|fat` is an optional setting.
 - `let w: Float<m>=x` does not parse: the lexer reads `>=`.
 
 ## Not done

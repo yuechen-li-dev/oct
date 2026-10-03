@@ -122,7 +122,7 @@ func assertSameProgram(t *testing.T, before string, after string) {
 	}
 	isNumber := func(tok lex.Token) bool { return tok.Kind == lex.IntLiteral || tok.Kind == lex.FloatLiteral }
 	for i := range a {
-		if a[i].Kind != b[i].Kind || a[i].Line != b[i].Line || (a[i].Lexeme != b[i].Lexeme && a[i].Kind != lex.Arrow) {
+		if a[i].Kind != b[i].Kind || a[i].Line != b[i].Line || a[i].Lexeme != b[i].Lexeme {
 			t.Fatalf("token %d changed: %s %q on line %d became %s %q on line %d", i, a[i].Kind, a[i].Lexeme, a[i].Line, b[i].Kind, b[i].Lexeme, b[i].Line)
 		}
 		if i > 0 && a[i].Kind == lex.Identifier && isNumber(a[i-1]) {

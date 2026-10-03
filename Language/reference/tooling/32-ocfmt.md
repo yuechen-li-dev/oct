@@ -13,13 +13,13 @@ not enabled.
 
 ## Rules
 
-- Command form is `oct fmt <file-or-directory> [--mode en-llm|en-llm-compact] [--check]`.
+- Command form is `oct fmt <file-or-directory> [--mode en-llm|en-llm-compact] [--arrows keep|thin|fat] [--check]`.
 - `en-llm` is the committed/review style and the default.
 - `en-llm-compact` is a dense style for prompt payloads and handoff snippets. It keeps the lines and indentation of `en-llm` and drops every space that is not needed to keep two tokens apart.
 - `readable` and `compact` are accepted as legacy names for `en-llm` and `en-llm-compact`. The command's help does not advertise them.
 - Running the formatter twice in the same mode produces no further changes. Formatting `en-llm-compact` output as `en-llm` gives the same text as formatting the original as `en-llm`.
-- The formatted program has the same tokens on the same lines as the source. If the formatter cannot guarantee that, it reports an internal error and writes nothing.
-- Arrow spellings are canonicalized to `->` in formatter output (even when input uses `=>`).
+- The formatted program has the same tokens on the same lines as the source; the only token whose spelling can change is an arrow, and only under `--arrows thin` or `--arrows fat`. If the formatter cannot guarantee that, it reports an internal error and writes nothing.
+- `->` and `=>` are one token, and the formatter has no opinion about which one is written. By default each arrow stays as its author wrote it. `--arrows thin` writes every arrow as `->` and `--arrows fat` writes every arrow as `=>`; `--arrows keep` names the default.
 - Formatter preserves comments; source that fails parse is refused.
 - Line endings are written as LF. Trailing white space is removed. Blank lines are kept.
 

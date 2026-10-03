@@ -24,9 +24,45 @@ const (
 	ModeEnLLMCompact Mode = "en-llm-compact"
 )
 
+// Arrows says what the formatter does with the two spellings of the arrow
+// token, `->` and `=>`. They are one token to the language. The default keeps
+// each arrow as its author wrote it.
+type Arrows string
+
+const (
+	ArrowsKeep Arrows = "keep"
+	ArrowsThin Arrows = "thin"
+	ArrowsFat  Arrows = "fat"
+)
+
 type Options struct {
-	Mode  Mode
-	Check bool
+	Mode   Mode
+	Arrows Arrows
+	Check  bool
+}
+
+// settings is Options after validation: what the layout needs to know.
+type settings struct {
+	compact bool
+	arrow   string // the spelling every arrow is written with; "" keeps each one
+}
+
+func resolveSettings(options Options) (settings, error) {
+	mode, err := resolveMode(options.Mode)
+	if err != nil {
+		return settings{}, err
+	}
+	resolved := settings{compact: mode == ModeEnLLMCompact}
+	switch options.Arrows {
+	case "", ArrowsKeep:
+	case ArrowsThin:
+		resolved.arrow = "->"
+	case ArrowsFat:
+		resolved.arrow = "=>"
+	default:
+		return settings{}, fmt.Errorf("invalid --arrows %q; expected keep|thin|fat", options.Arrows)
+	}
+	return resolved, nil
 }
 
 type DecisionDiagnostics struct{ Traces []judgment.Result }
@@ -74,27 +110,22 @@ func FormatSourceWithOptions(src string, options Options) (string, error) {
 	return formatSourceWithPath("<format>.oct", src, options)
 }
 func formatSourceWithPath(path string, src string, options Options) (string, error) {
-	mode, err := resolveMode(options.Mode)
+	resolved, err := resolveSettings(options)
 	if err != nil {
 		return "", err
 	}
 	if strings.EqualFold(filepath.Ext(path), ".octfail") {
-		return formatOctFailSource(src, mode)
+		return formatOctFailSource(src, resolved)
 	}
-	out, _, err := formatRegularSource(path, src, mode, false)
+	out, _, err := formatRegularSource(path, src, resolved)
 	return out, err
 }
 func formatSourceWithDiagnostics(src string, options Options) (string, DecisionDiagnostics, error) {
-	mode, err := resolveMode(options.Mode)
+	resolved, err := resolveSettings(options)
 	if err != nil {
 		return "", DecisionDiagnostics{}, err
 	}
-	if mode == ModeEnLLMCompact {
-		out, _, err := formatRegularSource("<format>.oct", src, mode, false)
-		return out, DecisionDiagnostics{}, err
-	}
-	out, diags, err := formatRegularSource("<format>.oct", src, mode, true)
-	return out, diags, err
+	return formatRegularSource("<format>.oct", src, resolved)
 }
 func resolveMode(mode Mode) (Mode, error) {
 	switch mode {
@@ -116,7 +147,7 @@ func resolveMode(mode Mode) (Mode, error) {
 // lex or parse. The text of the lexer or parser error follows it.
 var errSourceRejected = errors.New("source is not valid Oct")
 
-func formatRegularSource(path string, src string, mode Mode, withDiag bool) (string, DecisionDiagnostics, error) {
+func formatRegularSource(path string, src string, resolved settings) (string, DecisionDiagnostics, error) {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
 	lexed, err := lex.Analyze(source.File{Path: path, Text: src})
 	if err != nil {
@@ -126,13 +157,13 @@ func formatRegularSource(path string, src string, mode Mode, withDiag bool) (str
 	if err != nil {
 		return "", DecisionDiagnostics{}, fmt.Errorf("%w: %w", errSourceRejected, err)
 	}
-	out, err := formatLayout(src, lexed.Tokens, file.MarkupSpans, mode == ModeEnLLMCompact)
+	out, err := formatLayout(src, lexed.Tokens, file.MarkupSpans, resolved)
 	return out, DecisionDiagnostics{}, err
 }
 
 var octFailHeaderPattern = regexp.MustCompile(`^expect error:\s*"(.*)"\s*$`)
 
-func formatOctFailSource(src string, mode Mode) (string, error) {
+func formatOctFailSource(src string, resolved settings) (string, error) {
 	lines := strings.Split(src, "\n")
 	headerIndex := -1
 	for i, line := range lines {
@@ -149,7 +180,7 @@ func formatOctFailSource(src string, mode Mode) (string, error) {
 	if !octFailHeaderPattern.MatchString(header) {
 		return "", fmt.Errorf("malformed expectation header")
 	}
-	formattedSource, _, err := formatRegularSource("<format>.octfail", strings.Join(lines[headerIndex+1:], "\n"), mode, false)
+	formattedSource, _, err := formatRegularSource("<format>.octfail", strings.Join(lines[headerIndex+1:], "\n"), resolved)
 	if err != nil {
 		return "", err
 	}
