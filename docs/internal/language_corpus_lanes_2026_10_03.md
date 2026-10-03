@@ -74,7 +74,8 @@ imported packages only.
 `[Theory]`. The other lane reports the test as `SKIP` and does not build it.
 Under `--execution auto` a `[Compiled]` test does not fall back.
 
-Three facts use them, in the two generic wrapper fixtures. The two lanes are
+Outside the attributes' own contract, three facts use them, in the two generic
+wrapper fixtures. The two lanes are
 specified to differ there: a function that the manifest names and that has a
 source body runs the body interpreted and the sidecar call compiled. That
 split is itself an open question in `FEEDBACK.md`.
@@ -107,7 +108,7 @@ Reverse any of them.
    template provenance directory were restructured that way.
 3. **The artifact form checks publication.** A fixture fails if evaluation
    fails as expected and still leaves an output.
-4. **The Go tests that asserted these failures are removed.** Three host-side
+4. **The Go tests that asserted these failures are removed.** Two host-side
    checks keep synthetic inputs under `testdata/artifact_phase`.
 5. **`Artifact.Write*` outside the artifact phase** is rejected at different
    times by the two lanes. The compiled half is an `.octfail`; the interpreted
@@ -138,10 +139,10 @@ linux/amd64, Go 1.25.0. Sweeps run with no `OCT_WRAPPER_PATH`.
 
 | Check | Base (`e2637b9`) | Now |
 |---|---|---|
-| `TestLanguageCorpusRunsInBothLanes` | passes, 12 directories and 1 gap excepted | passes, 1 directory excepted, 67 s |
+| `TestLanguageCorpusRunsInBothLanes` | passes, 12 directories and 1 gap excepted | passes, 1 directory excepted, about 67 s |
 | `Language`, interpreted | 464 pass, 4 fail | 474 pass, 1 fail, 5 skip |
 | `Language`, compiled | 451 pass, 17 fail | 468 pass, 10 fail, 2 skip |
-| Whole sweep, interpreted, 346 directories | 2477 pass, 37 fail | 2488 pass, 37 fail, 5 skip |
+| Whole sweep, interpreted | 2477 pass, 37 fail | 2488 pass, 37 fail, 5 skip |
 | Whole sweep, compiled | 2285 pass, 229 fail | 2306 pass, 222 fail, 2 skip |
 | `go test ./...` | 69 ok, 1 fail | 71 ok, same 1 fail |
 | `go test -tags=integration ./...` | 68 ok, 2 fail | 70 ok, same 2 fail |
@@ -160,14 +161,17 @@ linux/amd64, Go 1.25.0. Sweeps run with no `OCT_WRAPPER_PATH`.
 ### Fault injection
 
 51 deliberate faults across the changes above, one at a time, in a separate
-worktree. 43 were caught on the first pass. The rest led to changes:
+worktree. Of the 49 written first, 42 were caught on the first pass. The seven
+that survived:
 
-- Five flow faults survived because the check ran the parent directory, which
-  runs `.octfail` files only. With the right target four were caught.
-- A non-scalar `when policy` evaluating `else` eagerly survived; a
-  record-valued policy fixture was added.
-- Two formatter faults survived (later expectation lines dropped; an artifact
-  fixture formatted as ordinary source); a formatter test was added.
+- Five flow faults, because the check ran the parent directory, which runs
+  `.octfail` files only. With the right target four were caught.
+- The fifth, a non-scalar `when policy` evaluating `else` eagerly, needed a
+  fixture; a record-valued policy was added.
+- Two formatter faults (later expectation lines dropped; an artifact fixture
+  formatted as ordinary source); a formatter test was added.
+
+The manifest faults were rewritten when the manifest rule was narrowed.
 
 All 51 are caught on the final code, none by a build error.
 
