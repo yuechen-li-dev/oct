@@ -1607,33 +1607,43 @@ func (c *lowerCtx) recordTemplateOrigin(recordType string) string {
 	return ""
 }
 
+// lowerIfExpr lowers "if cond { a } else { b }" used as a value. Each branch
+// is lowered inside its own block, so whatever it needs evaluated (a call, an
+// index, an unwrap) runs only when that branch is taken. A branch may itself
+// add blocks, so its result is assigned in whichever block is current once it
+// has been lowered.
 func (c *lowerCtx) lowerIfExpr(e ast.IfExpr) (string, string, bool, error) {
 	cond, _, _, err := c.lowerExpr(e.Condition)
 	if err != nil {
 		return "", "", false, err
 	}
-	thenVal, thenType, _, err := c.lowerExpr(e.ThenExpr)
-	if err != nil {
-		return "", "", false, err
-	}
-	elseVal, _, _, err := c.lowerExpr(e.ElseExpr)
-	if err != nil {
-		return "", "", false, err
-	}
-	out := c.temp(thenType)
+	condID := c.cur
 	thenID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", thenID)})
 	elseID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", elseID)})
 	mergeID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
-	c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(cond, "Bool"), TrueTarget: c.blocks[thenID].Label, FalseTarget: c.blocks[elseID].Label}
+	mergeLabel := c.blocks[mergeID].Label
+	c.blocks[condID].Terminator = MIRBranch{Cond: lowerMIRValue(cond, "Bool"), TrueTarget: c.blocks[thenID].Label, FalseTarget: c.blocks[elseID].Label}
+
 	c.cur = thenID
+	thenVal, thenType, _, err := c.lowerExpr(e.ThenExpr)
+	if err != nil {
+		return "", "", false, err
+	}
+	out := c.temp(thenType)
 	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: lowerMIRValue(thenVal, thenType)})
-	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+	c.blocks[c.cur].Terminator = MIRJump{Target: mergeLabel}
+
 	c.cur = elseID
+	elseVal, _, _, err := c.lowerExpr(e.ElseExpr)
+	if err != nil {
+		return "", "", false, err
+	}
 	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: out, Value: lowerMIRValue(elseVal, thenType)})
-	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+	c.blocks[c.cur].Terminator = MIRJump{Target: mergeLabel}
+
 	c.cur = mergeID
 	return out, thenType, false, nil
 }

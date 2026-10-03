@@ -1,0 +1,92 @@
+package IfContracts
+
+// An if expression evaluates its condition and then only the branch that is
+// taken. The other branch may index past the end of an array, unwrap a
+// failure or divide by zero without any effect, in both execution lanes.
+
+fn LastOrZero(values: Float[]) -> Float {
+    return if Len(values) == 0 { 0.0 } else { values[Len(values) - 1] }
+}
+
+fn LastMagnitudeOrZero(values: Float[]) -> Float {
+    let magnitude = if Len(values) == 0 { 0.0 } else { Abs(values[Len(values) - 1]) }
+    return magnitude
+}
+
+fn Fails() -> Int ! Error {
+    return error("the untaken branch was evaluated")
+}
+
+fn Guarded(take: Bool) -> Int {
+    return if take { 7 } else { Fails()! }
+}
+
+fn SafeRatio(top: Int, bottom: Int) -> Int {
+    return if bottom == 0 { 0 } else { top / bottom }
+}
+
+fn Nested(values: Int[], i: Int) -> Int {
+    return if i < 0 { -1 } else { if i >= Len(values) { -2 } else { values[i] } }
+}
+
+fn FirstOrZero(values: Float[]) -> Float {
+    return if Len(values) > 0 { values[0] } else { 0.0 }
+}
+
+fn GuardedThen(skip: Bool) -> Int {
+    return if skip { 7 } else { 8 } + (if not skip { Fails()! } else { 0 })
+}
+
+fn RatioOrZero(top: Int, bottom: Int) -> Int {
+    return if bottom != 0 { top / bottom } else { 0 }
+}
+
+fn NestedInThen(values: Int[], i: Int) -> Int {
+    return if i >= 0 { if i < Len(values) { values[i] } else { -2 } } else { -1 }
+}
+
+[Fact]
+fn AnUntakenBranchDoesNotIndex() -> Void {
+    let empty: Float[] = []
+    Assert.Equal(0.0, LastOrZero(empty), "index in the untaken else branch")
+    Assert.Equal(0.0, LastMagnitudeOrZero(empty), "call around an index in the untaken else branch")
+    Assert.Equal(3.0, LastOrZero([1.0, 3.0]), "the taken else branch indexes")
+    Assert.Equal(3.0, LastMagnitudeOrZero([1.0, -3.0]), "the taken else branch calls")
+}
+
+[Fact]
+fn AnUntakenBranchDoesNotUnwrap() -> Void {
+    Assert.Equal(7, Guarded(true), "unwrap of a failure in the untaken else branch")
+}
+
+[Fact]
+fn AnUntakenBranchDoesNotDivide() -> Void {
+    Assert.Equal(0, SafeRatio(6, 0), "division by zero in the untaken else branch")
+    Assert.Equal(3, SafeRatio(6, 2), "the taken else branch divides")
+}
+
+[Fact]
+fn NestedIfExpressionsEvaluateOnlyThePathTaken() -> Void {
+    let values = [10, 20, 30]
+    Assert.Equal(-1, Nested(values, -1), "outer then")
+    Assert.Equal(-2, Nested(values, 3), "inner then")
+    Assert.Equal(20, Nested(values, 1), "inner else")
+}
+
+[Fact]
+fn AnUntakenThenBranchIsNotEvaluated() -> Void {
+    let empty: Float[] = []
+    Assert.Equal(0.0, FirstOrZero(empty), "index in the untaken then branch")
+    Assert.Equal(4.0, FirstOrZero([4.0, 5.0]), "the taken then branch indexes")
+    Assert.Equal(7, GuardedThen(true), "unwrap of a failure in the untaken then branch")
+    Assert.Equal(0, RatioOrZero(6, 0), "division by zero in the untaken then branch")
+    Assert.Equal(3, RatioOrZero(6, 2), "the taken then branch divides")
+}
+
+[Fact]
+fn AnIfExpressionNestedInTheThenBranchEvaluatesOnlyThePathTaken() -> Void {
+    let values = [10, 20, 30]
+    Assert.Equal(-1, NestedInThen(values, -1), "outer else")
+    Assert.Equal(-2, NestedInThen(values, 3), "inner else")
+    Assert.Equal(20, NestedInThen(values, 1), "inner then")
+}
