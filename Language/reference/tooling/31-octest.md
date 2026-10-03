@@ -167,6 +167,7 @@ A compile-time `.octfail` is checked the same way in every execution mode. A run
 - `[Artifact]` functions must have no parameters and return `Void` or `Void ! Error`; `[Benchmark]` functions use `fn Name() -> Void`. Neither lane requires assertions.
 - Current Language fixtures commonly organize accepted behavior under `valid/` and rejected behavior under `invalid/`, with runtime-pass cases often under `runtime/valid/`.
 - Selecting a single `.octest` file limits execution to that selected source file; selecting a directory discovers tests recursively under that directory.
+- Declarations shared by several test files belong in a `.oct` file, or in a `.octest` file that declares no `[Fact]`, `[Theory]`, `[Artifact]` or `[Benchmark]`. The compiled lane builds each test file with those support sources and does not see what another test file declares; the interpreted lane loads the directory as one package and does. So a test file must not use a declaration from a sibling test file (the compiled lane rejects it), and two test files in one directory must not declare the same name (the interpreted lane rejects it).
 
 ## Lane policy
 
