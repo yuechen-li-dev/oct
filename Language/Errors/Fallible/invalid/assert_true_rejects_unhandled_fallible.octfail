@@ -1,0 +1,12 @@
+expect error: "function 'Assert.True' argument 1: fallible expression must be handled explicitly"
+
+package Main
+
+// Assert.True is the runtime validation form that ordinary source may use.
+fn Reading() -> Bool ! Error {
+    return true
+}
+
+fn Main() -> Void {
+    Assert.True(Reading(), "an assertion tests a value, not a result")
+}

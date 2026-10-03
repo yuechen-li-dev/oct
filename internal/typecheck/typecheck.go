@@ -3623,6 +3623,9 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 		if err != nil {
 			return ExprType{}, err
 		}
+		if condType.Fallible {
+			return ExprType{}, fmt.Errorf("function '%s' argument 1: %s", callee, genericUnhandledFallibleMessage())
+		}
 		if condType.ValueType != (Type{Base: BaseTypeBool}) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Bool, got %s", callee, condType.ValueType)
 		}
@@ -3645,6 +3648,14 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 		actualType, err := c.checkExpr(scope, arguments[1], ctx)
 		if err != nil {
 			return ExprType{}, err
+		}
+		// Only Assert.Error and Assert.LGTM take a fallible expression. An
+		// assertion on a value needs the value: the result must be handled
+		// first, as for any other argument.
+		for i, operand := range []ExprType{expectedType, actualType} {
+			if operand.Fallible {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d: %s", callee, i+1, genericUnhandledFallibleMessage())
+			}
 		}
 		if !isAssignable(actualType.ValueType, expectedType.ValueType) || !isAssignable(expectedType.ValueType, actualType.ValueType) {
 			return ExprType{}, fmt.Errorf("function '%s' arguments 1 and 2 must have the same type", callee)
@@ -3675,6 +3686,11 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 		toleranceType, err := c.checkExpr(scope, arguments[2], ctx)
 		if err != nil {
 			return ExprType{}, err
+		}
+		for i, operand := range []ExprType{expectedType, actualType, toleranceType} {
+			if operand.Fallible {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d: %s", callee, i+1, genericUnhandledFallibleMessage())
+			}
 		}
 		if expectedType.ValueType.Base != BaseTypeFloat || actualType.ValueType.Base != BaseTypeFloat || toleranceType.ValueType.Base != BaseTypeFloat ||
 			expectedType.ValueType.IsArray || actualType.ValueType.IsArray || toleranceType.ValueType.IsArray ||

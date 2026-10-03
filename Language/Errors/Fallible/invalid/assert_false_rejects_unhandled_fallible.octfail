@@ -1,0 +1,14 @@
+expect error: "function 'StaticAssert.False' argument 1: fallible expression must be handled explicitly"
+
+package Main
+
+// An assertion on a value takes the value, not a fallible result. Assert.Equal,
+// Assert.Near and Assert.False are test-file forms, so this contract is written
+// with StaticAssert.False, which is legal in ordinary source and shares their operand rule.
+fn Reading() -> Bool ! Error {
+    return false
+}
+
+fn Main() -> Void {
+    StaticAssert.False(Reading(), "an assertion tests a value, not a result")
+}
