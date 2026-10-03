@@ -19,8 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "RandomUsage"
         Version: "0.1.0"
         Authors: ["Claude"]
-        Date: "2026-10-01"
-        Description: "Contracts for using the Random v2 stream builtins from another package"
-        Dependencies: [Dependency { Name: "Random" VersionRequirement: "0.1.0" }]
+        Date: "2026-10-02"
+        Description: "Contracts for using the Random v2 stream builtins and Entropy from another package"
+        Dependencies: [Dependency { Name: "Random" VersionRequirement: "0.1.0" }, Dependency { Name: "Entropy" VersionRequirement: "0.1.0" }]
     }
 }

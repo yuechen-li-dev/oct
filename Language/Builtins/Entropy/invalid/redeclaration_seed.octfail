@@ -1,0 +1,13 @@
+expect error: "function Seed: cannot redeclare built-in function"
+
+package Entropy
+
+// Inside package Entropy the unqualified name is the builtin, so the package
+// cannot declare a function with that name.
+fn Seed() -> Int {
+    return 7
+}
+
+fn Main() -> Int {
+    return Seed()
+}

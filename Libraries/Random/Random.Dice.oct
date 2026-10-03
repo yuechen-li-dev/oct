@@ -30,37 +30,3 @@ fn RollWithDisadvantage(s: Stream, i: Int, sides: Int) -> Int {
     let rolls = RollDice(s, i, 2, sides)
     return if rolls[0] <= rolls[1] { rolls[0] } else { rolls[1] }
 }
-
-// Entropy-backed dice (Random v1). These move to the Entropy package in
-// ladder milestone M5.
-
-fn CryptoRollDie(sides: Int) -> Int ! Error {
-    if sides < 2 {
-        return error("CryptoRollDie requires sides >= 2")
-    }
-    return CryptoRandInt(1, sides)!
-}
-
-fn CryptoRollD20() -> Int ! Error {
-    return CryptoRollDie(20)!
-}
-
-fn CryptoRollDice(count: Int, sides: Int) -> Int[] ! Error {
-    if count < 0 {
-        return error("CryptoRollDice requires count >= 0")
-    }
-    if sides < 2 {
-        return error("CryptoRollDice requires sides >= 2")
-    }
-
-    let values: Int[] = []
-    return CryptoRollDiceInto(values, count, sides)!
-}
-
-fn CryptoRollDiceInto(values: Int[], remaining: Int, sides: Int) -> Int[] ! Error {
-    if remaining == 0 {
-        return values
-    }
-    let next = Append(values, CryptoRollDie(sides)!)
-    return CryptoRollDiceInto(next, remaining - 1, sides)!
-}

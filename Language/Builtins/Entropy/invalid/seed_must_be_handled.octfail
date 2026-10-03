@@ -1,0 +1,10 @@
+expect error: "let seed: fallible expression must be handled explicitly"
+
+package Main
+
+// Every Entropy builtin is fallible: the operating system's random source
+// can fail, so the result cannot be used as a plain value.
+fn Main() -> Int {
+    let seed: Int = Entropy.Seed()
+    return seed
+}

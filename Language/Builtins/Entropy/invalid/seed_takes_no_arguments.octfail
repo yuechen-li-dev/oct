@@ -1,0 +1,7 @@
+expect error: "function 'Entropy.Seed' expects 0 arguments, got 1"
+
+package Main
+
+fn Main() -> Int {
+    return Entropy.Seed(42)!
+}

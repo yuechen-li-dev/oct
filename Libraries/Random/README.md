@@ -4,7 +4,7 @@
 
 It intentionally does not own deterministic PDF/CDF/PMF evaluation; use [`Distributions`](../Distributions/README.md) for that. Use [`Statistics`](../Statistics/README.md) to summarize samples and [`Uncertainty`](../Uncertainty/README.md) for measurement-uncertainty propagation. Start with `Random.Stream.octest` for the stream builtins, then `Random.Sampling.octest`, `Random.CoinToss.octest` and `Random.Dice.octest` for the helpers built on them.
 
-The package is suitable for bounded scientific experiments that record their seed. It is not a cryptographic random-number source.
+The package is suitable for bounded scientific experiments that record their seed. It is not a cryptographic random-number source. For a seed that is not chosen by the program, and for any other draw from the operating system's random source, use [`Entropy`](../Entropy/README.md).
 
 ## Streams (Random v2)
 
@@ -23,4 +23,4 @@ for i in 0..n {
 - Native draws: `Unit`, `Between`, `IntBetween`, `Normal`.
 - Helpers: `Chance`, `Exponential`, `Units`, `Normals`, `Spike`, `FlipCoin`, `FlipCoins`, `RollDie`, `RollDice`, `RollWithAdvantage`, `RollWithDisadvantage`.
 
-The Random v1 generator (`RngSeed`, `RandInt`, `RandFloat01`, `RandFloatRange`, `RandBernoulli`, `RandNormal`, `Gaussian`) and the `Crypto*` functions are still present and are being retired. Specification and status: `internal/random/RANDOM_V2_LADDER.md`.
+The Random v1 generator (`RngSeed`, `RandInt`, `RandFloat01`, `RandFloatRange`, `RandBernoulli`, `RandNormal`, `Gaussian`) and the native `CryptoRandInt`, `CryptoRandFloat01` and `CryptoRandBytes` are still present and are being retired; `Entropy` replaces the last three. The `Crypto*` coin and dice helpers are removed. Specification and status: `internal/random/RANDOM_V2_LADDER.md`.

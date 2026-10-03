@@ -8,76 +8,82 @@ func TestRandomTableEntriesAreWellFormed(t *testing.T) {
 		if random.Symbol == "" {
 			t.Fatalf("Random table has an entry with no symbol: %#v", random)
 		}
-		if _, duplicate := seen[random.Symbol]; duplicate {
-			t.Errorf("Random builtin %q is listed twice", random.Symbol)
+		if !IsRandomNamespace(random.Namespace) {
+			t.Errorf("builtin %q is in namespace %q, which the table does not describe", random.Symbol, random.Namespace)
 		}
-		seen[random.Symbol] = struct{}{}
+		name := random.Name()
+		if _, duplicate := seen[name]; duplicate {
+			t.Errorf("builtin %q is listed twice", name)
+		}
+		seen[name] = struct{}{}
 
 		switch random.Kind {
 		case RandomSeed, RandomDraw, RandomEntropy:
 		default:
-			t.Errorf("Random builtin %q has unknown kind %q", random.Symbol, random.Kind)
+			t.Errorf("builtin %q has unknown kind %q", name, random.Kind)
 		}
 		switch random.ArityCheck {
 		case RandomArityCounted, RandomArityMismatch, RandomArityUnchecked:
 		default:
-			t.Errorf("Random builtin %q has unknown arity check %q", random.Symbol, random.ArityCheck)
+			t.Errorf("builtin %q has unknown arity check %q", name, random.ArityCheck)
 		}
 		if random.Arguments < 0 {
-			t.Errorf("Random builtin %q has negative argument count %d", random.Symbol, random.Arguments)
+			t.Errorf("builtin %q has negative argument count %d", name, random.Arguments)
 		}
 		if random.Result == "" {
-			t.Errorf("Random builtin %q has no result type", random.Symbol)
+			t.Errorf("builtin %q has no result type", name)
 		}
 		if (random.Kind == RandomEntropy) != random.Fallible {
-			t.Errorf("Random builtin %q: entropy reads are fallible and nothing else is; kind %q, fallible %v", random.Symbol, random.Kind, random.Fallible)
+			t.Errorf("builtin %q: entropy reads are fallible and nothing else is; kind %q, fallible %v", name, random.Kind, random.Fallible)
 		}
 		if random.Legacy {
+			if random.Namespace != RandomNamespace {
+				t.Errorf("legacy builtin %q is outside package Random; only Random v1 is legacy", name)
+			}
 			if len(random.Parameters) != 0 {
-				t.Errorf("legacy Random builtin %q declares parameter types; v1 arguments are not type-checked", random.Symbol)
+				t.Errorf("legacy builtin %q declares parameter types; v1 arguments are not type-checked", name)
 			}
 			continue
 		}
 		if random.ArityCheck != RandomArityCounted {
-			t.Errorf("Random builtin %q must use the counted arity check, got %q", random.Symbol, random.ArityCheck)
+			t.Errorf("builtin %q must use the counted arity check, got %q", name, random.ArityCheck)
 		}
 		if random.Arguments != len(random.Parameters) {
-			t.Errorf("Random builtin %q declares %d arguments and %d parameter types", random.Symbol, random.Arguments, len(random.Parameters))
+			t.Errorf("builtin %q declares %d arguments and %d parameter types", name, random.Arguments, len(random.Parameters))
 		}
 		for index, parameter := range random.Parameters {
 			switch parameter {
-			case RandomParameterInt, RandomParameterFloat, RandomParameterString, RandomParameterStream:
+			case RandomParameterInt, RandomParameterFloat, RandomParameterString:
+			case RandomParameterStream:
+				if random.Namespace != RandomNamespace {
+					t.Errorf("builtin %q parameter %d is a Stream; only package Random has streams", name, index+1)
+				}
 			default:
-				t.Errorf("Random builtin %q parameter %d has unknown type %q", random.Symbol, index+1, parameter)
+				t.Errorf("builtin %q parameter %d has unknown type %q", name, index+1, parameter)
 			}
 		}
 		if !random.HasOwnImplementation() {
-			t.Errorf("Random builtin %q must have its own implementation", random.Symbol)
+			t.Errorf("builtin %q must have its own implementation", name)
 		}
-		if random.Kind == RandomEntropy {
-			t.Errorf("Random builtin %q reads entropy; package Random is deterministic in v2", random.Symbol)
+		// The artifact and discovery guards reject by kind, so the kind must
+		// follow the namespace: every Entropy builtin reads entropy, and
+		// package Random is deterministic in v2.
+		if (random.Namespace == EntropyNamespace) != (random.Kind == RandomEntropy) {
+			t.Errorf("builtin %q has kind %q; exactly the Entropy builtins read entropy", name, random.Kind)
 		}
-		if random.ResultInPackage != (random.Result == string(RandomParameterStream)) {
-			t.Errorf("Random builtin %q result %q: only Stream is a record of package Random", random.Symbol, random.Result)
+		wantInPackage := random.Namespace == RandomNamespace && random.Result == string(RandomParameterStream)
+		if random.ResultInPackage != wantInPackage {
+			t.Errorf("builtin %q result %q: only Random's Stream is a package record", name, random.Result)
 		}
 	}
 }
 
-// The v2 table must match ladder section 3.3 exactly: these seven signatures
-// and no others.
-func TestRandomStreamBuiltinSignatures(t *testing.T) {
-	want := map[string]string{
-		"Seeded":     "(Int) -> Stream",
-		"Fork":       "(Stream, String) -> Stream",
-		"Child":      "(Stream, Int) -> Stream",
-		"Unit":       "(Stream, Int) -> Float",
-		"Between":    "(Stream, Int, Float, Float) -> Float",
-		"IntBetween": "(Stream, Int, Int, Int) -> Int",
-		"Normal":     "(Stream, Int, Float, Float) -> Float",
-	}
+// tableSignatures renders the non-legacy builtins of one namespace as
+// "(parameters) -> result", with "! Error" for a fallible builtin.
+func tableSignatures(namespace string) map[string]string {
 	got := map[string]string{}
 	for _, random := range RandomBuiltins() {
-		if random.Legacy {
+		if random.Legacy || random.Namespace != namespace {
 			continue
 		}
 		signature := "("
@@ -87,17 +93,65 @@ func TestRandomStreamBuiltinSignatures(t *testing.T) {
 			}
 			signature += string(parameter)
 		}
-		got[random.Symbol] = signature + ") -> " + random.Result
+		signature += ") -> " + random.Result
+		if random.Fallible {
+			signature += " ! Error"
+		}
+		got[random.Symbol] = signature
 	}
+	return got
+}
+
+func checkTableSignatures(t *testing.T, namespace string, want map[string]string) {
+	t.Helper()
+	got := tableSignatures(namespace)
 	for symbol, signature := range want {
 		if got[symbol] != signature {
-			t.Errorf("Random.%s signature = %q, want %q", symbol, got[symbol], signature)
+			t.Errorf("%s.%s signature = %q, want %q", namespace, symbol, got[symbol], signature)
 		}
 	}
 	for symbol := range got {
 		if _, ok := want[symbol]; !ok {
-			t.Errorf("Random.%s is in the v2 table but not in the specification", symbol)
+			t.Errorf("%s.%s is in the table but not in the specification", namespace, symbol)
 		}
+	}
+}
+
+// The v2 table must match ladder section 3.3 exactly: these seven signatures
+// and no others.
+func TestRandomStreamBuiltinSignatures(t *testing.T) {
+	checkTableSignatures(t, RandomNamespace, map[string]string{
+		"Seeded":     "(Int) -> Stream",
+		"Fork":       "(Stream, String) -> Stream",
+		"Child":      "(Stream, Int) -> Stream",
+		"Unit":       "(Stream, Int) -> Float",
+		"Between":    "(Stream, Int, Float, Float) -> Float",
+		"IntBetween": "(Stream, Int, Int, Int) -> Int",
+		"Normal":     "(Stream, Int, Float, Float) -> Float",
+	})
+}
+
+// The Entropy table must match ladder section 3.5 exactly: these four
+// signatures and no others.
+func TestEntropyBuiltinSignatures(t *testing.T) {
+	checkTableSignatures(t, EntropyNamespace, map[string]string{
+		"Seed":       "() -> Int ! Error",
+		"IntBetween": "(Int, Int) -> Int ! Error",
+		"Unit":       "() -> Float ! Error",
+		"Bytes":      "(Int) -> Bytes ! Error",
+	})
+}
+
+// Entropy needs no import, like Artifact. Random does.
+func TestEntropyIsACompilerOwnedNamespace(t *testing.T) {
+	if !IsCompilerOwnedNamespace(EntropyNamespace) {
+		t.Error("Entropy must be a compiler-owned namespace")
+	}
+	if IsCompilerOwnedNamespace(RandomNamespace) {
+		t.Error("Random must require an import")
+	}
+	if !IsRandomNamespace(RandomNamespace) || !IsRandomNamespace(EntropyNamespace) || IsRandomNamespace("Main") || IsRandomNamespace("") {
+		t.Error("IsRandomNamespace must accept exactly Random and Entropy")
 	}
 }
 
@@ -169,35 +223,94 @@ func TestRandomLookupSpellings(t *testing.T) {
 			t.Errorf("LookupRandom(%q) resolved", name)
 		}
 	}
-	if !IsRandomSymbol("RandInt") || IsRandomSymbol("Random.RandInt") || IsRandomSymbol("Len") {
-		t.Error("IsRandomSymbol must accept exactly the unqualified Random symbols")
+	if random, ok := LookupRandom("Entropy.Seed"); !ok || random.Name() != "Entropy.Seed" {
+		t.Errorf("LookupRandom(Entropy.Seed) = %#v, %v", random, ok)
+	}
+	// An unqualified non-legacy name is not reserved, so it does not resolve
+	// without the calling package.
+	for _, name := range []string{"Unit", "Seeded", "Seed", "Bytes", "IntBetween", "Entropy.Seeded", "Random.Seed", "Entropy.RandInt"} {
+		if _, ok := LookupRandom(name); ok {
+			t.Errorf("LookupRandom(%q) resolved", name)
+		}
+	}
+}
+
+// Random and Entropy share the symbols Unit and IntBetween, so an unqualified
+// symbol resolves only together with its package.
+func TestLookupRandomInResolvesASymbolInsideItsOwnPackage(t *testing.T) {
+	cases := []struct {
+		namespace string
+		symbol    string
+		want      string
+	}{
+		{"Random", "Unit", "Random.Unit"},
+		{"Entropy", "Unit", "Entropy.Unit"},
+		{"Random", "IntBetween", "Random.IntBetween"},
+		{"Entropy", "IntBetween", "Entropy.IntBetween"},
+		{"Random", "RandInt", "Random.RandInt"},
+		{"Entropy", "Seed", "Entropy.Seed"},
+		{"Random", "Seed", ""},
+		{"Entropy", "Seeded", ""},
+		{"Entropy", "RandInt", ""},
+		{"Main", "Unit", ""},
+		{"", "Unit", ""},
+		{"Random", "Random.Unit", ""},
+		{"Random", "Len", ""},
+	}
+	for _, c := range cases {
+		random, ok := LookupRandomIn(c.namespace, c.symbol)
+		got := ""
+		if ok {
+			got = random.Name()
+		}
+		if got != c.want {
+			t.Errorf("LookupRandomIn(%q, %q) = %q, want %q", c.namespace, c.symbol, got, c.want)
+		}
 	}
 }
 
 // The execution lanes resolve the qualified spelling from any package and the
-// unqualified spelling only inside package Random.
-func TestResolveRandomCallScopesUnqualifiedNamesToPackageRandom(t *testing.T) {
+// unqualified spelling only inside the builtin's own package. want is the
+// qualified name the call resolves to, or empty when it does not resolve.
+func TestResolveRandomCallScopesUnqualifiedNamesToTheirOwnPackage(t *testing.T) {
 	cases := []struct {
 		callee        string
 		callerPackage string
-		want          bool
+		want          string
 	}{
-		{"Random.RandInt", "Main", true},
-		{"Random.RandInt", "Random", true},
-		{"RandInt", "Random", true},
-		{"RandInt", "Main", false},
-		{"RandInt", "", false},
-		{"Len", "Random", false},
-		{"Random.Missing", "Random", false},
-		{"Random.Unit", "Main", true},
-		{"Random.Unit", "Random", true},
-		{"Unit", "Random", true},
-		{"Unit", "Main", false},
-		{"Normal", "Statistics", false},
+		{"Random.RandInt", "Main", "Random.RandInt"},
+		{"Random.RandInt", "Random", "Random.RandInt"},
+		{"RandInt", "Random", "Random.RandInt"},
+		{"RandInt", "Main", ""},
+		{"RandInt", "Entropy", ""},
+		{"RandInt", "", ""},
+		{"Len", "Random", ""},
+		{"Random.Missing", "Random", ""},
+		{"Random.Unit", "Main", "Random.Unit"},
+		{"Random.Unit", "Random", "Random.Unit"},
+		{"Random.Unit", "Entropy", "Random.Unit"},
+		{"Unit", "Random", "Random.Unit"},
+		{"Unit", "Main", ""},
+		{"Normal", "Statistics", ""},
+		{"Entropy.Seed", "Main", "Entropy.Seed"},
+		{"Entropy.Unit", "Random", "Entropy.Unit"},
+		{"Seed", "Entropy", "Entropy.Seed"},
+		{"Unit", "Entropy", "Entropy.Unit"},
+		{"IntBetween", "Entropy", "Entropy.IntBetween"},
+		{"IntBetween", "Random", "Random.IntBetween"},
+		{"Seed", "Random", ""},
+		{"Seed", "Main", ""},
+		{"Seeded", "Entropy", ""},
+		{"Entropy.Missing", "Entropy", ""},
 	}
 	for _, c := range cases {
-		if _, got := ResolveRandomCall(c.callee, c.callerPackage); got != c.want {
-			t.Errorf("ResolveRandomCall(%q, %q) = %v, want %v", c.callee, c.callerPackage, got, c.want)
+		random, ok := ResolveRandomCall(c.callee, c.callerPackage)
+		got := ""
+		if ok {
+			got = random.Name()
+		}
+		if got != c.want {
+			t.Errorf("ResolveRandomCall(%q, %q) = %q, want %q", c.callee, c.callerPackage, got, c.want)
 		}
 	}
 }

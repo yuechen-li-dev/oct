@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Entropy"
+        Version: "0.1.0"
+        Authors: ["Claude"]
+        Date: "2026-10-02"
+        Description: "Draws from the operating system random source: not reproducible, fallible, rejected in artifact evaluation"
+        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+    }
+}

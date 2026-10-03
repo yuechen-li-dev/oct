@@ -1,0 +1,7 @@
+expect error: "function 'Entropy.Unit' does not accept type arguments"
+
+package Main
+
+fn Main() -> Float {
+    return Entropy.Unit<Float>()!
+}

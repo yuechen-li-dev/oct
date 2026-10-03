@@ -1,0 +1,8 @@
+expect error: "let payload: expected Int[], got Bytes"
+
+package Main
+
+fn Main() -> Int[] {
+    let payload: Int[] = Entropy.Bytes(4)!
+    return payload
+}

@@ -1,0 +1,7 @@
+expect error: "package 'Entropy' has no function 'Int'"
+
+package Main
+
+fn Main() -> Int {
+    return Entropy.Int()!
+}

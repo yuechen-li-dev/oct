@@ -94,7 +94,7 @@ func ResolveNamespacedAlias(namespace string, symbol string) (string, bool) {
 
 func IsCompilerOwnedNamespace(namespace string) bool {
 	switch namespace {
-	case "Array", "Artifact":
+	case "Array", "Artifact", EntropyNamespace:
 		return true
 	default:
 		return false

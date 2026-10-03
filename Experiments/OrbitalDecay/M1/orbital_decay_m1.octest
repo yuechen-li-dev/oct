@@ -1,0 +1,55 @@
+package OrbitalDecayM1
+
+[Fact]
+fn ParametricStatisticsPreserveUnits() -> Void {
+    let lengths: Length[] =[100.0m, 200.0m, 300.0m]
+    let stats = ComputeEnvelope<Length>(lengths)
+
+        Assert.Equal(100.0m, stats.MinVal, "min length preserves meter dimension")
+        Assert.Equal(300.0m, stats.MaxVal, "max length preserves meter dimension")
+        Assert.Equal(200.0m, stats.MeanVal, "mean length preserves meter dimension")
+    }
+
+    [Fact]
+    fn ParametricEulerStepIntegratesDimensionsCorrectly() -> Void {
+        // state (m) + velocity (m/s) * dt (s) = new state (m)
+        let initialPos: Length = 1000.0m
+        let velocity: Velocity = 50.0m/s
+        let dt: Time = 10.0s
+
+        let nextPos = EulerStep<Length, Velocity, Time>(initialPos, velocity, dt)
+        Assert.Equal(1500.0m, nextPos, "Euler integration step preserves dimensions and computes correct displacement")
+    }
+
+    [Fact]
+    fn TimeSeriesTelemetryStoresAndSummarizesDecay() -> Void {
+        let earthRadius: Length = 6371000.0m
+        let earthMu: GravParam = 398600441800000.0m^3*s^-2
+        let cd = 2.2
+        let area: Area = 1.5m^2
+        let mass: Mass = 500.0kg
+        let startAlt: Length = 300000.0m
+
+        let telemetry = RecordTelemetry(
+        startAlt,
+        5,
+        100,
+        earthRadius,
+        earthMu,
+        cd,
+        area,
+        mass
+        )
+
+        Assert.Equal(5, Len(telemetry.Altitudes.Values), "records requested snapshot count")
+        let altEnvelope = ComputeEnvelope<Length>(telemetry.Altitudes.Values)
+            let velEnvelope = ComputeEnvelope<Velocity>(telemetry.Velocities.Values)
+                let dragEnvelope = ComputeEnvelope<Force>(telemetry.DragForces.Values)
+
+                    // Altitude strictly decreases
+                    Assert.True(altEnvelope.MinVal < altEnvelope.MaxVal, "altitude declines over mission")
+                    // Orbital velocity increases as orbit drops
+                    Assert.True(velEnvelope.MaxVal > velEnvelope.MinVal, "orbital paradox: velocity increases as altitude drops")
+                    // Drag force increases as atmosphere becomes denser
+                    Assert.True(dragEnvelope.MaxVal > dragEnvelope.MinVal, "drag force increases at lower altitude")
+                }

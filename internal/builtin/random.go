@@ -1,10 +1,14 @@
 package builtin
 
-import "strings"
-
-// RandomNamespace is the Oct package whose compiler-owned builtins are
-// described by the table in this file.
-const RandomNamespace = "Random"
+// The table in this file describes the compiler-owned randomness builtins of
+// two Oct packages.
+const (
+	// RandomNamespace is deterministic: seeded generators and streams.
+	RandomNamespace = "Random"
+	// EntropyNamespace reads the operating system's random source. It is a
+	// compiler-owned namespace: its builtins need no import.
+	EntropyNamespace = "Entropy"
+)
 
 // RandomKind classifies a Random builtin by what it needs from the runtime.
 type RandomKind string
@@ -53,7 +57,9 @@ const (
 // Execution stays in the owning packages, keyed by Implementation(): the
 // interpreter's evaluator and the compiled backend's emitter.
 type RandomBuiltin struct {
-	// Symbol is the name inside package Random, such as "RandInt".
+	// Namespace is the Oct package the builtin belongs to.
+	Namespace string
+	// Symbol is the name inside that package, such as "RandInt".
 	Symbol string
 	// ImplementedBy names the symbol whose implementation serves this one. It
 	// is empty when the builtin has its own implementation.
@@ -63,8 +69,8 @@ type RandomBuiltin struct {
 	Arguments  int
 	ArityCheck RandomArityCheck
 	// Result is the result type. When ResultInPackage is true it is a record
-	// declared in package Random, such as "RandIntResult"; otherwise it is a
-	// base type, such as "Int".
+	// declared in the builtin's package, such as "RandIntResult"; otherwise it
+	// is a base type, such as "Int".
 	Result          string
 	ResultInPackage bool
 	Fallible        bool
@@ -81,16 +87,16 @@ type RandomBuiltin struct {
 // randomBuiltins is the table. Adding, renaming or removing a Random builtin
 // starts here.
 var randomBuiltins = []RandomBuiltin{
-	{Symbol: "RngSeed", Kind: RandomSeed, Arguments: 1, ArityCheck: RandomArityCounted, Result: "Rng", ResultInPackage: true, Legacy: true},
-	{Symbol: "RandInt", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityCounted, Result: "RandIntResult", ResultInPackage: true, Legacy: true},
-	{Symbol: "RandFloat01", Kind: RandomDraw, Arguments: 1, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
-	{Symbol: "RandFloatRange", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
-	{Symbol: "RandBernoulli", Kind: RandomDraw, Arguments: 2, ArityCheck: RandomArityCounted, Result: "RandBoolResult", ResultInPackage: true, Legacy: true},
-	{Symbol: "RandNormal", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
-	{Symbol: "Gaussian", ImplementedBy: "RandNormal", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
-	{Symbol: "CryptoRandInt", Kind: RandomEntropy, Arguments: 2, ArityCheck: RandomArityUnchecked, Result: "Int", Fallible: true, Legacy: true},
-	{Symbol: "CryptoRandFloat01", Kind: RandomEntropy, Arguments: 0, ArityCheck: RandomArityUnchecked, Result: "Float", Fallible: true, Legacy: true},
-	{Symbol: "CryptoRandBytes", Kind: RandomEntropy, Arguments: 1, ArityCheck: RandomArityUnchecked, Result: "Bytes", Fallible: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "RngSeed", Kind: RandomSeed, Arguments: 1, ArityCheck: RandomArityCounted, Result: "Rng", ResultInPackage: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "RandInt", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityCounted, Result: "RandIntResult", ResultInPackage: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "RandFloat01", Kind: RandomDraw, Arguments: 1, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "RandFloatRange", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "RandBernoulli", Kind: RandomDraw, Arguments: 2, ArityCheck: RandomArityCounted, Result: "RandBoolResult", ResultInPackage: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "RandNormal", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "Gaussian", ImplementedBy: "RandNormal", Kind: RandomDraw, Arguments: 3, ArityCheck: RandomArityMismatch, Result: "RandFloatResult", ResultInPackage: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "CryptoRandInt", Kind: RandomEntropy, Arguments: 2, ArityCheck: RandomArityUnchecked, Result: "Int", Fallible: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "CryptoRandFloat01", Kind: RandomEntropy, Arguments: 0, ArityCheck: RandomArityUnchecked, Result: "Float", Fallible: true, Legacy: true},
+	{Namespace: RandomNamespace, Symbol: "CryptoRandBytes", Kind: RandomEntropy, Arguments: 1, ArityCheck: RandomArityUnchecked, Result: "Bytes", Fallible: true, Legacy: true},
 
 	// Random v2: counter-based streams. Every draw is a pure function of
 	// (stream, index, parameters). Specification: internal/random/
@@ -102,12 +108,22 @@ var randomBuiltins = []RandomBuiltin{
 	stream("Between", RandomDraw, "Float", RandomParameterStream, RandomParameterInt, RandomParameterFloat, RandomParameterFloat),
 	stream("IntBetween", RandomDraw, "Int", RandomParameterStream, RandomParameterInt, RandomParameterInt, RandomParameterInt),
 	stream("Normal", RandomDraw, "Float", RandomParameterStream, RandomParameterInt, RandomParameterFloat, RandomParameterFloat),
+
+	// Entropy: draws from the operating system's random source. They are not
+	// reproducible, they are fallible, and they are rejected wherever ambient
+	// effects are not allowed. Specification: internal/random/
+	// RANDOM_V2_LADDER.md, section 3.5. Implementation: internal/octrandom.
+	entropy("Seed", "Int"),
+	entropy("IntBetween", "Int", RandomParameterInt, RandomParameterInt),
+	entropy("Unit", "Float"),
+	entropy("Bytes", "Bytes", RandomParameterInt),
 }
 
 // stream describes a Random v2 builtin. Its result is the record Stream when
 // result names it, and a base type otherwise.
 func stream(symbol string, kind RandomKind, result string, parameters ...RandomParameter) RandomBuiltin {
 	return RandomBuiltin{
+		Namespace:       RandomNamespace,
 		Symbol:          symbol,
 		Kind:            kind,
 		Arguments:       len(parameters),
@@ -118,21 +134,49 @@ func stream(symbol string, kind RandomKind, result string, parameters ...RandomP
 	}
 }
 
-var randomBySymbol = indexRandomBuiltins(randomBuiltins)
-
-func indexRandomBuiltins(table []RandomBuiltin) map[string]RandomBuiltin {
-	index := make(map[string]RandomBuiltin, len(table))
-	for _, entry := range table {
-		index[entry.Symbol] = entry
+// entropy describes an Entropy builtin. Its result is a base type and it is
+// fallible: the operating system's random source can fail.
+func entropy(symbol string, result string, parameters ...RandomParameter) RandomBuiltin {
+	return RandomBuiltin{
+		Namespace:  EntropyNamespace,
+		Symbol:     symbol,
+		Kind:       RandomEntropy,
+		Arguments:  len(parameters),
+		ArityCheck: RandomArityCounted,
+		Result:     result,
+		Fallible:   true,
+		Parameters: parameters,
 	}
-	return index
 }
 
-// withRandomBuiltinNames reserves the qualified name of every Random builtin,
-// such as "Random.Unit", alongside the other reserved builtin names. A legacy
-// builtin also reserves its unqualified name, such as "RandInt", in every
-// package. A v2 builtin does not: "Unit" and "Normal" stay available to other
-// packages, and resolve to the builtin only inside package Random.
+// randomByName indexes the table by qualified name, such as "Random.Unit".
+var randomByName = func() map[string]RandomBuiltin {
+	index := make(map[string]RandomBuiltin, len(randomBuiltins))
+	for _, entry := range randomBuiltins {
+		index[entry.Name()] = entry
+	}
+	return index
+}()
+
+// randomBySymbol indexes the table by namespace and then by unqualified
+// symbol. The two namespaces share symbols, such as "Unit" and "IntBetween",
+// so an unqualified symbol means nothing without its package.
+var randomBySymbol = func() map[string]map[string]RandomBuiltin {
+	index := map[string]map[string]RandomBuiltin{}
+	for _, entry := range randomBuiltins {
+		if index[entry.Namespace] == nil {
+			index[entry.Namespace] = map[string]RandomBuiltin{}
+		}
+		index[entry.Namespace][entry.Symbol] = entry
+	}
+	return index
+}()
+
+// withRandomBuiltinNames reserves the qualified name of every randomness
+// builtin, such as "Random.Unit", alongside the other reserved builtin names.
+// A legacy builtin also reserves its unqualified name, such as "RandInt", in
+// every package. No other builtin does: "Unit" and "Normal" stay available to
+// other packages, and resolve to a builtin only inside their own package.
 func withRandomBuiltinNames(reserved map[string]struct{}) map[string]struct{} {
 	for _, entry := range randomBuiltins {
 		reserved[entry.Name()] = struct{}{}
@@ -146,14 +190,14 @@ func withRandomBuiltinNames(reserved map[string]struct{}) map[string]struct{} {
 // Name is the qualified builtin name, such as "Random.RandInt". It is the
 // spelling recorded in compiled MIR.
 func (b RandomBuiltin) Name() string {
-	return RandomNamespace + "." + b.Symbol
+	return b.Namespace + "." + b.Symbol
 }
 
 // Implementation is the qualified name of the builtin whose implementation
 // executes this one. Interpreter and backend dispatch switch on this value.
 func (b RandomBuiltin) Implementation() string {
 	if b.ImplementedBy != "" {
-		return RandomNamespace + "." + b.ImplementedBy
+		return b.Namespace + "." + b.ImplementedBy
 	}
 	return b.Name()
 }
@@ -164,11 +208,11 @@ func (b RandomBuiltin) HasOwnImplementation() bool {
 	return b.ImplementedBy == ""
 }
 
-// ResultType is the result type as written from a package other than Random:
+// ResultType is the result type as written from another package:
 // "Random.RandIntResult" for a record, "Int" for a base type.
 func (b RandomBuiltin) ResultType() string {
 	if b.ResultInPackage {
-		return RandomNamespace + "." + b.Result
+		return b.Namespace + "." + b.Result
 	}
 	return b.Result
 }
@@ -183,43 +227,49 @@ func RandomBuiltins() []RandomBuiltin {
 	return table
 }
 
-// IsRandomSymbol reports whether symbol is the unqualified name of a Random
-// builtin.
-func IsRandomSymbol(symbol string) bool {
-	_, ok := randomBySymbol[symbol]
-	return ok
+// IsRandomNamespace reports whether name is a package whose builtins this
+// table describes.
+func IsRandomNamespace(name string) bool {
+	return name == RandomNamespace || name == EntropyNamespace
 }
 
-// LookupRandom resolves either spelling of a Random builtin name.
-func LookupRandom(name string) (RandomBuiltin, bool) {
-	if symbol, qualified := strings.CutPrefix(name, RandomNamespace+"."); qualified {
-		entry, ok := randomBySymbol[symbol]
-		return entry, ok
-	}
-	entry, ok := randomBySymbol[name]
+// LookupRandomQualified resolves a qualified name, such as "Random.Unit".
+func LookupRandomQualified(name string) (RandomBuiltin, bool) {
+	entry, ok := randomByName[name]
 	return entry, ok
 }
 
-// LookupRandomQualified resolves only the qualified spelling.
-func LookupRandomQualified(name string) (RandomBuiltin, bool) {
-	symbol, qualified := strings.CutPrefix(name, RandomNamespace+".")
-	if !qualified {
+// LookupRandomIn resolves an unqualified symbol as code inside the package
+// namespace writes it.
+func LookupRandomIn(namespace string, symbol string) (RandomBuiltin, bool) {
+	if !IsRandomNamespace(namespace) {
 		return RandomBuiltin{}, false
 	}
-	entry, ok := randomBySymbol[symbol]
+	entry, ok := randomBySymbol[namespace][symbol]
 	return entry, ok
 }
 
-// ResolveRandomCall resolves a call as the execution lanes see it: the
-// qualified spelling resolves from any package, and the unqualified spelling
-// resolves only for code inside package Random itself.
-func ResolveRandomCall(callee string, callerPackage string) (RandomBuiltin, bool) {
-	if entry, ok := LookupRandomQualified(callee); ok {
+// LookupRandom resolves a reserved builtin name: any qualified name, or the
+// unqualified name of a legacy builtin. It does not resolve the unqualified
+// name of any other builtin, because that depends on the calling package; use
+// ResolveRandomCall for a call.
+func LookupRandom(name string) (RandomBuiltin, bool) {
+	if entry, ok := randomByName[name]; ok {
 		return entry, true
 	}
-	if callerPackage != RandomNamespace {
+	entry, ok := randomBySymbol[RandomNamespace][name]
+	if !ok || !entry.Legacy {
 		return RandomBuiltin{}, false
 	}
-	entry, ok := randomBySymbol[callee]
-	return entry, ok
+	return entry, true
+}
+
+// ResolveRandomCall resolves a call from callerPackage: the qualified spelling
+// resolves from any package, and the unqualified spelling resolves only for
+// code inside the builtin's own package.
+func ResolveRandomCall(callee string, callerPackage string) (RandomBuiltin, bool) {
+	if entry, ok := randomByName[callee]; ok {
+		return entry, true
+	}
+	return LookupRandomIn(callerPackage, callee)
 }

@@ -1,0 +1,77 @@
+package OrbitalDecay
+
+[Fact]
+fn M0SampleCountIsPositive() -> Void {
+    Assert.True(M0SampleCount() > 0, "M0 sample count should be positive")
+}
+
+[Fact]
+fn HigherOrbitHasLowerVelocityAndLongerPeriod() -> Void {
+    let earthRadius: Length = 6371000.0m
+    let earthMu: GravParam = 398600441800000.0m ^ 3 * s ^ - 2
+
+    let rLow = earthRadius + 200000.0m
+    let rHigh = earthRadius + 500000.0m
+
+    let vLow = CircularVelocity(earthMu, rLow)
+    let vHigh = CircularVelocity(earthMu, rHigh)
+
+    let tLow = OrbitalPeriod(rLow, vLow)
+    let tHigh = OrbitalPeriod(rHigh, vHigh)
+
+    Assert.True(vLow > vHigh, "lower orbit has higher circular velocity")
+    Assert.True(tHigh > tLow, "higher orbit has longer orbital period")
+}
+
+[Fact]
+fn DensityDecreasesExponentiallyWithAltitude() -> Void {
+    let rho250 = AtmosphericDensity(250000.0m)
+    let rho300 = AtmosphericDensity(300000.0m)
+    let rho350 = AtmosphericDensity(350000.0m)
+
+    Assert.True(rho250 > rho300, "density at 250km exceeds 300km")
+    Assert.True(rho300 > rho350, "density at 300km exceeds 350km")
+}
+
+[Fact]
+fn DragDecayAcceleratesAtLowerAltitudes() -> Void {
+    let earthRadius: Length = 6371000.0m
+    let cd = 2.2
+    let area: Area = 1.5m ^ 2
+    let mass: Mass = 500.0kg
+
+    let r300 = earthRadius + 300000.0m
+    let rho300 = AtmosphericDensity(300000.0m)
+    let decay300 = OrbitDecayPerRevolution(cd, area, mass, rho300, r300)
+
+    let r200 = earthRadius + 200000.0m
+    let rho200 = AtmosphericDensity(200000.0m)
+    let decay200 = OrbitDecayPerRevolution(cd, area, mass, rho200, r200)
+
+    Assert.True(decay200 > decay300, "atmospheric decay rate at 200km is substantially higher than at 300km")
+}
+
+[Fact]
+fn SimulationConvergesToTargetAltitude() -> Void {
+    let earthRadius: Length = 6371000.0m
+    let earthMu: GravParam = 398600441800000.0m ^ 3 * s ^ - 2
+    let cd = 2.2
+    let area: Area = 1.5m ^ 2
+    let mass: Mass = 500.0kg
+
+    let summary = SimulateOrbitalDecay(
+    300000.0m,
+    200000.0m,
+    2000,
+    earthRadius,
+    earthMu,
+    cd,
+    area,
+    mass
+    )
+
+    Assert.True(summary.FinalAltitude <= 200000.0m, "simulation successfully drops below 200km target")
+    Assert.True(summary.TotalOrbits > 0, "positive number of orbits elapsed")
+    Assert.True(summary.TotalElapsedSeconds > 0.0s, "positive elapsed time")
+    Assert.True(summary.AverageDecayPerOrbit > 0.0m, "positive average decay per orbit")
+}

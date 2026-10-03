@@ -1,0 +1,184 @@
+package OrbitalDecay
+
+concept Length = Float<m>
+    concept Velocity = Float<m/s>
+    concept Time = Float<s>
+        concept Mass = Float<kg>
+            concept Area = Float<m^2>
+            concept Density = Float<kg*m^-3>
+            concept Force = Float<kg*m*s^-2>
+            concept GravParam = Float<m^3*s^-2>
+
+            record OrbitState {
+                OrbitNumber: Int
+                Altitude: Length
+                Velocity: Velocity
+                Period: Time
+                AtmosphericDensity: Density
+                DecayPerOrbit: Length
+            }
+
+            record SimulationSummary {
+                InitialAltitude: Length
+                FinalAltitude: Length
+                TotalOrbits: Int
+                TotalElapsedSeconds: Time
+                AverageDecayPerOrbit: Length
+            }
+
+            fn CircularVelocity(mu: GravParam, r: Length) -> Velocity {
+                return Sqrt(mu / r)
+            }
+
+            fn OrbitalPeriod(r: Length, v: Velocity) -> Time {
+                let twoPi = 2.0 * Pi()
+                return (twoPi * r) / v
+            }
+
+            fn AtmosphericDensity(altitude: Length) -> Density {
+                let h0: Length = 250000.0m
+                let rho0: Density = 0.00000000007248kg*m^-3
+                let scaleHeight: Length = 45000.0m
+                let exponent = -BaseUnit((altitude - h0) / scaleHeight)
+                return rho0 * Exp(exponent)
+            }
+
+            fn DragForce(
+            cd: Float,
+            area: Area,
+            density: Density,
+            v: Velocity
+            ) -> Force {
+                return 0.5 * cd * area * density * v * v
+            }
+
+            fn OrbitDecayPerRevolution(
+            cd: Float,
+            area: Area,
+            mass: Mass,
+            density: Density,
+            r: Length
+            ) -> Length {
+                let twoPi = 2.0 * Pi()
+                let ballisticFactor = (cd * area) / mass
+                return twoPi * ballisticFactor * density * r * r
+            }
+
+            fn SimulateOrbitalDecay(
+            initialAltitude: Length,
+            targetAltitude: Length,
+            maxOrbits: Int,
+            earthRadius: Length,
+            earthMu: GravParam,
+            cd: Float,
+            area: Area,
+            mass: Mass
+            ) -> SimulationSummary {
+                var alt = initialAltitude
+                var orbit = 0
+                var elapsed = 0.0s
+
+                while orbit < maxOrbits and alt > targetAltitude {
+                    let r = earthRadius + alt
+                    let v = CircularVelocity(earthMu, r)
+                    let period = OrbitalPeriod(r, v)
+                    let rho = AtmosphericDensity(alt)
+                    let decay = OrbitDecayPerRevolution(cd, area, mass, rho, r)
+
+                    alt = alt - decay
+                    elapsed = elapsed + period
+                    orbit = orbit + 1
+                }
+
+                let totalDecay = initialAltitude - alt
+                let avgDecay = if orbit > 0 { totalDecay / Float(orbit) } else { 0.0m }
+
+                return SimulationSummary {
+                    InitialAltitude: initialAltitude
+                    FinalAltitude: alt
+                    TotalOrbits: orbit
+                    TotalElapsedSeconds: elapsed
+                    AverageDecayPerOrbit: avgDecay
+                }
+            }
+
+            fn M0SampleCount() -> Int {
+                return 1
+            }
+
+            fn Main() -> Int {
+                let earthRadius: Length = 6371000.0m
+                let earthMu: GravParam = 398600441800000.0m^3*s^-2
+                let cd = 2.2
+                let area: Area = 1.5m^2
+                let mass: Mass = 500.0kg
+
+                let startAlt: Length = 300000.0m
+                let dropLimit: Length = 200000.0m
+
+                Print("================================================================")
+                Print("  EXPERIMENT: Low Earth Orbit (LEO) Atmospheric Decay Simulation")
+                Print("================================================================")
+                Print("Parameters:")
+                Print("  Satellite Mass: " + ToString(BaseUnit(mass)) + " kg")
+                Print("  Frontal Area:   " + ToString(BaseUnit(area)) + " m^2")
+                Print("  Drag Coeff Cd:  " + ToString(cd))
+                Print("  Initial Alt:    " + ToString(BaseUnit(startAlt) / 1000.0) + " km")
+                Print("")
+
+                Print("Step Progression (sample snapshot every 100 orbits):")
+                var currAlt = startAlt
+                var stepOrbit = 0
+                while stepOrbit <= 500 and currAlt > dropLimit {
+                    let r = earthRadius + currAlt
+                    let v = CircularVelocity(earthMu, r)
+                    let p = OrbitalPeriod(r, v)
+                    let rho = AtmosphericDensity(currAlt)
+                    let drag = DragForce(cd, area, rho, v)
+                    let decay = OrbitDecayPerRevolution(cd, area, mass, rho, r)
+
+                    let orbitStr = ToString(stepOrbit)
+                    let altKmStr = FormatFloat(BaseUnit(currAlt) / 1000.0, 2)
+                    let vStr = FormatFloat(BaseUnit(v) / 1000.0, 3)
+                    let dragN = FormatFloat(BaseUnit(drag), 4)
+                    let decayM = FormatFloat(BaseUnit(decay), 2)
+
+                    Print("  Orbit " + orbitStr + " | Alt: " + altKmStr + " km | Vel: " + vStr + " km/s | Drag: " + dragN + " N | Decay: " + decayM + " m/rev")
+
+                    // Advance 100 orbits
+                    for _i in 0..100 {
+                        if currAlt > dropLimit {
+                            let rStep = earthRadius + currAlt
+                            let rhoStep = AtmosphericDensity(currAlt)
+                            let dStep = OrbitDecayPerRevolution(cd, area, mass, rhoStep, rStep)
+                            currAlt = currAlt - dStep
+                        }
+                    }
+                    stepOrbit = stepOrbit + 100
+                }
+
+                Print("")
+                Print("Simulating continuous decay down to 200 km threshold...")
+                let summary = SimulateOrbitalDecay(
+                startAlt,
+                dropLimit,
+                5000,
+                earthRadius,
+                earthMu,
+                cd,
+                area,
+                mass
+                )
+
+                let elapsedHours = BaseUnit(summary.TotalElapsedSeconds) / 3600.0
+                let elapsedDays = elapsedHours / 24.0
+
+                Print("Simulation Results:")
+                Print("  Initial Altitude: " + FormatFloat(BaseUnit(summary.InitialAltitude) / 1000.0, 2) + " km")
+                Print("  Final Altitude:   " + FormatFloat(BaseUnit(summary.FinalAltitude) / 1000.0, 2) + " km")
+                Print("  Total Orbits:     " + ToString(summary.TotalOrbits) + " revs")
+                Print("  Elapsed Duration: " + FormatFloat(elapsedDays, 2) + " days (" + FormatFloat(elapsedHours, 1) + " hours)")
+                Print("  Average Decay:    " + FormatFloat(BaseUnit(summary.AverageDecayPerOrbit), 2) + " m/rev")
+                Print("================================================================")
+                return 0
+            }

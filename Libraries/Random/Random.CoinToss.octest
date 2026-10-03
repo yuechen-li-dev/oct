@@ -91,12 +91,3 @@ fn CoinSideToStringMapsEnumValues() -> Void {
     Assert.Equal("Heads", CoinSideToString(CoinSide.Heads), "text heads")
     Assert.Equal("Tails", CoinSideToString(CoinSide.Tails), "text tails")
 }
-
-[Fact]
-fn CryptoCoinHelpersSmokeAndValidation() -> Void {
-    let cryptoSide = CryptoFlipCoin()!
-    Assert.True(cryptoSide == CoinSide.Heads or cryptoSide == CoinSide.Tails, "crypto side domain")
-    Assert.Equal(CoinSide.Heads, CryptoFlipBiasedCoin(1.0)!, "crypto pHeads=1")
-    Assert.Equal(CoinSide.Tails, CryptoFlipBiasedCoin(0.0)!, "crypto pHeads=0")
-    Assert.Equal(4, Len(CryptoFlipCoins(4)!), "crypto count")
-}

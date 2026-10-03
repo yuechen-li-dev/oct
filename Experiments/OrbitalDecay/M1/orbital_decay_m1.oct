@@ -1,0 +1,227 @@
+package OrbitalDecayM1
+
+concept Length = Float<m>
+    concept Velocity = Float<m/s>
+    concept Time = Float<s>
+        concept Mass = Float<kg>
+            concept Area = Float<m^2>
+            concept Density = Float<kg*m^-3>
+            concept Force = Float<kg*m*s^-2>
+            concept GravParam = Float<m^3*s^-2>
+
+            /// Generic time series for recording telemetry of any dimensioned or dimensionless type.
+            template record TimeSeries<T> {
+                    Name: String
+                    Times: Float<s>[]
+                        Values: T[]
+                    }
+
+                    /// Generic summary envelope containing min, max, and mean statistics for any dimensioned type.
+                    template record StatisticsEnvelope<T> {
+                            MinVal: T
+                            MaxVal: T
+                            MeanVal: T
+                        }
+
+                        /// Generic measurement pairing a value with unit metadata.
+                        template record Measurement<T> {
+                                Value: T
+                                UnitLabel: String
+                            }
+
+                            /// Generic minimum value finder across dimensioned or dimensionless arrays.
+                            template fn Min<T>(values: T[]) -> T {
+                                    var minVal = values[0]
+                                    for i in 1..Len(values) {
+                                        if values[i] < minVal {
+                                            minVal = values[i]
+                                        }
+                                    }
+                                    return minVal
+                                }
+
+                                /// Generic maximum value finder across dimensioned or dimensionless arrays.
+                                template fn Max<T>(values: T[]) -> T {
+                                        var maxVal = values[0]
+                                        for i in 1..Len(values) {
+                                            if values[i] > maxVal {
+                                                maxVal = values[i]
+                                            }
+                                        }
+                                        return maxVal
+                                    }
+
+                                    /// Generic mean calculation preserving SI dimensions.
+                                    template fn Mean<T>(values: T[]) -> T {
+                                            var total = values[0]
+                                            for i in 1..Len(values) {
+                                                total = total + values[i]
+                                            }
+                                            let count: Float = Len(values)
+                                            return total / count
+                                        }
+
+                                        /// Generic function to compute statistics envelope for any dimensioned series.
+                                        template fn ComputeEnvelope<T>(values: T[]) -> StatisticsEnvelope<T> {
+                                                    return StatisticsEnvelope<T> {
+                                                            MinVal: Min<T>(values)
+                                                                MaxVal: Max<T>(values)
+                                                                    MeanVal: Mean<T>(values)
+                                                                    }
+                                                                }
+
+                                                                /// Generic numerical integration step for any State, Derivative, and Time types.
+                                                                template fn EulerStep<State, Derivative, Time>(
+                                                                state: State,
+                                                                derivative: Derivative,
+                                                                dt: Time
+                                                                ) -> State {
+                                                                    return state + derivative * dt
+                                                                }
+
+                                                                record TelemetrySnapshot {
+                                                                    Altitudes: TimeSeries<Length>
+                                                                        Velocities: TimeSeries<Velocity>
+                                                                            DragForces: TimeSeries<Force>
+                                                                            }
+
+                                                                            fn CircularVelocity(mu: GravParam, r: Length) -> Velocity {
+                                                                                return Sqrt(mu / r)
+                                                                            }
+
+                                                                            fn OrbitalPeriod(r: Length, v: Velocity) -> Time {
+                                                                                let twoPi = 2.0 * Pi()
+                                                                                return (twoPi * r) / v
+                                                                            }
+
+                                                                            fn AtmosphericDensity(altitude: Length) -> Density {
+                                                                                let h0: Length = 250000.0m
+                                                                                let rho0: Density = 0.00000000007248kg*m^-3
+                                                                                let scaleHeight: Length = 45000.0m
+                                                                                let exponent = -BaseUnit((altitude - h0) / scaleHeight)
+                                                                                return rho0 * Exp(exponent)
+                                                                            }
+
+                                                                            fn DragForce(
+                                                                            cd: Float,
+                                                                            area: Area,
+                                                                            density: Density,
+                                                                            v: Velocity
+                                                                            ) -> Force {
+                                                                                return 0.5 * cd * area * density * v * v
+                                                                            }
+
+                                                                            fn OrbitDecayPerRevolution(
+                                                                            cd: Float,
+                                                                            area: Area,
+                                                                            mass: Mass,
+                                                                            density: Density,
+                                                                            r: Length
+                                                                            ) -> Length {
+                                                                                let twoPi = 2.0 * Pi()
+                                                                                let ballisticFactor = (cd * area) / mass
+                                                                                return twoPi * ballisticFactor * density * r * r
+                                                                            }
+
+                                                                            fn RecordTelemetry(
+                                                                            initialAltitude: Length,
+                                                                            maxSnapshots: Int,
+                                                                            strideOrbits: Int,
+                                                                            earthRadius: Length,
+                                                                            earthMu: GravParam,
+                                                                            cd: Float,
+                                                                            area: Area,
+                                                                            mass: Mass
+                                                                            ) -> TelemetrySnapshot {
+                                                                                var altTimes: Float<s>[] = []
+                                                                                    var altVals: Length[] = []
+
+                                                                                    var velTimes: Float<s>[] = []
+                                                                                        var velVals: Velocity[] = []
+
+                                                                                        var dragTimes: Float<s>[] = []
+                                                                                            var dragVals: Force[] = []
+
+                                                                                            var currAlt = initialAltitude
+                                                                                            var elapsed = 0.0s
+
+                                                                                            for snapshot in 0..maxSnapshots {
+                                                                                                let r = earthRadius + currAlt
+                                                                                                let v = CircularVelocity(earthMu, r)
+                                                                                                let rho = AtmosphericDensity(currAlt)
+                                                                                                let drag = DragForce(cd, area, rho, v)
+
+                                                                                                altTimes = Append(altTimes, elapsed)
+                                                                                                altVals = Append(altVals, currAlt)
+
+                                                                                                velTimes = Append(velTimes, elapsed)
+                                                                                                velVals = Append(velVals, v)
+
+                                                                                                dragTimes = Append(dragTimes, elapsed)
+                                                                                                dragVals = Append(dragVals, drag)
+
+                                                                                                // Advance by strideOrbits
+                                                                                                for _k in 0..strideOrbits {
+                                                                                                    let rStep = earthRadius + currAlt
+                                                                                                    let vStep = CircularVelocity(earthMu, rStep)
+                                                                                                    let pStep = OrbitalPeriod(rStep, vStep)
+                                                                                                    let rhoStep = AtmosphericDensity(currAlt)
+                                                                                                    let decayStep = OrbitDecayPerRevolution(cd, area, mass, rhoStep, rStep)
+
+                                                                                                    currAlt = currAlt - decayStep
+                                                                                                    elapsed = elapsed + pStep
+                                                                                                }
+                                                                                            }
+
+                                                                                            return TelemetrySnapshot {
+                                                                                                Altitudes: TimeSeries<Length> { Name: "Altitude" Times: altTimes Values: altVals }
+                                                                                                    Velocities: TimeSeries<Velocity> { Name: "Velocity" Times: velTimes Values: velVals }
+                                                                                                        DragForces: TimeSeries<Force> { Name: "Aerodynamic Drag" Times: dragTimes Values: dragVals }
+                                                                                                        }
+                                                                                                    }
+
+                                                                                                    fn Main() -> Int {
+                                                                                                        let earthRadius: Length = 6371000.0m
+                                                                                                        let earthMu: GravParam = 398600441800000.0m^3*s^-2
+                                                                                                        let cd = 2.2
+                                                                                                        let area: Area = 1.5m^2
+                                                                                                        let mass: Mass = 500.0kg
+                                                                                                        let startAlt: Length = 300000.0m
+
+                                                                                                        Print("==================================================================")
+                                                                                                        Print("  EXPERIMENT M1: Parametric Telemetry & Analysis of Orbital Decay")
+                                                                                                        Print("==================================================================")
+
+                                                                                                        let telemetry = RecordTelemetry(
+                                                                                                        startAlt,
+                                                                                                        10,
+                                                                                                        50,
+                                                                                                        earthRadius,
+                                                                                                        earthMu,
+                                                                                                        cd,
+                                                                                                        area,
+                                                                                                        mass
+                                                                                                        )
+
+                                                                                                        let altStats = ComputeEnvelope<Length>(telemetry.Altitudes.Values)
+                                                                                                            let velStats = ComputeEnvelope<Velocity>(telemetry.Velocities.Values)
+                                                                                                                let dragStats = ComputeEnvelope<Force>(telemetry.DragForces.Values)
+
+                                                                                                                    Print("Telemetry Series Summary across " + ToString(Len(telemetry.Altitudes.Values)) + " snapshots (sampled every 50 orbits):")
+                                                                                                                    Print("  " + telemetry.Altitudes.Name + " Envelope:")
+                                                                                                                    Print("    Max Altitude:  " + FormatFloat(BaseUnit(altStats.MaxVal) / 1000.0, 2) + " km")
+                                                                                                                    Print("    Min Altitude:  " + FormatFloat(BaseUnit(altStats.MinVal) / 1000.0, 2) + " km")
+                                                                                                                    Print("    Mean Altitude: " + FormatFloat(BaseUnit(altStats.MeanVal) / 1000.0, 2) + " km")
+                                                                                                                    Print("")
+                                                                                                                    Print("  " + telemetry.Velocities.Name + " Envelope:")
+                                                                                                                    Print("    Min Velocity:  " + FormatFloat(BaseUnit(velStats.MinVal) / 1000.0, 3) + " km/s")
+                                                                                                                    Print("    Max Velocity:  " + FormatFloat(BaseUnit(velStats.MaxVal) / 1000.0, 3) + " km/s")
+                                                                                                                    Print("    Mean Velocity: " + FormatFloat(BaseUnit(velStats.MeanVal) / 1000.0, 3) + " km/s")
+                                                                                                                    Print("")
+                                                                                                                    Print("  " + telemetry.DragForces.Name + " Envelope:")
+                                                                                                                    Print("    Min Drag:      " + FormatFloat(BaseUnit(dragStats.MinVal), 5) + " N")
+                                                                                                                    Print("    Max Drag:      " + FormatFloat(BaseUnit(dragStats.MaxVal), 5) + " N")
+                                                                                                                    Print("    Mean Drag:     " + FormatFloat(BaseUnit(dragStats.MeanVal), 5) + " N")
+                                                                                                                    Print("==================================================================")
+                                                                                                                    return 0
+                                                                                                                }

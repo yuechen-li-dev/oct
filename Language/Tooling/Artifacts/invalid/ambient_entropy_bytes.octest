@@ -1,0 +1,9 @@
+package Main
+
+// Artifact evaluation is deterministic: it rejects a read of the operating
+// system's random source before the read happens, and publishes nothing.
+[Artifact]
+fn UsesEntropyBytes() -> Void {
+    Artifact.WriteText("must-not-publish.txt", "staged before the rejected read")
+    let payload = Entropy.Bytes(16) !
+}

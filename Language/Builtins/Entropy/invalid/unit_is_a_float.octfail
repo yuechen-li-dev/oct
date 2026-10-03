@@ -1,0 +1,8 @@
+expect error: "let draw: expected Int, got Float"
+
+package Main
+
+fn Main() -> Int {
+    let draw: Int = Entropy.Unit()!
+    return draw
+}
