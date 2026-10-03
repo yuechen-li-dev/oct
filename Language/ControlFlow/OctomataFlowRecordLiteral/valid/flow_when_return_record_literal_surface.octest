@@ -1,10 +1,12 @@
-record Summary {
+package Main
+
+record WhenSummary {
     Count: Int
     Value: Float
     Label: String
 }
 
-flow MakeSummaryWhen() -> Summary {
+flow MakeSummaryWhen() -> WhenSummary {
     board {
         Count: Int
         Value: Float
@@ -14,14 +16,14 @@ flow MakeSummaryWhen() -> Summary {
         board.Count = 2
         board.Value = 3.5
         when {
-            case board.Count == 2 => return Summary { Count: board.Count Value: board.Value Label: "done" }
-            else => return Summary { Count: 0 Value: 0.0 Label: "fallback" }
+            case board.Count == 2 => return WhenSummary { Count: board.Count Value: board.Value Label: "done" }
+            else => return WhenSummary { Count: 0 Value: 0.0 Label: "fallback" }
         }
     }
 }
 
 [Fact]
-test flow_when_return_record_literal_surface() {
+fn FlowWhenReturnRecordLiteralSurface() -> Void {
     let machine = MakeSummaryWhen()
     Step(machine)
     let out = Result(machine)!

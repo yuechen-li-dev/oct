@@ -1,6 +1,6 @@
-package OctomataCoreA
+package MainValid
 
-flow FlowSmokeScalarBoard {
+flow FlowSmokeScalarBoard() -> Int {
     board {
         Counter: Int
         Done: Bool
@@ -18,10 +18,9 @@ flow FlowSmokeScalarBoard {
 }
 
 [Fact]
-fn flow_smoke_scalar_board_progression() -> Void {
-    let run = FlowSmokeScalarBoard {}
-    let _s1 = Step(run)
-    let _s2 = Step(run)
+fn FlowSmokeScalarBoardProgression() -> Void {
+    let run = FlowSmokeScalarBoard()
+    Step(run)
     Assert.True(Complete(run), "flow smoke should complete")
     Assert.Equal(1, Result(run)!, "flow smoke result should be deterministic")
     Assert.True(Len(StateHistory(run)) >= 1, "state history should be available for smoke debugging")

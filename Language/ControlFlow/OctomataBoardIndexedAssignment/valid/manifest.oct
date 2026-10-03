@@ -1,7 +1,26 @@
-package ControlFlowOctomataBoardIndexedAssignment
+package Manifest
 
-manifest {
-    Name: "ControlFlowOctomataBoardIndexedAssignment"
-    Version: "0.1.0"
-    Kind: "experiment"
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "ControlFlowOctomataBoardIndexedAssignment"
+        Version: "0.1.0"
+        Description: "Indexed assignment to array-valued board fields in flow states"
+        Authors: ["Claude"]
+        Date: "2026-10-03"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
 }

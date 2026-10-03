@@ -16,11 +16,11 @@ record Dependency {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "Main"
+        Name: "String"
         Version: "0.1.0"
-        Description: "State-local let bindings in flows"
+        Description: "Marker package so that Language fixtures can import String; the functions are compiler-owned builtins"
         Authors: ["Claude"]
         Date: "2026-10-03"
-        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Dependencies: []
     }
 }

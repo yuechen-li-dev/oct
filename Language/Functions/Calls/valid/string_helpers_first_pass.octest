@@ -19,9 +19,8 @@ fn TrimLowerUpperCoverExpectedNormalization() -> Void {
 
 [Fact]
 fn JoinHandlesEmptySingleAndMultiElementArrays() -> Void {
-    let mount = UIMount(UIText("idle"))
-    Assert.Equal("", Join(UIDrainEvents(mount), " / "), "Join returns empty string for empty array")
-    let _closed = UIUnmount(mount)
+    let none: String[] = []
+    Assert.Equal("", Join(none, " / "), "Join returns empty string for empty array")
     Assert.Equal("desk", Join(["desk"], " / "), "Join leaves single-element arrays unchanged")
     Assert.Equal("desk / gear / sale", Join(["desk", "gear", "sale"], " / "), "Join inserts separator between elements")
 }

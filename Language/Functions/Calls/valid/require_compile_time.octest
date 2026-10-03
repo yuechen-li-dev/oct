@@ -1,4 +1,4 @@
-package Main
+package MainValid
 
 [Fact]
 fn CompileTimeRequirements() -> Void {

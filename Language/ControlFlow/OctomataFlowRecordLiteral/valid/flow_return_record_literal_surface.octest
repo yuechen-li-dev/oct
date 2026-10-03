@@ -1,3 +1,5 @@
+package Main
+
 record Summary {
     Count: Int
     Value: Float
@@ -32,7 +34,7 @@ flow MakeSummaryWithLocalLabel() -> Summary {
 }
 
 [Fact]
-test flow_return_record_literal_surface() {
+fn FlowReturnRecordLiteralSurface() -> Void {
     let machine = MakeSummary()
     Step(machine)
     let out = Result(machine)!
@@ -42,7 +44,7 @@ test flow_return_record_literal_surface() {
 }
 
 [Fact]
-test flow_return_record_literal_uses_local_let() {
+fn FlowReturnRecordLiteralUsesLocalLet() -> Void {
     let machine = MakeSummaryWithLocalLabel()
     Step(machine)
     let out = Result(machine)!

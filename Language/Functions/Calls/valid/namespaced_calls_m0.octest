@@ -1,48 +1,13 @@
-package Calls
+package MainValid
 
 import String
-import IO
-import Csv
-import Json
 
+// The String namespace and the global spelling name the same builtin.
+// Namespaced IO, Csv, Json and Markdown calls are library contracts: they
+// need an import that a Language fixture cannot resolve, and they are covered
+// under Libraries/IO, Libraries/ArtifactUsage and Libraries/Markdown.
 [Fact]
-fn string_join_namespaced() {
+fn StringJoinNamespaced() -> Void {
     Assert.Equal("a,b", String.Join(["a", "b"], ","), "String.Join should resolve via namespace alias")
     Assert.Equal("a,b", Join(["a", "b"], ","), "global Join should remain available")
-}
-
-[Fact]
-fn io_write_lines_namespaced() {
-    let path = "Artifacts/TestOutput/namespaced_calls_m0.txt"
-    IO.WriteLines(path, ["a", "b"])!
-    let lines = IO.ReadLines(path)!
-    Assert.Equal(2, Len(lines), "IO.ReadLines should round-trip line count")
-    Assert.Equal("a", lines[0], "line 1 should round-trip")
-    Assert.Equal("b", lines[1], "line 2 should round-trip")
-}
-
-[Fact]
-fn namespaced_report_artifact_smoke() {
-    let outDir = "Artifacts/TestOutput"
-    let lines = [
-        "title: \"m0 report\"",
-        "summary, ok: true",
-        String.Join(["alpha", "beta"], " | "),
-    ]
-
-    IO.WriteLines(outDir + "/namespaced_report.md", lines)!
-
-    let rows = [
-        ["metric", "value"],
-        ["line_count", "3"],
-    ]
-    Csv.Write(outDir + "/namespaced_metrics.csv", rows)!
-
-    let summary = Json.Object({"ok": true, "notes": "small, deterministic"})
-    Json.Save(outDir + "/namespaced_metrics.json", summary)!
-
-    let written = IO.ReadLines(outDir + "/namespaced_report.md")!
-    Assert.Equal(3, Len(written), "report line count should be deterministic")
-    Assert.Equal("title: \"m0 report\"", written[0], "report quote line should round-trip")
-    Assert.Equal("summary, ok: true", written[1], "report punctuation line should round-trip")
 }

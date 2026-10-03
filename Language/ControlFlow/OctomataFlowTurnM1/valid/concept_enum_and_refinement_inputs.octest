@@ -52,5 +52,3 @@ fn OrdinaryConceptTypingDrivesStep() -> Void {
     Step(commands, AccountCommand.Add(9))
     Assert.Equal(9, Yielded(commands)!, "nominal enum payload input")
 }
-
-fn Main() -> Void {}

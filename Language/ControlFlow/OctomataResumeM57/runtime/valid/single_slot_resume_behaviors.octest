@@ -70,12 +70,17 @@ fn ResumeSurvivesSuspendAndRestoresPriorState() -> Void {
     Assert.Equal("InvestigateNoise", Active(f), "second step should remember Patrol and divert")
     Assert.Equal("Patrol", ResumeTarget(f), "slot should hold remembered Patrol state")
 
-    Step(f)
-    Assert.Equal("InvestigateNoise", Active(f), "third step should suspend inside diversion state")
-
+    // A turn runs through `goto` and `resume` until the next `suspend`. The
+    // third step resumes Patrol, and Patrol suspends at its first statement.
     Step(f)
     Assert.Equal("Patrol", Active(f), "resume should restore Patrol after diversion")
     Assert.Equal("", ResumeTarget(f), "successful resume should clear slot")
+
+    // The fourth step continues Patrol past its suspend: it remembers itself
+    // again and diverts.
+    Step(f)
+    Assert.Equal("InvestigateNoise", Active(f), "fourth step should divert again")
+    Assert.Equal("Patrol", ResumeTarget(f), "re-remember should refill the slot")
 
     let history = StateHistory(f)
     Assert.Equal(4, Len(history), "history should include entry/diversion/resume transitions")
@@ -93,14 +98,19 @@ fn RememberOverwriteUsesLatestStateOnly() -> Void {
     Assert.Equal("CheckNoise", Active(f), "flow should enter CheckNoise after two remembers")
     Assert.Equal("Reload", ResumeTarget(f), "latest remember should overwrite older Engage target")
 
+    // Resume returns to Reload, not to Engage. Reload runs in the same turn:
+    // it remembers itself again and goes back to CheckNoise, which suspends.
     Step(f)
-    Assert.Equal("Reload", Active(f), "resume should return to most recent remembered state")
+    Assert.Equal("CheckNoise", Active(f), "the resumed state runs on within the turn")
+    Assert.Equal("Reload", ResumeTarget(f), "Reload remembers itself again after the resume")
 
     let history = StateHistory(f)
+    Assert.Equal(5, Len(history), "history should hold the entry, two diversions, the resume and the next diversion")
     Assert.Equal("Engage", history[0], "history should start at entry")
     Assert.Equal("Reload", history[1], "first diversion should record Reload")
     Assert.Equal("CheckNoise", history[2], "second diversion should record CheckNoise")
     Assert.Equal("Reload", history[3], "resume should restore latest remembered state")
+    Assert.Equal("CheckNoise", history[4], "the resumed state's diversion should be recorded")
 }
 
 [Fact]

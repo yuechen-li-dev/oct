@@ -1,8 +1,9 @@
-package Main
+package MainValid
 
+[Fact]
 fn SampleCountFloorToIntPattern() -> Void {
     let sampleRate = 44100.0
     let duration = 0.5
     let sampleCount = FloorToInt(sampleRate * duration)
-    Assert.Equal(sampleCount, 22050)
+    Assert.Equal(22050, sampleCount, "a sample count is a floored product")
 }
