@@ -208,6 +208,13 @@ func __octArrayBinaryAS[L __octNumber, R __octNumber, O any](left []L, right R, 
 	return out
 }
 
+func __octArrayZip[L any, R any, O any](left []L, right []R, combine func(L, R) O) []O {
+	if len(left) != len(right) { panic(fmt.Sprintf("runtime error: array length mismatch: %d vs %d", len(left), len(right))) }
+	out := make([]O, len(left))
+	for i := range left { out[i] = combine(left[i], right[i]) }
+	return out
+}
+
 func __octArrayBinarySA[L __octNumber, R __octNumber, O any](left L, right []R, op string) []O {
 	out := make([]O, len(right))
 	for i := range right { out[i] = __octArrayBinaryValue[L, R, O](left, right[i], op) }

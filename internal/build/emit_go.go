@@ -1788,6 +1788,15 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				op := strings.TrimPrefix(st.Callee, "ArrayBinaryAS:")
 				return fmt.Sprintf("%s = __octArrayBinaryAS[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(st.ArgTypes[1]), goType(retElem), args[0], args[1], op), nil
+			case "ArrayBinaryAA:+", "ArrayBinaryAA:-", "ArrayBinaryAA:*", "ArrayBinaryAA:/":
+				if len(st.ArgTypes) != 2 {
+					return "", fmt.Errorf("invalid array-array binary types %v -> %s", st.ArgTypes, st.RetType)
+				}
+				combine, ok := arrayArrayCombinerGo(strings.TrimPrefix(st.Callee, "ArrayBinaryAA:"), st.ArgTypes[0], st.ArgTypes[1], st.RetType)
+				if !ok {
+					return "", fmt.Errorf("invalid array-array binary types %v -> %s", st.ArgTypes, st.RetType)
+				}
+				return fmt.Sprintf("%s = %s(%s, %s)", st.Target, combine, args[0], args[1]), nil
 			case "ArrayBinarySA:+", "ArrayBinarySA:-", "ArrayBinarySA:*", "ArrayBinarySA:/", "ArrayBinarySA:==", "ArrayBinarySA:!=", "ArrayBinarySA:<", "ArrayBinarySA:<=", "ArrayBinarySA:>", "ArrayBinarySA:>=":
 				rightElem, rightOK := parseArrayElemType(st.ArgTypes[1])
 				retElem, retOK := parseArrayElemType(st.RetType)
@@ -2117,4 +2126,30 @@ func goReturnExpr(expr string) string {
 		return fmt.Sprintf("%s{Err: %s, IsErr: true}", goResultTypeName(retType), errExpr)
 	}
 	return expr
+}
+
+// arrayArrayCombinerGo returns a Go function expression that combines two
+// arrays element by element. A nested array combines its inner arrays with
+// the same function one level down, so any equal nesting depth is handled.
+func arrayArrayCombinerGo(op string, left string, right string, ret string) (string, bool) {
+	leftElem, leftOK := parseArrayElemType(left)
+	rightElem, rightOK := parseArrayElemType(right)
+	retElem, retOK := parseArrayElemType(ret)
+	if !leftOK || !rightOK || !retOK {
+		return "", false
+	}
+	var element string
+	if strings.HasSuffix(leftElem, "[]") {
+		inner, ok := arrayArrayCombinerGo(op, leftElem, rightElem, retElem)
+		if !ok {
+			return "", false
+		}
+		element = inner
+	} else {
+		if !isNumericTypeString(leftElem) || !isNumericTypeString(rightElem) {
+			return "", false
+		}
+		element = fmt.Sprintf("func(a %s, b %s) %s { return __octArrayBinaryValue[%s, %s, %s](a, b, %q) }", goType(leftElem), goType(rightElem), goType(retElem), goType(leftElem), goType(rightElem), goType(retElem), op)
+	}
+	return fmt.Sprintf("func(left %s, right %s) %s { return __octArrayZip(left, right, %s) }", goType(left), goType(right), goType(ret), element), true
 }
