@@ -1,0 +1,48 @@
+package MainValid
+
+// A fallible match arm may discard its binding with `_`, and an arm's body may
+// branch. Code after the match runs whichever arm was taken, in both lanes.
+
+fn Level(reading: Int) -> Int ! Error {
+    if reading < 0 {
+        return error("negative reading")
+    }
+    return reading
+}
+
+fn Classify(reading: Int) -> String {
+    var label = "unset"
+    match Level(reading) {
+        ok(value) => {
+            if value > 10 {
+                label = "high"
+            } else {
+                label = "low"
+            }
+        }
+        err(_) => {
+            label = "invalid"
+        }
+    }
+    return label + "!"
+}
+
+fn Succeeded(reading: Int) -> Bool {
+    match Level(reading) {
+        ok(_) => { return true }
+        err(_) => { return false }
+    }
+}
+
+[Fact]
+fn DiscardedBindingsWorkInBothArms() -> Void {
+    Assert.True(Succeeded(3), "ok(_) is taken on success")
+    Assert.False(Succeeded(-1), "err(_) is taken on failure")
+}
+
+[Fact]
+fn AnArmThatBranchesContinuesAfterTheMatch() -> Void {
+    Assert.Equal("high!", Classify(20), "then branch inside the ok arm")
+    Assert.Equal("low!", Classify(5), "else branch inside the ok arm")
+    Assert.Equal("invalid!", Classify(-1), "err arm with a discarded binding")
+}

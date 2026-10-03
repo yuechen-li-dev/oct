@@ -1369,35 +1369,44 @@ func (c *lowerCtx) lowerMatchStmt(s ast.MatchStmt) error {
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", errID)})
 	c.blocks[c.cur].Terminator = MIRBranch{Cond: MIRFieldAccess{Target: lowerMIRValue(subject, valType), Field: "IsErr", Type: "Bool"}, TrueTarget: c.blocks[errID].Label, FalseTarget: c.blocks[okID].Label}
 
+	// An arm that discards its binding, `ok(_)` or `err(_)`, binds nothing.
 	c.cur = okID
-	c.locals[s.OkName] = valType
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.OkName, Value: MIRFieldAccess{Target: lowerMIRValue(subject, valType), Field: "Value", Type: valType}})
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: mirLocal(s.OkName, valType)})
+	if s.OkName != "_" {
+		c.locals[s.OkName] = valType
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.OkName, Value: MIRFieldAccess{Target: lowerMIRValue(subject, valType), Field: "Value", Type: valType}})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: mirLocal(s.OkName, valType)})
+	}
 	if err := c.lowerBlock(s.OkBody); err != nil {
 		return err
 	}
-	okFallsThrough := c.blocks[c.cur].Terminator == nil
+	// An arm's body may end in a different block from the one it started in,
+	// for example after an `if`. The arm continues from where its body ends.
+	okEnd := c.cur
+	okFallsThrough := c.blocks[okEnd].Terminator == nil
 
 	c.cur = errID
-	c.locals[s.ErrName] = "Error"
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.ErrName, Value: MIRFieldAccess{Target: lowerMIRValue(subject, valType), Field: "Err", Type: "Error"}})
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: mirLocal(s.ErrName, "Error")})
+	if s.ErrName != "_" {
+		c.locals[s.ErrName] = "Error"
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: s.ErrName, Value: MIRFieldAccess{Target: lowerMIRValue(subject, valType), Field: "Err", Type: "Error"}})
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: "_", Value: mirLocal(s.ErrName, "Error")})
+	}
 	if err := c.lowerBlock(s.ErrBody); err != nil {
 		return err
 	}
-	errFallsThrough := c.blocks[c.cur].Terminator == nil
+	errEnd := c.cur
+	errFallsThrough := c.blocks[errEnd].Terminator == nil
 
 	if !okFallsThrough && !errFallsThrough {
-		c.cur = okID
+		c.cur = okEnd
 		return nil
 	}
 	mergeID := len(c.blocks)
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
 	if okFallsThrough {
-		c.blocks[okID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		c.blocks[okEnd].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	}
 	if errFallsThrough {
-		c.blocks[errID].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		c.blocks[errEnd].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
 	}
 	c.cur = mergeID
 	return nil
