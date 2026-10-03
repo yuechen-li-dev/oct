@@ -57,6 +57,29 @@ flow PolicySkipsElseWhenACaseHolds(values: Int[]) -> Int {
     }
 }
 
+record Plan {
+    Code: Int
+}
+
+fn OutOfRangePlan(values: Int[]) -> Plan {
+    return Plan { Code: values[9] }
+}
+
+// The same rules for a policy whose result is a record, not a scalar.
+flow RecordPolicySkipsAFalseCaseAndElse(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case OutOfRangePlan(values) when false score OutOfRange(values)
+            case Plan { Code: 7 } when true score 1
+            else OutOfRangePlan(values)
+        }
+        return next.Code
+    }
+}
+
 flow StandaloneSkipsAFalseCaseAndElse(values: Int[]) -> Int {
     state Decide {
         let next = when utility {
@@ -104,6 +127,10 @@ fn PolicyEvaluatesOnlyTheCasesWhoseConditionHolds() -> Void {
     let fallback = PolicySkipsElseWhenACaseHolds([1])
     Step(fallback)
     Assert.Equal(7, Assert.LGTM(Result(fallback), "result"), "else is not evaluated while a case holds")
+
+    let plan = RecordPolicySkipsAFalseCaseAndElse([1])
+    Step(plan)
+    Assert.Equal(7, Assert.LGTM(Result(plan), "result"), "a record policy skips a false case and the else value")
 }
 
 [Fact]

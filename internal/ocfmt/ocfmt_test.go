@@ -547,3 +547,43 @@ func TestFormatOctFailKeepsEitherExpectationHeader(t *testing.T) {
 		t.Fatalf("expected a malformed header to be refused, got %v", err)
 	}
 }
+
+// The expectation lines of an .octfail are kept as written, all of them, and
+// the source below is formatted. An artifact fixture is a test source: its
+// [Artifact] attribute is not valid in an ordinary source, so its body has to
+// be formatted as a test source or the file would be left unformatted.
+func TestFormatOctFailKeepsEveryExpectationLineAndFormatsArtifactBodies(t *testing.T) {
+	several := "\nexpect error: \"first\"\n  expect error: \"second \"quoted\"\"\n\npackage Main\nfn Main()->Int{return 1kg+2s}\n"
+	got, err := formatSourceWithPath("several.octfail", several, Options{})
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	want := "\nexpect error: \"first\"\nexpect error: \"second \"quoted\"\"\n\npackage Main\nfn Main() -> Int { return 1kg + 2s }\n"
+	if got != want {
+		t.Fatalf("several expectation lines:\n got %q\nwant %q", got, want)
+	}
+
+	artifact := "expect artifact error: \"stops\"\n\npackage Main\n[Artifact]\nfn Fails()->Void ! Error{\nlet _value=Stop()?\n}\n"
+	got, err = formatSourceWithPath("artifact.octfail", artifact, Options{})
+	if err != nil {
+		t.Fatalf("format an artifact fixture: %v", err)
+	}
+	want = "expect artifact error: \"stops\"\n\npackage Main\n[Artifact]\nfn Fails() -> Void ! Error {\n    let _value = Stop()?\n}\n"
+	if got != want {
+		t.Fatalf("artifact fixture:\n got %q\nwant %q", got, want)
+	}
+
+	// The same body under a compile-time expectation is not a test source,
+	// and is refused as the parser refuses it.
+	if _, err := formatSourceWithPath("ordinary.octfail", strings.Replace(artifact, "expect artifact error", "expect error", 1), Options{}); err == nil {
+		t.Fatalf("an [Artifact] attribute was accepted in an ordinary fixture body")
+	}
+	for _, malformed := range []string{
+		"expect error: \"a\"\nexpect runtime error: \"b\"\npackage Main\n",
+		"expect error: \"a\"\npackage Main\nexpect error: \"b\"\n",
+	} {
+		if _, err := formatSourceWithPath("bad.octfail", malformed, Options{}); err == nil {
+			t.Errorf("%q was formatted", malformed)
+		}
+	}
+}
