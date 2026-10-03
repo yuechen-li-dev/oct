@@ -1,0 +1,15 @@
+expect error: "fallible expression must be handled explicitly"
+
+package IfErrNotEqualNilUsage
+
+import IfErrNotEqualNil
+
+fn ParsePort(raw: String) -> Int ! Error {
+    return error("invalid port")
+}
+
+// The Go habit: hand the wrapper the result and let it look for the error.
+// Oct asks first.
+fn Main() -> Int ! Error {
+    return IfErrNotEqualNil.IfErrNotEqualNil<Int>(ParsePort("eighty"))
+}

@@ -1,0 +1,24 @@
+package MainValid
+
+// `matrix[[...]]` is the literal. A value named `matrix` is indexed like any
+// other value: `matrix[r, c]` for a Matrix, `matrix[r][c]` for nested arrays.
+
+fn TopLeft(matrix: Matrix<Float>) -> Float {
+    return matrix[0, 0]
+}
+
+[Fact]
+fn MatrixValueNamedMatrixIsIndexed() -> Void {
+    let matrix = matrix[[1.0, 2.0] [3.0, 4.0]]
+    Assert.Near(3.0, matrix[1, 0], 0.0001, "element access on a local named matrix")
+    Assert.Near(1.0, TopLeft(matrix), 0.0001, "element access on a parameter named matrix")
+}
+
+[Fact]
+fn NestedArrayNamedMatrixIsIndexed() -> Void {
+    let matrix = [[1, 2], [3, 4]]
+    let row = matrix[1]
+    Assert.Equal(3, row[0], "row access on a local named matrix")
+    Assert.Equal(4, matrix[1][1], "chained access on a local named matrix")
+    Assert.Equal(2, Len(matrix[0]), "indexing inside a call argument")
+}

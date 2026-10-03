@@ -2483,8 +2483,13 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		if token.Lexeme == "vector" && p.current().Kind == lex.LeftBracket {
 			return p.parseVectorLiteralExpr()
 		}
+		// `matrix[[...]]` is the literal. `matrix[` followed by anything else
+		// indexes a value named `matrix`; `matrix[]` stays on the literal path
+		// so that it reports an empty literal.
 		if token.Lexeme == "matrix" && p.current().Kind == lex.LeftBracket {
-			return p.parseMatrixLiteralExpr()
+			if next := p.peek(1).Kind; next == lex.LeftBracket || next == lex.RightBracket {
+				return p.parseMatrixLiteralExpr()
+			}
 		}
 		return ast.IdentifierExpr{Name: token.Lexeme}, nil
 	case lex.LeftParen:

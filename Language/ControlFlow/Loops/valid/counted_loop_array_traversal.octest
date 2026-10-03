@@ -1,0 +1,130 @@
+package MainValid
+
+// Counted loops over arrays: value scans, index-sensitive passes, building a
+// result with Append, and nested arrays. One parameter is named `matrix` on
+// purpose: `matrix[r]` indexes a value, and only `matrix[[...]]` is a literal.
+
+fn TraversalSum(xs: Int[]) -> Int {
+    var total = 0
+    for i in 0..Len(xs) {
+        total = total + xs[i]
+    }
+    return total
+}
+
+fn TraversalMax(xs: Float[]) -> Float {
+    var best = xs[0]
+    for i in 1..Len(xs) {
+        if xs[i] > best {
+            best = xs[i]
+        }
+    }
+    return best
+}
+
+fn TraversalAllPositive(xs: Int[]) -> Bool {
+    for i in 0..Len(xs) {
+        if xs[i] <= 0 {
+            return false
+        }
+    }
+    return true
+}
+
+fn TraversalAddIndex(xs: Int[]) -> Int[] {
+    var out: Int[] = []
+    for i in 0..Len(xs) {
+        out = Append(out, xs[i] + i)
+    }
+    return out
+}
+
+fn TraversalDiffAdjacent(xs: Float[]) -> Float[] {
+    var out: Float[] = []
+    for i in 1..Len(xs) {
+        out = Append(out, xs[i] - xs[i - 1])
+    }
+    return out
+}
+
+fn TraversalFirstIndexAbove(xs: Int[], threshold: Int) -> Int {
+    for i in 0..Len(xs) {
+        if xs[i] > threshold {
+            return i
+        }
+    }
+    return -1
+}
+
+fn TraversalKeepPositive(xs: Int[]) -> Int[] {
+    var out: Int[] = []
+    for i in 0..Len(xs) {
+        if xs[i] > 0 {
+            out = Append(out, xs[i])
+        }
+    }
+    return out
+}
+
+fn TraversalSumAll(matrix: Float[][]) -> Float {
+    var total = 0.0
+    for r in 0..Len(matrix) {
+        for c in 0..Len(matrix[r]) {
+            total = total + matrix[r][c]
+        }
+    }
+    return total
+}
+
+fn TraversalCountAbove(matrix: Float[][], threshold: Float) -> Int {
+    var count = 0
+    for r in 0..Len(matrix) {
+        for c in 0..Len(matrix[r]) {
+            if matrix[r][c] > threshold {
+                count = count + 1
+            }
+        }
+    }
+    return count
+}
+
+[Fact]
+fn ValueScansVisitEveryElement() -> Void {
+    Assert.Equal(10, TraversalSum([1, 2, 3, 4]), "sum")
+    Assert.Equal(0, TraversalSum([]), "sum of an empty array runs no iterations")
+    Assert.Near(8.0, TraversalMax([4.5, 8.0, 3.0, 2.0]), 0.0001, "max")
+    Assert.True(TraversalAllPositive([1, 2, 3, 4]), "all positive")
+    Assert.False(TraversalAllPositive([1, -2, 3]), "a scan returns from inside the loop")
+}
+
+[Fact]
+fn IndexSensitivePassesUseTheCounter() -> Void {
+    let indexed = TraversalAddIndex([2, 2, 2, 2])
+    Assert.Equal(4, Len(indexed), "one result per element")
+    Assert.Equal(2, indexed[0], "element plus index 0")
+    Assert.Equal(5, indexed[3], "element plus index 3")
+    let diffs = TraversalDiffAdjacent([10.0, 13.0, 18.0, 20.0])
+    Assert.Equal(3, Len(diffs), "one difference per adjacent pair")
+    Assert.Near(3.0, diffs[0], 0.0001, "diff 0")
+    Assert.Near(5.0, diffs[1], 0.0001, "diff 1")
+    Assert.Near(2.0, diffs[2], 0.0001, "diff 2")
+    Assert.Equal(2, TraversalFirstIndexAbove([1, 4, 8, 3], 5), "first index above the threshold")
+    Assert.Equal(-1, TraversalFirstIndexAbove([1, 4], 5), "no element above the threshold")
+}
+
+[Fact]
+fn FilterBuildsWithAppend() -> Void {
+    let kept = TraversalKeepPositive([-3, 1, 0, 4])
+    Assert.Equal(2, Len(kept), "two kept")
+    Assert.Equal(1, kept[0], "kept in order, first")
+    Assert.Equal(4, kept[1], "kept in order, second")
+    Assert.Equal(0, Len(TraversalKeepPositive([-3, 0])), "nothing kept")
+}
+
+[Fact]
+fn NestedArraysIndexThroughAValueNamedMatrix() -> Void {
+    let matrix = [[1.0, 2.0], [3.5, 4.5], [5.0, -1.0]]
+    Assert.Near(15.0, TraversalSumAll(matrix), 0.0001, "sum of every element")
+    Assert.Equal(3, TraversalCountAbove(matrix, 3.0), "elements above the threshold")
+    Assert.Near(4.5, matrix[1][1], 0.0001, "a local named matrix is indexed, not parsed as a literal")
+}
