@@ -162,13 +162,24 @@ func runOctFailCase(testCase octFailCase, executionMode string) (string, error) 
 	}
 
 	_, compileErr := build.CompileWithImportAnchor(sourcePath, importAnchor)
+	return judgeCompileTimeOctFail(testCase.expectedError, compileErr)
+}
+
+// judgeCompileTimeOctFail decides a compile-time fixture from the result of
+// compiling it. The first return value describes what happened.
+func judgeCompileTimeOctFail(expected string, compileErr error) (string, error) {
 	if compileErr == nil {
 		return "", fmt.Errorf("expected compilation failure but build succeeded")
 	}
-
 	actual := compileErr.Error()
-	if !strings.Contains(actual, testCase.expectedError) {
-		return actual, fmt.Errorf("expected error containing: %q", testCase.expectedError)
+	// The Go toolchain rejecting generated code is a backend defect, not the
+	// compiler rejecting the source. Its message can contain the expected
+	// text by accident, so it never satisfies a contract.
+	if errors.Is(compileErr, build.ErrGeneratedProgramDidNotBuild) {
+		return "the source was accepted, and the generated program did not build: " + actual, fmt.Errorf("expected the compiler to reject the source")
+	}
+	if !strings.Contains(actual, expected) {
+		return actual, fmt.Errorf("expected error containing: %q", expected)
 	}
 	return actual, nil
 }

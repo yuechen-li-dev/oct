@@ -2,8 +2,11 @@ package tester
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/yuechen-li-dev/oct/internal/build"
 )
 
 // A runtime .octfail is decided per lane. These cases fix which lanes run in
@@ -93,5 +96,28 @@ func TestParseOctFailFixtureRefusesRuntimeHeader(t *testing.T) {
 	}
 	if expected, source, err := ParseOctFailFixture("expect error: \"a\"\nbody\n"); err != nil || expected != "a" || source != "body\n" {
 		t.Fatalf("compile-time header: got (%q, %q, %v)", expected, source, err)
+	}
+}
+
+// Two contracts once expected "operator + not defined" and passed on the Go
+// compiler's complaint about generated code. That can no longer happen.
+func TestCompileTimeOctFailIsNotSatisfiedByAGoBuildFailure(t *testing.T) {
+	rejected := errors.New("function Main: operator + not defined for String and Int")
+	if actual, err := judgeCompileTimeOctFail("operator + not defined", rejected); err != nil || actual != rejected.Error() {
+		t.Errorf("a compiler rejection with the expected text: got (%q, %v)", actual, err)
+	}
+	if _, err := judgeCompileTimeOctFail("some other text", rejected); err == nil {
+		t.Errorf("a compiler rejection without the expected text was accepted")
+	}
+	if _, err := judgeCompileTimeOctFail("anything", nil); err == nil {
+		t.Errorf("a source that compiled was accepted")
+	}
+	goBuild := fmt.Errorf("%w: exit status 1: invalid operation: operator + not defined on xs (variable of type []int)", build.ErrGeneratedProgramDidNotBuild)
+	actual, err := judgeCompileTimeOctFail("operator + not defined", goBuild)
+	if err == nil {
+		t.Fatalf("a Go build failure satisfied the contract")
+	}
+	if !strings.Contains(actual, "the generated program did not build") {
+		t.Errorf("the report does not say what happened: %q", actual)
 	}
 }
