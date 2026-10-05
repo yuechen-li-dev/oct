@@ -1558,3 +1558,83 @@ func TestBuildFileRejectsInvalidLaneAttributes(t *testing.T) {
 	}
 	assertParseErrorContainsWithPath(t, "bad.oct", "package Main\n[Compiled(\"a\")]\nfn Bad() -> Void { return }\n", "[Compiled] is only valid in .octest files or Make.oct")
 }
+
+// `vector[...]` is a literal unless a value named `vector` is in scope, in
+// which case it indexes that value. Each case marks the expression that is
+// returned and says which reading it must get.
+func TestBuildFileResolvesVectorBracketByScope(t *testing.T) {
+	cases := []struct {
+		name    string
+		source  string
+		literal bool
+	}{
+		{"nothing bound", "fn F() -> Float { return vector[1.0][0] }", true},
+		{"parameter", "fn F(vector: Float[]) -> Float { return vector[0] }", false},
+		{"let, after it", "fn F() -> Float { let vector = [1.0] return vector[0] }", false},
+		{"var, after it", "fn F() -> Float { var vector = [1.0] return vector[0] }", false},
+		{"loop variable", "fn F() -> Float { for vector in 0..1 { return vector[0] } return 0.0 }", false},
+		{"batch item", "fn F(xs: Float[][]) -> Float { let ys = batch xs as vector { return vector[0] } return 0.0 }", false},
+		{"binding ended with its block", "fn F(flag: Bool) -> Float { if flag { let vector = [1.0] } return vector[1.0][0] }", true},
+		{"flow parameter in a state", "flow G(vector: Float[]) -> Float { state S { return vector[0] } }", false},
+		{"function value parameter", "fn F() -> Float { let f = fn(vector: Float[]) -> Float { return vector[0] } return 0.0 }", false},
+		{"outer local inside a function value", "fn F() -> Float { let vector = [1.0] let f = fn() -> Float { return vector[1.0][0] } return 0.0 }", true},
+		{"capture inside a function value", "fn F() -> Float { let vector = [1.0] let f = fn() -> Float with { vector: vector } { return vector[0] } return 0.0 }", false},
+		{"another function's parameter", "fn A(vector: Float[]) -> Float { return 0.0 }\nfn F() -> Float { return vector[1.0][0] }", true},
+	}
+	for _, c := range cases {
+		file := parseSource(t, c.source)
+		found, isLiteral := false, false
+		var visitBlock func(block ast.Block)
+		var visitExpr func(expr ast.Expr)
+		visitExpr = func(expr ast.Expr) {
+			switch e := expr.(type) {
+			case ast.IndexExpr:
+				switch target := e.Target.(type) {
+				case ast.VectorLiteralExpr:
+					found, isLiteral = true, true
+				case ast.IdentifierExpr:
+					if target.Name == "vector" {
+						found, isLiteral = true, false
+					}
+				}
+			case ast.FunctionExpr:
+				visitBlock(e.Body)
+			case ast.BatchExpr:
+				visitBlock(e.Body)
+			}
+		}
+		visitBlock = func(block ast.Block) {
+			for _, statement := range block.Statements {
+				switch s := statement.(type) {
+				case ast.ReturnStmt:
+					if s.Value != nil {
+						visitExpr(s.Value)
+					}
+				case ast.LetStmt:
+					visitExpr(s.Value)
+				case ast.ForStmt:
+					visitBlock(s.Body)
+				case ast.IfStmt:
+					visitBlock(s.ThenBody)
+				}
+			}
+		}
+		for _, function := range file.Functions {
+			if function.Name == "F" {
+				visitBlock(function.Body)
+			}
+		}
+		for _, flow := range file.Flows {
+			for _, state := range flow.States {
+				visitBlock(state.Body)
+			}
+		}
+		if !found {
+			t.Errorf("%s: no `vector[...]` found in %q", c.name, c.source)
+			continue
+		}
+		if isLiteral != c.literal {
+			t.Errorf("%s: read as literal = %v, want %v", c.name, isLiteral, c.literal)
+		}
+	}
+}

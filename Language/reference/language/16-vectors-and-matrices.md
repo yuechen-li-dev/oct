@@ -33,6 +33,11 @@ Arrays are general ordered collection/storage values, while vectors and matrices
 
 - Vector literal form is `vector[a, b, c]`.
 - Matrix literal form is `matrix[[r1c1, r1c2] [r2c1, r2c2]]`.
+- `vector` and `matrix` are not reserved words. A value may be named either.
+  - `matrix[[...]]` is the literal and `matrix[i, j]` or `matrix[i]` indexes a value named `matrix`; the second bracket tells them apart.
+  - `vector[a, b]` and `vector[i]` have the same shape, so the name decides. Where a parameter, a `let` or `var`, a loop variable, a `batch` item, a match binding or a capture named `vector` is in scope, `vector[...]` indexes that value. Everywhere else it is the literal.
+  - Scope is the ordinary lexical one: a binding is visible from the statement after it to the end of its block, so `let vector = vector[1.0, 2.0]` builds a literal and then names it. A function value sees only its parameters and captures.
+  - While a value named `vector` is in scope a vector literal cannot be written; give the value another name.
 - Vector literals require homogeneous element type.
 - Matrix rows must all have equal length.
 - Vectors and matrices may use dimension-qualified numeric elements.

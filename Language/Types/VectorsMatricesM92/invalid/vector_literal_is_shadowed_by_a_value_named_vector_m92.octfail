@@ -1,0 +1,11 @@
+expect error: "array indexing requires exactly 1 index, got 2"
+
+package Main
+
+// While a value named `vector` is in scope, `vector[...]` indexes it. A
+// literal cannot be written under that name; use another name for the value.
+fn Main() -> Float {
+    let vector = [1.0, 2.0]
+    let pair = vector[3.0, 4.0]
+    return pair[0]
+}

@@ -1,0 +1,107 @@
+package MainValid
+
+// `vector[a, b]` is a vector literal, and `vector[i]` indexes a value named
+// `vector`. The name decides: where a parameter, a `let` or `var`, or a match
+// binding named `vector` is in scope, `vector[...]` indexes it. Everywhere
+// else it is the literal. A binding is in scope from the statement after it
+// to the end of its block.
+
+fn SecondOf(vector: Vector<Float>) -> Float {
+    return vector[1]
+}
+
+fn LastOf(vector: Float[]) -> Float {
+    return vector[Len(vector) - 1]
+}
+
+fn LiteralWhereNothingIsBound() -> Float {
+    let pair = vector[3.0, 4.0]
+    return pair[0] + pair[1]
+}
+
+fn BoundByLet() -> Float {
+    // The initializer is read before the name is bound, so it is a literal.
+    let vector = vector[1.0, 2.0, 3.0]
+    return vector[2]
+}
+
+fn BoundByVar() -> Float {
+    var vector = [5.0, 6.0]
+    vector[0] = 9.0
+    return vector[0] + vector[1]
+}
+
+fn BindingEndsWithItsBlock(flag: Bool) -> Float {
+    var total = 0.0
+    if flag {
+        let vector = [10.0, 20.0]
+        total = vector[1]
+    }
+    // No value named `vector` is in scope here, so this is a literal again.
+    let pair = vector[1.0, 2.0]
+    return total + pair[0]
+}
+
+fn Samples(ok: Bool) -> Float[] ! Error {
+    if ok {
+        return [7.0, 8.0]
+    }
+    return error("no samples")
+}
+
+fn BoundByMatchArm() -> Float {
+    var first = 0.0
+    match Samples(true) {
+        ok(vector) => { first = vector[0] }
+        err(_) => { first = -1.0 }
+    }
+    return first
+}
+
+fn BoundInsideAFunctionValue() -> Float {
+    let pick = fn(vector: Float[]) -> Float {
+        return vector[1]
+    }
+    return pick([1.5, 2.5])
+}
+
+fn CapturedByAFunctionValue() -> Float {
+    let vector = [4.0, 5.0]
+    // The capture value is read out here, where `vector` is the local.
+    let pick = fn(index: Int) -> Float with {
+        vector: vector
+    } {
+        return vector[index]
+    }
+    return pick(1)
+}
+
+fn LiteralInsideAFunctionValue() -> Float {
+    let vector = [4.0, 5.0]
+    // A function value sees its parameters and captures only. The local
+    // above is not in scope inside it, so this is a literal.
+    let build = fn(scale: Float) -> Float {
+        let pair = vector[scale, scale + 1.0]
+        return pair[1]
+    }
+    return build(2.0) + vector[0]
+}
+
+[Fact]
+fn AValueNamedVectorIsIndexed() -> Void {
+    Assert.Near(2.0, SecondOf(vector[1.0, 2.0, 3.0]), 0.0001, "a Vector parameter named vector")
+    Assert.Near(9.0, LastOf([7.0, 8.0, 9.0]), 0.0001, "an array parameter named vector")
+    Assert.Near(3.0, BoundByLet(), 0.0001, "a let named vector, initialized from a literal")
+    Assert.Near(15.0, BoundByVar(), 0.0001, "a var named vector, assigned through an index")
+    Assert.Near(7.0, BoundByMatchArm(), 0.0001, "a match binding named vector")
+    Assert.Near(2.5, BoundInsideAFunctionValue(), 0.0001, "a function value's parameter named vector")
+    Assert.Near(5.0, CapturedByAFunctionValue(), 0.0001, "a capture named vector")
+}
+
+[Fact]
+fn TheLiteralIsUnchangedWhereNoValueIsNamedVector() -> Void {
+    Assert.Near(7.0, LiteralWhereNothingIsBound(), 0.0001, "no binding in scope")
+    Assert.Near(21.0, BindingEndsWithItsBlock(true), 0.0001, "the binding ended with its block")
+    Assert.Near(1.0, BindingEndsWithItsBlock(false), 0.0001, "the block did not run; the literal is still a literal")
+    Assert.Near(7.0, LiteralInsideAFunctionValue(), 0.0001, "an outer local is not in scope inside a function value")
+}

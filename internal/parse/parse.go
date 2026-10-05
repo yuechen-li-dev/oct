@@ -36,6 +36,44 @@ type parser struct {
 	nextUtilityWhenSiteID int
 	docByLine             map[int]ast.DocComment
 	markupSpans           []ast.MarkupSpan
+	// literalNameBindings records, innermost last, each binding in scope of
+	// a name that also begins a literal. See literalNameIsBound.
+	literalNameBindings []string
+}
+
+// `vector[a, b]` is a vector literal, and `vector[i]` indexes a value named
+// `vector`. The two have the same shape, so the name decides: where a
+// parameter, a `let` or `var`, a loop variable or a match binding named
+// `vector` is in scope, `vector[...]` indexes it, and elsewhere it is the
+// literal. Scope here is lexical and follows the source order, as it does for
+// every other name: a binding is visible from the statement after it to the
+// end of its block.
+//
+// `matrix` needs none of this. Its literal is `matrix[[...]]`, which one token
+// of lookahead tells apart from an index.
+
+// enterNameScope returns a mark for leaveNameScope.
+func (p *parser) enterNameScope() int { return len(p.literalNameBindings) }
+
+// leaveNameScope drops the bindings made since the mark.
+func (p *parser) leaveNameScope(mark int) { p.literalNameBindings = p.literalNameBindings[:mark] }
+
+// bindValueName records that name now refers to a value. Only a name that
+// also begins a literal needs recording.
+func (p *parser) bindValueName(name string) {
+	if name == "vector" {
+		p.literalNameBindings = append(p.literalNameBindings, name)
+	}
+}
+
+// literalNameIsBound reports whether name refers to a value at this point.
+func (p *parser) literalNameIsBound(name string) bool {
+	for _, bound := range p.literalNameBindings {
+		if bound == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *parser) parseFile(src source.File) (ast.File, error) {
@@ -519,6 +557,8 @@ func (p *parser) parseQueryDecl() (ast.FlowDecl, error) {
 }
 
 func (p *parser) parseQueryDeclWithTemplate(isTemplate bool) (ast.FlowDecl, error) {
+	// Parameters are in scope for the body and no further.
+	defer p.leaveNameScope(p.enterNameScope())
 	queryToken, err := p.expect(lex.Identifier, "expected 'query' at top level")
 	if err != nil {
 		return ast.FlowDecl{}, err
@@ -1161,6 +1201,8 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 }
 
 func (p *parser) parseFunctionDeclWithTemplate(isTemplate bool) (ast.FunctionDecl, error) {
+	// Parameters are in scope for the body and no further.
+	defer p.leaveNameScope(p.enterNameScope())
 	fnToken, err := p.expect(lex.KeywordFn, "expected 'fn' at top level")
 	if err != nil {
 		return ast.FunctionDecl{}, err
@@ -1224,6 +1266,8 @@ func (p *parser) parseFunctionDeclWithTemplate(isTemplate bool) (ast.FunctionDec
 }
 
 func (p *parser) parseGoImportDecl() (ast.FunctionDecl, error) {
+	// Parameters are in scope for the body and no further.
+	defer p.leaveNameScope(p.enterNameScope())
 	goToken, err := p.expect(lex.Identifier, "expected 'go' at top level")
 	if err != nil {
 		return ast.FunctionDecl{}, err
@@ -1276,6 +1320,8 @@ func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
 }
 
 func (p *parser) parseFlowDeclWithTemplate(isTemplate bool) (ast.FlowDecl, error) {
+	// Parameters are in scope for the body and no further.
+	defer p.leaveNameScope(p.enterNameScope())
 	if _, err := p.expect(lex.KeywordFlow, "expected 'flow' at top level"); err != nil {
 		return ast.FlowDecl{}, err
 	}
@@ -1410,6 +1456,7 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 			return nil, err
 		}
 		parameters = append(parameters, ast.Parameter{Name: name.Lexeme, Type: typeRef})
+		p.bindValueName(name.Lexeme)
 
 		if !p.match(lex.Comma) {
 			break
@@ -1580,6 +1627,7 @@ func (p *parser) parseBlock() (ast.Block, error) {
 	if _, err := p.expect(lex.LeftBrace, "expected '{' to start block"); err != nil {
 		return ast.Block{}, err
 	}
+	defer p.leaveNameScope(p.enterNameScope())
 
 	var statements []ast.Stmt
 	for p.current().Kind != lex.RightBrace {
@@ -1793,6 +1841,9 @@ func (p *parser) parseLetStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The name is bound after its initializer: `let vector = vector[1.0, 2.0]`
+	// builds a literal and then names it.
+	p.bindValueName(name.Lexeme)
 	return ast.LetStmt{Name: name.Lexeme, TypeHint: typeHint, Value: value}, nil
 }
 
@@ -1817,6 +1868,7 @@ func (p *parser) parseVarStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	p.bindValueName(name.Lexeme)
 	return ast.VarStmt{Name: name.Lexeme, TypeHint: typeHint, Value: value}, nil
 }
 
@@ -1983,7 +2035,11 @@ func (p *parser) parseForStmt() (ast.Stmt, error) {
 			}
 		}
 	}
+	// The loop variable is in scope for the body, not for its own range.
+	loopScope := p.enterNameScope()
+	p.bindValueName(name.Lexeme)
 	body, err := p.parseBlock()
+	p.leaveNameScope(loopScope)
 	if err != nil {
 		return nil, err
 	}
@@ -2081,7 +2137,10 @@ func (p *parser) parseMatchArm(expectedName string) (string, ast.Block, error) {
 	if _, err := p.expect(lex.Arrow, fmt.Sprintf("expected arrow after %s arm", expectedName)); err != nil {
 		return "", ast.Block{}, err
 	}
+	armScope := p.enterNameScope()
+	p.bindValueName(binding.Lexeme)
 	body, err := p.parseBlock()
+	p.leaveNameScope(armScope)
 	if err != nil {
 		return "", ast.Block{}, err
 	}
@@ -2522,7 +2581,7 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return ast.BoolLiteral{Value: false}, nil
 	case lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.KeywordDescend:
 		p.advance()
-		if token.Lexeme == "vector" && p.current().Kind == lex.LeftBracket {
+		if token.Lexeme == "vector" && p.current().Kind == lex.LeftBracket && !p.literalNameIsBound("vector") {
 			return p.parseVectorLiteralExpr()
 		}
 		// `matrix[[...]]` is the literal. `matrix[` followed by anything else
@@ -2714,6 +2773,11 @@ func (p *parser) parseMarkupChildren(tag string, cursor int) ([]ast.MarkupChild,
 }
 
 func (p *parser) parseFunctionExpr() (ast.Expr, error) {
+	// A function value sees its parameters and its captures, and nothing of
+	// the function around it. Capture values are read in the outer scope.
+	outerBindings := p.literalNameBindings
+	p.literalNameBindings = nil
+	defer func() { p.literalNameBindings = outerBindings }()
 	fnToken, err := p.expect(lex.KeywordFn, "expected 'fn'")
 	if err != nil {
 		return nil, err
@@ -2759,10 +2823,14 @@ func (p *parser) parseFunctionExpr() (ast.Expr, error) {
 			if _, err := p.expect(lex.Colon, "expected ':' after capture name"); err != nil {
 				return nil, err
 			}
+			innerBindings := p.literalNameBindings
+			p.literalNameBindings = outerBindings
 			value, err := p.parseExpression()
+			p.literalNameBindings = innerBindings
 			if err != nil {
 				return nil, err
 			}
+			p.bindValueName(name.Lexeme)
 			function.Captures = append(function.Captures, ast.CaptureBinding{Name: name.Lexeme, Value: value, Line: name.Line, Column: name.Column})
 			p.match(lex.Comma)
 		}
@@ -2789,7 +2857,10 @@ func (p *parser) parseBatchExpr() (ast.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	itemScope := p.enterNameScope()
+	p.bindValueName(itemName.Lexeme)
 	body, err := p.parseBlock()
+	p.leaveNameScope(itemScope)
 	if err != nil {
 		return nil, err
 	}
@@ -3181,7 +3252,10 @@ func (p *parser) parseMatchExpr() (ast.Expr, error) {
 		if _, err := p.expect(lex.Arrow, "expected arrow after match case"); err != nil {
 			return nil, err
 		}
+		caseScope := p.enterNameScope()
+		p.bindValueName(binding)
 		value, err := p.parseExpression()
+		p.leaveNameScope(caseScope)
 		if err != nil {
 			return nil, err
 		}
