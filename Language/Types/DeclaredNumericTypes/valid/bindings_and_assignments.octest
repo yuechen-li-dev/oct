@@ -58,6 +58,15 @@ fn AssignmentToAFloatArrayVariable() -> Void {
 }
 
 [Fact]
+fn AssignmentToANestedFloatArrayVariable() -> Void {
+    let ns = [[1, 1], [1, 1]]
+    var grid = [[1.5]]
+    grid = ns
+    Assert.Equal(0.5, grid[1][0] / 2, "an Int[][] variable, to an inferred Float[][] variable")
+    Assert.Equal(0, ns[1][0] / 2, "the Int[][] is unchanged")
+}
+
+[Fact]
 fn AssignmentToAnElement() -> Void {
     let n = 1
     var values = [1.5, 2.5]

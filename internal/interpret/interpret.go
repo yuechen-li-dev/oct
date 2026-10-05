@@ -1244,7 +1244,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 
 		updated := targetBinding.value
-		value.value = i.conformIndexed(value.value, updated, targetBinding.declared, len(indices), pkgName)
+		value.value = conformIndexed(value.value, updated)
 		switch updated.Kind {
 		case ValueArray:
 			var err error
@@ -1318,7 +1318,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
-		value.value = i.conformIndexed(value.value, fieldValue, boardFieldType(env, node.Target, node.Field), len(indices), pkgName)
+		value.value = conformIndexed(value.value, fieldValue)
 		switch fieldValue.Kind {
 		case ValueArray:
 			assigned, err := assignNestedArrayIndex(fieldValue, indices, value.value)

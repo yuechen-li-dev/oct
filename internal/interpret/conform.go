@@ -48,21 +48,6 @@ func (i interpreter) representation(declared ast.TypeRef, pkgName string) ast.Ty
 	return declared
 }
 
-// elementType is the type of what `target[i, j, ...]` holds, for depth
-// indices into a target of the declared type. The second result is false when
-// the declaration does not say.
-func elementType(declared ast.TypeRef, depth int) (ast.TypeRef, bool) {
-	if declared.MatrixOf != nil && declared.ArrayDepth == 0 {
-		return *declared.MatrixOf, depth == 2
-	}
-	if declared.ArrayDepth < depth {
-		return ast.TypeRef{}, false
-	}
-	declared.ArrayDepth -= depth
-	declared.IsArray = declared.ArrayDepth > 0
-	return declared, true
-}
-
 // conformToDeclared answers with value as the declared type has it. A value
 // that already is what the declaration says is returned unchanged, without
 // being copied.
@@ -341,14 +326,10 @@ func (i interpreter) conformAssigned(env *environment, pkgName string, name stri
 }
 
 // conformIndexed answers with value as an element of container has it, for
-// an assignment through depth indices. declared is the type container was
-// written with, or nil.
-func (i interpreter) conformIndexed(value Value, container Value, declared *ast.TypeRef, depth int, pkgName string) Value {
-	if declared != nil {
-		if element, known := elementType(*declared, depth); known {
-			return i.conform(value, element, pkgName)
-		}
-	}
+// an assignment through indices. The container says what its elements are:
+// an index names an element that exists, so an array that is assigned into
+// has a value in it, and the elements of an array share one type.
+func conformIndexed(value Value, container Value) Value {
 	if container.Kind == ValueMatrix {
 		if len(container.Matrix.Elements) == 0 {
 			return value
