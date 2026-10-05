@@ -3,11 +3,12 @@ package MainValid
 // What a utility `when` evaluates inside a flow state
 // (Language/reference/runtime/21-octomata.md, "Utility `when`").
 //
-// `when policy` and the plain `when utility` evaluate, in source order, the
-// score and the value of every case whose condition holds. They evaluate
-// nothing of a case whose condition is false, and the else value only when no
-// condition held. The enum-targeted `when utility` evaluates the value of the
-// selected case alone, so a losing payload is not evaluated.
+// Every form follows one rule. The cases are visited in source order: a
+// condition, and its score only when the condition holds. Then the value of
+// the one selected arm is evaluated and no other: not the value of a case
+// that lost, nothing of a case whose condition is false, and the else value
+// only when no condition held. `when policy` decides which arm is selected
+// from the scores and its commitment; it needs no value to do so.
 //
 // OutOfRange stops the program when it is called, so a fact that passes shows
 // the expression was not evaluated.
@@ -38,6 +39,20 @@ flow PolicySkipsTheScoreOfAFalseCase(values: Int[]) -> Int {
         } {
             case 1 when false score OutOfRange(values)
             case 7 when true score 1
+            else 0
+        }
+        return next
+    }
+}
+
+flow PolicySkipsTheValueOfALosingCase(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case OutOfRange(values) when true score 1
+            case 7 when true score 100
             else 0
         }
         return next
@@ -115,7 +130,12 @@ flow EnumTargetedPayloadIsDelayed(values: Int[]) -> Int {
 }
 
 [Fact]
-fn PolicyEvaluatesOnlyTheCasesWhoseConditionHolds() -> Void {
+fn PolicyEvaluatesOnlyTheSelectedValue() -> Void {
+    let losing = PolicySkipsTheValueOfALosingCase([1])
+    Step(losing)
+    Assert.Equal(7, Assert.LGTM(Result(losing), "result"), "the value of a case that lost is not evaluated")
+
+
     let value = PolicySkipsTheValueOfAFalseCase([1])
     Step(value)
     Assert.Equal(7, Assert.LGTM(Result(value), "result"), "the value of a false case is not evaluated")

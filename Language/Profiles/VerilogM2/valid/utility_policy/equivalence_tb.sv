@@ -7,7 +7,10 @@ module utility_policy_tb;
     logic [2:0] InstructionView;
     logic signed [63:0] Result, YieldValue, Board_Selected;
     logic UtilitySite0HasCurrent;
-    logic signed [63:0] UtilitySite0Current, UtilitySite0Score, UtilitySite0CommitAge;
+    // The site is committed to an arm of the `when policy`, by position:
+    // 0 and 1 are the two cases and -1 is the else arm.
+    logic signed [31:0] UtilitySite0Arm;
+    logic signed [63:0] UtilitySite0Score, UtilitySite0CommitAge;
 
     UtilityController dut(.*);
 
@@ -23,21 +26,21 @@ module utility_policy_tb;
         end
     endtask
 
-    task expect_yield(input signed [63:0] expected, input signed [63:0] age);
+    task expect_yield(input signed [63:0] expected, input signed [31:0] arm, input signed [63:0] age);
         begin
             @(posedge Clock); #1;
-            if (Fault || Done || !YieldValid || YieldValue != expected || Board_Selected != expected || UtilitySite0Current != expected || UtilitySite0CommitAge != age) $fatal(1, "utility turn mismatch");
+            if (Fault || Done || !YieldValid || YieldValue != expected || Board_Selected != expected || UtilitySite0Arm != arm || UtilitySite0CommitAge != age) $fatal(1, "utility turn mismatch");
         end
     endtask
 
     initial begin
         set_scores(1, 1, 10, 10);
         @(posedge Clock); #1; Reset = 0;
-        expect_yield(1, 1);
-        set_scores(1, 1, 10, 11); expect_yield(1, 2);
-        set_scores(1, 1, 10, 20); expect_yield(1, 3);
-        set_scores(1, 1, 10, 20); expect_yield(2, 1);
-        set_scores(0, 0, 0, 0); expect_yield(0, 1);
+        expect_yield(1, 0, 1);
+        set_scores(1, 1, 10, 11); expect_yield(1, 0, 2);
+        set_scores(1, 1, 10, 20); expect_yield(1, 0, 3);
+        set_scores(1, 1, 10, 20); expect_yield(2, 1, 1);
+        set_scores(0, 0, 0, 0); expect_yield(0, -1, 1);
         $display("utility-policy-equivalence-ok");
         $finish;
     end

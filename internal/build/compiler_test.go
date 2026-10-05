@@ -2511,23 +2511,9 @@ fn main() -> Int {
 	if err != nil {
 		t.Fatalf("inspect: %v", err)
 	}
-	var assertExpressionSurface func(MIRFlowExpr)
-	assertExpressionSurface = func(expr MIRFlowExpr) {
-		switch value := expr.(type) {
-		case MIRFlowSharedExpr:
-		case MIRFlowUtilityWhenExpr:
-			assertExpressionSurface(value.Hysteresis)
-			assertExpressionSurface(value.MinCommit)
-			assertExpressionSurface(value.Else)
-			for _, candidate := range value.Cases {
-				assertExpressionSurface(candidate.Value)
-				assertExpressionSurface(candidate.Condition)
-				assertExpressionSurface(candidate.Score)
-			}
-		default:
-			t.Fatalf("FLOW expression surface contains %T; want shared ordinary MIR or controller policy", expr)
-		}
-	}
+	// For the Go backend a `when policy` is ordinary MIR: a shared expression
+	// whose blocks read the site's committed arm and then commit, through two
+	// builtin calls that carry the site ID.
 	foundPolicy := false
 	for _, flow := range module.Flows {
 		for _, state := range flow.States {
@@ -2536,13 +2522,35 @@ fn main() -> Int {
 				if !ok || returned.Value == nil {
 					continue
 				}
-				assertExpressionSurface(returned.Value)
-				_, foundPolicy = returned.Value.(MIRFlowUtilityWhenExpr)
+				shared, ok := returned.Value.(MIRFlowSharedExpr)
+				if !ok {
+					t.Fatalf("FLOW expression surface contains %T; want shared ordinary MIR", returned.Value)
+				}
+				reads, commits := 0, 0
+				for _, block := range shared.Blocks {
+					for _, lowered := range block.Statements {
+						call, ok := lowered.(MIRCall)
+						if !ok {
+							continue
+						}
+						if siteID, isSite := utilitySiteOfCall(call); isSite {
+							if siteID != 0 {
+								t.Fatalf("policy site = %d, want 0", siteID)
+							}
+							if call.Callee == utilityCommitBuiltin {
+								commits++
+							} else {
+								reads++
+							}
+						}
+					}
+				}
+				foundPolicy = reads == 1 && commits == 1
 			}
 		}
 	}
 	if !foundPolicy {
-		t.Fatal("expected controller policy expression in FLOW MIR")
+		t.Fatal("expected one read of the committed arm and one commit in FLOW MIR")
 	}
 	t.Setenv("OCT_MIR_DUMP", "1")
 	result, err := Compile(mainPath)
@@ -2554,8 +2562,8 @@ fn main() -> Int {
 		t.Fatalf("read MIR dump: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "utility_when[site=") {
-		t.Fatalf("expected lowered utility when in MIR dump, got:\n%s", text)
+	if !strings.Contains(text, utilityCommitBuiltin) {
+		t.Fatalf("expected the policy commit in the MIR dump, got:\n%s", text)
 	}
 	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
 	if err != nil {

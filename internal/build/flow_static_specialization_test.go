@@ -80,7 +80,7 @@ func measureGeneratedFlow(t *testing.T, source string) generatedFlowMetrics {
 		HasRange:      strings.Contains(source, "type __octRange struct"),
 		HasHistory:    strings.Contains(source, "history []string"),
 		HasResume:     strings.Contains(source, "hasResumeTarget bool"),
-		HasUtilityMap: strings.Contains(source, "utilitySites map[int]__octUtilitySiteState"),
+		HasUtilityMap: strings.Contains(source, "map[int]__octUtilitySiteState"),
 	}
 	for _, declaration := range file.Decls {
 		switch declaration := declaration.(type) {
@@ -119,8 +119,8 @@ func TestPersistentPolicyFlowGeneratedStructure(t *testing.T) {
 			t.Errorf("specialized scalar policy flow retained unused %s", name)
 		}
 	}
-	if !strings.Contains(source, "utilitySite0 __octScalarUtilitySiteState[int]") || !strings.Contains(source, "__octUtilSelectScalar[int](&f.utilitySite0") {
-		t.Fatalf("scalar policy site was not lowered to typed persistent state:\n%s", source)
+	if !strings.Contains(source, "utilitySite0 __octUtilitySiteState") || !strings.Contains(source, "__octUtilCommit(&f.utilitySite0") {
+		t.Fatalf("policy site was not lowered to a commitment record in the flow instance:\n%s", source)
 	}
 	if metrics.FlowFields > 8 {
 		t.Fatalf("specialized flow retained %d fields; want at most 8", metrics.FlowFields)

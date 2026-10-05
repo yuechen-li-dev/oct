@@ -1177,41 +1177,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.BatchExpr:
 		return c.lowerBatchExpr(e)
 	case ast.UtilityWhenExpr:
-		if !e.ControllerBound {
-			return c.lowerStandaloneUtilityWhen(e)
-		}
-		h, _, _, err := c.lowerExpr(e.Policy.Hysteresis)
-		if err != nil {
-			return "", "", false, err
-		}
-		m, _, _, err := c.lowerExpr(e.Policy.MinCommit)
-		if err != nil {
-			return "", "", false, err
-		}
-		elseExpr, resultType, _, err := c.lowerExpr(e.Else)
-		if err != nil {
-			return "", "", false, err
-		}
-		cases := make([]string, 0, len(e.Cases))
-		valueType := goType(resultType)
-		for _, wc := range e.Cases {
-			v, _, _, err := c.lowerExpr(wc.Value)
-			if err != nil {
-				return "", "", false, err
-			}
-			cond, _, _, err := c.lowerExpr(wc.Condition)
-			if err != nil {
-				return "", "", false, err
-			}
-			score, _, _, err := c.lowerExpr(wc.Score)
-			if err != nil {
-				return "", "", false, err
-			}
-			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", cond, v, score))
-		}
-		c.usesUtilityWhen = true
-		return fmt.Sprintf("__octUtilSelect[%s](map[int]__octUtilitySiteState{}, %d, %s, %s, []__octUtilCandidate[%s]{%s}, func() %s { return %s })",
-			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), valueType, elseExpr), resultType, false, nil
+		return c.lowerUtilityWhen(e)
 	case ast.ParenExpr:
 		return c.lowerExpr(e.Inner)
 	default:
@@ -1219,17 +1185,40 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	}
 }
 
-// lowerStandaloneUtilityWhen lowers `when utility`, plain or enum-targeted,
-// in a function or in a flow state. It is a one-shot choice with no policy
-// and no commitment, so it is ordinary control flow.
+// The two builtin calls through which lowered code reaches the commitment of
+// a `when policy` site. The site lives in the flow instance; these name it by
+// its site ID, which is the first argument, always a literal.
+const (
+	// utilityCommittedArmBuiltin(site) is the arm the site is committed to,
+	// or utilityNoArm when it has made no choice yet.
+	utilityCommittedArmBuiltin = "Utility.CommittedArm"
+	// utilityCommitBuiltin(site, hysteresis, minCommit, leader, leaderScore,
+	// committedHolds) applies the policy and returns the arm to deliver.
+	utilityCommitBuiltin = "Utility.Commit"
+)
+
+// utilityElseArm identifies the `else` arm of a utility `when`.
+const utilityElseArm = -1
+
+// lowerUtilityWhen lowers every utility `when` for the Go backend: the
+// standalone `when utility`, plain or enum-targeted, in a function or a flow
+// state, and the controller-bound `when policy` in a flow state.
 //
 // The cases are visited in source order: a condition, and its score only when
-// the condition holds. The highest score wins and the earliest case wins a
-// tie. Then the value of the selected case alone is evaluated, or the `else`
-// value when no condition held. A value that is not selected is never
-// evaluated, so its `?` cannot propagate and a call in it does not run. The
-// interpreter follows the same order.
-func (c *lowerCtx) lowerStandaloneUtilityWhen(e ast.UtilityWhenExpr) (string, string, bool, error) {
+// the condition holds. The highest score leads and the earliest case leads a
+// tie; with no condition true the `else` arm leads. Then the value of one arm
+// alone is evaluated. A value that is not selected is never evaluated, so its
+// `?` cannot propagate and a call in it does not run. The interpreter follows
+// the same order.
+//
+// A standalone form delivers the leader. `when policy` first asks its site,
+// which is committed to an arm and not to a value: the committed arm keeps
+// its place while its condition still holds and either it has been held for
+// fewer than min_commit evaluations or the leader does not beat its committed
+// score by more than hysteresis.
+func (c *lowerCtx) lowerUtilityWhen(e ast.UtilityWhenExpr) (string, string, bool, error) {
+	// The Verilog profile refuses a function that contains one.
+	c.usesUtilityWhen = true
 	newBlock := func() int {
 		id := len(c.blocks)
 		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", id)})
@@ -1238,12 +1227,40 @@ func (c *lowerCtx) lowerStandaloneUtilityWhen(e ast.UtilityWhenExpr) (string, st
 	assign := func(target string, expression string, typ string) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: target, Value: lowerMIRValue(expression, typ)})
 	}
+	hold := func(valueExpr ast.Expr, typ string) (string, error) {
+		value, _, _, err := c.lowerExpr(valueExpr)
+		if err != nil {
+			return "", err
+		}
+		held := c.temp(typ)
+		assign(held, value, typ)
+		return held, nil
+	}
 
-	// selected is the index of the leading case, or -1 while no condition
-	// has held.
+	site := mirInt(fmt.Sprint(e.SiteID))
+	hysteresis, minCommit, committed, committedHolds := "", "", "", ""
+	if e.ControllerBound {
+		if activeFlowExpressionContext == nil {
+			return "", "", false, fmt.Errorf("when policy is only valid inside flow state bodies; outside flows use switch or when utility")
+		}
+		var err error
+		if hysteresis, err = hold(e.Policy.Hysteresis, "Int"); err != nil {
+			return "", "", false, err
+		}
+		if minCommit, err = hold(e.Policy.MinCommit, "Int"); err != nil {
+			return "", "", false, err
+		}
+		committed = c.temp("Int")
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: committed, Callee: utilityCommittedArmBuiltin, Args: []MIRValue{site}, ArgTypes: []string{"Int"}, Builtin: true, RetType: "Int"})
+		committedHolds = c.temp("Bool")
+		assign(committedHolds, "false", "Bool")
+	}
+
+	// selected is the index of the leading case, or utilityElseArm while no
+	// condition has held.
 	selected := c.temp("Int")
 	selectedScore := c.temp("Int")
-	assign(selected, "0 - 1", "Int")
+	assign(selected, fmt.Sprintf("0 - %d", -utilityElseArm), "Int")
 	assign(selectedScore, "0", "Int")
 
 	for index, candidate := range e.Cases {
@@ -1258,14 +1275,15 @@ func (c *lowerCtx) lowerStandaloneUtilityWhen(e ast.UtilityWhenExpr) (string, st
 		c.blocks[conditionEnd].Terminator = MIRBranch{Cond: lowerMIRValue(condition, "Bool"), TrueTarget: c.blocks[scoreID].Label, FalseTarget: c.blocks[nextID].Label}
 
 		c.cur = scoreID
-		score, _, _, err := c.lowerExpr(candidate.Score)
+		// Hold the score in a temporary: the comparison and the assignment
+		// below must see one evaluation of it.
+		heldScore, err := hold(candidate.Score, "Int")
 		if err != nil {
 			return "", "", false, err
 		}
-		// Hold the score in a temporary: the comparison and the assignment
-		// below must see one evaluation of it.
-		heldScore := c.temp("Int")
-		assign(heldScore, score, "Int")
+		if e.ControllerBound {
+			assign(committedHolds, fmt.Sprintf("%s || %s == %d", committedHolds, committed, index), "Bool")
+		}
 		leads := c.temp("Bool")
 		assign(leads, fmt.Sprintf("%s < 0 || %s > %s", selected, heldScore, selectedScore), "Bool")
 		c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(leads, "Bool"), TrueTarget: c.blocks[leadID].Label, FalseTarget: c.blocks[nextID].Label}
@@ -1276,6 +1294,19 @@ func (c *lowerCtx) lowerStandaloneUtilityWhen(e ast.UtilityWhenExpr) (string, st
 		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[nextID].Label}
 
 		c.cur = nextID
+	}
+
+	if e.ControllerBound {
+		decided := c.temp("Int")
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+			Target:   decided,
+			Callee:   utilityCommitBuiltin,
+			Args:     []MIRValue{site, lowerMIRValue(hysteresis, "Int"), lowerMIRValue(minCommit, "Int"), lowerMIRValue(selected, "Int"), lowerMIRValue(selectedScore, "Int"), lowerMIRValue(committedHolds, "Bool")},
+			ArgTypes: []string{"Int", "Int", "Int", "Int", "Int", "Bool"},
+			Builtin:  true,
+			RetType:  "Int",
+		})
+		selected = decided
 	}
 
 	mergeID := newBlock()

@@ -209,8 +209,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	loadTypes := map[string]struct{}{}
 	resultTypes := map[string]struct{}{}
 	flowResultTypes := map[string]struct{}{}
-	needsGenericUtilityHelpers := false
-	needsScalarUtilityHelpers := false
+	needsUtilityHelpers := false
 	usesGenericOctxiliary := false
 	for _, flow := range m.Flows {
 		flowResultTypes[flow.Return] = struct{}{}
@@ -232,9 +231,6 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		})
 	}
 	for _, fn := range m.Functions {
-		if fn.UsesUtilityWhen {
-			needsGenericUtilityHelpers = true
-		}
 		if fn.IsFallible {
 			resultTypes[fn.Return] = struct{}{}
 		}
@@ -278,8 +274,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	for _, flow := range m.Flows {
 		features := analyzeFlowFeatures(flow, usedBuiltins)
-		needsGenericUtilityHelpers = needsGenericUtilityHelpers || features.NeedsGenericUtility
-		needsScalarUtilityHelpers = needsScalarUtilityHelpers || features.NeedsScalarUtility
+		needsUtilityHelpers = needsUtilityHelpers || len(features.UtilitySites) > 0
 	}
 	supportFeatures := analyzeGoSupportFeatures(m, usedBuiltins)
 	importSet := map[string]struct{}{"fmt": {}, "os": {}, "reflect": {}}
@@ -294,9 +289,6 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 				break
 			}
 		}
-	}
-	if needsGenericUtilityHelpers {
-		importSet["reflect"] = struct{}{}
 	}
 	if usedBuiltins["BatchMap"] {
 		for _, pkg := range []string{"runtime", "sync"} {
@@ -524,14 +516,8 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if usedBuiltins["Idx"] {
 		b.WriteString(__octIndexHelpers)
 	}
-	if needsGenericUtilityHelpers || needsScalarUtilityHelpers {
-		b.WriteString(__octUtilityCandidate)
-	}
-	if needsGenericUtilityHelpers {
-		b.WriteString(__octGenericUtilityHelpers)
-	}
-	if needsScalarUtilityHelpers {
-		b.WriteString(__octScalarUtilityHelpers)
+	if needsUtilityHelpers {
+		b.WriteString(__octUtilityHelpers)
 	}
 	if usesLinearAlgebraHelpers(usedBuiltins) {
 		b.WriteString(__octLinearAlgebraHelpers)
@@ -1872,6 +1858,17 @@ func goStmt(s MIRStmt) (string, error) {
 				return emitRandomStreamCall(st.Callee, st.Target, args)
 			case "Entropy.Seed", "Entropy.IntBetween", "Entropy.Unit", "Entropy.Bytes":
 				return emitEntropyCall(st.Callee, st.Target, args)
+			case utilityCommittedArmBuiltin, utilityCommitBuiltin:
+				// The site is a field of the flow instance, which is `f`
+				// wherever a flow state's expression is emitted.
+				siteID, ok := utilitySiteOfCall(st)
+				if !ok {
+					return "", fmt.Errorf("internal error: %s without a literal site", st.Callee)
+				}
+				if st.Callee == utilityCommittedArmBuiltin {
+					return fmt.Sprintf("%s = __octUtilCommittedArm(&f.utilitySite%d)", st.Target, siteID), nil
+				}
+				return fmt.Sprintf("%s = __octUtilCommit(&f.utilitySite%d, %s)", st.Target, siteID, strings.Join(args[1:], ", ")), nil
 			default:
 				return "", unsupportedBuiltin(st.Callee)
 			}

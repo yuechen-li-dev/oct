@@ -5,42 +5,54 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 type flowFeatures struct {
-	NeedsHistory        bool
-	NeedsResume         bool
-	NeedsUtilityMap     bool
-	NeedsGenericUtility bool
-	NeedsScalarUtility  bool
-	ScalarUtilitySites  map[int]string
-	NeedsInput          bool
-	NeedsYield          bool
+	NeedsHistory bool
+	NeedsResume  bool
+	// UtilitySites holds the site ID of every `when policy` in the flow.
+	// Each has one commitment record in the flow instance.
+	UtilitySites map[int]struct{}
+	NeedsInput   bool
+	NeedsYield   bool
+}
+
+// utilitySiteOfCall reads the site ID of a utility builtin call. It is the
+// first argument and always a literal.
+func utilitySiteOfCall(call MIRCall) (int, bool) {
+	if !call.Builtin || (call.Callee != utilityCommittedArmBuiltin && call.Callee != utilityCommitBuiltin) || len(call.Args) == 0 {
+		return 0, false
+	}
+	literal, ok := call.Args[0].(MIRLiteral)
+	if !ok {
+		return 0, false
+	}
+	siteID, err := strconv.Atoi(literal.Value)
+	return siteID, err == nil
 }
 
 func analyzeFlowFeatures(flow MIRFlow, usedBuiltins map[string]bool) flowFeatures {
 	features := flowFeatures{
-		NeedsHistory:       usedBuiltins["StateHistory"],
-		ScalarUtilitySites: map[int]string{},
-		NeedsInput:         flow.TurnInput != nil,
-		NeedsYield:         flow.YieldType != "",
+		NeedsHistory: usedBuiltins["StateHistory"],
+		UtilitySites: map[int]struct{}{},
+		NeedsInput:   flow.TurnInput != nil,
+		NeedsYield:   flow.YieldType != "",
 	}
+	walkFlowSharedStatements(flow, func(statement MIRStmt) {
+		if call, ok := statement.(MIRCall); ok {
+			if siteID, isSite := utilitySiteOfCall(call); isSite {
+				features.UtilitySites[siteID] = struct{}{}
+			}
+		}
+	})
 	var visitStmt func(MIRFlowStmt)
 	var visitAction func(MIRFlowWhenAction)
 	var visitExpr func(MIRFlowExpr)
 	visitExpr = func(expr MIRFlowExpr) {
 		switch e := expr.(type) {
 		case MIRFlowUtilityWhenExpr:
-			if e.ControllerBound && isDirectPolicyScalarType(e.ResultType) {
-				features.NeedsScalarUtility = true
-				features.ScalarUtilitySites[e.SiteID] = e.ResultType
-			} else {
-				features.NeedsGenericUtility = true
-				if e.ControllerBound {
-					features.NeedsUtilityMap = true
-				}
-			}
 			visitExpr(e.Hysteresis)
 			visitExpr(e.MinCommit)
 			for _, candidate := range e.Cases {
@@ -126,13 +138,6 @@ func analyzeFlowFeatures(flow MIRFlow, usedBuiltins map[string]bool) flowFeature
 	return features
 }
 
-func isDirectPolicyScalarType(typeName string) bool {
-	if typeName == "Bool" || typeName == "String" || typeName == "Int" || typeName == "Float" {
-		return true
-	}
-	return (strings.HasPrefix(typeName, "Int<") || strings.HasPrefix(typeName, "Float<")) && strings.HasSuffix(typeName, ">")
-}
-
 func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	structName := "__octFlow_" + flow.Package + "_" + flow.Name
 	resultType := flow.Return
@@ -151,16 +156,8 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	if features.NeedsResume {
 		b.WriteString("\thasResumeTarget bool\n\tresumeTarget int\n")
 	}
-	if features.NeedsUtilityMap {
-		b.WriteString("\tutilitySites map[int]__octUtilitySiteState\n")
-	}
-	utilitySiteIDs := make([]int, 0, len(features.ScalarUtilitySites))
-	for siteID := range features.ScalarUtilitySites {
-		utilitySiteIDs = append(utilitySiteIDs, siteID)
-	}
-	sort.Ints(utilitySiteIDs)
-	for _, siteID := range utilitySiteIDs {
-		fmt.Fprintf(b, "\tutilitySite%d __octScalarUtilitySiteState[%s]\n", siteID, goType(features.ScalarUtilitySites[siteID]))
+	for _, siteID := range sortedUtilitySiteIDs(features) {
+		fmt.Fprintf(b, "\tutilitySite%d __octUtilitySiteState\n", siteID)
 	}
 	for _, p := range flow.Parameters {
 		fmt.Fprintf(b, "\t%s %s\n", p.Name, goType(p.Type))
@@ -182,9 +179,6 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow, features flowFeatures) error {
 	}
 	fmt.Fprintf(b, ") %s {\n", goType(flowInstanceTypeString(resultType)))
 	fmt.Fprintf(b, "\t__flow := &%s{}\n", structName)
-	if features.NeedsUtilityMap {
-		b.WriteString("\t__flow.utilitySites = map[int]__octUtilitySiteState{}\n")
-	}
 	for _, p := range flow.Parameters {
 		fmt.Fprintf(b, "\t__flow.%s = %s\n", p.Name, p.Name)
 	}
@@ -417,18 +411,15 @@ func emitGoFlowCheckpointFacade(b *strings.Builder, flow MIRFlow, features flowF
 		b.WriteString("\tHistory []string `json:\"history\"`\n")
 	}
 	for _, siteID := range sortedUtilitySiteIDs(features) {
-		fmt.Fprintf(b, "\tUtilitySite%d __octScalarUtilitySiteState[%s] `json:\"utility_site_%d\"`\n", siteID, goType(features.ScalarUtilitySites[siteID]), siteID)
+		fmt.Fprintf(b, "\tUtilitySite%d __octUtilitySiteState `json:\"utility_site_%d\"`\n", siteID, siteID)
 	}
 	fmt.Fprintf(b, "\tLastYield %s `json:\"last_yield\"`\n\tHasYield bool `json:\"has_yield\"`\n}\n\n", goType(flow.YieldType))
 
 	fmt.Fprintf(b, "func (m *%s) Checkpoint() (%s, error) {\n", machineName, cpName)
 	fmt.Fprintf(b, "\tif m == nil || m.flow == nil { return %s{}, __oct%sCheckpointError(%sNotAtYield, \"nil flow machine\") }\n", cpName, publicName, publicName)
 	fmt.Fprintf(b, "\tif m.flow.completed || !m.flow.hasYield { return %s{}, __oct%sCheckpointError(%sNotAtYield, \"checkpoint requires the completed turn to have yielded\") }\n", cpName, publicName, publicName)
-	if features.NeedsUtilityMap {
-		fmt.Fprintf(b, "\treturn %s{}, __oct%sCheckpointError(%sUtilitySiteMismatch, \"generic utility-site values are not checkpointable through the typed host ABI\")\n", cpName, publicName, publicName)
-		b.WriteString("}\n\n")
-	} else {
-		fmt.Fprintf(b, "\tpayload := %s{Version: 1, Package: %q, Flow: %q, Fingerprint: %q, BoardSchema: %q, ConstructionSchema: %q, UtilitySchema: %q, YieldSchema: %q, CurrentState: m.flow.__octActive(), Instruction: m.flow.instruction, LastYield: m.flow.lastYield, HasYield: m.flow.hasYield}\n", payloadName, flow.Package, flow.Name, fingerprint, boardSchema, constructorSchema, utilitySchema, yieldSchema)
+	{
+		fmt.Fprintf(b, "\tpayload := %s{Version: 2, Package: %q, Flow: %q, Fingerprint: %q, BoardSchema: %q, ConstructionSchema: %q, UtilitySchema: %q, YieldSchema: %q, CurrentState: m.flow.__octActive(), Instruction: m.flow.instruction, LastYield: m.flow.lastYield, HasYield: m.flow.hasYield}\n", payloadName, flow.Package, flow.Name, fingerprint, boardSchema, constructorSchema, utilitySchema, yieldSchema)
 		for _, parameter := range flow.Parameters {
 			fmt.Fprintf(b, "\tpayload.Parameter%s = m.flow.%s\n", parameter.Name, parameter.Name)
 		}
@@ -456,7 +447,7 @@ func emitGoFlowCheckpointFacade(b *strings.Builder, flow MIRFlow, features flowF
 
 	fmt.Fprintf(b, "func Restore%s(checkpoint %s) (*%s, error) {\n", publicName, cpName, machineName)
 	fmt.Fprintf(b, "\tvar payload %s; if err := json.Unmarshal(checkpoint.data, &payload); err != nil { return nil, err }\n", payloadName)
-	fmt.Fprintf(b, "\tif payload.Version != 1 { return nil, __oct%sCheckpointError(%sVersionMismatch, fmt.Sprintf(\"version %%d\", payload.Version)) }\n", publicName, publicName)
+	fmt.Fprintf(b, "\tif payload.Version != 2 { return nil, __oct%sCheckpointError(%sVersionMismatch, fmt.Sprintf(\"version %%d\", payload.Version)) }\n", publicName, publicName)
 	fmt.Fprintf(b, "\tif payload.Package != %q || payload.Flow != %q { return nil, __oct%sCheckpointError(%sFlowMismatch, payload.Package+\".\"+payload.Flow) }\n", flow.Package, flow.Name, publicName, publicName)
 	fmt.Fprintf(b, "\tif payload.Fingerprint != %q { return nil, __oct%sCheckpointError(%sFingerprintMismatch, \"compiled flow changed\") }\n", fingerprint, publicName, publicName)
 	fmt.Fprintf(b, "\tif payload.BoardSchema != %q { return nil, __oct%sCheckpointError(%sBoardSchemaMismatch, \"board schema changed\") }\n", boardSchema, publicName, publicName)
@@ -485,9 +476,6 @@ func emitGoFlowCheckpointFacade(b *strings.Builder, flow MIRFlow, features flowF
 	if features.NeedsHistory {
 		b.WriteString("\tflow.history = append([]string(nil), payload.History...)\n")
 	}
-	if features.NeedsUtilityMap {
-		b.WriteString("\tflow.utilitySites = map[int]__octUtilitySiteState{}\n")
-	}
 	for _, siteID := range sortedUtilitySiteIDs(features) {
 		fmt.Fprintf(b, "\tflow.utilitySite%d = payload.UtilitySite%d\n", siteID, siteID)
 	}
@@ -507,8 +495,8 @@ func emitGoFlowCheckpointFacade(b *strings.Builder, flow MIRFlow, features flowF
 }
 
 func sortedUtilitySiteIDs(features flowFeatures) []int {
-	ids := make([]int, 0, len(features.ScalarUtilitySites))
-	for id := range features.ScalarUtilitySites {
+	ids := make([]int, 0, len(features.UtilitySites))
+	for id := range features.UtilitySites {
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
@@ -553,11 +541,9 @@ func compiledFlowConstructorSchema(flow MIRFlow) string {
 
 func compiledFlowUtilitySchema(features flowFeatures) string {
 	var b strings.Builder
-	if features.NeedsUtilityMap {
-		b.WriteString("generic;")
-	}
+	// Every site has the same shape: a commitment to an arm.
 	for _, id := range sortedUtilitySiteIDs(features) {
-		fmt.Fprintf(&b, "%d:%s;", id, features.ScalarUtilitySites[id])
+		fmt.Fprintf(&b, "%d:arm;", id)
 	}
 	return b.String()
 }
@@ -1011,53 +997,10 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 	case MIRFlowSharedExpr:
 		return emitGoSharedExpression(value)
 	case MIRFlowUtilityWhenExpr:
-		hysteresis, err := emitGoFlowExpr(value.Hysteresis, pkg)
-		if err != nil {
-			return "", err
-		}
-		minCommit, err := emitGoFlowExpr(value.MinCommit, pkg)
-		if err != nil {
-			return "", err
-		}
-		elseExpr, err := emitGoFlowExpr(value.Else, pkg)
-		if err != nil {
-			return "", err
-		}
-		// The candidates are gathered in source order, as the interpreter
-		// does: a condition first, and the score and the value only when the
-		// condition holds. The else value is a thunk, evaluated only when no
-		// condition held.
-		valueType := goType(value.ResultType)
-		var gather strings.Builder
-		fmt.Fprintf(&gather, "func() %s { __octCandidates := make([]__octUtilCandidate[%s], 0, %d); ", valueType, valueType, len(value.Cases))
-		for _, candidate := range value.Cases {
-			candidateValue, err := emitGoFlowExpr(candidate.Value, pkg)
-			if err != nil {
-				return "", err
-			}
-			condition, err := emitGoFlowExpr(candidate.Condition, pkg)
-			if err != nil {
-				return "", err
-			}
-			score, err := emitGoFlowExpr(candidate.Score, pkg)
-			if err != nil {
-				return "", err
-			}
-			fmt.Fprintf(&gather, "if %s { __octScore := %s; __octCandidates = append(__octCandidates, __octUtilCandidate[%s]{Valid: true, Value: %s, Score: __octScore}) }; ", condition, score, valueType, candidateValue)
-		}
-		elseThunk := fmt.Sprintf("func() %s { return %s }", valueType, elseExpr)
-		if value.ControllerBound && isDirectPolicyScalarType(value.ResultType) {
-			fmt.Fprintf(&gather, "return __octUtilSelectScalar[%s](&f.utilitySite%d, %s, %s, __octCandidates, %s) }()",
-				valueType, value.SiteID, hysteresis, minCommit, elseThunk)
-			return gather.String(), nil
-		}
-		sites := "map[int]__octUtilitySiteState{}"
-		if value.ControllerBound {
-			sites = "f.utilitySites"
-		}
-		fmt.Fprintf(&gather, "return __octUtilSelect[%s](%s, %d, %s, %s, __octCandidates, %s) }()",
-			valueType, sites, value.SiteID, hysteresis, minCommit, elseThunk)
-		return gather.String(), nil
+		// The Go backend lowers every utility `when` to ordinary blocks; see
+		// lowerUtilityWhen. The structured node is built for the Verilog
+		// profile only.
+		return "", fmt.Errorf("internal error: structured utility when reached the Go backend")
 	default:
 		return "", fmt.Errorf("internal error: unsupported FLOW expression representation %T", expr)
 	}

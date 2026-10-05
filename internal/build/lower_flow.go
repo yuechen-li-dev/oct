@@ -418,10 +418,12 @@ func lowerFallibleFlowCall(call ast.CallExpr, env map[string]string, locals map[
 func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, error) {
 	switch expression := expr.(type) {
 	case ast.UtilityWhenExpr:
-		// Only `when policy` keeps commitment state in the flow instance. The
-		// standalone form is an ordinary expression that selects before it
-		// evaluates a value, and is lowered as one.
-		if !expression.ControllerBound {
+		// For the Go backend a utility `when` is ordinary control flow, with
+		// a `when policy` site reached through two builtin calls; see
+		// lowerUtilityWhen. The Verilog profile keeps the structured node
+		// below: hardware evaluates every operand combinationally, and its
+		// emitter builds the selection network from the cases.
+		if activeFlowExpressionContext == nil || activeFlowExpressionContext.program.Profile != "Verilog" {
 			return lowerSharedFlowExpression(expr, env, locals)
 		}
 		hysteresis, err := lowerFlowExpr(expression.Policy.Hysteresis, env, locals, pkg, boardFieldTypes)

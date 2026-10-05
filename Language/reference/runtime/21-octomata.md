@@ -150,8 +150,8 @@ and variant constructors. External Go does not need compiler-private
 A checkpoint is legal after a turn ended at `yield`. It represents the machine
 after the yield: version and flow fingerprints, named state and opaque
 continuation position, construction values, private board, resume slot,
-feature-observed history, typed utility commitment state, and the last yielded
-value needed to preserve `DidYield`/`Yielded` observability. The completed turn
+feature-observed history, the commitment of each `when policy` site, and the
+last yielded value needed to preserve `DidYield`/`Yielded` observability. The completed turn
 input and state locals are absent. Restore rejects incompatible version, flow,
 fingerprint, state/continuation, board, construction, utility-site, and yield
 schemas with machine-readable reasons.
@@ -165,8 +165,10 @@ for the experimental host boundary; that byte encoding and generated naming
 are not a permanent Oct 1.0 ABI and may change across compiler revisions.
 Logical checkpoint schema version 3 adds deterministic typed recursive values
 for records, nested records, plain and payload enums, arrays, vectors, and
-matrices. Older logical checkpoint versions are rejected rather than silently
-reinterpreted.
+matrices. Version 4 records the commitment of a `when policy` site as the arm
+it is committed to, in place of the value that arm produced; a site of any
+result type is therefore checkpointable, in both lanes. Older logical
+checkpoint versions are rejected rather than silently reinterpreted.
 
 For the deterministic, effect-free subset, continuing an in-memory machine and
 serializing, restoring, then continuing from the same boundary must produce the
@@ -548,12 +550,29 @@ a call in it does not run. The plain form and the enum-targeted form below
 follow it alike, in the interpreted and in the compiled lane, in functions and
 in flow states.
 
-Controller-bound `when policy` visits its cases the same way up to the
-selection. It evaluates the score and the value of every case whose condition
-is true, because it compares those values with the one it is committed to; it
-evaluates nothing of a case whose condition is false, and `else` only when no
-condition is true. It then applies `hysteresis` and `min_commit` to the cases
-whose condition was true.
+Controller-bound `when policy` follows the same rule: conditions in order, a
+score only for a true condition, and then the value of the one selected arm.
+It differs in how the arm is selected, which is from the scores and the site's
+commitment and never from a value.
+
+A site is committed to an arm of the `when`, identified by its position, and
+not to the value that arm produced:
+
+- An arm whose value changes from one evaluation to the next is still the same
+  choice. While it is held, the value delivered is the arm's value at that
+  evaluation.
+- Two arms that produce equal values are different choices. Moving from one
+  to the other is a change of commitment.
+- The `else` arm is selected only while no condition is true. It is never held
+  against a case, whatever `hysteresis` and `min_commit` say.
+
+The committed arm keeps its place while its condition is true and either it
+has been held for fewer than `min_commit` evaluations or the leading arm does
+not beat its committed score by more than `hysteresis`. Otherwise the leading
+arm, the one with the greatest score, is selected and becomes the commitment.
+
+A `when policy` may be the whole of a `let` or `return`, or part of a larger
+expression; its commitment is the same in either place.
 
 Use this when multiple valid choices compete and you need explicit arbitration.
 Avoid this when a single guard decides the branch; guard `when` is the simpler form.
@@ -602,9 +621,9 @@ flow PumpController(pressure: Float, fault: Bool) -> Int {
 
 `hysteresis` and `min_commit` exist to prevent unstable arbitration behavior.
 
-- `hysteresis`: requires a meaningful score gap before switching away from current choice.
+- `hysteresis`: requires a meaningful score gap before switching away from the committed arm.
   - Practical effect: reduces chatter near threshold ties.
-- `min_commit`: forces a chosen policy to stick for a minimum number of ticks/steps.
+- `min_commit`: forces the committed arm to stick for a minimum number of evaluations.
   - Practical effect: prevents immediate flip-flop from transient noise.
 
 Without them (unstable near threshold):
