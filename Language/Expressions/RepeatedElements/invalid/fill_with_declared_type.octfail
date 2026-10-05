@@ -1,0 +1,9 @@
+expect error: "Nothing fixes the length here"
+
+package Main
+
+// A declared array type says what the elements are, not how many.
+fn Main() -> Int {
+    let zeros: Float[] = [0.0 ...]
+    return Len(zeros)
+}

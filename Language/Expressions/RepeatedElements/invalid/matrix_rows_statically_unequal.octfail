@@ -1,0 +1,8 @@
+expect error: "matrix rows must all have equal length"
+
+package Main
+
+fn Main() -> Int {
+    let m = matrix[[0.5 ... 2] [0.5 ... 3]]
+    return 0
+}

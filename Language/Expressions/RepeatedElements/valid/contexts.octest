@@ -1,0 +1,76 @@
+package RepeatedElements
+
+// A repeated element is an ordinary part of an array literal: it works
+// wherever an array literal does.
+
+record table Readings {
+    Value: Float
+    Valid: Bool
+}
+
+template fn Filled<T>(value: T, n: Int) -> T[] {
+    return [value ... n]
+}
+
+flow Sweep(n: Int) -> Int {
+    board {
+        Values: Int[]
+        Grid: Float[][]
+        Direction: Vector<Float>
+        Shape: Matrix<Float>
+        Table: Readings
+    }
+
+    state Start {
+        board.Values = [3 ... n]
+        board.Grid = [[0.5 ... n] ... 2]
+        board.Direction = vector[1.0 ... 3]
+        board.Shape = matrix[[1.0 ... n] ... 2]
+        board.Table = Readings { Value: [0.0 ... n] Valid: [true ...] }
+        goto Next
+    }
+
+    state Next {
+        let cleared = board.Table with { Valid: [false ...] }
+        if cleared.Valid[n - 1] {
+            return -1
+        }
+        return Len(board.Values) + Len(board.Grid[1]) + Len(cleared)
+    }
+}
+
+[Fact]
+fn TemplateFunction() -> Void {
+    let names = Filled<String>("x", 3)
+    Assert.Equal(3, Len(names), "a template's element type")
+    Assert.Equal("x", names[2], "its elements")
+    Assert.Equal(2, Len(Filled<Int>(7, 2)), "another instance")
+}
+
+[Fact]
+fn FunctionValue() -> Void {
+    let scale = 3
+    let make = fn(n: Int) -> Int[] with {
+        value: scale
+    } {
+        return [value ... n]
+    }
+    Assert.Equal(3, make(2)[1], "a captured value as the element")
+}
+
+[Fact]
+fn BatchBody() -> Void {
+    let lengths = batch [1, 2, 3] as x {
+        return Len([0 ... x])
+    }
+    Assert.Equal(1, lengths[0], "first item")
+    Assert.Equal(3, lengths[2], "last item")
+}
+
+[Fact]
+fn FlowState() -> Void {
+    let run = Sweep(4)
+    Step(run)
+    Step(run)
+    Assert.Equal(12, Result(run)!, "repeated elements and filled columns in flow states")
+}

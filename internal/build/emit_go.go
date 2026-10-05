@@ -519,6 +519,12 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if needsUtilityHelpers {
 		b.WriteString(__octUtilityHelpers)
 	}
+	for name := range usedBuiltins {
+		if isRepeatBuiltin(name) {
+			b.WriteString(__octRepeatHelpers)
+			break
+		}
+	}
 	if usesLinearAlgebraHelpers(usedBuiltins) {
 		b.WriteString(__octLinearAlgebraHelpers)
 	}
@@ -1878,6 +1884,14 @@ func goStmt(s MIRStmt) (string, error) {
 				return emitRandomStreamCall(st.Callee, st.Target, args)
 			case "Entropy.Seed", "Entropy.IntBetween", "Entropy.Unit", "Entropy.Bytes":
 				return emitEntropyCall(st.Callee, st.Target, args)
+			case repeatCountBuiltin:
+				return fmt.Sprintf("%s = __octRepeatCount(%s)", st.Target, args[0]), nil
+			case repeatFillBuiltin:
+				return fmt.Sprintf("%s = __octRepeatFill(%s, %s)", st.Target, args[0], args[1]), nil
+			case repeatRowExtentBuiltin:
+				return fmt.Sprintf("%s = __octRepeatRowExtent(%s, %s)", st.Target, args[0], args[1]), nil
+			case repeatRowBuiltin:
+				return fmt.Sprintf("%s = __octRepeatRow(%s, %s)", st.Target, args[0], args[1]), nil
 			case utilityCommittedArmBuiltin, utilityCommitBuiltin:
 				// The site is a field of the flow instance, which is `f`
 				// wherever a flow state's expression is emitted.

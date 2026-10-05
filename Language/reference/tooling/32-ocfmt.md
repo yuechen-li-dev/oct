@@ -45,10 +45,12 @@ not enabled.
 - A call, index, array type or type argument list is attached to what it applies to: `Sqrt(x)`, `rows[0]`, `Float<m>[]`, `Identity<Int>(1)`. A `(` or `[` that begins an operand is spaced like one: `a * (b + c)`, `return [1, 2]`, `Authors: ["A"]`.
 - Braces are padded on one line and preceded by a space: `Vec2 { X: 1.0 Y: 2.0 }`, `if ok { 1 } else { 0 }`. Empty braces are written `{}`.
 - Ranges are tight: `0..Len(xs)`, `..n`, `100..`.
+- The ellipsis of a repeated element is spaced: `[0.0 ... n]`, `[1 ... 2, 0 ... -n]`. No space separates it from a closing bracket: `[true ...]`.
 - Type argument lists and unit expressions are tight: `Float<kg*m^-3>`, `Keyed<Job, String>`, `Tensor<Float<m>>[]`. A comparison keeps its spaces: `state.Altitude < limit`.
 - A literal's unit suffix is tight: `9.81m/s^2`, `0.5kg*m^-3`. Whether a unit name touches its number is never changed, because the parser reads it.
 - The `!` of a fallible type is spaced: `-> Int ! Error`.
 - `a[i][j]` and the matrix rows `[1, 2] [3, 4]` have the same tokens. A `]` followed by `[` is written as the author spaced it.
+- A matrix row that follows the count of the row before it is set off by a space, whatever the author wrote: `matrix[[1.0, 0.0] ... n [5.0, 6.0]]`. The parser reads that `[` as a row, and written against `n` it would look like an index. `en-llm-compact` drops the space, as it drops every other one.
 
 ### Oct-XML
 

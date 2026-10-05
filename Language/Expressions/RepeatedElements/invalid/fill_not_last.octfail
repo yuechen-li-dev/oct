@@ -1,0 +1,8 @@
+expect error: "`value ...` fills the rest of the array, so it is the last element"
+
+package Main
+
+fn Main() -> Int {
+    let values = [0 ..., 1]
+    return Len(values)
+}

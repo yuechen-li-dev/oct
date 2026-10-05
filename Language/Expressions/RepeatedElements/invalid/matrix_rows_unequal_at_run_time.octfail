@@ -1,0 +1,12 @@
+expect runtime error: "runtime error: matrix rows must all have equal length: expected 2, got 3"
+
+package Main
+
+fn Count(n: Int) -> Int {
+    return n
+}
+
+fn Main() -> Int {
+    let m = matrix[[0.5 ... Count(2)] [0.5 ... 3]]
+    return 0
+}

@@ -1,0 +1,65 @@
+package RepeatedElements
+
+// `rows[i] = [value ...]` replaces a row with one of the same length. The row
+// being replaced gives the length.
+
+flow ClearRows(n: Int) -> Int {
+    board {
+        Grid: Float[][]
+    }
+
+    state Start {
+        board.Grid = [[0.5 ... n] ... 2]
+        goto Clear
+    }
+
+    state Clear {
+        board.Grid[1] = [9.5 ...]
+        board.Grid[0] = [7.5, 8.5 ...]
+        if board.Grid[1][n - 1] != 9.5 or board.Grid[0][0] != 7.5 or board.Grid[0][n - 1] != 8.5 {
+            return -1
+        }
+        return Len(board.Grid[0]) + Len(board.Grid[1])
+    }
+}
+
+[Fact]
+fn RowKeepsItsLength() -> Void {
+    var rows = [[1, 2, 3], [4, 5, 6]]
+    rows[1] = [0 ...]
+    Assert.Equal(3, Len(rows[1]), "the length of the row that was replaced")
+    Assert.Equal(0, rows[1][0], "first element")
+    Assert.Equal(0, rows[1][2], "last element")
+    Assert.Equal(2, rows[0][1], "the other row is untouched")
+}
+
+[Fact]
+fn ElementsBeforeTheFill() -> Void {
+    var rows = [[1, 2, 3], [4, 5, 6]]
+    rows[0] = [9, 8 ...]
+    Assert.Equal(9, rows[0][0], "the elements before `...` come first")
+    Assert.Equal(8, rows[0][1], "the last of them")
+    Assert.Equal(8, rows[0][2], "is repeated to the end")
+    rows[1] = [7, 7, 7, 0 ...]
+    Assert.Equal(7, rows[1][2], "as many elements as the row has: the fill adds nothing")
+}
+
+[Fact]
+fn EachRowOfAJaggedArrayKeepsItsOwnLength() -> Void {
+    var rows: Float[][] = [[1.0, 2.0, 3.0], [4.0], []]
+    for i in 0..Len(rows) {
+        rows[i] = [0.0 ...]
+    }
+    Assert.Equal(3, Len(rows[0]), "a row of three")
+    Assert.Equal(1, Len(rows[1]), "a row of one")
+    Assert.Equal(0, Len(rows[2]), "an empty row stays empty")
+    Assert.Equal(0.0, rows[0][2], "filled")
+}
+
+[Fact]
+fn RowOfABoardField() -> Void {
+    let run = ClearRows(4)
+    Step(run)
+    Step(run)
+    Assert.Equal(8, Result(run)!, "a board field's row is filled to its own length")
+}

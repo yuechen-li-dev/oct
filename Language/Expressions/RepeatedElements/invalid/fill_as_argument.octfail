@@ -1,0 +1,12 @@
+expect error: "Nothing fixes the length here"
+
+package Main
+
+// A parameter does not fix the length of its argument.
+fn Total(values: Int[]) -> Int {
+    return Len(values)
+}
+
+fn Main() -> Int {
+    return Total([0 ...])
+}

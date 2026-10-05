@@ -635,14 +635,22 @@ func collectExprCallsWithLocals(expr ast.Expr, functionValueLocals map[string]st
 		for _, v := range e.Elements {
 			calls = append(calls, collectExprCallsWithLocals(v, functionValueLocals)...)
 		}
+	case ast.RepeatExpr:
+		calls = append(calls, collectExprCallsWithLocals(e.Value, functionValueLocals)...)
+		if e.Count != nil {
+			calls = append(calls, collectExprCallsWithLocals(e.Count, functionValueLocals)...)
+		}
 	case ast.VectorLiteralExpr:
 		for _, v := range e.Elements {
 			calls = append(calls, collectExprCallsWithLocals(v, functionValueLocals)...)
 		}
 	case ast.MatrixLiteralExpr:
-		for _, row := range e.Rows {
+		for index, row := range e.Rows {
 			for _, cell := range row {
 				calls = append(calls, collectExprCallsWithLocals(cell, functionValueLocals)...)
+			}
+			if count := e.RowCount(index); count != nil {
+				calls = append(calls, collectExprCallsWithLocals(count, functionValueLocals)...)
 			}
 		}
 	case ast.SwitchExpr:
@@ -852,13 +860,26 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				}
 				indexExprs = append(indexExprs, idx)
 			}
-			val, _, _, err := c.lowerExpr(s.Value)
-			if err != nil {
-				return err
-			}
 			targetType, ok := c.locals[s.Target]
 			if !ok {
 				return fmt.Errorf("index assignment to unknown local '%s'", s.Target)
+			}
+			var val string
+			var err error
+			if literal, fill := ast.EndsInFill(s.Value); fill {
+				// `rows[i] = [value ...]`: the row being replaced fixes the
+				// length of the new one.
+				if !isTwoDimensionalArrayType(targetType) || len(indexExprs) != 1 {
+					return fmt.Errorf("internal error: `value ...` reached an assignment that fixes no length")
+				}
+				extent := c.temp("Int")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: extent, Callee: repeatRowExtentBuiltin, Args: []MIRValue{lowerMIRValue(c.goLocalName(s.Target), targetType), lowerMIRValue(indexExprs[0], "Int")}, ArgTypes: []string{targetType, "Int"}, Builtin: true, RetType: "Int"})
+				val, _, _, err = c.withExpectedType(strings.TrimSuffix(targetType, "[]"), func() (string, string, bool, error) { return c.lowerRepeatedArrayLiteral(literal, extent) })
+			} else {
+				val, _, _, err = c.lowerExpr(s.Value)
+			}
+			if err != nil {
+				return err
 			}
 			switch {
 			case isTwoDimensionalArrayType(targetType):

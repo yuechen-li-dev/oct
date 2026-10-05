@@ -62,6 +62,7 @@ func TestLoadInvalidFixtures(t *testing.T) {
 		"arithmetic_expression.octagon":     ".octagon does not allow arithmetic or computed expressions",
 		"multiple_top_level_values.octagon": "expected end of file after top-level value",
 		"malformed_mixed_exec_data.octagon": "expected end of file after top-level value",
+		"repeated_element.octagon":          ".octagon does not allow `...`; write every element",
 	}
 
 	for _, path := range paths {

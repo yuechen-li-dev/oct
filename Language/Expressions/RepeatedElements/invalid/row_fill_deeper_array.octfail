@@ -1,0 +1,9 @@
+expect error: "`value ...` fills a row of a two-dimensional array; for a deeper array, write a count"
+
+package Main
+
+fn Main() -> Int {
+    var cube = [[[1, 2]]]
+    cube[0] = [[1, 2] ...]
+    return Len(cube)
+}

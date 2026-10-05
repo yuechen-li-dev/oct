@@ -1,0 +1,14 @@
+expect runtime error: "runtime error: array literal has 3 elements before `...` and its length is fixed at 2"
+
+package Main
+
+// The row has two elements and three stand before the one repeated.
+fn Count(n: Int) -> Int {
+    return n
+}
+
+fn Main() -> Int {
+    var rows = [[1, 2], [3, 4]]
+    rows[0] = [7, 8, 9, 0 ...]
+    return 0
+}

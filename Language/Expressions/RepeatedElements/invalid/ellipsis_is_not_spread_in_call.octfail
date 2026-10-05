@@ -1,0 +1,12 @@
+expect error: "`...` repeats an element inside an array literal, as in `[0 ... n]`; it does not spread a collection"
+
+package Main
+
+fn Total(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+fn Main() -> Int {
+    let values = [1, 2]
+    return Total(values ...)
+}

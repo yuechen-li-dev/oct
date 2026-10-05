@@ -1208,7 +1208,19 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 			indices = append(indices, index.value.Int)
 		}
 
-		value, err := i.evalExpr(env, pkgName, node.Value)
+		var value evalResult
+		var err error
+		if literal, fill := ast.EndsInFill(node.Value); fill {
+			// `rows[i] = [value ...]`: the row being replaced fixes the
+			// length of the new one.
+			var extent int64
+			if extent, err = filledRowExtent(targetBinding.value, indices); err != nil {
+				return stmtResult{}, err
+			}
+			value, err = i.evalArrayLiteralWithExtent(env, pkgName, literal, extent)
+		} else {
+			value, err = i.evalExpr(env, pkgName, node.Value)
+		}
 		if err != nil {
 			return stmtResult{}, err
 		}
@@ -1266,17 +1278,29 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 			}
 			indices = append(indices, index.value.Int)
 		}
-		value, err := i.evalExpr(env, pkgName, node.Value)
+		updated := targetBinding.value
+		fieldValue, exists := updated.Record.Fields[node.Field]
+		if !exists {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: record type '%s' has no field '%s'", updated.Record.TypeName, node.Field)
+		}
+		var value evalResult
+		var err error
+		if literal, fill := ast.EndsInFill(node.Value); fill {
+			// `board.rows[i] = [value ...]`: the row being replaced fixes
+			// the length of the new one.
+			var extent int64
+			if extent, err = filledRowExtent(fieldValue, indices); err != nil {
+				return stmtResult{}, err
+			}
+			value, err = i.evalArrayLiteralWithExtent(env, pkgName, literal, extent)
+		} else {
+			value, err = i.evalExpr(env, pkgName, node.Value)
+		}
 		if err != nil {
 			return stmtResult{}, err
 		}
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
-		}
-		updated := targetBinding.value
-		fieldValue, exists := updated.Record.Fields[node.Field]
-		if !exists {
-			return stmtResult{}, fmt.Errorf("runtime invariant violation: record type '%s' has no field '%s'", updated.Record.TypeName, node.Field)
 		}
 		switch fieldValue.Kind {
 		case ValueArray:
@@ -1744,23 +1768,13 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 	case ast.StringLiteralExpr:
 		return evalResult{value: Value{Kind: ValueString, Text: node.Value}}, nil
 	case ast.ArrayLiteralExpr:
-		value, err := i.evalArrayLiteralExpr(env, pkgName, node)
-		if err != nil {
-			return evalResult{}, err
-		}
-		return evalResult{value: value}, nil
+		return i.evalArrayLiteralExpr(env, pkgName, node)
+	case ast.RepeatExpr:
+		return evalResult{}, fmt.Errorf("runtime invariant violation: `...` reached the interpreter outside an array literal")
 	case ast.VectorLiteralExpr:
-		value, err := i.evalVectorLiteralExpr(env, pkgName, node)
-		if err != nil {
-			return evalResult{}, err
-		}
-		return evalResult{value: value}, nil
+		return i.evalVectorLiteralExpr(env, pkgName, node)
 	case ast.MatrixLiteralExpr:
-		value, err := i.evalMatrixLiteralExpr(env, pkgName, node)
-		if err != nil {
-			return evalResult{}, err
-		}
-		return evalResult{value: value}, nil
+		return i.evalMatrixLiteralExpr(env, pkgName, node)
 	case ast.IdentifierExpr:
 		valueBinding, ok := env.lookup(node.Name)
 		if ok {
@@ -5478,88 +5492,193 @@ func (i interpreter) evalRangeExpr(env *environment, pkgName string, expr ast.Ra
 	return Value{Kind: ValueRange, Range: rangeValue}, nil
 }
 
-func (i interpreter) evalArrayLiteralExpr(env *environment, pkgName string, expr ast.ArrayLiteralExpr) (Value, error) {
-	elements := make([]Value, 0, len(expr.Elements))
-	var firstType string
-	for idx, elementExpr := range expr.Elements {
-		element, err := i.evalExpr(env, pkgName, elementExpr)
-		if err != nil {
-			return Value{}, err
-		}
-		if element.hasError {
-			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached array literal element %d", idx)
-		}
-		if idx == 0 {
-			firstType = valueTypeName(element.value)
-		} else if valueTypeName(element.value) != firstType {
-			return Value{}, fmt.Errorf("runtime invariant violation: array literal has mixed element kinds %s and %s", firstType, valueTypeName(element.value))
-		}
-		elements = append(elements, element.value)
+// filledRowExtent is the length of the row that `rows[i] = [value ...]`
+// replaces, which is the length the new row is filled to.
+func filledRowExtent(rows Value, indices []int64) (int64, error) {
+	if rows.Kind != ValueArray || len(indices) != 1 {
+		return 0, fmt.Errorf("runtime invariant violation: `value ...` reached an assignment that fixes no length")
 	}
-	return Value{Kind: ValueArray, Array: elements}, nil
+	if indices[0] < 0 || indices[0] >= int64(len(rows.Array)) {
+		return 0, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", indices[0], len(rows.Array))
+	}
+	row := rows.Array[indices[0]]
+	if row.Kind != ValueArray {
+		return 0, fmt.Errorf("runtime invariant violation: `value ...` reached an assignment to an element that is not a row")
+	}
+	return int64(len(row.Array)), nil
 }
 
-func (i interpreter) evalVectorLiteralExpr(env *environment, pkgName string, expr ast.VectorLiteralExpr) (Value, error) {
+func (i interpreter) evalArrayLiteralExpr(env *environment, pkgName string, expr ast.ArrayLiteralExpr) (evalResult, error) {
+	return i.evalArrayLiteralWithExtent(env, pkgName, expr, noExtent)
+}
+
+// noExtent says that nothing fixes the length of the array being built, so
+// its literal cannot end in `value ...`.
+const noExtent = int64(-1)
+
+// evalArrayLiteralWithExtent evaluates an array literal that may end in
+// `value ...`. extent is the length the surrounding construct fixes: the row
+// count of a record table, or the length of the row being replaced.
+func (i interpreter) evalArrayLiteralWithExtent(env *environment, pkgName string, expr ast.ArrayLiteralExpr, extent int64) (evalResult, error) {
+	elements, propagated, err := i.evalLiteralElements(env, pkgName, expr.Elements, extent, "array")
+	if err != nil || propagated.hasError {
+		return propagated, err
+	}
+	var firstType string
+	for idx, element := range elements {
+		if idx == 0 {
+			firstType = valueTypeName(element)
+		} else if valueTypeName(element) != firstType {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: array literal has mixed element kinds %s and %s", firstType, valueTypeName(element))
+		}
+	}
+	return evalResult{value: Value{Kind: ValueArray, Array: elements}}, nil
+}
+
+// evalRepeatCount evaluates the count of `value ... count` or of a repeated
+// matrix row. A negative count is a runtime error; zero is a count. The
+// second result carries an error that `?` propagated out of the count.
+func (i interpreter) evalRepeatCount(env *environment, pkgName string, count ast.Expr) (int64, evalResult, error) {
+	result, err := i.evalExpr(env, pkgName, count)
+	if err != nil {
+		return 0, evalResult{}, err
+	}
+	if result.hasError {
+		return 0, evalResult{hasError: true, errorVal: result.errorVal}, nil
+	}
+	if result.value.Kind != ValueInt {
+		return 0, evalResult{}, fmt.Errorf("runtime invariant violation: repeat count must be Int")
+	}
+	if result.value.Int < 0 {
+		return 0, evalResult{}, fmt.Errorf("runtime error: repeat count must not be negative, got %d", result.value.Int)
+	}
+	return result.value.Int, evalResult{}, nil
+}
+
+// evalLiteralElements evaluates the elements of an array, vector or
+// matrix-row literal, in order. A repeated element is evaluated once for
+// each element it stands for, exactly as if it had been written out that
+// many times; its count is evaluated once, before any of them.
+//
+// The second result carries an error that `?` propagated out of an element
+// or a count; the literal then has no value and the error is the result of
+// the expression it belongs to.
+func (i interpreter) evalLiteralElements(env *environment, pkgName string, elementExprs []ast.Expr, extent int64, kind string) ([]Value, evalResult, error) {
+	elements := make([]Value, 0, len(elementExprs))
+	var propagated evalResult
+	evaluate := func(valueExpr ast.Expr) error {
+		element, err := i.evalExpr(env, pkgName, valueExpr)
+		if err != nil {
+			return err
+		}
+		if element.hasError {
+			propagated = evalResult{hasError: true, errorVal: element.errorVal}
+			return nil
+		}
+		elements = append(elements, element.value)
+		return nil
+	}
+	for _, elementExpr := range elementExprs {
+		repeat, repeated := elementExpr.(ast.RepeatExpr)
+		if !repeated {
+			if err := evaluate(elementExpr); err != nil || propagated.hasError {
+				return nil, propagated, err
+			}
+			continue
+		}
+		var count int64
+		if repeat.IsFill() {
+			if extent == noExtent {
+				return nil, evalResult{}, fmt.Errorf("runtime invariant violation: `value ...` reached an %s literal with no fixed length", kind)
+			}
+			count = extent - int64(len(elements))
+			if count < 0 {
+				return nil, evalResult{}, fmt.Errorf("runtime error: array literal has %d elements before `...` and its length is fixed at %d", len(elements), extent)
+			}
+		} else {
+			var err error
+			if count, propagated, err = i.evalRepeatCount(env, pkgName, repeat.Count); err != nil || propagated.hasError {
+				return nil, propagated, err
+			}
+		}
+		for n := int64(0); n < count; n++ {
+			if err := evaluate(repeat.Value); err != nil || propagated.hasError {
+				return nil, propagated, err
+			}
+		}
+	}
+	return elements, evalResult{}, nil
+}
+
+func (i interpreter) evalVectorLiteralExpr(env *environment, pkgName string, expr ast.VectorLiteralExpr) (evalResult, error) {
 	if len(expr.Elements) == 0 {
-		return Value{}, errors.New("runtime invariant violation: empty vector literals are not supported")
+		return evalResult{}, errors.New("runtime invariant violation: empty vector literals are not supported")
 	}
-	elements := make([]Value, 0, len(expr.Elements))
+	elements, propagated, err := i.evalLiteralElements(env, pkgName, expr.Elements, noExtent, "vector")
+	if err != nil || propagated.hasError {
+		return propagated, err
+	}
 	var firstType string
-	for idx, elementExpr := range expr.Elements {
-		element, err := i.evalExpr(env, pkgName, elementExpr)
-		if err != nil {
-			return Value{}, err
-		}
-		if element.hasError {
-			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached vector literal element %d", idx)
-		}
-		if !isNumericValue(element.value) {
-			return Value{}, fmt.Errorf("runtime invariant violation: vector elements must be numeric, got %s", valueTypeName(element.value))
+	for idx, element := range elements {
+		if !isNumericValue(element) {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: vector elements must be numeric, got %s", valueTypeName(element))
 		}
 		if idx == 0 {
-			firstType = valueTypeName(element.value)
-		} else if valueTypeName(element.value) != firstType {
-			return Value{}, errors.New("runtime invariant violation: Vector literals require homogeneous element type")
+			firstType = valueTypeName(element)
+		} else if valueTypeName(element) != firstType {
+			return evalResult{}, errors.New("runtime invariant violation: Vector literals require homogeneous element type")
 		}
-		elements = append(elements, element.value)
 	}
-	return Value{Kind: ValueVector, Vector: elements}, nil
+	return evalResult{value: Value{Kind: ValueVector, Vector: elements}}, nil
 }
 
-func (i interpreter) evalMatrixLiteralExpr(env *environment, pkgName string, expr ast.MatrixLiteralExpr) (Value, error) {
+func (i interpreter) evalMatrixLiteralExpr(env *environment, pkgName string, expr ast.MatrixLiteralExpr) (evalResult, error) {
 	if len(expr.Rows) == 0 {
-		return Value{}, errors.New("runtime invariant violation: empty matrix literals are not supported")
+		return evalResult{}, errors.New("runtime invariant violation: empty matrix literals are not supported")
 	}
-	cols := len(expr.Rows[0])
-	if cols == 0 {
-		return Value{}, errors.New("runtime invariant violation: matrix rows must not be empty")
-	}
-	elements := make([]Value, 0, len(expr.Rows)*cols)
+	rows, cols := 0, -1
+	var elements []Value
 	var firstType string
 	for r, row := range expr.Rows {
-		if len(row) != cols {
-			return Value{}, errors.New("runtime invariant violation: matrix rows must all have equal length")
+		// A row written `[...] ... count` is evaluated count times, each time
+		// as a row of its own.
+		times := int64(1)
+		if count := expr.RowCount(r); count != nil {
+			var err error
+			var propagated evalResult
+			if times, propagated, err = i.evalRepeatCount(env, pkgName, count); err != nil || propagated.hasError {
+				return propagated, err
+			}
 		}
-		for c, elementExpr := range row {
-			element, err := i.evalExpr(env, pkgName, elementExpr)
-			if err != nil {
-				return Value{}, err
+		for n := int64(0); n < times; n++ {
+			rowValues, propagated, err := i.evalLiteralElements(env, pkgName, row, noExtent, "matrix")
+			if err != nil || propagated.hasError {
+				return propagated, err
 			}
-			if element.hasError {
-				return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached matrix literal element [%d, %d]", r, c)
+			if cols < 0 {
+				cols = len(rowValues)
+			} else if len(rowValues) != cols {
+				return evalResult{}, fmt.Errorf("runtime error: matrix rows must all have equal length: expected %d, got %d", cols, len(rowValues))
 			}
-			if !isNumericValue(element.value) {
-				return Value{}, fmt.Errorf("runtime invariant violation: matrix elements must be numeric, got %s", valueTypeName(element.value))
+			for _, element := range rowValues {
+				if !isNumericValue(element) {
+					return evalResult{}, fmt.Errorf("runtime invariant violation: matrix elements must be numeric, got %s", valueTypeName(element))
+				}
+				if firstType == "" {
+					firstType = valueTypeName(element)
+				} else if valueTypeName(element) != firstType {
+					return evalResult{}, errors.New("runtime invariant violation: Matrix literals require homogeneous element type")
+				}
 			}
-			if r == 0 && c == 0 {
-				firstType = valueTypeName(element.value)
-			} else if valueTypeName(element.value) != firstType {
-				return Value{}, errors.New("runtime invariant violation: Matrix literals require homogeneous element type")
-			}
-			elements = append(elements, element.value)
+			elements = append(elements, rowValues...)
+			rows++
 		}
 	}
-	return Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: len(expr.Rows), Cols: cols, Elements: elements}}, nil
+	if cols < 0 {
+		// No row was evaluated: every row was repeated zero times.
+		cols = 0
+	}
+	return evalResult{value: Value{Kind: ValueMatrix, Matrix: MatrixValue{Rows: rows, Cols: cols, Elements: elements}}}, nil
 }
 
 func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, expr ast.RecordLiteralExpr) (evalResult, error) {
@@ -5570,6 +5689,12 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, exp
 
 	fieldValues := make(map[string]Value, len(recordDecl.Fields))
 	seen := make(map[string]struct{}, len(expr.Fields))
+	// A column of a record table that ends in `value ...` is completed to the
+	// table's row count. The columns that state their length are evaluated
+	// first, in the order written, and the first of them gives the count; the
+	// filled columns follow, in the order written.
+	var filledColumns []ast.RecordLiteralField
+	tableExtent := noExtent
 	for _, field := range expr.Fields {
 		if _, exists := seen[field.Name]; exists {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: record '%s' field '%s' specified more than once", expr.TypeName, field.Name)
@@ -5586,6 +5711,10 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, exp
 		if !foundDecl {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: record '%s' has no field '%s'", expr.TypeName, field.Name)
 		}
+		if _, fill := ast.EndsInFill(field.Value); fill && recordDecl.IsTable {
+			filledColumns = append(filledColumns, field)
+			continue
+		}
 		value, err := i.evalExpr(env, pkgName, field.Value)
 		if err != nil {
 			return evalResult{}, err
@@ -5594,6 +5723,23 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, exp
 			return evalResult{hasError: true, errorVal: value.errorVal}, nil
 		}
 		fieldValues[field.Name] = value.value
+		if tableExtent == noExtent && recordDecl.IsTable && value.value.Kind == ValueArray {
+			tableExtent = int64(len(value.value.Array))
+		}
+	}
+	for _, field := range filledColumns {
+		literal, _ := ast.EndsInFill(field.Value)
+		if tableExtent == noExtent {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: record table '%s' has no column that gives its row count", expr.TypeName)
+		}
+		column, err := i.evalArrayLiteralWithExtent(env, pkgName, literal, tableExtent)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if column.hasError {
+			return evalResult{hasError: true, errorVal: column.errorVal}, nil
+		}
+		fieldValues[field.Name] = column.value
 	}
 
 	fieldOrder := make([]string, 0, len(recordDecl.Fields))
@@ -5655,7 +5801,15 @@ func (i interpreter) evalRecordUpdateExpr(env *environment, pkgName string, expr
 		fields[name] = value
 	}
 	for _, field := range expr.Fields {
-		value, err := i.evalExpr(env, pkgName, field.Value)
+		var value evalResult
+		var err error
+		if literal, fill := ast.EndsInFill(field.Value); fill && isTable {
+			// The table being updated fixes the length of a replacement
+			// column, so the column may end in `value ...`.
+			value, err = i.evalArrayLiteralWithExtent(env, pkgName, literal, int64(wantExtent))
+		} else {
+			value, err = i.evalExpr(env, pkgName, field.Value)
+		}
 		if err != nil {
 			return evalResult{}, err
 		}

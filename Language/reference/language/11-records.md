@@ -57,6 +57,30 @@ a type-checking error. Dynamically computed columns are checked once during
 construction and an invalid construction terminates with a deterministic
 runtime diagnostic; no malformed table value is produced.
 
+A column can end in `value ...`, which fills it to the table's row count:
+
+```oct
+let results = Measurements {
+    Stage: ["Attention", "FFN", "Norm"]
+    Latency: [0.0 ...]
+}
+```
+
+- The columns that state their length give the row count. They are evaluated
+  first, in the order written; the filled columns follow, in the order written.
+  A column written `[value ... n]` states its length.
+- At least one column must state its length. A table whose every column ends
+  in `...` is rejected with `OCT-RTBL011`.
+- Elements may stand before the fill: `Kind: [first, rest ...]`. More of them
+  than the table has rows is `OCT-RTBL002` where the lengths are constants,
+  and a runtime error otherwise.
+- A replacement column in a table `with` can end in `value ...` too; it is
+  filled to the row count of the table being updated.
+- A field of an ordinary record has no shared length, so `value ...` is not
+  allowed there.
+
+[Repeated elements](07-arrays.md#repeated-elements) has the rules for `...`.
+
 `Len(results)` returns the shared row count. `results[i]` performs ordinary
 bounds checking and returns a compiler-owned immutable row value whose fields
 have the declared cell types. The row type has no source-level name. Direct

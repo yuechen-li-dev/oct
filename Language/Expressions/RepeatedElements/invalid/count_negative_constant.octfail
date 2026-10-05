@@ -1,0 +1,8 @@
+expect error: "repeat count must not be negative, got -1"
+
+package Main
+
+fn Main() -> Int {
+    let values = [0 ... -1]
+    return Len(values)
+}

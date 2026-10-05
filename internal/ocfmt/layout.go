@@ -79,6 +79,7 @@ type layout struct {
 	inGeneric []bool // strictly inside a type argument list
 	unitTight []bool // part of a literal's unit suffix; joined to the token before
 	inMarkup  []bool // inside a markup element
+	rowStart  []bool // a '[' that starts a matrix row after the count of the row before
 
 	glue map[string]bool // memo for gluesSafely
 }
@@ -97,6 +98,7 @@ func formatLayout(src string, tokens []lex.Token, spans []ast.MarkupSpan, resolv
 	l.splitLines()
 	l.markMarkupTokens()
 	l.classify()
+	l.markMatrixRows()
 
 	places := l.indentation()
 	out := make([]string, len(l.lines))
@@ -228,6 +230,41 @@ func (l *layout) classify() {
 			}
 		case lex.Question:
 			l.role[i] = rolePostfix
+		}
+	}
+}
+
+// markMatrixRows finds each '[' that starts a row of a matrix literal straight
+// after the count of the row before it, as in "[0.0, 0.0] ... n [1.0, 2.0]".
+// The parser reads that '[' as the next row whatever the spacing, and written
+// against the count it would look like an index.
+//
+// A matrix literal is recognised as the parser recognises it: the name
+// "matrix", then '[', then '[' or ']'.
+func (l *layout) markMatrixRows() {
+	l.rowStart = make([]bool, len(l.toks))
+	// One entry per open bracket: whether it is the '[' of a matrix literal.
+	var open []bool
+	for i, tok := range l.toks {
+		if l.inMarkup[i] {
+			continue
+		}
+		switch tok.Kind {
+		case lex.LeftBracket:
+			if len(open) > 0 && open[len(open)-1] && i > 0 {
+				if before := l.toks[i-1].Kind; before != lex.LeftBracket && before != lex.RightBracket {
+					l.rowStart[i] = true
+				}
+			}
+			literal := i > 0 && i+1 < len(l.toks) && l.toks[i-1].Kind == lex.Identifier && l.toks[i-1].Lexeme == "matrix" &&
+				(l.toks[i+1].Kind == lex.LeftBracket || l.toks[i+1].Kind == lex.RightBracket)
+			open = append(open, literal)
+		case lex.LeftParen, lex.LeftBrace:
+			open = append(open, false)
+		case lex.RightBracket, lex.RightParen, lex.RightBrace:
+			if len(open) > 0 {
+				open = open[:len(open)-1]
+			}
 		}
 	}
 }
@@ -828,7 +865,7 @@ func (l *layout) readableSpace(prev, cur piece) bool {
 	case lex.LeftParen:
 		return !callsOrGroups(l, p)
 	case lex.LeftBracket:
-		return !callsOrGroups(l, p)
+		return l.rowStart[c] || !callsOrGroups(l, p)
 	}
 	return true
 }

@@ -1,0 +1,13 @@
+expect runtime error: "runtime error: index -1 out of bounds for array of length 2"
+
+package Main
+
+fn Count(n: Int) -> Int {
+    return n
+}
+
+fn Main() -> Int {
+    var rows = [[1, 2], [3, 4]]
+    rows[Count(-1)] = [0 ...]
+    return 0
+}

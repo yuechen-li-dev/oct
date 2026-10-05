@@ -1,0 +1,8 @@
+expect error: "`...` repeats an element inside an array literal"
+
+package Main
+
+fn Main() -> Int {
+    let values = [1, 2, 3]
+    return values[0 ...]
+}

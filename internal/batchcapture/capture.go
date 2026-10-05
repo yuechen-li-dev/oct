@@ -116,15 +116,19 @@ func collectBatchExprFree(expr ast.Expr, defined map[string]struct{}, free map[s
 		for _, element := range node.Elements {
 			collectBatchExprFree(element, defined, free)
 		}
+	case ast.RepeatExpr:
+		collectBatchExprFree(node.Value, defined, free)
+		collectBatchExprFree(node.Count, defined, free)
 	case ast.VectorLiteralExpr:
 		for _, element := range node.Elements {
 			collectBatchExprFree(element, defined, free)
 		}
 	case ast.MatrixLiteralExpr:
-		for _, row := range node.Rows {
+		for index, row := range node.Rows {
 			for _, element := range row {
 				collectBatchExprFree(element, defined, free)
 			}
+			collectBatchExprFree(node.RowCount(index), defined, free)
 		}
 	case ast.CallExpr:
 		collectBatchExprFree(node.Callee, defined, free)

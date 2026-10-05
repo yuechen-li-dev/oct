@@ -1647,6 +1647,9 @@ func checkIndexAssignmentTarget(c checker, scope *scope, indices []ast.Expr, val
 
 	var elementType Type
 	wholeRowAssignment := false
+	// `value ...` can complete a row of a two-dimensional array. Both lanes
+	// implement whole-row assignment at that depth and no other.
+	rowFillSupported := targetType.IsArray && targetType.ArrayDepth == 2
 	switch {
 	case targetType.IsArray:
 		elementType = targetType
@@ -1666,7 +1669,20 @@ func checkIndexAssignmentTarget(c checker, scope *scope, indices []ast.Expr, val
 		return fmt.Errorf("function %s: index assignment (`x[i] = ...`) requires an array or matrix target, got %s. For records, use immutable update (`x = x with { Field: value }`); for scalars, assign the whole value", ctx.name, targetType)
 	}
 
-	valueType, err := c.checkExpr(scope, value, ctx)
+	var valueType ExprType
+	var err error
+	if literal, fill := ast.EndsInFill(value); fill && wholeRowAssignment {
+		// The row being replaced fixes the length, so the new row may end in
+		// `value ...`.
+		if !rowFillSupported {
+			return fmt.Errorf("function %s: %s: `value ...` fills a row of a two-dimensional array; for a deeper array, write a count, as in `[value ... n]`", ctx.name, label)
+		}
+		var filledType Type
+		filledType, err = c.checkArrayLiteral(scope, literal, ctx, &elementType, true)
+		valueType = ExprType{ValueType: filledType}
+	} else {
+		valueType, err = c.checkExpr(scope, value, ctx)
+	}
 	if err != nil {
 		return fmt.Errorf("function %s: %s: %w", ctx.name, label, err)
 	}
@@ -1780,6 +1796,10 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, err
 		}
 		return ExprType{ValueType: valueType}, nil
+	case ast.RepeatExpr:
+		// The parser builds this node only as an element of a bracket
+		// literal, where checkLiteralElement takes it apart.
+		return ExprType{}, fmt.Errorf("internal error: `...` reached the typechecker outside an array literal")
 	case ast.VectorLiteralExpr:
 		valueType, err := c.checkVectorLiteralExpr(scope, node, ctx)
 		if err != nil {
@@ -2661,7 +2681,11 @@ func evalConstantExpr(scope *scope, expr ast.Expr) (constantValue, bool) {
 	case ast.StringLiteralExpr:
 		return constantValue{kind: constantString, text: node.Value}, true
 	case ast.ArrayLiteralExpr:
-		return constantValue{kind: constantArray, length: len(node.Elements)}, true
+		length, known, fill := staticLiteralLength(node.Elements)
+		if !known || fill {
+			return constantValue{}, false
+		}
+		return constantValue{kind: constantArray, length: int(length)}, true
 	case ast.IdentifierExpr:
 		return scope.lookupConstant(node.Name)
 	case ast.ParenExpr:
@@ -2824,7 +2848,10 @@ func formatRequirementExpr(expr ast.Expr) string {
 		}
 		return callee + "(" + strings.Join(parts, ", ") + ")"
 	case ast.ArrayLiteralExpr:
-		return fmt.Sprintf("array literal with %d elements", len(node.Elements))
+		if length, known, fill := staticLiteralLength(node.Elements); known && !fill {
+			return fmt.Sprintf("array literal with %d elements", length)
+		}
+		return "array literal"
 	default:
 		return "<requirement>"
 	}
@@ -6980,6 +7007,77 @@ func requirePlotArrayType(functionName string, index int, valueType Type) error 
 }
 
 func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, ctx functionContext, expected *Type) (Type, error) {
+	return c.checkArrayLiteral(scope, expr, ctx, expected, false)
+}
+
+// fillNeedsExtent is the diagnostic for `value ...` where nothing fixes the
+// length of the array.
+const fillNeedsExtent = "`value ...` fills the rest of an array whose length is already fixed: a column of a record table, or a row assigned with `rows[i] = [...]`. Nothing fixes the length here; write a count, as in `[value ... n]`"
+
+// checkLiteralElement types one element of an array, vector or matrix-row
+// literal. For a repeated element it checks the count and answers with the
+// type of the value that is repeated, and with that value's expression.
+func (c checker) checkLiteralElement(scope *scope, element ast.Expr, ctx functionContext, expected *Type) (ExprType, ast.Expr, error) {
+	repeat, repeated := element.(ast.RepeatExpr)
+	if !repeated {
+		elementType, err := c.checkExprWithExpected(scope, element, ctx, expected)
+		return elementType, element, err
+	}
+	if repeat.Count != nil {
+		if err := c.checkRepeatCount(scope, repeat.Count, ctx); err != nil {
+			return ExprType{}, nil, err
+		}
+	}
+	elementType, err := c.checkExprWithExpected(scope, repeat.Value, ctx, expected)
+	return elementType, repeat.Value, err
+}
+
+// checkRepeatCount checks the count of `value ... count` or of a repeated
+// matrix row. It is a plain Int; zero is a count like any other.
+func (c checker) checkRepeatCount(scope *scope, count ast.Expr, ctx functionContext) error {
+	countType, err := c.checkExpr(scope, count, ctx)
+	if err != nil {
+		return fmt.Errorf("repeat count: %w", err)
+	}
+	if countType.Fallible {
+		return fmt.Errorf("repeat count is fallible and must be handled explicitly")
+	}
+	if !isAssignable(countType.ValueType, Type{Base: BaseTypeInt}) {
+		return fmt.Errorf("repeat count must be Int, got %s", countType.ValueType)
+	}
+	if value, known := staticIntegerValue(count); known && value < 0 {
+		return fmt.Errorf("repeat count must not be negative, got %d", value)
+	}
+	return nil
+}
+
+// staticLiteralLength is the number of elements a list of literal elements
+// produces, when every count in it is a constant. fill reports a trailing
+// `value ...`, which the length does not include.
+func staticLiteralLength(elements []ast.Expr) (length int64, known bool, fill bool) {
+	known = true
+	for _, element := range elements {
+		repeat, repeated := element.(ast.RepeatExpr)
+		switch {
+		case !repeated:
+			length++
+		case repeat.IsFill():
+			fill = true
+		default:
+			count, constant := staticIntegerValue(repeat.Count)
+			if !constant {
+				known = false
+				continue
+			}
+			length += count
+		}
+	}
+	return length, known, fill
+}
+
+// checkArrayLiteral types an array literal. allowFill is set by the three
+// constructs that fix an array's length and so can complete a `value ...`.
+func (c checker) checkArrayLiteral(scope *scope, expr ast.ArrayLiteralExpr, ctx functionContext, expected *Type, allowFill bool) (Type, error) {
 	if len(expr.Elements) == 0 {
 		if expected == nil {
 			return Type{}, fmt.Errorf("empty array literal `[]` requires an expected array type; write `var values: Int[] = []` or assign it where an array type is already known")
@@ -6989,10 +7087,15 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		}
 		return *expected, nil
 	}
+	if !allowFill {
+		if _, fill := ast.EndsInFill(expr); fill {
+			return Type{}, fmt.Errorf("%s", fillNeedsExtent)
+		}
+	}
 	if expected != nil && expected.IsArray {
 		elementExpected := peelArrayType(*expected)
 		for index, element := range expr.Elements {
-			elementType, err := c.checkExprWithExpected(scope, element, ctx, &elementExpected)
+			elementType, value, err := c.checkLiteralElement(scope, element, ctx, &elementExpected)
 			if err != nil {
 				return Type{}, fmt.Errorf("array element %d: %w", index, err)
 			}
@@ -7003,7 +7106,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 				if !c.isRefinedExpected(elementExpected) {
 					return Type{}, fmt.Errorf("array element %d expects %s, got %s", index, elementExpected, elementType.ValueType)
 				}
-				if err := c.admitRefined(scope, element, elementType.ValueType, elementExpected); err != nil {
+				if err := c.admitRefined(scope, value, elementType.ValueType, elementExpected); err != nil {
 					return Type{}, fmt.Errorf("invalid refined array element %d: %w", index, err)
 				}
 			}
@@ -7011,7 +7114,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		return *expected, nil
 	}
 
-	firstType, err := c.checkExpr(scope, expr.Elements[0], ctx)
+	firstType, _, err := c.checkLiteralElement(scope, expr.Elements[0], ctx, nil)
 	if err != nil {
 		return Type{}, err
 	}
@@ -7019,7 +7122,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		return Type{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 	for _, element := range expr.Elements[1:] {
-		elementType, err := c.checkExpr(scope, element, ctx)
+		elementType, _, err := c.checkLiteralElement(scope, element, ctx, nil)
 		if err != nil {
 			return Type{}, err
 		}
@@ -7038,7 +7141,7 @@ func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr
 	if len(expr.Elements) == 0 {
 		return Type{}, fmt.Errorf("empty vector literals are not supported")
 	}
-	firstType, err := c.checkExpr(scope, expr.Elements[0], ctx)
+	firstType, _, err := c.checkLiteralElement(scope, expr.Elements[0], ctx, nil)
 	if err != nil {
 		return Type{}, err
 	}
@@ -7049,7 +7152,7 @@ func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr
 		return Type{}, fmt.Errorf("Vector literals require numeric elements, got %s", firstType.ValueType)
 	}
 	for _, element := range expr.Elements[1:] {
-		elementType, err := c.checkExpr(scope, element, ctx)
+		elementType, _, err := c.checkLiteralElement(scope, element, ctx, nil)
 		if err != nil {
 			return Type{}, err
 		}
@@ -7070,8 +7173,7 @@ func (c checker) checkMatrixLiteralExpr(scope *scope, expr ast.MatrixLiteralExpr
 	if len(expr.Rows[0]) == 0 {
 		return Type{}, fmt.Errorf("matrix rows must not be empty")
 	}
-	expectedCols := len(expr.Rows[0])
-	firstType, err := c.checkExpr(scope, expr.Rows[0][0], ctx)
+	firstType, _, err := c.checkLiteralElement(scope, expr.Rows[0][0], ctx, nil)
 	if err != nil {
 		return Type{}, err
 	}
@@ -7081,12 +7183,29 @@ func (c checker) checkMatrixLiteralExpr(scope *scope, expr ast.MatrixLiteralExpr
 	if !isNumericScalar(firstType.ValueType) {
 		return Type{}, fmt.Errorf("Matrix literals require numeric elements, got %s", firstType.ValueType)
 	}
-	for _, row := range expr.Rows {
-		if len(row) != expectedCols {
-			return Type{}, fmt.Errorf("matrix rows must all have equal length")
+	// Rows whose length is a constant are compared here. A row with a
+	// computed count is compared with the others when the literal is
+	// evaluated.
+	expectedCols, colsKnown := int64(0), false
+	for index, row := range expr.Rows {
+		if cols, known, _ := staticLiteralLength(row); known {
+			if colsKnown && cols != expectedCols {
+				return Type{}, fmt.Errorf("matrix rows must all have equal length")
+			}
+			expectedCols, colsKnown = cols, true
+		}
+		if count := expr.RowCount(index); count != nil {
+			if err := c.checkRepeatCount(scope, count, ctx); err != nil {
+				// After the count of a row, `[` starts the next row, so
+				// `... counts[i]` is the count `counts` and the row `[i]`.
+				if countType, typeErr := c.checkExpr(scope, count, ctx); typeErr == nil && (countType.ValueType.IsArray || countType.ValueType.IsVector || countType.ValueType.IsMatrix) {
+					return Type{}, fmt.Errorf("%w; a `[` after the count of a matrix row starts the next row, so a count that indexes something is written in parentheses, as in `[0.0, 0.0] ... (counts[i])`", err)
+				}
+				return Type{}, err
+			}
 		}
 		for _, element := range row {
-			elementType, err := c.checkExpr(scope, element, ctx)
+			elementType, _, err := c.checkLiteralElement(scope, element, ctx, nil)
 			if err != nil {
 				return Type{}, err
 			}
@@ -7126,7 +7245,7 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 			}
 			return ExprType{}, fmt.Errorf("record '%s' has no field '%s'", expr.TypeName, field.Name)
 		}
-		actualType, err := c.checkExprWithExpected(scope, field.Value, ctx, &expectedType)
+		actualType, err := c.checkColumnOrField(scope, field.Value, ctx, expectedType, recordDecl.isTable)
 		if err != nil {
 			if recordDecl.isTable {
 				return ExprType{}, fmt.Errorf("[OCT-RTBL010] record table '%s' column '%s': %w", expr.TypeName, field.Name, err)
@@ -7161,34 +7280,80 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 		}
 	}
 	if recordDecl.isTable {
-		lengths := make(map[string]int, len(expr.Fields))
+		// A column that ends in `value ...` takes the row count from the
+		// columns that do not, so at least one column has to give it.
+		lengths := make(map[string]int64, len(expr.Fields))
+		filled := make(map[string]int64)
 		allKnown := true
 		for _, field := range expr.Fields {
 			literal, ok := field.Value.(ast.ArrayLiteralExpr)
 			if !ok {
 				allKnown = false
-				break
+				continue
 			}
-			lengths[field.Name] = len(literal.Elements)
+			length, known, fill := staticLiteralLength(literal.Elements)
+			switch {
+			case fill && known:
+				filled[field.Name] = length
+			case fill:
+				filled[field.Name] = -1
+			case known:
+				lengths[field.Name] = length
+			default:
+				allKnown = false
+			}
 		}
-		if allKnown && len(recordDecl.fieldOrder) > 0 {
-			want := lengths[recordDecl.fieldOrder[0]]
-			mismatch := false
-			for _, name := range recordDecl.fieldOrder {
-				if lengths[name] != want {
-					mismatch = true
+		if len(filled) == len(expr.Fields) && len(filled) > 0 {
+			return ExprType{}, fmt.Errorf("[OCT-RTBL011] record table '%s': every column ends in `...`, so no column gives the row count; write one column out, or give it a count as in `[value ... n]`", expr.TypeName)
+		}
+		for _, name := range recordDecl.fieldOrder {
+			before, isFilled := filled[name]
+			if !isFilled || before < 0 {
+				continue
+			}
+			for _, other := range recordDecl.fieldOrder {
+				if rows, given := lengths[other]; given && before > rows {
+					return ExprType{}, fmt.Errorf("[OCT-RTBL002] record table '%s' column '%s' has %d elements before `...` and column '%s' gives the table %d rows", expr.TypeName, name, before, other, rows)
 				}
+			}
+		}
+		// The columns that state a constant length must agree on it. This is
+		// decided here only when every column that is not filled states one;
+		// otherwise construction compares the lengths.
+		if allKnown && len(lengths) > 1 {
+			want, mismatch := lengths[expr.Fields[0].Name], false
+			for _, name := range recordDecl.fieldOrder {
+				if length, stated := lengths[name]; stated {
+					want = length
+					break
+				}
+			}
+			for _, length := range lengths {
+				mismatch = mismatch || length != want
 			}
 			if mismatch {
 				parts := make([]string, 0, len(recordDecl.fieldOrder))
 				for _, name := range recordDecl.fieldOrder {
-					parts = append(parts, fmt.Sprintf("%s: %d", name, lengths[name]))
+					if length, stated := lengths[name]; stated {
+						parts = append(parts, fmt.Sprintf("%s: %d", name, length))
+					}
 				}
 				return ExprType{}, fmt.Errorf("[OCT-RTBL002] record table '%s' columns have inconsistent literal lengths: %s", expr.TypeName, strings.Join(parts, ", "))
 			}
 		}
 	}
 	return ExprType{ValueType: Type{Name: expr.TypeName}}, nil
+}
+
+// checkColumnOrField types the value given for a record field. A column of a
+// record table has the table's row count for its length, so an array literal
+// there may end in `value ...`.
+func (c checker) checkColumnOrField(scope *scope, value ast.Expr, ctx functionContext, expected Type, isTableColumn bool) (ExprType, error) {
+	if literal, fill := ast.EndsInFill(value); fill && isTableColumn {
+		valueType, err := c.checkArrayLiteral(scope, literal, ctx, &expected, true)
+		return ExprType{ValueType: valueType}, err
+	}
+	return c.checkExprWithExpected(scope, value, ctx, &expected)
 }
 
 func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, ctx functionContext) (ExprType, error) {
@@ -7211,7 +7376,7 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 		if !exists {
 			return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", sourceType.ValueType.Name, field.Name)
 		}
-		valueType, err := c.checkExprWithExpected(scope, field.Value, ctx, &fieldType)
+		valueType, err := c.checkColumnOrField(scope, field.Value, ctx, fieldType, recordDecl.isTable)
 		if err != nil {
 			if recordDecl.isTable {
 				return ExprType{}, fmt.Errorf("[OCT-RTBL004] record table '%s' column '%s': %w", sourceType.ValueType.Name, field.Name, err)

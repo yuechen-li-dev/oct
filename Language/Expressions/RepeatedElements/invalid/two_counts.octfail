@@ -1,0 +1,8 @@
+expect error: "`value ... count` takes one count; to repeat a repeated group, nest it, as in `[[value ... n] ... m]`"
+
+package Main
+
+fn Main() -> Int {
+    let values = [0 ... 2 ... 3]
+    return Len(values)
+}

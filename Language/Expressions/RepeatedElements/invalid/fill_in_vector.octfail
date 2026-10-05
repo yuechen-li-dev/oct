@@ -1,0 +1,8 @@
+expect error: "`...` needs a count here, as in `value ... n`"
+
+package Main
+
+fn Main() -> Int {
+    let v = vector[0.5 ...]
+    return 0
+}

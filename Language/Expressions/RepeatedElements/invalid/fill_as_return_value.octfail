@@ -1,0 +1,11 @@
+expect error: "Nothing fixes the length here"
+
+package Main
+
+fn Zeros() -> Int[] {
+    return [0 ...]
+}
+
+fn Main() -> Int {
+    return Len(Zeros())
+}

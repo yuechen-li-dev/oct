@@ -855,7 +855,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		tmp := c.temp(localType)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: lowerMIRValues(args, nil), ArgTypes: argTypes, Builtin: builtin, RetType: ret})
 		return tmp, ret, fallible, nil
+	case ast.RepeatExpr:
+		return "", "", false, fmt.Errorf("internal error: `...` reached the compiled lowering outside an array literal")
 	case ast.ArrayLiteralExpr:
+		if hasRepeatedElement(e.Elements) {
+			return c.lowerRepeatedArrayLiteral(e, "")
+		}
 		vals := []string{}
 		typeName := "Int"
 		hint, hasHint := c.expectedArrayElemType()
@@ -884,6 +889,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: lowerMIRValues(vals, nil)})
 		return tmp, typeName + "[]", false, nil
 	case ast.VectorLiteralExpr:
+		if hasRepeatedElement(e.Elements) {
+			built, elemType, err := c.lowerRepeatedElements(e.Elements, "", false, "", func(elem string) string { return "Vector<" + elem + ">" })
+			if err != nil {
+				return "", "", false, err
+			}
+			return built, "Vector<" + elemType + ">", false, nil
+		}
 		vals := make([]string, 0, len(e.Elements))
 		elemType := "Int"
 		for i, el := range e.Elements {
@@ -901,6 +913,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: elemType, Values: lowerMIRValues(vals, nil)})
 		return tmp, vectorType, false, nil
 	case ast.MatrixLiteralExpr:
+		if e.RowCounts != nil || matrixHasRepeatedElement(e) {
+			return c.lowerRepeatedMatrixLiteral(e)
+		}
 		rows := make([]string, 0, len(e.Rows))
 		elemType := "Int"
 		hint, hasHint := c.expectedMatrixElemType()
@@ -1058,7 +1073,21 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if !strings.Contains(typeName, ".") {
 			typeName = c.pkg.Name + "." + typeName
 		}
-		for _, f := range e.Fields {
+		// A column of a record table that ends in `value ...` is completed to
+		// the table's row count. The columns that state their length are
+		// lowered first, in the order written, and the first of them gives
+		// the count; the filled columns follow, in the order written.
+		_, _, isTable := c.lookupRecordTable(typeName)
+		needsExtent := isTable && hasRepeatedFill(e.Fields)
+		tableExtent := ""
+		filled := map[int]ast.ArrayLiteralExpr{}
+		vals = make([]string, len(e.Fields))
+		for index, f := range e.Fields {
+			names = append(names, f.Name)
+			if literal, fill := ast.EndsInFill(f.Value); fill && isTable {
+				filled[index] = literal
+				continue
+			}
 			fieldType, hasFieldType := c.lookupRecordFieldType(typeName, f.Name)
 			var v, t string
 			var err error
@@ -1072,9 +1101,31 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			if hasFieldType {
 				v = coerceExprToType(v, t, fieldType)
+				t = fieldType
 			}
-			vals = append(vals, v)
-			names = append(names, f.Name)
+			vals[index] = v
+			if needsExtent && tableExtent == "" {
+				tableExtent = c.temp("Int")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tableExtent, Callee: "Len", Args: []MIRValue{lowerMIRValue(v, t)}, ArgTypes: []string{t}, Builtin: true, RetType: "Int"})
+			}
+		}
+		for index, f := range e.Fields {
+			literal, fill := filled[index]
+			if !fill {
+				continue
+			}
+			if tableExtent == "" {
+				return "", "", false, fmt.Errorf("internal error: record table '%s' has no column that gives its row count", typeName)
+			}
+			fieldType, hasFieldType := c.lookupRecordFieldType(typeName, f.Name)
+			if !hasFieldType {
+				return "", "", false, fmt.Errorf("internal error: record table '%s' has no column '%s'", typeName, f.Name)
+			}
+			v, t, _, err := c.withExpectedType(fieldType, func() (string, string, bool, error) { return c.lowerRepeatedArrayLiteral(literal, tableExtent) })
+			if err != nil {
+				return "", "", false, err
+			}
+			vals[index] = coerceExprToType(v, t, fieldType)
 		}
 		tmp := c.temp(typeName)
 		if table, _, ok := c.lookupRecordTable(typeName); ok && len(vals) > 0 {
@@ -1122,7 +1173,35 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return "", "", false, fmt.Errorf("record update requires record source")
 		}
 		overrides := make(map[string]string, len(e.Fields))
+		sourceTable, _, sourceIsTable := c.lookupRecordTable(sourceType)
 		for _, field := range e.Fields {
+			if literal, fill := ast.EndsInFill(field.Value); fill && sourceIsTable && len(sourceTable.Fields) > 0 {
+				// The table being updated fixes the length of a replacement
+				// column, so the column may end in `value ...`.
+				columnType := ""
+				for _, declared := range fieldTypes {
+					if declared.Name == field.Name {
+						columnType = declared.Type
+					}
+				}
+				if columnType == "" {
+					return "", "", false, fmt.Errorf("internal error: record table '%s' has no column '%s'", sourceType, field.Name)
+				}
+				firstName, firstType := sourceTable.Fields[0].Name, ""
+				for _, declared := range fieldTypes {
+					if declared.Name == firstName {
+						firstType = declared.Type
+					}
+				}
+				extent := c.temp("Int")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: extent, Callee: "Len", Args: []MIRValue{lowerMIRValue(fmt.Sprintf("%s.%s", source, firstName), firstType)}, ArgTypes: []string{firstType}, Builtin: true, RetType: "Int"})
+				value, valueType, _, err := c.withExpectedType(columnType, func() (string, string, bool, error) { return c.lowerRepeatedArrayLiteral(literal, extent) })
+				if err != nil {
+					return "", "", false, err
+				}
+				overrides[field.Name] = coerceExprToType(value, valueType, columnType)
+				continue
+			}
 			value, _, _, err := c.lowerExpr(field.Value)
 			if err != nil {
 				return "", "", false, err
@@ -1193,6 +1272,244 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	default:
 		return "", "", false, fmt.Errorf("unsupported expression %T", e)
 	}
+}
+
+// The builtin calls that carry the runtime checks of a repeated literal
+// element. Each returns the value it has checked.
+const (
+	// repeatCountBuiltin(count) is count, and fails when it is negative.
+	repeatCountBuiltin = "Repeat.Count"
+	// repeatFillBuiltin(extent, have) is the number of elements `value ...`
+	// adds to an array that holds have of its extent elements, and fails
+	// when the array already holds more.
+	repeatFillBuiltin = "Repeat.Fill"
+	// repeatRowExtentBuiltin(rows, index) is the length of rows[index], and
+	// fails as an array bounds error when index is out of range.
+	repeatRowExtentBuiltin = "Repeat.RowExtent"
+	// repeatRowBuiltin(rows, row) is row, about to become the next row of the
+	// matrix rows; it fails when row is not as long as the first.
+	repeatRowBuiltin = "Repeat.Row"
+)
+
+func isRepeatBuiltin(name string) bool {
+	switch name {
+	case repeatCountBuiltin, repeatFillBuiltin, repeatRowExtentBuiltin, repeatRowBuiltin:
+		return true
+	}
+	return false
+}
+
+func hasRepeatedElement(elements []ast.Expr) bool {
+	for _, element := range elements {
+		if _, repeated := element.(ast.RepeatExpr); repeated {
+			return true
+		}
+	}
+	return false
+}
+
+// hasRepeatedFill reports whether a field of a record literal is an array
+// literal that ends in `value ...`.
+func hasRepeatedFill(fields []ast.RecordLiteralField) bool {
+	for _, field := range fields {
+		if _, fill := ast.EndsInFill(field.Value); fill {
+			return true
+		}
+	}
+	return false
+}
+
+func matrixHasRepeatedElement(e ast.MatrixLiteralExpr) bool {
+	for _, row := range e.Rows {
+		if hasRepeatedElement(row) {
+			return true
+		}
+	}
+	return false
+}
+
+// lowerRepeatedArrayLiteral lowers an array literal that has a repeated
+// element. extent is the length the surrounding construct fixes, for a
+// literal that ends in `value ...`, and is empty otherwise.
+func (c *lowerCtx) lowerRepeatedArrayLiteral(e ast.ArrayLiteralExpr, extent string) (string, string, bool, error) {
+	hint, hasHint := c.expectedArrayElemType()
+	built, elemType, err := c.lowerRepeatedElements(e.Elements, hint, hasHint, extent, func(elem string) string { return elem + "[]" })
+	if err != nil {
+		return "", "", false, err
+	}
+	return built, elemType + "[]", false, nil
+}
+
+// lowerRepeatCount lowers the count of `value ... count` or of a repeated
+// matrix row into a temporary that holds the checked count.
+func (c *lowerCtx) lowerRepeatCount(count ast.Expr) (string, error) {
+	raw, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(count) })
+	if err != nil {
+		return "", err
+	}
+	checked := c.temp("Int")
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: checked, Callee: repeatCountBuiltin, Args: []MIRValue{lowerMIRValue(raw, "Int")}, ArgTypes: []string{"Int"}, Builtin: true, RetType: "Int"})
+	return checked, nil
+}
+
+// lowerCountedLoop emits a loop that runs body count times. The body is
+// lowered once and executed once for each turn, which is what gives a
+// repeated element one evaluation for each element it stands for.
+func (c *lowerCtx) lowerCountedLoop(count string, body func() error) error {
+	newBlock := func() int {
+		id := len(c.blocks)
+		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", id)})
+		return id
+	}
+	turn := c.temp("Int")
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: turn, Value: lowerMIRValue("0", "Int")})
+	headID, bodyID, afterID := newBlock(), newBlock(), newBlock()
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[headID].Label}
+
+	c.cur = headID
+	more := c.temp("Bool")
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: more, Value: lowerMIRValue(fmt.Sprintf("%s < %s", turn, count), "Bool")})
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(more, "Bool"), TrueTarget: c.blocks[bodyID].Label, FalseTarget: c.blocks[afterID].Label}
+
+	c.cur = bodyID
+	if err := body(); err != nil {
+		return err
+	}
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: turn, Value: lowerMIRValue(fmt.Sprintf("%s + 1", turn), "Int")})
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[headID].Label}
+
+	c.cur = afterID
+	return nil
+}
+
+// lowerRepeatedElements builds, element by element, the list that the
+// elements of an array, vector or matrix-row literal stand for. A plain
+// element is appended once. A repeated one is appended in a loop, and its
+// value is lowered inside the loop, so it is evaluated once for each element.
+//
+// hint is the element type the context expects, when it expects one;
+// otherwise the first element gives it. container names the type of the list
+// for an element type. The result is the temporary and the element type.
+func (c *lowerCtx) lowerRepeatedElements(elements []ast.Expr, hint string, hasHint bool, extent string, container func(string) string) (string, string, error) {
+	elemType, typed := hint, hasHint
+	listType := ""
+	if typed {
+		listType = container(elemType)
+	}
+	out := c.temp(listType)
+	constructBlock, constructIndex := c.cur, len(c.blocks[c.cur].Statements)
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: out, ElemType: elemType})
+
+	appendValue := func(valueExpr ast.Expr) error {
+		var value, valueType string
+		var err error
+		if hasHint {
+			value, valueType, _, err = c.withExpectedType(hint, func() (string, string, bool, error) { return c.lowerExpr(valueExpr) })
+		} else {
+			value, valueType, _, err = c.lowerExpr(valueExpr)
+		}
+		if err != nil {
+			return err
+		}
+		if hasHint {
+			value = coerceExprToType(value, valueType, hint)
+		} else if !typed {
+			// The first element lowered names the element type. The list
+			// was declared before it, so its declaration is completed now.
+			elemType, typed = valueType, true
+			listType = container(elemType)
+			c.locals[out] = listType
+			c.blocks[constructBlock].Statements[constructIndex] = MIRConstructArray{Target: out, ElemType: elemType}
+		}
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: out, Callee: "Append", Args: []MIRValue{lowerMIRValue(out, listType), lowerMIRValue(value, elemType)}, ArgTypes: []string{listType, elemType}, Builtin: true, RetType: listType})
+		return nil
+	}
+
+	for _, element := range elements {
+		repeat, repeated := element.(ast.RepeatExpr)
+		if !repeated {
+			if err := appendValue(element); err != nil {
+				return "", "", err
+			}
+			continue
+		}
+		var count string
+		if repeat.IsFill() {
+			if extent == "" {
+				return "", "", fmt.Errorf("internal error: `value ...` reached the compiled lowering with no fixed length")
+			}
+			have := c.temp("Int")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: have, Callee: "Len", Args: []MIRValue{lowerMIRValue(out, listType)}, ArgTypes: []string{listType}, Builtin: true, RetType: "Int"})
+			count = c.temp("Int")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: count, Callee: repeatFillBuiltin, Args: []MIRValue{lowerMIRValue(extent, "Int"), lowerMIRValue(have, "Int")}, ArgTypes: []string{"Int", "Int"}, Builtin: true, RetType: "Int"})
+		} else {
+			var err error
+			if count, err = c.lowerRepeatCount(repeat.Count); err != nil {
+				return "", "", err
+			}
+		}
+		if err := c.lowerCountedLoop(count, func() error { return appendValue(repeat.Value) }); err != nil {
+			return "", "", err
+		}
+	}
+	if !typed {
+		return "", "", fmt.Errorf("internal error: a repeated literal with no elements to type it")
+	}
+	return out, elemType, nil
+}
+
+// lowerRepeatedMatrixLiteral lowers a matrix literal in which an element or
+// a row is repeated. A row written `[...] ... count` is lowered inside a
+// loop, so it is evaluated count times, each time as a row of its own.
+func (c *lowerCtx) lowerRepeatedMatrixLiteral(e ast.MatrixLiteralExpr) (string, string, bool, error) {
+	hint, hasHint := c.expectedMatrixElemType()
+	elemType, typed := hint, hasHint
+	matrixType := ""
+	if typed {
+		matrixType = "Matrix<" + elemType + ">"
+	}
+	out := c.temp(matrixType)
+	constructBlock, constructIndex := c.cur, len(c.blocks[c.cur].Statements)
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: out, ElemType: "Vector<" + elemType + ">"})
+
+	appendRow := func(row []ast.Expr) error {
+		built, rowElemType, err := c.lowerRepeatedElements(row, hint, hasHint, "", func(elem string) string { return "Vector<" + elem + ">" })
+		if err != nil {
+			return err
+		}
+		if !typed {
+			elemType, typed = rowElemType, true
+			matrixType = "Matrix<" + elemType + ">"
+			c.locals[out] = matrixType
+			c.blocks[constructBlock].Statements[constructIndex] = MIRConstructArray{Target: out, ElemType: "Vector<" + elemType + ">"}
+		}
+		rowType := "Vector<" + elemType + ">"
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements,
+			MIRCall{Target: built, Callee: repeatRowBuiltin, Args: []MIRValue{lowerMIRValue(out, matrixType), lowerMIRValue(built, rowType)}, ArgTypes: []string{matrixType, rowType}, Builtin: true, RetType: rowType},
+			MIRCall{Target: out, Callee: "Append", Args: []MIRValue{lowerMIRValue(out, matrixType), lowerMIRValue(built, rowType)}, ArgTypes: []string{matrixType, rowType}, Builtin: true, RetType: matrixType})
+		return nil
+	}
+
+	for index, row := range e.Rows {
+		rowCount := e.RowCount(index)
+		if rowCount == nil {
+			if err := appendRow(row); err != nil {
+				return "", "", false, err
+			}
+			continue
+		}
+		count, err := c.lowerRepeatCount(rowCount)
+		if err != nil {
+			return "", "", false, err
+		}
+		if err := c.lowerCountedLoop(count, func() error { return appendRow(row) }); err != nil {
+			return "", "", false, err
+		}
+	}
+	if !typed {
+		return "", "", false, fmt.Errorf("internal error: a repeated matrix literal with no rows to type it")
+	}
+	return out, matrixType, false, nil
 }
 
 // The two builtin calls through which lowered code reaches the commitment of

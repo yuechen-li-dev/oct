@@ -1,0 +1,9 @@
+expect error: "Nothing fixes the length here"
+
+package Main
+
+// The inner array has no length of its own to fill to.
+fn Main() -> Int {
+    let grid = [[0 ...] ... 2]
+    return Len(grid)
+}

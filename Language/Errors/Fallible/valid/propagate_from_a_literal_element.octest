@@ -1,0 +1,63 @@
+package MainValid
+
+// `?` in an element of an array, vector or matrix literal returns the error
+// from the enclosing function, as it does anywhere else in an expression.
+
+fn LiteralElementChecked(n: Int) -> Int ! Error {
+    if n < 0 {
+        return error("negative")
+    }
+    return n
+}
+
+fn LiteralElementScaled(x: Float) -> Float ! Error {
+    if x < 0.0 {
+        return error("negative")
+    }
+    return x * 2.0
+}
+
+fn ArrayOfChecked(a: Int, b: Int) -> Int[] ! Error {
+    return [LiteralElementChecked(a)?, LiteralElementChecked(b)?]
+}
+
+fn VectorOfScaled(a: Float, b: Float) -> Vector<Float> ! Error {
+    return vector[LiteralElementScaled(a)?, LiteralElementScaled(b)?]
+}
+
+fn MatrixOfScaled(a: Float, b: Float) -> Matrix<Float> ! Error {
+    return matrix[[LiteralElementScaled(a)?, 0.0] [0.0, LiteralElementScaled(b)?]]
+}
+
+[Fact]
+fn PropagateFromAnArrayElement() -> Void {
+    Assert.Equal(2, ArrayOfChecked(1, 2)![1], "success")
+    var failed = false
+    match ArrayOfChecked(1, -2) {
+        ok(_) => { failed = false }
+        err(_) => { failed = true }
+    }
+    Assert.True(failed, "the error of the second element is returned")
+}
+
+[Fact]
+fn PropagateFromAVectorElement() -> Void {
+    Assert.Near(4.0, VectorOfScaled(1.0, 2.0)![1], 0.001, "success")
+    var failed = false
+    match VectorOfScaled(-1.0, 2.0) {
+        ok(_) => { failed = false }
+        err(_) => { failed = true }
+    }
+    Assert.True(failed, "the error of the first element is returned")
+}
+
+[Fact]
+fn PropagateFromAMatrixElement() -> Void {
+    Assert.Near(4.0, MatrixOfScaled(1.0, 2.0)![1, 1], 0.001, "success")
+    var failed = false
+    match MatrixOfScaled(1.0, -2.0) {
+        ok(_) => { failed = false }
+        err(_) => { failed = true }
+    }
+    Assert.True(failed, "the error of the last element is returned")
+}

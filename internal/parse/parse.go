@@ -39,6 +39,10 @@ type parser struct {
 	// literalNameBindings records, innermost last, each binding in scope of
 	// a name that also begins a literal. See literalNameIsBound.
 	literalNameBindings []string
+	// matrixRowCountOpen is true while the count of a repeated matrix row is
+	// being parsed, outside any bracket of its own. There a `[` starts the
+	// next row and does not index the count. See parseMatrixRowCount.
+	matrixRowCountOpen bool
 }
 
 // `vector[a, b]` is a vector literal, and `vector[i]` indexes a value named
@@ -1699,6 +1703,9 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 		if p.isExpressionStart(p.current().Kind) {
 			return p.parseExprStmt()
 		}
+		if p.current().Kind == lex.Ellipsis {
+			return nil, p.errorAtCurrent(ellipsisMisplaced)
+		}
 		return nil, p.errorAtCurrent("expected statement")
 	}
 }
@@ -2148,7 +2155,23 @@ func (p *parser) parseMatchArm(expectedName string) (string, ast.Block, error) {
 }
 
 func (p *parser) parseExpression() (ast.Expr, error) {
+	// An expression nested in the count of a matrix row, in parentheses or
+	// as an argument, is an ordinary expression again.
+	outer := p.matrixRowCountOpen
+	p.matrixRowCountOpen = false
+	defer func() { p.matrixRowCountOpen = outer }()
 	return p.parseRangeExpr()
+}
+
+// parseMatrixRowCount parses the count of `[row] ... count`. The rows of a
+// matrix literal are written one after another with nothing between them, so
+// a `[` that follows the count starts the next row. A count that indexes
+// something is written in parentheses: `[0.0, 0.0] ... (counts[i])`.
+func (p *parser) parseMatrixRowCount() (ast.Expr, error) {
+	outer := p.matrixRowCountOpen
+	p.matrixRowCountOpen = true
+	defer func() { p.matrixRowCountOpen = outer }()
+	return p.parseBinaryExpr(precedenceOr)
 }
 
 func (p *parser) parseRangeExpr() (ast.Expr, error) {
@@ -2298,6 +2321,9 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Callee: expr, TypeArguments: typeArguments, Arguments: arguments, Line: callToken.Line, Column: callToken.Column}
+		case p.matrixRowCountOpen && p.current().Kind == lex.LeftBracket:
+			// The next row of the matrix literal; see parseMatrixRowCount.
+			return expr, nil
 		case p.current().Kind == lex.LeftBracket && p.looksLikeLegacyTypeArgumentList():
 			return nil, p.errorAtCurrent("type arguments must use '<...>'; legacy '[...]' syntax is no longer supported")
 		case p.current().Kind == lex.LeftBrace && p.looksLikeRecordLiteral() && p.isRecordLiteralTypeExpr(expr):
@@ -2329,6 +2355,9 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 					return nil, err
 				}
 				indices = append(indices, index)
+				if p.current().Kind == lex.Ellipsis {
+					return nil, p.errorAtCurrent(ellipsisMisplaced)
+				}
 				if !p.match(lex.Comma) {
 					break
 				}
@@ -2480,6 +2509,9 @@ func (p *parser) parseCallArguments() ([]ast.Expr, error) {
 			return nil, err
 		}
 		arguments = append(arguments, argument)
+		if p.current().Kind == lex.Ellipsis {
+			return nil, p.errorAtCurrent(ellipsisMisplaced)
+		}
 		if !p.match(lex.Comma) {
 			break
 		}
@@ -2605,10 +2637,17 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return ast.ParenExpr{Inner: inner}, nil
 	case lex.LeftBracket:
 		return p.parseArrayLiteralExpr()
+	case lex.Ellipsis:
+		return nil, p.errorAtCurrent(ellipsisMisplaced)
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
 }
+
+// ellipsisMisplaced is the diagnostic for `...` anywhere but after an element
+// of an array, vector or matrix-row literal. Readers who know `...` as a
+// spread or as a range in another language land here.
+const ellipsisMisplaced = "`...` repeats an element inside an array literal, as in `[0 ... n]`; it does not spread a collection and it is not a range (a range is `a..b`)"
 
 func (p *parser) parseMarkupElement() (ast.Expr, error) {
 	open := p.current()
@@ -3276,7 +3315,7 @@ func (p *parser) parseArrayLiteralExpr() (ast.Expr, error) {
 
 	var elements []ast.Expr
 	for {
-		element, err := p.parseExpression()
+		element, err := p.parseLiteralElement(true)
 		if err != nil {
 			return nil, err
 		}
@@ -3294,6 +3333,44 @@ func (p *parser) parseArrayLiteralExpr() (ast.Expr, error) {
 	return ast.ArrayLiteralExpr{Elements: elements}, nil
 }
 
+// parseLiteralElement parses one element of an array, vector or matrix-row
+// literal. An element may be followed by `...`, which repeats it:
+// `value ... count` stands for count elements, and `value ...` with nothing
+// after it fills the rest of an array whose length the surrounding construct
+// fixes. fillAllowed says whether the literal can have such a length at all;
+// a vector or a matrix row cannot.
+//
+// `...` is not an operator. It has no meaning outside this position, and it
+// neither spreads a collection nor makes a range.
+func (p *parser) parseLiteralElement(fillAllowed bool) (ast.Expr, error) {
+	element, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	if p.current().Kind != lex.Ellipsis {
+		return element, nil
+	}
+	ellipsis := p.current()
+	p.advance()
+	switch p.current().Kind {
+	case lex.RightBracket:
+		if !fillAllowed {
+			return nil, p.errorAtToken(ellipsis, "`...` needs a count here, as in `value ... n`; only an array whose length is already fixed can be filled with `value ...`")
+		}
+		return ast.RepeatExpr{Value: element, Line: ellipsis.Line, Column: ellipsis.Column}, nil
+	case lex.Comma:
+		return nil, p.errorAtToken(ellipsis, "`value ...` fills the rest of the array, so it is the last element; to repeat a value in the middle, give it a count, as in `value ... n`")
+	}
+	count, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	if p.current().Kind == lex.Ellipsis {
+		return nil, p.errorAtCurrent("`value ... count` takes one count; to repeat a repeated group, nest it, as in `[[value ... n] ... m]`")
+	}
+	return ast.RepeatExpr{Value: element, Count: count, Line: ellipsis.Line, Column: ellipsis.Column}, nil
+}
+
 func (p *parser) parseVectorLiteralExpr() (ast.Expr, error) {
 	if _, err := p.expect(lex.LeftBracket, "expected '[' to start vector literal"); err != nil {
 		return nil, err
@@ -3303,7 +3380,7 @@ func (p *parser) parseVectorLiteralExpr() (ast.Expr, error) {
 	}
 	var elements []ast.Expr
 	for {
-		element, err := p.parseExpression()
+		element, err := p.parseLiteralElement(false)
 		if err != nil {
 			return nil, err
 		}
@@ -3326,7 +3403,14 @@ func (p *parser) parseMatrixLiteralExpr() (ast.Expr, error) {
 		return nil, p.errorAtCurrent("empty matrix literals are not supported")
 	}
 	var rows [][]ast.Expr
+	var rowCounts []ast.Expr
+	repeated := false
 	for p.current().Kind != lex.RightBracket {
+		if p.current().Kind != lex.LeftBracket && len(rowCounts) > 1 && rowCounts[len(rowCounts)-2] != nil {
+			// The row before this point came straight after a count, so it
+			// may have been meant as an index into that count.
+			return nil, p.errorAtCurrent("expected '[' to start matrix row; a `[` after the count of a matrix row starts the next row, so a count that indexes something is written in parentheses, as in `[0.0, 0.0] ... (counts[i])`")
+		}
 		if _, err := p.expect(lex.LeftBracket, "expected '[' to start matrix row"); err != nil {
 			return nil, err
 		}
@@ -3335,7 +3419,7 @@ func (p *parser) parseMatrixLiteralExpr() (ast.Expr, error) {
 		}
 		var row []ast.Expr
 		for {
-			element, err := p.parseExpression()
+			element, err := p.parseLiteralElement(false)
 			if err != nil {
 				return nil, err
 			}
@@ -3348,9 +3432,27 @@ func (p *parser) parseMatrixLiteralExpr() (ast.Expr, error) {
 			return nil, err
 		}
 		rows = append(rows, row)
+		// `[row] ... count` repeats the row.
+		var rowCount ast.Expr
+		if p.current().Kind == lex.Ellipsis {
+			ellipsis := p.current()
+			p.advance()
+			if p.current().Kind == lex.RightBracket || p.current().Kind == lex.LeftBracket {
+				return nil, p.errorAtToken(ellipsis, "a repeated matrix row needs a count, as in `[0.0, 0.0] ... n`")
+			}
+			count, err := p.parseMatrixRowCount()
+			if err != nil {
+				return nil, err
+			}
+			rowCount, repeated = count, true
+		}
+		rowCounts = append(rowCounts, rowCount)
 	}
 	p.advance()
-	return ast.MatrixLiteralExpr{Rows: rows}, nil
+	if !repeated {
+		rowCounts = nil
+	}
+	return ast.MatrixLiteralExpr{Rows: rows, RowCounts: rowCounts}, nil
 }
 
 func (p *parser) match(kind lex.TokenKind) bool {
@@ -3364,6 +3466,11 @@ func (p *parser) match(kind lex.TokenKind) bool {
 func (p *parser) expect(kind lex.TokenKind, message string) (lex.Token, error) {
 	token := p.current()
 	if token.Kind != kind {
+		if token.Kind == lex.Ellipsis {
+			// Wherever something else was expected, `...` is out of place,
+			// and saying what it is helps more than naming what was expected.
+			return lex.Token{}, p.errorAtCurrent(ellipsisMisplaced)
+		}
 		return lex.Token{}, p.errorAtCurrent(message)
 	}
 	p.advance()

@@ -1,0 +1,8 @@
+expect error: "array literal elements must all have the same type; found Int and String"
+
+package Main
+
+fn Main() -> Int {
+    let values = [0 ... 2, "x"]
+    return Len(values)
+}

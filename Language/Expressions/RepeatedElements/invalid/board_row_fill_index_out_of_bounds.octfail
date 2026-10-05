@@ -1,0 +1,21 @@
+expect runtime error: "runtime error: index 2 out of bounds for array of length 2"
+
+package Main
+
+flow ClearRow(index: Int) -> Int {
+    board {
+        Grid: Float[][]
+    }
+
+    state Start {
+        board.Grid = [[0.5, 0.5], [0.5, 0.5]]
+        board.Grid[index] = [9.5 ...]
+        return Len(board.Grid)
+    }
+}
+
+fn Main() -> Int {
+    let run = ClearRow(2)
+    Step(run)
+    return Result(run)!
+}

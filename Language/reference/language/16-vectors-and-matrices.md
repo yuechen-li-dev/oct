@@ -41,6 +41,13 @@ Arrays are general ordered collection/storage values, while vectors and matrices
 - Vector literals require homogeneous element type.
 - Matrix rows must all have equal length.
 - Vectors and matrices may use dimension-qualified numeric elements.
+- `value ... count` is an element of a vector literal and of a matrix row, with the meaning it has in an array literal: `vector[0.0 ... n]`, `matrix[[1.0, 0.0 ... 2] [0.0 ... 3]]`. See [Repeated elements](07-arrays.md#repeated-elements).
+- `[row] ... count` repeats a row of a matrix literal: `matrix[[0.0 ... cols] ... rows]`. The row is evaluated once for each time it appears.
+  - The rows of a matrix literal follow one another with nothing between them, so a `[` after a count starts the next row: `matrix[[1.0, 0.0] ... n [5.0, 6.0]]`. A count that indexes something is written in parentheses: `[0.0, 0.0] ... (counts[i])`.
+  - A count is an `Int`; a negative count is an error, as in an array literal.
+  - Rows whose lengths are constants are compared when the program is checked. A row whose length is computed is compared when the literal is evaluated, and a mismatch is the runtime error `matrix rows must all have equal length: expected <n>, got <m>`.
+- A count of zero is allowed. `vector[0.5 ... 0]` is an empty `Vector<Float>`, and a matrix may have no rows or rows with no elements, as `Vector.tabulate(0, f)` and `Matrix.zeros<T>(0, n)` already can. A literal with no element at all, `vector[]`, is still rejected, because nothing names its type.
+- `value ...` with no count is not allowed in a vector or matrix literal: nothing fixes their length.
 
 Use constructors when matrix values are generated, repetitive, or large:
 
@@ -52,6 +59,7 @@ Use constructors when matrix values are generated, repetitive, or large:
 
 Use literals (`matrix[[...]]`) for small hand-authored constants where the literal is clearer.
 For benchmark/corpus-style setup, prefer constructors over giant literals.
+`matrix[[value ... cols] ... rows]` and `Matrix.fill(rows, cols, value)` build the same matrix when `value` has no effects. The literal evaluates `value` once for each element; `Matrix.fill` evaluates it once.
 
 Tabulation callbacks are ordinary function values. Captured and noncaptured
 functions use the same exact callable type. `Vector.tabulate` invokes its

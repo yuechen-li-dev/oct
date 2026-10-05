@@ -5,6 +5,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"sort"
+	"strings"
 )
 
 type compiledExpressionContext struct {
@@ -220,6 +221,21 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 				return nil, err
 			}
 			indices = append(indices, lowered)
+		}
+		if literal, fill := ast.EndsInFill(s.Value); fill {
+			rowType := strings.TrimSuffix(boardFieldTypes[s.Field], "[]")
+			if s.Target != "board" || len(indices) != 1 || !isTwoDimensionalArrayType(boardFieldTypes[s.Field]) {
+				return nil, fmt.Errorf("internal error: `value ...` reached a board assignment that fixes no length")
+			}
+			v, err := lowerSharedFlowExpressionWith(env, locals, map[string]string{flowRowExtentLocal: "Int"}, func(ctx *lowerCtx) (string, string, bool, error) {
+				return ctx.withExpectedType(rowType, func() (string, string, bool, error) {
+					return ctx.lowerRepeatedArrayLiteral(literal, flowRowExtentLocal)
+				})
+			})
+			if err != nil {
+				return nil, err
+			}
+			return MIRFlowFieldIndexAssign{Target: s.Target, Field: s.Field, Indices: indices, Value: v, RowFill: true}, nil
 		}
 		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
 		if err != nil {
@@ -478,12 +494,26 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 }
 
 func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals map[string]bool) (MIRFlowExpr, error) {
+	return lowerSharedFlowExpressionWith(env, flowLocals, nil, func(ctx *lowerCtx) (string, string, bool, error) {
+		return ctx.lowerExpr(expr)
+	})
+}
+
+// lowerSharedFlowExpressionWith lowers one flow expression through the
+// ordinary block lowering. provided names Go locals that the statement
+// emitted around the expression defines, with their types; lower produces
+// the expression's value.
+func lowerSharedFlowExpressionWith(env map[string]string, flowLocals map[string]bool, provided map[string]string, lower func(*lowerCtx) (string, string, bool, error)) (MIRFlowExpr, error) {
 	shared := activeFlowExpressionContext
 	if shared == nil {
 		return nil, fmt.Errorf("internal error: missing compiled FLOW expression context")
 	}
-	ordinaryLocals := make(map[string]string, len(env))
-	goNames := make(map[string]string, len(env))
+	ordinaryLocals := make(map[string]string, len(env)+len(provided))
+	goNames := make(map[string]string, len(env)+len(provided))
+	for name, typ := range provided {
+		ordinaryLocals[name] = typ
+		goNames[name] = name
+	}
 	for name, typ := range env {
 		ordinaryLocals[name] = typ
 		switch {
@@ -507,7 +537,7 @@ func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals 
 		anonymousID: shared.anonymousID,
 		einTerms:    map[string]einsteinTermMeta{},
 	}
-	value, typ, fallible, err := ctx.lowerExpr(expr)
+	value, typ, fallible, err := lower(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -518,6 +548,9 @@ func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals 
 	resultLocals := make([]MIRField, 0)
 	for name, localType := range ctx.locals {
 		if _, external := env[name]; external {
+			continue
+		}
+		if _, external := provided[name]; external {
 			continue
 		}
 		resultLocals = append(resultLocals, MIRField{Name: ctx.goLocalName(name), Type: localType})

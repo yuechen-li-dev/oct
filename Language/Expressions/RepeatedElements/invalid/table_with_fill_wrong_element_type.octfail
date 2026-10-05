@@ -1,0 +1,14 @@
+expect error: "array element 0 expects Bool, got Int"
+
+package Main
+
+record table Marks {
+    Value: Float
+    Valid: Bool
+}
+
+fn Main() -> Int {
+    let marks = Marks { Value: [1.0, 2.0] Valid: [true ...] }
+    let cleared = marks with { Valid: [0 ...] }
+    return Len(cleared)
+}

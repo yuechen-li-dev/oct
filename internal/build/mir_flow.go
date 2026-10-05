@@ -58,7 +58,15 @@ type MIRFlowFieldIndexAssign struct {
 	Field   string
 	Indices []MIRFlowExpr
 	Value   MIRFlowExpr
+	// RowFill marks `field[i] = [value ...]`. The row being replaced fixes
+	// the length of the new one, and Value reads that length from the local
+	// flowRowExtentLocal, which the emitted statement defines.
+	RowFill bool
 }
+
+// flowRowExtentLocal names the length of the row that a filled row
+// assignment to a board field replaces.
+const flowRowExtentLocal = "__oct_row_extent"
 
 func (MIRFlowFieldIndexAssign) mirFlowStmt() {}
 

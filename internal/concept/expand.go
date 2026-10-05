@@ -418,6 +418,10 @@ func expandExpr(expr ast.Expr, aliases map[string]ast.TypeRef, refinements map[s
 		}
 		e.Body = expandBlock(e.Body, aliases, refinements)
 		return e
+	case ast.RepeatExpr:
+		e.Value = expandExpr(e.Value, aliases, refinements)
+		e.Count = expandExpr(e.Count, aliases, refinements)
+		return e
 	case ast.VectorLiteralExpr:
 		for i := range e.Elements {
 			e.Elements[i] = expandExpr(e.Elements[i], aliases, refinements)
@@ -428,6 +432,9 @@ func expandExpr(expr ast.Expr, aliases map[string]ast.TypeRef, refinements map[s
 			for j := range e.Rows[i] {
 				e.Rows[i][j] = expandExpr(e.Rows[i][j], aliases, refinements)
 			}
+		}
+		for i := range e.RowCounts {
+			e.RowCounts[i] = expandExpr(e.RowCounts[i], aliases, refinements)
 		}
 		return e
 	case ast.CallExpr:

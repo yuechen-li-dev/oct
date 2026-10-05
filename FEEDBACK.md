@@ -744,3 +744,43 @@ Qualifying records on the way out, as enums are, is not enough: a record of the 
 Status: Open
 
 ---
+
+Observation:
+An `Int` is accepted where a `Float` is declared, and the two lanes then disagree about the value. `let x: Float = 1` followed by `x / 2` is `0` interpreted and `0.5` compiled. The same holds for an `Int` variable bound as `Float`, an `Int` argument to a `Float` parameter, and an `Int` array literal used as a `Float[]` local, argument, return value or record field. The typechecker accepts all of them, the compiled lane converts, and the interpreter keeps the `Int`. `Language/reference/language/03-expressions.md` says "Implicit conversion is not allowed", and `docs/COMPILED_SUPPORT.md` (M28a) records the compiled conversion as a fix. Found while writing contracts for `[1 ... n]` in a `Float[]` context; no contract was written for it.
+
+Suggestion:
+Decide which of the three is the language. If an `Int` does not convert, reject it in the typechecker and say to write `1.0` or `Float(n)`. If it does, the interpreter has to convert at every place the typechecker accepts it, and the reference has to say so.
+
+Status: Open
+
+---
+
+Observation:
+Whole-row assignment to a board field is not checked in the compiled lane. With `board.Grid = [[0.5, 0.5], [0.5, 0.5]]`, `board.Grid[1] = [9.5]` fails interpreted with `row length mismatch: expected 2, got 1`; compiled, the program completes and the row has one element. A local `rows[i] = row` is checked in both lanes. The compiled statement is a bare Go slice assignment (`emitGoFlowFieldIndexAssign`), so an index out of range is also a Go panic with a stack trace in place of the array bounds error. `board.Grid[i] = [value ...]` is not affected: it reads the row's length and checks the index itself.
+
+Suggestion:
+Lower a one-index assignment to a two-dimensional board field through the helper that local rows use, and add an `.octfail` for the mismatch.
+
+Status: Open
+
+---
+
+Observation:
+A compiled runtime error whose message carries a code prints a Go stack trace. `runtime error [OCT-RTBL003]: record table ... columns have inconsistent lengths` and `[OCT-RTBL004]` arrive in the output of a compiled `.octfail` as `panic: runtime error [OCT-RTBL003]: ... [recovered, repanicked]` followed by goroutine frames, while `runtime error: ...` messages are one line. The interpreter reports both forms as one line.
+
+Suggestion:
+Have the generated program's top-level recovery accept `runtime error [` as it accepts `runtime error: `.
+
+Status: Open
+
+---
+
+Observation:
+`value ...` fills only where a table or a row assignment fixes a length, because Oct has no array type with a length in it. In Concept the form is most at home initializing a statically sized array. `let xs: Float[] = [0.0 ...]` is a compile error that says to write a count. Row fill is also limited to two-dimensional arrays, the only depth at which both lanes implement whole-row assignment.
+
+Suggestion:
+If Oct gains a sized array type, let its declaration fix the length for `value ...`; the check, the two evaluators and the diagnostic are already written around "a length fixed by the context".
+
+Status: Deferred
+
+---

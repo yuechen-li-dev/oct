@@ -1,0 +1,9 @@
+expect error: "Nothing fixes the length here; write a count, as in `[value ... n]`"
+
+package Main
+
+// `value ...` needs a length to fill to. A `let` gives none.
+fn Main() -> Int {
+    let zeros = [0.0 ...]
+    return Len(zeros)
+}

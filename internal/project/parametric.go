@@ -873,6 +873,18 @@ func (e *parametricElaborator) rewriteExpr(pkgName string, expr ast.Expr, expect
 			}
 		}
 		return x, nil
+	case ast.RepeatExpr:
+		x.Value, err = e.rewriteExpr(pkgName, x.Value, nil, subst)
+		if err != nil {
+			return nil, err
+		}
+		if x.Count != nil {
+			x.Count, err = e.rewriteExpr(pkgName, x.Count, nil, subst)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return x, nil
 	case ast.VectorLiteralExpr:
 		x.Elements = append([]ast.Expr(nil), x.Elements...)
 		for i := range x.Elements {
@@ -891,6 +903,16 @@ func (e *parametricElaborator) rewriteExpr(pkgName string, expr ast.Expr, expect
 				if err != nil {
 					return nil, err
 				}
+			}
+		}
+		x.RowCounts = append([]ast.Expr(nil), x.RowCounts...)
+		for i := range x.RowCounts {
+			if x.RowCounts[i] == nil {
+				continue
+			}
+			x.RowCounts[i], err = e.rewriteExpr(pkgName, x.RowCounts[i], nil, subst)
+			if err != nil {
+				return nil, err
 			}
 		}
 		return x, nil
