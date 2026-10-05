@@ -28,7 +28,7 @@ An expected failure is an `.octfail`, not an `.octest` that a Go test expects to
 
 ### Sidecars
 
-Three directories call a wrapper sidecar. The test builds the sidecars it needs once, into a cache keyed by their sources (`internal/sidecarcache`), and reuses them until those sources, `go.mod`, `go.sum` or the Go toolchain change. The cache is in the user cache directory; `OCT_SIDECAR_CACHE_DIR` names another place. Every other directory runs with no sidecar available.
+Four directories need a sidecar: two call manifest wrapper functions, which go to a sidecar in both lanes, and two reach standard-library builtins that the compiled lane runs in one. The test builds the sidecars it needs once, into a cache keyed by their sources (`internal/sidecarcache`), and reuses them until those sources, `go.mod`, `go.sum` or the Go toolchain change. The cache is in the user cache directory; `OCT_SIDECAR_CACHE_DIR` names another place. Every other directory runs with no sidecar available.
 
 ## Imports
 
