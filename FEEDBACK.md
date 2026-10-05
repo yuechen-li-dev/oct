@@ -784,3 +784,13 @@ If Oct gains a sized array type, let its declaration fix the length for `value .
 Status: Deferred
 
 ---
+
+Observation:
+The compiled test runner names its generated Go file after the package and the absolute path of the `.octest` file (`sanitizeHarnessName` in `internal/tester/tester.go`), so whether a test can run depends on where the repository is checked out. A fixture named `builtin_reached_only_from_a_flow_statement.octest` gave a 256-character file name in a worktree under a long scratch path and failed with "write generated go ...: file name too long"; it was renamed. The longest name in the tree is now 192 characters under `C:\Users\<name>\source\repos\oct`, before the temporary directory is added.
+
+Suggestion:
+Keep a readable prefix of the name and replace the rest with a short hash of the whole of it.
+
+Status: Open
+
+---
