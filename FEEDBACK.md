@@ -794,3 +794,43 @@ Keep a readable prefix of the name and replace the rest with a short hash of the
 Status: Open
 
 ---
+
+Observation:
+A state local read after a `suspend` is accepted, and the two lanes give different values. `state Run { var x = 7  suspend  return x }` returns `7` interpreted and `0` compiled. `Language/reference/runtime/21-octomata.md` says state locals "do not cross `goto`, `suspend`, `yield`, or turn boundaries". The typechecker enforces this for `yield` only, and only for the block the `yield` stands in: a local of an enclosing block stays in scope after a nested `yield`, and a loop that contains one is not treated as a boundary. `Experiments/RfAdaptiveLinkControllerProbe/M0` kept its index and its result in locals across a `suspend`; its test passed interpreted on a result of two elements where one per sample was meant, and failed compiled. It now keeps them on the board. No other source in the repository reads a local after a `suspend`.
+
+Suggestion:
+Treat `suspend` as `yield` is treated, and drop the locals of every enclosing block of the state body, not only the innermost. When a name fails to resolve for this reason, say that it was a state local before a turn boundary and belongs on the board; today the message is "undefined variable".
+
+Status: Open
+
+---
+
+Observation:
+A `suspend` or `yield` inside an `if`, a loop or a `when` action resumes after the top-level statement of the state body that contains it, not after itself. In `if ready { yield 1  board.A = 50 }` the assignment never runs, in either lane, and `while i < n { ...  suspend }` leaves the loop for good at its first `suspend`. `Language/ControlFlow/OctomataFlowNestedTransferM1/valid/nested_transfer.octest` pins this for `suspend` ("should continue after the containing statement"). The reference does not state it, and for `yield` it says the opposite: "preserves the continuation immediately after the yield". Nothing warns about the statements that can no longer run.
+
+Suggestion:
+Decide which is the language. If a nested boundary really leaves the containing statement, say so in the reference and reject a statement that follows one in the same block as unreachable. If the continuation is meant to be the next statement, both lanes need it, and a loop with a `suspend` in it becomes the generator it reads as.
+
+Status: Open
+
+---
+
+Observation:
+A failed `Assert.Equal` reports its message and neither value: `assertion failed: length`. Finding out what the two sides were takes a second program that prints them.
+
+Suggestion:
+Append the expected and actual values to the failure, in both lanes, at least for scalars and strings.
+
+Status: Open
+
+---
+
+Observation:
+`Experiments/ContinuumComputabilityBoundary/M16` asserts a verdict its probe does not reach. `ContinuumBoundaryM16ReportAnswersRequiredQuestions` requires `MaterialFieldUnavoidable or HybridMeaningfullyBetter or not BoundaryOnlySufficient`. Both lanes compute tangential preferences of 1.015, 0.325 and 0.961 for paths A, B and C and an interior vertical magnitude of 0.000000 for all three, so the report says the boundary alone suffices. The interior metric reads one cell: of the 36 cells of the lattice, one lies deeper than 1.25 cells inside the boundary. The directory had not loaded since `Clamp01` became a builtin, so the assertion had not run for at least four months.
+
+Suggestion:
+Decide whether the lattice, the depth threshold or the assertion is what should change. The test is left failing.
+
+Status: Open
+
+---

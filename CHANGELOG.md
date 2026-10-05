@@ -41,6 +41,9 @@
 - `oct fmt` writes `...` with a space on each side, and sets a matrix row off from the count of the row before it.
 - Fix interpreted execution of `?` in an element of an array, vector or matrix literal. It stopped the program with "unhandled error reached array literal element"; it now returns the error from the enclosing function, as the compiled lane did.
 - Fix compiled execution of a flow in which a builtin appears only in a board index assignment, a `yield` or an expression statement. The generated program did not build when that builtin needed a runtime helper, for example `board.Rows[0] = Array.CrossSection(...)`.
+- Fix compiled execution of a builtin called through its namespace from outside the library: `IO.ReadText`, `IO.WriteText`, `IO.ReadLines`, `IO.WriteLines`, `Csv.Read`, `Csv.Write` and the rest of the `IO`, `Csv` and `Json` aliases were refused with "compiled mode does not yet support builtin", though the same builtin compiled under its own name.
+- Reference: `Clamp01` is documented. It has been a builtin, with a fixture, and was missing from `09-builtins.md`.
+- `Experiments/` loads again in the interpreted lane: 28 directories that had stopped loading are repaired, and the tests that wrote artifacts from a `[Fact]` are brought to the current artifact rules. `docs/internal/experiments_sweep_2026_10_05.md` lists what changed and what still fails.
 
 ## v0.1.0 — initial preview
 
