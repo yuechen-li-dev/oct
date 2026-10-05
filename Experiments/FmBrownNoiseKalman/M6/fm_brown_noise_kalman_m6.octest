@@ -2,14 +2,16 @@ package FmBrownNoiseKalman
 
 import IO
 
-[Fact]
+[Theory]
+[CycleTime(300.0s)]
 [Suite("Experiments.FmBrownNoiseKalman.M6")]
 fn M6GridSizeIs27() -> Void ! Error {
     let report = RunM6Sweep()?
     Assert.Equal(27, Len(report.Cases), "grid")
 }
 
-[Fact]
+[Theory]
+[CycleTime(300.0s)]
 [Suite("Experiments.FmBrownNoiseKalman.M6")]
 fn M6GuardedMetricsPresent() -> Void ! Error {
     let report = RunM6Sweep()?

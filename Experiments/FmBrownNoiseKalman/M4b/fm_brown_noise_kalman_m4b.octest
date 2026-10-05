@@ -2,7 +2,8 @@ package FmBrownNoiseKalman
 
 import IO
 
-[Fact]
+[Theory]
+[CycleTime(180.0s)]
 [Suite("Experiments.FmBrownNoiseKalman.M4b")]
 [Suite("Experiments.FmBrownNoiseKalman.M4b.FlowSmoke")]
 fn M4bGridSizeIs27() -> Void ! Error {
@@ -10,7 +11,8 @@ fn M4bGridSizeIs27() -> Void ! Error {
     Assert.Equal(27, Len(report.Cases), "grid")
 }
 
-[Fact]
+[Theory]
+[CycleTime(180.0s)]
 [Suite("Experiments.FmBrownNoiseKalman.M4b")]
 [Suite("Experiments.FmBrownNoiseKalman.M4b.FlowSmoke")]
 fn M4bMetricsFiniteAndEquivalencePasses() -> Void ! Error {
@@ -24,7 +26,8 @@ fn M4bMetricsFiniteAndEquivalencePasses() -> Void ! Error {
     }
 }
 
-[Fact]
+[Theory]
+[CycleTime(180.0s)]
 [Suite("Experiments.FmBrownNoiseKalman.M4b")]
 [Suite("Experiments.FmBrownNoiseKalman.M4b.FlowSmoke")]
 fn M4bLabelCountsSumTo27() -> Void ! Error {
