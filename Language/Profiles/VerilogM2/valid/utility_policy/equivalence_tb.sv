@@ -10,7 +10,7 @@ module utility_policy_tb;
     // The site is committed to an arm of the `when policy`, by position:
     // 0 and 1 are the two cases and -1 is the else arm.
     logic signed [31:0] UtilitySite0Arm;
-    logic signed [63:0] UtilitySite0Score, UtilitySite0CommitAge;
+    logic signed [63:0] UtilitySite0CommitAge;
 
     UtilityController dut(.*);
 
@@ -42,11 +42,22 @@ module utility_policy_tb;
         set_scores(1, 1, 10, 20); expect_yield(2, 1, 1);
         // The second arm is held in its turn: by min_commit for two more
         // evaluations, then by hysteresis while the leader is at most 2 above
-        // the 20 it was committed at. A lead of 3 ends the commitment.
+        // it. A lead of 3 ends the commitment.
         set_scores(1, 1, 30, 20); expect_yield(2, 1, 2);
         set_scores(1, 1, 30, 20); expect_yield(2, 1, 3);
         set_scores(1, 1, 22, 20); expect_yield(2, 1, 4);
         set_scores(1, 1, 23, 20); expect_yield(1, 0, 1);
+        // The lead is measured against the committed arm's score now, not the
+        // 23 it was committed at. Its score has fallen to 5, so 8 is a lead
+        // of 3 and takes over once min_commit has passed.
+        set_scores(1, 1, 5, 7); expect_yield(1, 0, 2);
+        set_scores(1, 1, 5, 7); expect_yield(1, 0, 3);
+        set_scores(1, 1, 5, 8); expect_yield(2, 1, 1);
+        // And the other way: the committed arm's score has risen from 8 to
+        // 10, so 12 is a lead of only 2 and does not take over.
+        set_scores(1, 1, 9, 8); expect_yield(2, 1, 2);
+        set_scores(1, 1, 9, 8); expect_yield(2, 1, 3);
+        set_scores(1, 1, 12, 10); expect_yield(2, 1, 4);
         set_scores(0, 0, 0, 0); expect_yield(0, -1, 1);
         $display("utility-policy-equivalence-ok");
         $finish;

@@ -235,7 +235,6 @@ type utilityWhenSiteState struct {
 	HasCurrent bool
 	// Arm is the index of the committed case, or utilityElseArm.
 	Arm       int
-	Score     int64
 	CommitAge int64
 }
 
@@ -2325,25 +2324,23 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 
 	// The committed arm keeps its place while its condition still holds and
 	// either it has not been held for min_commit evaluations or the leader
-	// does not beat its committed score by more than hysteresis.
+	// does not beat it by more than hysteresis. Both scores are the ones of
+	// this evaluation.
 	siteState := instance.UtilityWhenSites[expr.SiteID]
 	if siteState.HasCurrent {
 		if siteState.Arm != utilityElseArm && (siteState.Arm < 0 || siteState.Arm >= len(expr.Cases)) {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: utility when site %d is committed to arm %d of %d", expr.SiteID, siteState.Arm, len(expr.Cases))
 		}
-		currentStillValid := false
-		for _, c := range validCandidates {
-			if c.arm == siteState.Arm {
-				currentStillValid = true
-				break
+		for _, committed := range validCandidates {
+			if committed.arm != siteState.Arm {
+				continue
 			}
-		}
-		if currentStillValid {
 			commitActive := siteState.CommitAge < minCommit
-			hysteresisBlocks := next.score <= siteState.Score+hysteresis
+			hysteresisBlocks := next.score <= committed.score+hysteresis
 			if commitActive || hysteresisBlocks {
-				next = candidate{arm: siteState.Arm, score: siteState.Score}
+				next = committed
 			}
+			break
 		}
 	}
 
@@ -2362,9 +2359,8 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 
 	updated := siteState
 	if !updated.HasCurrent || updated.Arm != next.arm {
-		updated = utilityWhenSiteState{HasCurrent: true, Arm: next.arm, Score: next.score, CommitAge: 1}
+		updated = utilityWhenSiteState{HasCurrent: true, Arm: next.arm, CommitAge: 1}
 	} else {
-		updated.Score = next.score
 		updated.CommitAge++
 	}
 	instance.UtilityWhenSites[expr.SiteID] = updated

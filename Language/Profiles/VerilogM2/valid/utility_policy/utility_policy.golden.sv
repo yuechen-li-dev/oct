@@ -17,7 +17,6 @@ module UtilityController(
     output logic signed [63:0] Board_Selected,
     output logic UtilitySite0HasCurrent,
     output logic signed [31:0] UtilitySite0Arm,
-    output logic signed [63:0] UtilitySite0Score,
     output logic signed [63:0] UtilitySite0CommitAge
 );
 
@@ -38,10 +37,10 @@ logic signed [63:0] NextYieldValue;
 logic signed [63:0] NextBoard_Selected;
 logic NextUtilitySite0HasCurrent;
 logic signed [31:0] NextUtilitySite0Arm;
-logic signed [63:0] NextUtilitySite0Score;
 logic signed [63:0] NextUtilitySite0CommitAge;
 logic UtilityComb0Valid;
 logic UtilityComb0CurrentStillValid;
+logic signed [63:0] UtilityComb0CurrentScore;
 logic signed [31:0] UtilityComb0BestArm;
 logic signed [63:0] UtilityComb0BestValue;
 logic signed [63:0] UtilityComb0BestScore;
@@ -67,10 +66,10 @@ always_comb begin : oct_flow_next
     NextBoard_Selected = Board_Selected;
     NextUtilitySite0HasCurrent = UtilitySite0HasCurrent;
     NextUtilitySite0Arm = UtilitySite0Arm;
-    NextUtilitySite0Score = UtilitySite0Score;
     NextUtilitySite0CommitAge = UtilitySite0CommitAge;
     UtilityComb0Valid = 1'b0;
     UtilityComb0CurrentStillValid = 1'b0;
+    UtilityComb0CurrentScore = '0;
     UtilityComb0BestArm = -32'sd1;
     UtilityComb0BestValue = '0;
     UtilityComb0BestScore = '0;
@@ -94,7 +93,10 @@ always_comb begin : oct_flow_next
                                 UtilityComb0BestArm = 32'sd0;
                                 UtilityComb0BestScore = Turn_scores[65:2];
                             end
-                            if (NextUtilitySite0HasCurrent && NextUtilitySite0Arm == 32'sd0) UtilityComb0CurrentStillValid = 1'b1;
+                            if (NextUtilitySite0HasCurrent && NextUtilitySite0Arm == 32'sd0) begin
+                                UtilityComb0CurrentStillValid = 1'b1;
+                                UtilityComb0CurrentScore = Turn_scores[65:2];
+                            end
                         end
                         if (Turn_scores[1]) begin
                             if (!UtilityComb0Valid || Turn_scores[129:66] > UtilityComb0BestScore) begin
@@ -102,24 +104,24 @@ always_comb begin : oct_flow_next
                                 UtilityComb0BestArm = 32'sd1;
                                 UtilityComb0BestScore = Turn_scores[129:66];
                             end
-                            if (NextUtilitySite0HasCurrent && NextUtilitySite0Arm == 32'sd1) UtilityComb0CurrentStillValid = 1'b1;
+                            if (NextUtilitySite0HasCurrent && NextUtilitySite0Arm == 32'sd1) begin
+                                UtilityComb0CurrentStillValid = 1'b1;
+                                UtilityComb0CurrentScore = Turn_scores[129:66];
+                            end
                         end
                         if (!UtilityComb0Valid) begin
                             UtilityComb0Valid = 1'b1;
                             UtilityComb0BestArm = -32'sd1;
                             UtilityComb0BestScore = 64'sd0;
                         end
-                        if (NextUtilitySite0HasCurrent && UtilityComb0CurrentStillValid && ((NextUtilitySite0CommitAge < UtilityComb0MinCommit) || (UtilityComb0BestScore <= NextUtilitySite0Score + UtilityComb0Hysteresis))) begin
+                        if (NextUtilitySite0HasCurrent && UtilityComb0CurrentStillValid && ((NextUtilitySite0CommitAge < UtilityComb0MinCommit) || (UtilityComb0BestScore <= UtilityComb0CurrentScore + UtilityComb0Hysteresis))) begin
                             UtilityComb0BestArm = NextUtilitySite0Arm;
-                            UtilityComb0BestScore = NextUtilitySite0Score;
                         end
                         if (!NextUtilitySite0HasCurrent || NextUtilitySite0Arm != UtilityComb0BestArm) begin
                             NextUtilitySite0HasCurrent = 1'b1;
                             NextUtilitySite0Arm = UtilityComb0BestArm;
-                            NextUtilitySite0Score = UtilityComb0BestScore;
                             NextUtilitySite0CommitAge = 64'sd1;
                         end else begin
-                            NextUtilitySite0Score = UtilityComb0BestScore;
                             NextUtilitySite0CommitAge = NextUtilitySite0CommitAge + 64'sd1;
                         end
                         case (UtilityComb0BestArm)
@@ -173,7 +175,6 @@ always_ff @(posedge Clock) begin
         Board_Selected <= '0;
         UtilitySite0HasCurrent <= 1'b0;
         UtilitySite0Arm <= '0;
-        UtilitySite0Score <= '0;
         UtilitySite0CommitAge <= '0;
     end else begin
         State <= NextState;
@@ -187,7 +188,6 @@ always_ff @(posedge Clock) begin
         Board_Selected <= NextBoard_Selected;
         UtilitySite0HasCurrent <= NextUtilitySite0HasCurrent;
         UtilitySite0Arm <= NextUtilitySite0Arm;
-        UtilitySite0Score <= NextUtilitySite0Score;
         UtilitySite0CommitAge <= NextUtilitySite0CommitAge;
     end
 end

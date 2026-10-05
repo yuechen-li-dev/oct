@@ -1646,7 +1646,6 @@ const __octUtilityHelpers = `
 type __octUtilitySiteState struct {
 	HasCurrent bool ` + "`json:\"has_current\"`" + `
 	Arm        int  ` + "`json:\"arm\"`" + `
-	Score      int  ` + "`json:\"score\"`" + `
 	CommitAge  int  ` + "`json:\"commit_age\"`" + `
 }
 
@@ -1661,21 +1660,21 @@ func __octUtilCommittedArm(site *__octUtilitySiteState) int {
 
 // __octUtilCommit applies the policy. leader is the arm with the highest
 // score among those whose condition held, or -1 for the else arm with score
-// 0. committedHolds says whether the committed arm's condition held. The
-// committed arm keeps its place while it holds and either it has been held
-// for fewer than minCommit evaluations or the leader does not beat its
-// committed score by more than hysteresis.
-func __octUtilCommit(site *__octUtilitySiteState, hysteresis int, minCommit int, leader int, leaderScore int, committedHolds bool) int {
-	next, score := leader, leaderScore
+// 0. committedHolds says whether the committed arm's condition held, and
+// committedScore is its score at this evaluation when it did. The committed
+// arm keeps its place while it holds and either it has been held for fewer
+// than minCommit evaluations or the leader does not beat it by more than
+// hysteresis.
+func __octUtilCommit(site *__octUtilitySiteState, hysteresis int, minCommit int, leader int, leaderScore int, committedHolds bool, committedScore int) int {
+	next := leader
 	if site.HasCurrent && committedHolds {
-		if site.CommitAge < minCommit || score <= site.Score+hysteresis {
-			next, score = site.Arm, site.Score
+		if site.CommitAge < minCommit || leaderScore <= committedScore+hysteresis {
+			next = site.Arm
 		}
 	}
 	if !site.HasCurrent || site.Arm != next {
-		*site = __octUtilitySiteState{HasCurrent: true, Arm: next, Score: score, CommitAge: 1}
+		*site = __octUtilitySiteState{HasCurrent: true, Arm: next, CommitAge: 1}
 	} else {
-		site.Score = score
 		site.CommitAge++
 	}
 	return next

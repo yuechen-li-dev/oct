@@ -34,6 +34,7 @@ logic signed [63:0] NextYieldValue;
 logic signed [63:0] NextBoard_Selected;
 logic UtilityComb0Valid;
 logic UtilityComb0CurrentStillValid;
+logic signed [63:0] UtilityComb0CurrentScore;
 logic signed [31:0] UtilityComb0BestArm;
 logic signed [63:0] UtilityComb0BestValue;
 logic signed [63:0] UtilityComb0BestScore;
@@ -59,6 +60,7 @@ always_comb begin : oct_flow_next
     NextBoard_Selected = Board_Selected;
     UtilityComb0Valid = 1'b0;
     UtilityComb0CurrentStillValid = 1'b0;
+    UtilityComb0CurrentScore = '0;
     UtilityComb0BestArm = -32'sd1;
     UtilityComb0BestValue = '0;
     UtilityComb0BestScore = '0;

@@ -166,8 +166,9 @@ are not a permanent Oct 1.0 ABI and may change across compiler revisions.
 Logical checkpoint schema version 3 adds deterministic typed recursive values
 for records, nested records, plain and payload enums, arrays, vectors, and
 matrices. Version 4 records the commitment of a `when policy` site as the arm
-it is committed to, in place of the value that arm produced; a site of any
-result type is therefore checkpointable, in both lanes. Older logical
+it is committed to and how long it has been held, in place of the value that
+arm produced and the score it had; a site of any result type is therefore
+checkpointable, in both lanes. Older logical
 checkpoint versions are rejected rather than silently reinterpreted.
 
 For the deterministic, effect-free subset, continuing an in-memory machine and
@@ -568,8 +569,13 @@ not to the value that arm produced:
 
 The committed arm keeps its place while its condition is true and either it
 has been held for fewer than `min_commit` evaluations or the leading arm does
-not beat its committed score by more than `hysteresis`. Otherwise the leading
-arm, the one with the greatest score, is selected and becomes the commitment.
+not beat it by more than `hysteresis`. Otherwise the leading arm, the one with
+the greatest score, is selected and becomes the commitment.
+
+Both scores in that comparison are the scores of this evaluation. The score
+an arm had when it was committed is not remembered: a committed arm whose
+score has fallen is as easy to replace as its present score says, and one
+whose score has risen is as hard.
 
 A `when policy` may be the whole of a `let` or `return`, or part of a larger
 expression; its commitment is the same in either place.
@@ -621,7 +627,7 @@ flow PumpController(pressure: Float, fault: Bool) -> Int {
 
 `hysteresis` and `min_commit` exist to prevent unstable arbitration behavior.
 
-- `hysteresis`: requires a meaningful score gap before switching away from the committed arm.
+- `hysteresis`: requires a meaningful score gap, measured now, before switching away from the committed arm.
   - Practical effect: reduces chatter near threshold ties.
 - `min_commit`: forces the committed arm to stick for a minimum number of evaluations.
   - Practical effect: prevents immediate flip-flop from transient noise.

@@ -1193,7 +1193,8 @@ const (
 	// or utilityNoArm when it has made no choice yet.
 	utilityCommittedArmBuiltin = "Utility.CommittedArm"
 	// utilityCommitBuiltin(site, hysteresis, minCommit, leader, leaderScore,
-	// committedHolds) applies the policy and returns the arm to deliver.
+	// committedHolds, committedScore) applies the policy and returns the arm
+	// to deliver.
 	utilityCommitBuiltin = "Utility.Commit"
 )
 
@@ -1238,7 +1239,7 @@ func (c *lowerCtx) lowerUtilityWhen(e ast.UtilityWhenExpr) (string, string, bool
 	}
 
 	site := mirInt(fmt.Sprint(e.SiteID))
-	hysteresis, minCommit, committed, committedHolds := "", "", "", ""
+	hysteresis, minCommit, committed, committedHolds, committedScore := "", "", "", "", ""
 	if e.ControllerBound {
 		if activeFlowExpressionContext == nil {
 			return "", "", false, fmt.Errorf("when policy is only valid inside flow state bodies; outside flows use switch or when utility")
@@ -1254,6 +1255,8 @@ func (c *lowerCtx) lowerUtilityWhen(e ast.UtilityWhenExpr) (string, string, bool
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: committed, Callee: utilityCommittedArmBuiltin, Args: []MIRValue{site}, ArgTypes: []string{"Int"}, Builtin: true, RetType: "Int"})
 		committedHolds = c.temp("Bool")
 		assign(committedHolds, "false", "Bool")
+		committedScore = c.temp("Int")
+		assign(committedScore, "0", "Int")
 	}
 
 	// selected is the index of the leading case, or utilityElseArm while no
@@ -1282,7 +1285,19 @@ func (c *lowerCtx) lowerUtilityWhen(e ast.UtilityWhenExpr) (string, string, bool
 			return "", "", false, err
 		}
 		if e.ControllerBound {
-			assign(committedHolds, fmt.Sprintf("%s || %s == %d", committedHolds, committed, index), "Bool")
+			// This case is the committed arm and its condition holds: note
+			// that, and its score at this evaluation.
+			isCommitted := c.temp("Bool")
+			assign(isCommitted, fmt.Sprintf("%s == %d", committed, index), "Bool")
+			scoreEnd := c.cur
+			committedID := newBlock()
+			afterID := newBlock()
+			c.blocks[scoreEnd].Terminator = MIRBranch{Cond: lowerMIRValue(isCommitted, "Bool"), TrueTarget: c.blocks[committedID].Label, FalseTarget: c.blocks[afterID].Label}
+			c.cur = committedID
+			assign(committedHolds, "true", "Bool")
+			assign(committedScore, heldScore, "Int")
+			c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[afterID].Label}
+			c.cur = afterID
 		}
 		leads := c.temp("Bool")
 		assign(leads, fmt.Sprintf("%s < 0 || %s > %s", selected, heldScore, selectedScore), "Bool")
@@ -1301,8 +1316,8 @@ func (c *lowerCtx) lowerUtilityWhen(e ast.UtilityWhenExpr) (string, string, bool
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 			Target:   decided,
 			Callee:   utilityCommitBuiltin,
-			Args:     []MIRValue{site, lowerMIRValue(hysteresis, "Int"), lowerMIRValue(minCommit, "Int"), lowerMIRValue(selected, "Int"), lowerMIRValue(selectedScore, "Int"), lowerMIRValue(committedHolds, "Bool")},
-			ArgTypes: []string{"Int", "Int", "Int", "Int", "Int", "Bool"},
+			Args:     []MIRValue{site, lowerMIRValue(hysteresis, "Int"), lowerMIRValue(minCommit, "Int"), lowerMIRValue(selected, "Int"), lowerMIRValue(selectedScore, "Int"), lowerMIRValue(committedHolds, "Bool"), lowerMIRValue(committedScore, "Int")},
+			ArgTypes: []string{"Int", "Int", "Int", "Int", "Int", "Bool", "Int"},
 			Builtin:  true,
 			RetType:  "Int",
 		})

@@ -166,7 +166,7 @@ fn Main() -> Int { return 0 }
 	requireCheckpointReason(t, err, FlowCheckpointStateLocalsUnsupported)
 
 	inst.StateEnv.values = map[string]binding{flowInstanceBindingName: inst.StateEnv.values[flowInstanceBindingName]}
-	inst.UtilityWhenSites[1] = utilityWhenSiteState{HasCurrent: true, Arm: 1, Score: 1}
+	inst.UtilityWhenSites[1] = utilityWhenSiteState{HasCurrent: true, Arm: 1, CommitAge: 1}
 	cp, err := ExportFlowCheckpoint(inst, FlowCheckpointOptions{})
 	if err != nil {
 		t.Fatalf("export utility state: %v", err)
@@ -483,7 +483,7 @@ fn Main() -> Void {}
 	if err := interp.stepFlow(instance, &Value{Kind: ValueInt, Int: 3}); err != nil {
 		t.Fatal(err)
 	}
-	instance.UtilityWhenSites[7] = utilityWhenSiteState{HasCurrent: true, Arm: 2, Score: 20, CommitAge: 1}
+	instance.UtilityWhenSites[7] = utilityWhenSiteState{HasCurrent: true, Arm: 2, CommitAge: 1}
 	checkpoint, err := instance.ExportCheckpoint(FlowCheckpointOptions{})
 	if err != nil {
 		t.Fatal(err)

@@ -617,7 +617,7 @@ Commit to the arm.
 Status: Resolved
 
 Resolution:
-A site records the committed arm (the case's position, or `else`), its score at commitment and the commit age. The committed arm is held while its condition holds and either `min_commit` has not elapsed or no other arm beats its recorded score by more than `hysteresis`; `else` is never held. Only the selected arm's value is evaluated. The interpreter, the generated Go and the Verilog profile agree, and every site can be checkpointed (interpreter checkpoint version 4, compiled payload version 2; older checkpoints are refused). `Language/ControlFlow/OctomataUtilityWhen/runtime/valid/commitment_is_to_the_arm.octest` is the contract. The 24 directories that use `when policy` give the same results as before in both lanes.
+A site records the committed arm (the case's position, or `else`) and the commit age. The committed arm is held while its condition holds and either `min_commit` has not elapsed or no other arm beats it by more than `hysteresis`; `else` is never held. Only the selected arm's value is evaluated. The interpreter, the generated Go and the Verilog profile agree, and every site can be checkpointed (interpreter checkpoint version 4, compiled payload version 2; older checkpoints are refused). `Language/ControlFlow/OctomataUtilityWhen/runtime/valid/commitment_is_to_the_arm.octest` is the contract. The 24 directories that use `when policy` give the same results as before in both lanes.
 
 ---
 
@@ -640,7 +640,10 @@ Observation:
 Suggestion:
 Decide whether the comparison should use the committed arm's current score. If it should, the arm's score is already evaluated on every pass, so only the comparison changes.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+The comparison uses the committed arm's score at this evaluation, in the interpreter, the generated Go and the Verilog profile. The recorded score is gone from the site, from checkpoints and from the Verilog module's ports (`UtilitySite<N>Score`). `Language/ControlFlow/OctomataUtilityWhen/runtime/valid/hysteresis_boundary.octest` holds the contract, with a committed arm whose score falls and one whose score rises. No existing program changed its result.
 
 ---
 

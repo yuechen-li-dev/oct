@@ -18,7 +18,9 @@ import (
 // vectors, and matrices) to the logical checkpoint schema.
 //
 // Version 4 records the commitment of a `when policy` site as the arm it is
-// committed to, in place of the value that arm produced.
+// committed to and how long it has been held. It replaces the value that arm
+// produced and the score it was committed at, neither of which the policy
+// reads any more.
 const FlowCheckpointVersion = 4
 
 const FlowCheckpointCursorTopLevelNext = "top-level-statement-next"
@@ -238,7 +240,7 @@ func (i interpreter) instantiateFlowFromCheckpoint(pkg string, flowName string, 
 		if site.Arm < utilityElseArm {
 			return nil, checkpointErr(FlowCheckpointUtilitySiteMismatch, fmt.Sprintf("site %d: arm %d", site.SiteID, site.Arm))
 		}
-		inst.UtilityWhenSites[site.SiteID] = utilityWhenSiteState{HasCurrent: site.HasCurrent, Arm: site.Arm, Score: site.Score, CommitAge: site.CommitAge}
+		inst.UtilityWhenSites[site.SiteID] = utilityWhenSiteState{HasCurrent: site.HasCurrent, Arm: site.Arm, CommitAge: site.CommitAge}
 	}
 	inst.DirtyBoardFields = make(map[string]struct{})
 	return inst, nil
@@ -270,7 +272,6 @@ type FlowUtilityCheckpoint struct {
 	SiteID     int
 	HasCurrent bool
 	Arm        int
-	Score      int64
 	CommitAge  int64
 }
 
@@ -419,7 +420,7 @@ func exportFlowUtilityCheckpoint(inst *FlowRuntimeInstance) ([]FlowUtilityCheckp
 	out := make([]FlowUtilityCheckpoint, 0, len(ids))
 	for _, id := range ids {
 		site := inst.UtilityWhenSites[id]
-		out = append(out, FlowUtilityCheckpoint{SiteID: id, HasCurrent: site.HasCurrent, Arm: site.Arm, Score: site.Score, CommitAge: site.CommitAge})
+		out = append(out, FlowUtilityCheckpoint{SiteID: id, HasCurrent: site.HasCurrent, Arm: site.Arm, CommitAge: site.CommitAge})
 	}
 	return out, nil
 }

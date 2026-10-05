@@ -28,6 +28,7 @@
 - **Breaking:** every utility `when` evaluates one value, the value of the arm it selects. The plain standalone form and `when policy` used to evaluate the value of every case whose condition held.
 - **Breaking:** `hysteresis` and `min_commit` on a standalone `when utility` are a parse error. They had no effect there; they belong to `when policy` in a flow state.
 - **Breaking:** `when policy` commits to an arm, not to the value the arm produced. An arm whose value changes keeps its commitment, two arms with equal values are different commitments, and `else` is never held. Flow checkpoints record the arm (interpreter checkpoint version 4, compiled payload version 2); earlier checkpoints are refused. The Verilog profile's site register is `UtilitySite<N>Arm`.
+- **Breaking:** `hysteresis` measures the leading arm against the committed arm's score at this evaluation. It used to measure against the score recorded when the arm was committed, so a committed arm whose score had since fallen was held against rivals that now beat it. The recorded score is removed from flow checkpoints and from the Verilog profile's ports.
 - A value named `vector` can be indexed. `vector[...]` indexes a parameter, local, loop variable, match binding or capture named `vector` where one is in scope, and is a literal everywhere else.
 - Fix compiled execution of a `when policy` inside a larger expression (did not build), and add a Verilog fixture for a standalone `when utility` in a flow state.
 
