@@ -43,6 +43,9 @@ For matrix and tensor-focused language surface, see [16 vectors, matrices, and t
 - `Sin`, `Cos`, `Tan`, `Asin`, `Acos`, `Atan`, `Atan2` (dimensionless constraints apply).
 - `Exp`, `Ln`, `Pow`, `Log10`, `Sinh`, `Cosh`, `Tanh`.
 - `Pi() -> Float` and `E() -> Float`.
+- `Clamp01(x: Float) -> Float`.
+  - Returns `0.0` below zero, `1.0` above one, and `x` otherwise. The argument is a dimensionless `Float`; an `Int` is not accepted.
+  - `Clamp01` is a builtin name, so a program cannot declare a function called `Clamp01`.
 
 ## 3) Complex numbers
 
