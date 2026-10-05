@@ -519,10 +519,28 @@ Resolution:
 ---
 
 Observation:
-A function that a wrapper manifest names and that also has a source body means two things. The interpreted lane runs the source body. The compiled lane replaces the body with the sidecar call. `Libraries/IO` relies on this: `IO.Read` has a body that calls the `CsvRead` builtin and a manifest entry for the `CsvRead` wire function, and the two agree. Nothing requires them to agree, and the two generic wrapper fixtures each pin one side.
+A function that a wrapper manifest names and that also has a source body means two things. The interpreted lane runs the source body. The compiled lane replaces the body with the sidecar call. Eleven standard libraries are built this way (`Archive`, `Compression`, `Csv`, `Hash`, `IO`, `Image`, `Json`, `Pdf`, `Plot`, `Text`, `Time`): 45 functions, each with both. `Make` is the one wrapper library whose 15 functions are named by the manifest alone.
+
+The two definitions are two implementations in Go. The source body calls a builtin that the interpreter runs in-process (`internal/interpret/wrapper_*.go`, which links `fpdf`, `gonum/plot` and `excelize` into `oct`). The manifest entry names a wire function of a first-party sidecar (`cmd/octxiliary-*`). The compiled lane has no implementation of most of those builtins: with the manifest entries ignored, `Archive`, `Compression`, `Hash`, `Image`, `Pdf`, `Plot`, `Text` and `Time` fail to compile ("does not yet support builtin HashSha256Text") and only `Csv` and `Json` still pass.
+
+For 21 functions the builtin and the wire function take the same arguments. For 20 (`Image`, `Pdf`, `Plot`, and the workbook functions of `IO`) they do not: the builtin takes a bare `Int` handle and separate scalars, the wire function takes a typed handle and records. Four (`Csv.Read`, `Csv.Write`, `Json.Load`, `Json.Save`) forward to `IO`.
+
+The two kinds of call are also governed differently during artifact evaluation: a builtin by the artifact effect rules, a manifest wrapper call by native grants (`--grant-native`).
+
+So "a wrapper name has one definition" cannot be enforced by deleting one side. Removing the source bodies makes the interpreted lane need sidecars for every use of these libraries and makes those calls native operations in artifacts. Removing the manifest entries leaves the compiled lane without the libraries until it can run the builtins.
 
 Suggestion:
-Decide which is the definition. If the manifest is, the interpreted lane should dispatch a manifest-named function to the sidecar and the source body should be a declaration without a body; if the source is, the compiled lane should not replace it.
+Make the standard libraries ordinary source over builtins, as `Language/reference/language/17-standard-libraries.md` describes them, and teach the compiled lane to run those builtins through the first-party sidecars, as it already does for `CsvRead` and `FileReadText`. Keep manifest wrapper functions for native code outside the toolchain, with no source body, dispatched to the sidecar in both lanes. Then reject a name that has both. The 20 functions whose two signatures differ need the sidecar to accept the builtin's arguments, or an adapter in the compiled lane.
+
+Status: Open
+
+---
+
+Observation:
+The manifests of the eleven standard wrapper libraries declare `GoModuleDir: "octxiliary"`, and none of those directories exists; the sidecars are built from `cmd/octxiliary-*` by `tools/build_sidecars`. `oct pkg wrappers` in `Libraries/Hash` plans the module path `Libraries/Hash/octxiliary`.
+
+Suggestion:
+Settle this with the entry above. If the standard libraries stop declaring wrappers, the field goes with them.
 
 Status: Open
 
@@ -547,7 +565,10 @@ A value named `vector` cannot be indexed: `vector[i]` is a one-element vector li
 Suggestion:
 Either resolve it by scope (a `vector[...]` whose name is bound to a value is an index), or reject `vector` as a binding name with a diagnostic that says why.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+Resolved by scope, in the parser. Where a parameter, a `let` or `var`, a `for` variable, a match binding, a `batch` item or a function value's capture named `vector` is in scope, `vector[...]` indexes it; everywhere else it is the literal. A binding is in scope from the statement after it to the end of its block, and a function value sees its parameters and captures only. `Language/Types/VectorsMatricesM92/valid/vector_as_a_value_name_m92.octest` and `invalid/vector_literal_is_shadowed_by_a_value_named_vector_m92.octfail` are the contracts.
 
 ---
 
@@ -580,6 +601,45 @@ The two standalone forms of `when utility` evaluate values differently, and the 
 Suggestion:
 Evaluate only the selected value in both standalone forms, and reject policy fields on a standalone form.
 
+Status: Resolved
+
+Resolution:
+Every utility `when` evaluates one value, the selected one. `hysteresis` and `min_commit` on a standalone `when utility`, plain or enum-targeted, are a parse error that names `when policy`. Contracts: `Language/Expressions/UtilityWhen/valid/standalone_utility_evaluation_order.octest` and `invalid/standalone_policy_fields_rejected.octfail`, `invalid/enum_utility_policy_fields_rejected.octfail`. One program used the fields: `Experiments/PrometheusSgemmAlgorithmLab/M4`, where they had no effect and are removed.
+
+---
+
+Observation:
+`when policy` committed to a value. The site remembered the value it had selected and looked for an equal value among the next evaluation's candidates. Three consequences. An arm whose value changed between evaluations lost its commitment, so `min_commit` did not hold it. Two arms that produced equal values were one commitment. And to compare values the policy had to evaluate the value of every case whose condition held, where every other utility `when` evaluates one; a site whose values were not scalars could not be checkpointed.
+
+Suggestion:
+Commit to the arm.
+
+Status: Resolved
+
+Resolution:
+A site records the committed arm (the case's position, or `else`), its score at commitment and the commit age. The committed arm is held while its condition holds and either `min_commit` has not elapsed or no other arm beats its recorded score by more than `hysteresis`; `else` is never held. Only the selected arm's value is evaluated. The interpreter, the generated Go and the Verilog profile agree, and every site can be checkpointed (interpreter checkpoint version 4, compiled payload version 2; older checkpoints are refused). `Language/ControlFlow/OctomataUtilityWhen/runtime/valid/commitment_is_to_the_arm.octest` is the contract. The 24 directories that use `when policy` give the same results as before in both lanes.
+
+---
+
+Observation:
+Two compiled defects in utility `when` inside a flow, both found while changing the commitment rule. A standalone `when utility` in a flow state did not build under the Verilog profile ("Verilog M2 FLOW expressions must lower to one acyclic MIR block"); this was introduced by the change that made compiled utility `when` evaluate in order, and no Verilog fixture used the form. A `when policy` that was part of a larger expression generated Go that did not build.
+
+Suggestion:
+Fix both and add the missing fixture.
+
+Status: Resolved
+
+Resolution:
+The Verilog profile keeps the structured single-block lowering for utility `when`; the Go backend uses blocks. `Language/Profiles/VerilogM2/valid/utility_standalone` is new and its testbench passes in Icarus Verilog, as does `utility_policy`. A `when policy` inside a larger expression is covered by `commitment_is_to_the_arm.octest`.
+
+---
+
+Observation:
+`hysteresis` compares the leading arm's score with the score recorded for the committed arm, not with the committed arm's score at this evaluation. The record is refreshed only when the committed arm itself leads by more than `hysteresis` over it. A committed arm whose score has since fallen is therefore held until a rival beats the old score. With `hysteresis: 2`, an arm committed at 10 whose score drops to 1 is held against a rival at 5. This predates the change of commitment from value to arm and was kept; the reference says "its committed score". No contract pins when the record is refreshed: removing the refresh from either lane fails no test.
+
+Suggestion:
+Decide whether the comparison should use the committed arm's current score. If it should, the arm's score is already evaluated on every pass, so only the comparison changes.
+
 Status: Open
 
 ---
@@ -599,6 +659,16 @@ A test run leaves files in the working tree. `Libraries/Pdf/Pdf.CompiledText.oct
 
 Suggestion:
 Write those outputs to the test's artifact scope or a temporary directory.
+
+Status: Open
+
+---
+
+Observation:
+`oct fmt` writes a negative score in a utility `when` case as a subtraction: `case 1 when open score -5` becomes `case 1 when open score - 5`. `score` is an identifier to the lexer, so the formatter spaces the `-` after it as a binary operator. The tokens are unchanged and the program means the same.
+
+Suggestion:
+Treat `score` in a utility `when` case as the keyword it is there, so that what follows starts an expression.
 
 Status: Open
 
