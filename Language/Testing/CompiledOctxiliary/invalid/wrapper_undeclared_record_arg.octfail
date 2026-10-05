@@ -1,0 +1,12 @@
+expect error: "Args element at index 0 has unsupported transport type"
+
+package Main
+
+import WrapperUndeclaredRecordArg
+
+// The manifest names a record argument type without declaring its transport
+// type. The manifest is rejected when the package is loaded.
+fn Main() -> Int ! Error {
+    let options = WrapperUndeclaredRecordArg.TestOptions { Count: 1 Name: "x" }
+    return Len(WrapperUndeclaredRecordArg.BadUndeclaredArg(options)?)
+}

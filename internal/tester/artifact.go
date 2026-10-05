@@ -31,6 +31,9 @@ type ArtifactOptions struct {
 	JSON            bool
 	Report          *ArtifactReport
 	NativeApprovals []string
+	// ImportAnchor resolves imports as if the source were in this directory.
+	// It serves fixtures that are evaluated as a copy outside their tree.
+	ImportAnchor string
 }
 
 type ArtifactReport struct {
@@ -139,7 +142,7 @@ func ExecuteArtifactsWithOptions(path string, stdout io.Writer, options Artifact
 	}
 	passed := 0
 	if err := executeForPathOrExperiment(path, stdout, "artifact", func(singlePath string, singleStdout io.Writer) error {
-		count, err := evaluateArtifactsSingleRoot(singlePath, singleStdout, options.AllPackages, publisher, options.NativeApprovals, options.Report)
+		count, err := evaluateArtifactsSingleRoot(singlePath, singleStdout, options.AllPackages, publisher, options.NativeApprovals, options.Report, options.ImportAnchor)
 		passed += count
 		return err
 	}); err != nil {
@@ -167,9 +170,15 @@ func ExecuteArtifactsWithOptions(path string, stdout io.Writer, options Artifact
 	return nil
 }
 
-func evaluateArtifactsSingleRoot(path string, stdout io.Writer, allPackages bool, publisher *artifactPublisher, approvals []string, report *ArtifactReport) (int, error) {
+func evaluateArtifactsSingleRoot(path string, stdout io.Writer, allPackages bool, publisher *artifactPublisher, approvals []string, report *ArtifactReport, importAnchor string) (int, error) {
 	normalizationStarted := time.Now()
-	program, err := project.LoadForTest(path)
+	var program project.Program
+	var err error
+	if importAnchor != "" {
+		program, err = project.LoadForTestWithImportAnchor(path, importAnchor)
+	} else {
+		program, err = project.LoadForTest(path)
+	}
 	if err != nil {
 		return 0, err
 	}

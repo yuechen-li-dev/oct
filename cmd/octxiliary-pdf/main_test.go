@@ -18,7 +18,7 @@ func TestPdfTextPageSaveWorkflow(t *testing.T) {
 	page := createPageForTest(t, table)
 
 	assertIntResult(t, table, "PdfDrawText", []octxiliary.Value{page, {Kind: octxiliary.ValueInt, Int: 12}, {Kind: octxiliary.ValueInt, Int: 16}, {Kind: octxiliary.ValueString, String: "hello pdf"}})
-	assertIntResult(t, table, "PdfDrawTextStyled", []octxiliary.Value{page, {Kind: octxiliary.ValueInt, Int: 12}, {Kind: octxiliary.ValueInt, Int: 36}, {Kind: octxiliary.ValueString, String: "styled"}, validTextStyle()})
+	assertIntResult(t, table, "PdfDrawTextStyled", append([]octxiliary.Value{page, {Kind: octxiliary.ValueInt, Int: 12}, {Kind: octxiliary.ValueInt, Int: 36}, {Kind: octxiliary.ValueString, String: "styled"}}, textStyleArgs(18, 24, 100, 220)...))
 
 	out := filepath.Join(t.TempDir(), "out.pdf")
 	assertIntResult(t, table, "PdfSave", []octxiliary.Value{page, {Kind: octxiliary.ValueString, String: out}})
@@ -100,9 +100,8 @@ func TestPdfInvalidHandleFamilyTypeErrors(t *testing.T) {
 func TestPdfInvalidStyleColorErrors(t *testing.T) {
 	table := newPageTable()
 	page := createPageForTest(t, table)
-	badStyle := validTextStyle()
-	badStyle.Fields[1].Value.Int = 300
-	_, err := table.dispatch(octxiliary.Request{Family: pdfFamily, Function: "PdfDrawTextStyled", HasArgs: true, Args: []octxiliary.Value{page, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueString, String: "x"}, badStyle}})
+	args := append([]octxiliary.Value{page, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueString, String: "x"}}, textStyleArgs(18, 300, 100, 220)...)
+	_, err := table.dispatch(octxiliary.Request{Family: pdfFamily, Function: "PdfDrawTextStyled", HasArgs: true, Args: args})
 	if err == nil || !strings.Contains(err.Error(), "must be in [0, 255]") {
 		t.Fatalf("expected invalid color error, got %v", err)
 	}
@@ -111,9 +110,8 @@ func TestPdfInvalidStyleColorErrors(t *testing.T) {
 func TestPdfInvalidStyleSizeErrors(t *testing.T) {
 	table := newPageTable()
 	page := createPageForTest(t, table)
-	badStyle := validTextStyle()
-	badStyle.Fields[0].Value.Int = 0
-	_, err := table.dispatch(octxiliary.Request{Family: pdfFamily, Function: "PdfDrawTextStyled", HasArgs: true, Args: []octxiliary.Value{page, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueString, String: "x"}, badStyle}})
+	args := append([]octxiliary.Value{page, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueInt, Int: 1}, {Kind: octxiliary.ValueString, String: "x"}}, textStyleArgs(0, 24, 100, 220)...)
+	_, err := table.dispatch(octxiliary.Request{Family: pdfFamily, Function: "PdfDrawTextStyled", HasArgs: true, Args: args})
 	if err == nil || !strings.Contains(err.Error(), "size must be positive") {
 		t.Fatalf("expected invalid size error, got %v", err)
 	}
@@ -163,13 +161,15 @@ func assertIntResult(t *testing.T, table *pageTable, function string, args []oct
 	}
 }
 
-func validTextStyle() octxiliary.Value {
-	return octxiliary.Value{Kind: octxiliary.ValueRecord, RecordType: pdfTextStyleRecord, Fields: []octxiliary.FieldValue{
-		{Name: "Size", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: 18}},
-		{Name: "ColorR", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: 24}},
-		{Name: "ColorG", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: 100}},
-		{Name: "ColorB", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: 220}},
-	}}
+// textStyleArgs is the style part of a PdfDrawTextStyled call: size, then
+// red, green and blue.
+func textStyleArgs(size int, colorR int, colorG int, colorB int) []octxiliary.Value {
+	return []octxiliary.Value{
+		{Kind: octxiliary.ValueInt, Int: size},
+		{Kind: octxiliary.ValueInt, Int: colorR},
+		{Kind: octxiliary.ValueInt, Int: colorG},
+		{Kind: octxiliary.ValueInt, Int: colorB},
+	}
 }
 
 func testPNGBytes(t *testing.T) []byte {

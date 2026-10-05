@@ -1,0 +1,35 @@
+package Main
+
+import WrapperLibrary
+
+// A wrapper function belongs to the package whose manifest declares it, and
+// is called from another package as that package's source functions are.
+
+fn CountOf(options: WrapperLibrary.TestOptions) -> Int {
+    return options.Count
+}
+
+[Fact]
+fn AnImportedPackagesWrapperFunctionsAreCallable() -> Void ! Error {
+    Assert.Equal("hello", WrapperLibrary.Echo("hello")?, "a source function in front of a wrapper function")
+    Assert.Equal("hello", WrapperLibrary.EchoRaw("hello")?, "the wrapper function itself")
+    Assert.Equal(5, WrapperLibrary.AddRaw(2, 3)?, "a second wrapper function of the same sidecar")
+}
+
+// A record of the wrapper's package crosses the package boundary on the way
+// in and comes back as that package's record: it can be read here, handed to
+// a function of this package, handed to a source function of the library,
+// and sent through the wrapper again.
+[Fact]
+fn ARecordOfTheWrappersPackageGoesInAndComesBack() -> Void ! Error {
+    let sent = WrapperLibrary.TestOptions { Count: 7 Name: "demo" }
+    let back = WrapperLibrary.NextOptionsRaw(sent)?
+    Assert.Equal(8, back.Count, "the sidecar raised Count by one")
+    Assert.Equal("demo", back.Name, "the other field came back unchanged")
+    Assert.Equal(8, CountOf(back), "the result is the library's record to this package")
+    Assert.Equal("demo:8", WrapperLibrary.Describe(back), "and to the library's own functions")
+    let again = WrapperLibrary.NextOptionsRaw(back)?
+    Assert.Equal(9, again.Count, "the result can be sent through the wrapper again")
+    let twice = WrapperLibrary.NextTwice(sent)?
+    Assert.Equal(9, twice.Count, "the library calls its own wrapper function on its own record")
+}

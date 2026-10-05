@@ -6,43 +6,12 @@ record PackageManifest {
     Description: String
     Authors: String[]
     Date: String
-    Kind: String
     Dependencies: Dependency[]
-    Wrappers: Wrapper[]
 }
 
 record Dependency {
     Name: String
     VersionRequirement: String
-}
-
-record Wrapper {
-    Name: String
-    Family: String
-    Protocol: String
-    SidecarCommand: String
-    GoModuleDir: String
-    TransportTypes: WrapperTransportType[]
-    Functions: WrapperFunction[]
-}
-
-record WrapperTransportType {
-    Name: String
-    Kind: String
-    Fields: WrapperTransportField[]
-}
-
-record WrapperTransportField {
-    Name: String
-    Type: String
-}
-
-record WrapperFunction {
-    OctName: String
-    WireName: String
-    Args: String[]
-    Return: String
-    Fallible: Bool
 }
 
 fn Manifest() -> PackageManifest {
@@ -52,33 +21,6 @@ fn Manifest() -> PackageManifest {
         Authors: ["Codex"]
         Date: "2026-06-15"
         Description: "Thin image wrappers for loading, saving, and metadata inspection"
-        Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
-        Wrappers: [
-            Wrapper {
-                Name: "image"
-                Family: "Image"
-                Protocol: "octxiliary.v0"
-                SidecarCommand: "octxiliary-image"
-                GoModuleDir: "octxiliary"
-                TransportTypes: [
-                    WrapperTransportType {
-                        Name: "Image.ImageHandle"
-                        Kind: "handle"
-                        Fields: [
-                            WrapperTransportField { Name: "Handle" Type: "Int" }
-                        ]
-                    }
-                ]
-                Functions: [
-                    WrapperFunction { OctName: "Load" WireName: "ImageLoad" Args: ["String"] Return: "Image.ImageHandle" Fallible: true },
-                    WrapperFunction { OctName: "Save" WireName: "ImageSave" Args: ["Image.ImageHandle", "String"] Return: "Int" Fallible: true },
-                    WrapperFunction { OctName: "EncodePng" WireName: "ImageEncodePng" Args: ["Image.ImageHandle"] Return: "Bytes" Fallible: true },
-                    WrapperFunction { OctName: "Width" WireName: "ImageWidth" Args: ["Image.ImageHandle"] Return: "Int<px>" Fallible: false },
-                    WrapperFunction { OctName: "Height" WireName: "ImageHeight" Args: ["Image.ImageHandle"] Return: "Int<px>" Fallible: false },
-                    WrapperFunction { OctName: "Format" WireName: "ImageFormat" Args: ["Image.ImageHandle"] Return: "String" Fallible: false }
-                ]
-            }
-        ]
     }
 }

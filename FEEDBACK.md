@@ -316,10 +316,10 @@ Ten sources in the tree that are not `.octfail` do not parse, so `oct fmt` refus
 Suggestion:
 Repair or retire each one. A fixture under `valid/` that does not parse is not asserting anything.
 
-Status: Open
+Status: Resolved
 
 Resolution:
-The eight under `Language/` are repaired and run in both lanes. Two remain: `Libraries/IfErrNotEqualNil/IfErrNotEqualNil.Core.oct`, whose parameter has a fallible type, which Oct does not have, and `testdata/m34a/CollectionIteration/collection_iteration.octest`, which no test runs.
+The eight under `Language/` are repaired and run in both lanes. `Libraries/IfErrNotEqualNil` is rewritten (see its entry below). The `testdata/m34a` probe failed on a parameter named `matrix`: `matrix[` always began a matrix literal. The parser now reads a literal only for `matrix[[` and `matrix[]`, so a value named `matrix` can be indexed. The probe is rewritten with `Append` as `Language/ControlFlow/Loops/valid/counted_loop_array_traversal.octest`, and its report is kept as `docs/internal/collection_iteration_pressure_m34a.md`.
 
 ---
 
@@ -472,7 +472,10 @@ The compiled lane evaluates every candidate value of a `when utility` expression
 Suggestion:
 Select the candidate first and lower each value in its own block.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+The defect was wider than the refusal. For every utility `when`, the compiled lane evaluated the value and the score of each case, and the `else` value, before it selected. A case whose condition was false, or an `else` that was not needed, could fail or propagate an error the interpreter never raised: three wrong answers in a function and two in a flow state, none covered by a fixture. A standalone `when utility` is now lowered to ordinary blocks in the order the reference gives, enum-targeted payloads included, in functions and in flow states; `when policy` gathers its candidates in source order and takes `else` as a thunk. Contracts: `Language/Expressions/UtilityWhen/valid/standalone_utility_evaluation_order.octest`, `Language/ControlFlow/OctomataUtilityWhen/valid/utility_evaluation_order.octest` and `.../runtime/invalid/policy_evaluates_every_value_whose_condition_holds.octfail`. The selection runs in the generated program, which cannot import `internal/judgment`, so that package was not used.
 
 ---
 
@@ -481,6 +484,262 @@ Observation:
 
 Suggestion:
 Retire the library, or decide that fallible parameter types exist.
+
+Status: Resolved
+
+Resolution:
+Kept, as the identity template `IfErrNotEqualNil<T>(value: T) -> T`. Oct does not let an unhandled error reach a parameter, so by the time the wrapper is called there is nothing left to check; the library says so in its doc comment and returns its argument. It has tests in both lanes and a contract that passing an unhandled fallible is rejected.
+
+---
+
+Observation:
+Expected failures under `Language/` were `.octest` or `.oct` files that only a particular Go test knew to expect a failure from: fourteen artifact failures, four Concept capability failures, four wrapper manifest mismatches and one template provenance failure. `oct test <directory>` on any of them reported a failure, and the Go tests held the expected messages, which is semantics in Go.
+
+Suggestion:
+Make each an `.octfail`.
+
+Status: Resolved
+
+Resolution:
+`.octfail` gains `expect artifact error:` for `[Artifact]` entry points that must fail and publish nothing, and may state several expectation lines that the one failure must all contain. A failure that needs a second file or a manifest is a package in `Packages/<Name>/` beside the fixture, which the fixture imports. The Go assertions are removed; `cmd/oct/language_corpus_test.go` lists one directory another test owns, down from twelve. `Language/Tooling/ConceptCapabilitiesM2/valid` remains: it holds two artifacts that are expected to be refused, and they need a manifest beside them and native approvals passed by the host, which an `.octfail` cannot state.
+
+---
+
+Observation:
+Two wrapper fixture directories pass in one execution lane only, and nothing in the source said so. `Language/Testing/CompiledOctxiliary/valid` has stub bodies that only the compiled lane replaces with sidecar calls; `Language/Testing/InterpretedOctxiliary/valid` pins that the interpreted lane runs a source body the manifest also names.
+
+Suggestion:
+Let a test state the lane it belongs to, with a reason.
+
+Status: Resolved
+
+Resolution:
+`[Interpreted("reason")]` and `[Compiled("reason")]` on a `[Fact]` or `[Theory]`. The reason is required. The other lane reports the test as skipped and does not build it, and under `--execution auto` a `[Compiled]` test does not fall back to the interpreter. `Language/reference/tooling/31-octest.md` says when not to use it: a feature one lane is missing is not a reason.
+
+---
+
+Observation:
+A function that a wrapper manifest names and that also has a source body means two things. The interpreted lane runs the source body. The compiled lane replaces the body with the sidecar call. Eleven standard libraries are built this way (`Archive`, `Compression`, `Csv`, `Hash`, `IO`, `Image`, `Json`, `Pdf`, `Plot`, `Text`, `Time`): 45 functions, each with both. `Make` is the one wrapper library whose 15 functions are named by the manifest alone.
+
+The two definitions are two implementations in Go. The source body calls a builtin that the interpreter runs in-process (`internal/interpret/wrapper_*.go`, which links `fpdf`, `gonum/plot` and `excelize` into `oct`). The manifest entry names a wire function of a first-party sidecar (`cmd/octxiliary-*`). The compiled lane has no implementation of most of those builtins: with the manifest entries ignored, `Archive`, `Compression`, `Hash`, `Image`, `Pdf`, `Plot`, `Text` and `Time` fail to compile ("does not yet support builtin HashSha256Text") and only `Csv` and `Json` still pass.
+
+For 21 functions the builtin and the wire function take the same arguments. For 20 (`Image`, `Pdf`, `Plot`, and the workbook functions of `IO`) they do not: the builtin takes a bare `Int` handle and separate scalars, the wire function takes a typed handle and records. Four (`Csv.Read`, `Csv.Write`, `Json.Load`, `Json.Save`) forward to `IO`.
+
+The two kinds of call are also governed differently during artifact evaluation: a builtin by the artifact effect rules, a manifest wrapper call by native grants (`--grant-native`).
+
+So "a wrapper name has one definition" cannot be enforced by deleting one side. Removing the source bodies makes the interpreted lane need sidecars for every use of these libraries and makes those calls native operations in artifacts. Removing the manifest entries leaves the compiled lane without the libraries until it can run the builtins.
+
+Suggestion:
+Make the standard libraries ordinary source over builtins, as `Language/reference/language/17-standard-libraries.md` describes them, and teach the compiled lane to run those builtins through the first-party sidecars, as it already does for `CsvRead` and `FileReadText`. Keep manifest wrapper functions for native code outside the toolchain, with no source body, dispatched to the sidecar in both lanes. Then reject a name that has both. The 20 functions whose two signatures differ need the sidecar to accept the builtin's arguments, or an adapter in the compiled lane.
+
+Status: Resolved
+
+Resolution:
+Done as suggested. The eleven libraries declare no wrappers; the compiled lane lowers 39 library builtins to sidecar calls from the table in `internal/builtin/sidecar.go`, which `TestSidecarBuiltinTableAgreesWithTypechecker` checks against the typechecker. A handle is an `Int` in the builtin and a typed handle on the wire. The `pdf` and `plot` sidecars take the builtins' flat arguments in place of records. A source function with the name of a manifest wrapper function is a compile error (`Language/Testing/CompiledOctxiliary/invalid/wrapper_function_defined_twice.octfail`), and the reference states the rule in `tooling/33-oct-pkg.md`. Each library gives the same results as before in both lanes with sidecars present.
+
+Three defects had been hidden by the stub bodies, since no function with record arguments was ever defined by its manifest alone: the typechecker could not resolve a transport type that a manifest qualified with its own package's name; the interpreter refused such a record ("expects record Main.TestOptions, got TestOptions"); and the compiled lane could not resolve a call to an imported package's wrapper function. All three are fixed, and the generic wrapper fixture that was compiled-only runs in both lanes.
+
+---
+
+Observation:
+The manifests of the eleven standard wrapper libraries declare `GoModuleDir: "octxiliary"`, and none of those directories exists; the sidecars are built from `cmd/octxiliary-*` by `tools/build_sidecars`. `oct pkg wrappers` in `Libraries/Hash` plans the module path `Libraries/Hash/octxiliary`.
+
+Suggestion:
+Settle this with the entry above. If the standard libraries stop declaring wrappers, the field goes with them.
+
+Status: Resolved
+
+Resolution:
+The standard libraries declare no wrappers, so they declare no module directory. `Registry/registry.oct` lists them as `library`. `Make` is the one first-party wrapper package left, and it has the same defect: see the next entry.
+
+---
+
+Observation:
+`Libraries/Make/manifest.oct` declares `GoModuleDir: "octxiliary"` and `Libraries/Make/octxiliary` does not exist. Its sidecar is built from `cmd/octxiliary-makehost`. `oct pkg wrappers` in `Libraries/Make` plans the missing path.
+
+Suggestion:
+Either let a first-party wrapper name its command package, or move the makehost sidecar's module under the library.
+
+Status: Open
+
+---
+
+Observation:
+A package manifest that existed and did not parse or validate was dropped without a message whenever the program's root did not require manifests, which includes a single file that imports a library. The package then loaded with no wrapper declarations, and its stub bodies ran in place of the sidecar calls.
+
+Suggestion:
+Report the manifest error.
+
+Status: Resolved
+
+Resolution:
+`internal/project` reports the manifest of an imported package whenever it exists and is wrong. The entry package's manifest keeps the old leniency where none is required: a file selected on its own is specified to run beside a wrong manifest (`cmd/oct` single-file target tests), and a milestone directory run on its own borrows a family manifest that names the family and not the milestone's package. `Language/Testing/CompiledOctxiliary/invalid/wrapper_undeclared_record_arg.octfail` is the contract.
+
+---
+
+Observation:
+A value named `vector` cannot be indexed: `vector[i]` is a one-element vector literal. Unlike `matrix[[...]]`, the literal and the index have the same shape, so the parser cannot tell them apart by looking ahead. The result is a type error far from the cause, such as "Assert.Near supports only Float scalars".
+
+Suggestion:
+Either resolve it by scope (a `vector[...]` whose name is bound to a value is an index), or reject `vector` as a binding name with a diagnostic that says why.
+
+Status: Resolved
+
+Resolution:
+Resolved by scope, in the parser. Where a parameter, a `let` or `var`, a `for` variable, a match binding, a `batch` item or a function value's capture named `vector` is in scope, `vector[...]` indexes it; everywhere else it is the literal. A binding is in scope from the statement after it to the end of its block, and a function value sees its parameters and captures only. `Language/Types/VectorsMatricesM92/valid/vector_as_a_value_name_m92.octest` and `invalid/vector_literal_is_shadowed_by_a_value_named_vector_m92.octfail` are the contracts.
+
+---
+
+Observation:
+An ordinary program that reaches `Artifact.WriteText` is rejected at different times: the interpreted lane stops when the call runs, and the compiled lane refuses to build the program. The compiled message used to be "does not yet support builtin ArtifactWriteText", which was wrong twice: the name is internal and the feature is not pending.
+
+Suggestion:
+Reject it in the typechecker, in both lanes, when an `Artifact.*` call is reachable from `Main`.
+
+Status: Open
+
+Resolution:
+The compiled message is now "Artifact.WriteText is available only during `oct artifact` evaluation; a compiled program cannot call it". The difference in timing remains; `Language/Tooling/Artifacts/invalid/artifact_write_outside_phase.octfail` holds the compiled half and `internal/tester/artifact_phase_test.go` the interpreted half.
+
+---
+
+Observation:
+An array index out of bounds stops both lanes with different messages: interpreted "runtime error: index 9 out of bounds for array of length 1", compiled the Go runtime's "index out of range [9] with length 1". A runtime `.octfail` for it cannot be written with one expectation.
+
+Suggestion:
+Have the compiled lane report the interpreter's message.
+
+Status: Open
+
+---
+
+Observation:
+The two standalone forms of `when utility` evaluate values differently, and the reference specifies both: the plain form evaluates the value of every case whose condition holds, the enum-targeted form the selected value alone. Separately, the plain standalone form accepts `hysteresis` and `min_commit`, which have no effect without a controller.
+
+Suggestion:
+Evaluate only the selected value in both standalone forms, and reject policy fields on a standalone form.
+
+Status: Resolved
+
+Resolution:
+Every utility `when` evaluates one value, the selected one. `hysteresis` and `min_commit` on a standalone `when utility`, plain or enum-targeted, are a parse error that names `when policy`. Contracts: `Language/Expressions/UtilityWhen/valid/standalone_utility_evaluation_order.octest` and `invalid/standalone_policy_fields_rejected.octfail`, `invalid/enum_utility_policy_fields_rejected.octfail`. One program used the fields: `Experiments/PrometheusSgemmAlgorithmLab/M4`, where they had no effect and are removed.
+
+---
+
+Observation:
+`when policy` committed to a value. The site remembered the value it had selected and looked for an equal value among the next evaluation's candidates. Three consequences. An arm whose value changed between evaluations lost its commitment, so `min_commit` did not hold it. Two arms that produced equal values were one commitment. And to compare values the policy had to evaluate the value of every case whose condition held, where every other utility `when` evaluates one; a site whose values were not scalars could not be checkpointed.
+
+Suggestion:
+Commit to the arm.
+
+Status: Resolved
+
+Resolution:
+A site records the committed arm (the case's position, or `else`) and the commit age. The committed arm is held while its condition holds and either `min_commit` has not elapsed or no other arm beats it by more than `hysteresis`; `else` is never held. Only the selected arm's value is evaluated. The interpreter, the generated Go and the Verilog profile agree, and every site can be checkpointed (interpreter checkpoint version 4, compiled payload version 2; older checkpoints are refused). `Language/ControlFlow/OctomataUtilityWhen/runtime/valid/commitment_is_to_the_arm.octest` is the contract. The 24 directories that use `when policy` give the same results as before in both lanes.
+
+---
+
+Observation:
+Two compiled defects in utility `when` inside a flow, both found while changing the commitment rule. A standalone `when utility` in a flow state did not build under the Verilog profile ("Verilog M2 FLOW expressions must lower to one acyclic MIR block"); this was introduced by the change that made compiled utility `when` evaluate in order, and no Verilog fixture used the form. A `when policy` that was part of a larger expression generated Go that did not build.
+
+Suggestion:
+Fix both and add the missing fixture.
+
+Status: Resolved
+
+Resolution:
+The Verilog profile keeps the structured single-block lowering for utility `when`; the Go backend uses blocks. `Language/Profiles/VerilogM2/valid/utility_standalone` is new and its testbench passes in Icarus Verilog, as does `utility_policy`. A `when policy` inside a larger expression is covered by `commitment_is_to_the_arm.octest`.
+
+---
+
+Observation:
+`hysteresis` compares the leading arm's score with the score recorded for the committed arm, not with the committed arm's score at this evaluation. The record is refreshed only when the committed arm itself leads by more than `hysteresis` over it. A committed arm whose score has since fallen is therefore held until a rival beats the old score. With `hysteresis: 2`, an arm committed at 10 whose score drops to 1 is held against a rival at 5. This predates the change of commitment from value to arm and was kept; the reference says "its committed score". No contract pins when the record is refreshed: removing the refresh from either lane fails no test.
+
+Suggestion:
+Decide whether the comparison should use the committed arm's current score. If it should, the arm's score is already evaluated on every pass, so only the comparison changes.
+
+Status: Resolved
+
+Resolution:
+The comparison uses the committed arm's score at this evaluation, in the interpreter, the generated Go and the Verilog profile. The recorded score is gone from the site, from checkpoints and from the Verilog module's ports (`UtilitySite<N>Score`). `Language/ControlFlow/OctomataUtilityWhen/runtime/valid/hysteresis_boundary.octest` holds the contract, with a committed arm whose score falls and one whose score rises. No existing program changed its result.
+
+---
+
+Observation:
+`Assert.Equal` does not accept arrays ("does not support type Int[] in M24a"), so a test that builds an array asserts its length and each element.
+
+Suggestion:
+Accept arrays of the types it already compares, and report the first differing index.
+
+Status: Open
+
+---
+
+Observation:
+A test run leaves files in the working tree. `Libraries/Pdf/Pdf.CompiledText.octest` writes `m21_pdf_compiled_styled.pdf` and `m21_pdf_compiled_text.pdf` to the repository root when a PDF sidecar is found, and an `IO` test writes `io_xlsx_m0.xlsx` there; none of the three is tracked or ignored. A `cmd/oct` test rewrites the tracked `cmd/oct/analysis_output.png`. `git add -A` after a full run therefore commits generated binaries, which happened twice in this work and was undone both times.
+
+Suggestion:
+Write those outputs to the test's artifact scope or a temporary directory.
+
+Status: Open
+
+---
+
+Observation:
+`oct fmt` writes a negative score in a utility `when` case as a subtraction: `case 1 when open score -5` becomes `case 1 when open score - 5`. `score` is an identifier to the lexer, so the formatter spaces the `-` after it as a binary operator. The tokens are unchanged and the program means the same.
+
+Suggestion:
+Treat `score` in a utility `when` case as the keyword it is there, so that what follows starts an expression.
+
+Status: Open
+
+---
+
+Observation:
+Every library builtin that the compiled lane sends to a sidecar is implemented twice in Go: once in the interpreter (`internal/interpret/wrapper_*.go`) and once in the sidecar (`cmd/octxiliary-*`). The two are written separately and can drift; only the library tests, run in both lanes with sidecars, compare them. Plotting already avoids this: both sides call `internal/plotrender`.
+
+Suggestion:
+Give each family one Go package that holds the work, as `internal/plotrender` does, and have the interpreter builtin and the sidecar both call it.
+
+Status: Open
+
+---
+
+Observation:
+Eight library builtins have no compiled implementation, and a compiled program that reaches one is refused by name: `PdfDrawImage` and `PdfDrawImageSized` (a page and an image are handles of two different sidecars), `JsonLower`, `JsonLoadStructured`, `CsvWriteTable`, `CsvWriteMatrix`, `PlotLine` and `PlotScatter`. `Libraries/IO/IO.Json.octest` has 12 tests that fail compiled for `JsonLoadStructured`, and `Libraries/Pdf/Pdf.Core.octest` six for `PdfDrawImage`.
+
+Suggestion:
+Add the four data builtins and the two short plot forms to the sidecar table; they need wire functions and no new mechanism. Decide separately whether the image-handle form of `PdfDrawImage` should exist in the compiled lane or be retired in favour of `DrawImageBytes`.
+
+Status: Open
+
+---
+
+Observation:
+`Language/Testing/CompiledOctxiliary` and `Language/Testing/InterpretedOctxiliary` are named after the lane each once belonged to. Both run in both lanes now.
+
+Suggestion:
+Rename them when the corpus is next reorganized; two Go test files name the paths.
+
+Status: Open
+
+---
+
+Observation:
+A plot is larger than the size it is asked for. `Plot.Size { Width: 400px Height: 300px }` writes a PNG of 533 by 400 pixels. `internal/plotrender.PixelLength` turns a pixel count into the same number of points, and the image is rendered at 96 dots per inch, so every length grows by 4/3. Both lanes share the renderer, so both do it. No test checks the dimensions of a plot.
+
+Suggestion:
+Convert pixels to points with the renderer's resolution, so that the image has the pixels the `Int<px>` asked for. Recorded plots, `cmd/oct/analysis_output.png` among them, will change size.
+
+Status: Open
+
+---
+
+Observation:
+In the interpreted lane a record of an imported package does not equal the same record returned by that package. With `record Point { X: Int Y: Int }` and `fn Origin() -> Point` in package `Passer`, `Assert.Equal(Passer.Point { X: 0 Y: 0 }, Passer.Origin(), "...")` in another package fails interpreted and passes compiled. The literal is named `Passer.Point` and the returned value `Point`: `qualifyCrossPackageValue` qualifies the enums in a value that crosses a package boundary and not its records, and `valuesEqual` compares the names. Found while checking how a wrapper function's record should be named; wrapper results go through the same function and so behave as a source function's do.
+
+Suggestion:
+Qualifying records on the way out, as enums are, is not enough: a record of the caller's own package that passes through a library function would come back named for the library. Give a record its package when it is constructed and compare that.
 
 Status: Open
 

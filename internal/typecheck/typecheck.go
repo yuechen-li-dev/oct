@@ -8095,9 +8095,27 @@ func checkComplexBinaryExpr(operator string, leftType Type, rightType Type) (Typ
 	}
 }
 
+// registerWrapperFunctionSignatures makes the functions that the package
+// manifest declares callable. Such a function is native code behind a
+// sidecar: the manifest entry is its whole definition, in both lanes. A
+// source function of the same name would be a second definition, which one
+// lane would run and the other would not, so it is an error.
+//
+// The bodyless `go fn` declaration of an OctGo companion is not a second
+// definition. It has no body; the OctGo host derives the wrapper entry from
+// it, and the declaration stays the signature that calls are checked against.
 func (c checker) registerWrapperFunctionSignatures(pkg project.Package) error {
+	hasBody := make(map[string]bool, len(pkg.Functions))
+	for _, declared := range pkg.Functions {
+		if !declared.IsGoImport {
+			hasBody[declared.Name] = true
+		}
+	}
 	for _, wrapper := range pkg.Wrappers {
 		for _, fn := range wrapper.Functions {
+			if hasBody[fn.OctName] {
+				return fmt.Errorf("function %s.%s has two definitions: a source body, and an entry in wrapper %q of the package manifest. A wrapper function is defined by its manifest entry alone. To put Oct code in front of it, give the manifest entry a name of its own and call that from the source function", pkg.Name, fn.OctName, wrapper.Name)
+			}
 			if _, exists := c.functions[fn.OctName]; exists {
 				continue
 			}
@@ -8124,6 +8142,11 @@ func (c checker) resolveWrapperManifestType(input string, allowVoid bool) (Type,
 	ref, err := wrapperManifestTypeRef(input)
 	if err != nil {
 		return Type{}, err
+	}
+	// A manifest may qualify a type of its own package with the package's
+	// name, as it must for the wire.
+	if ref.Package == c.packageName {
+		ref.Package = ""
 	}
 	return c.resolveType(ref, allowVoid)
 }

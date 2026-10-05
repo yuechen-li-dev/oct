@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -12,18 +13,32 @@ import (
 
 func TestDispatchLineWritesPNG(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "line.png")
-	value, err := dispatch(octxiliary.Request{Family: "Plot", Function: "PlotRenderLine", HasArgs: true, Args: []octxiliary.Value{
+	value, err := dispatch(octxiliary.Request{Family: "Plot", Function: "PlotRenderLine", HasArgs: true, Args: append([]octxiliary.Value{
 		{Kind: octxiliary.ValueFloatArray, Floats: []float64{0, 1, 2}},
 		{Kind: octxiliary.ValueFloatArray, Floats: []float64{0, 1, 4}},
 		{Kind: octxiliary.ValueString, String: out},
-		sizeValue(400, 300),
-		labelsValue(),
-	}})
+	}, sizeAndLabels(400, 300)...)})
 	if err != nil || value.Kind != octxiliary.ValueInt || value.Int != 0 {
 		t.Fatalf("dispatch line failed: value=%#v err=%v", value, err)
 	}
 	if info, err := os.Stat(out); err != nil || info.Size() == 0 {
 		t.Fatalf("expected non-empty png: info=%#v err=%v", info, err)
+	}
+	// Width and height arrive as two plain integers; the image says which
+	// was read as which. Only the orientation is checked: the renderer
+	// treats the requested pixels as points, so the image is larger than
+	// asked for by the same factor in both directions (FEEDBACK.md).
+	file, err := os.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	config, err := png.DecodeConfig(file)
+	if err != nil {
+		t.Fatalf("decode png: %v", err)
+	}
+	if config.Width <= config.Height {
+		t.Fatalf("image is %dx%d; a 400 by 300 request must be wider than it is tall", config.Width, config.Height)
 	}
 }
 
@@ -33,10 +48,10 @@ func TestDispatchRejectsInvalidArguments(t *testing.T) {
 		args []octxiliary.Value
 		want string
 	}{
-		{name: "extension", args: []octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueString, String: "bad.jpg"}, sizeValue(400, 300), labelsValue()}, want: ".png"},
-		{name: "length", args: []octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{0, 1}}, {Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "bad.png")}, sizeValue(400, 300), labelsValue()}, want: "equal length"},
-		{name: "size", args: []octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "bad.png")}, sizeValue(0, 300), labelsValue()}, want: "positive"},
-		{name: "nan", args: []octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{math.NaN()}}, {Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "bad.png")}, sizeValue(400, 300), labelsValue()}, want: "finite"},
+		{name: "extension", args: append([]octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueString, String: "bad.jpg"}}, sizeAndLabels(400, 300)...), want: ".png"},
+		{name: "length", args: append([]octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{0, 1}}, {Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "bad.png")}}, sizeAndLabels(400, 300)...), want: "equal length"},
+		{name: "size", args: append([]octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "bad.png")}}, sizeAndLabels(0, 300)...), want: "positive"},
+		{name: "nan", args: append([]octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{math.NaN()}}, {Kind: octxiliary.ValueFloatArray, Floats: []float64{0}}, {Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "bad.png")}}, sizeAndLabels(400, 300)...), want: "finite"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -49,16 +64,21 @@ func TestDispatchRejectsInvalidArguments(t *testing.T) {
 }
 
 func TestDispatchHistogramRejectsNonPositiveBins(t *testing.T) {
-	_, err := dispatch(octxiliary.Request{Family: "Plot", Function: "PlotRenderHistogram", HasArgs: true, Args: []octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{0, 1}}, {Kind: octxiliary.ValueInt, Int: 0}, {Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "hist.png")}, sizeValue(400, 300), labelsValue()}})
+	_, err := dispatch(octxiliary.Request{Family: "Plot", Function: "PlotRenderHistogram", HasArgs: true, Args: append([]octxiliary.Value{{Kind: octxiliary.ValueFloatArray, Floats: []float64{0, 1}}, {Kind: octxiliary.ValueInt, Int: 0}, {Kind: octxiliary.ValueString, String: filepath.Join(t.TempDir(), "hist.png")}}, sizeAndLabels(400, 300)...)})
 	if err == nil || !strings.Contains(err.Error(), "positive bin") {
 		t.Fatalf("expected positive bin error, got %v", err)
 	}
 }
 
-func sizeValue(width, height int) octxiliary.Value {
-	return octxiliary.Value{Kind: octxiliary.ValueRecord, RecordType: "Plot.Size", Fields: []octxiliary.FieldValue{{Name: "Width", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: width}}, {Name: "Height", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: height}}}}
-}
-
-func labelsValue() octxiliary.Value {
-	return octxiliary.Value{Kind: octxiliary.ValueRecord, RecordType: "Plot.Labels", Fields: []octxiliary.FieldValue{{Name: "Title", Value: octxiliary.Value{Kind: octxiliary.ValueString, String: "Demo"}}, {Name: "X", Value: octxiliary.Value{Kind: octxiliary.ValueString, String: "x"}}, {Name: "Y", Value: octxiliary.Value{Kind: octxiliary.ValueString, String: "y"}}, {Name: "Legend", Value: octxiliary.Value{Kind: octxiliary.ValueString, String: "series"}}}}
+// sizeAndLabels is the tail of every plot call: width and height in pixels,
+// then title, x label, y label and legend.
+func sizeAndLabels(width, height int) []octxiliary.Value {
+	return []octxiliary.Value{
+		{Kind: octxiliary.ValueInt, Int: width},
+		{Kind: octxiliary.ValueInt, Int: height},
+		{Kind: octxiliary.ValueString, String: "Demo"},
+		{Kind: octxiliary.ValueString, String: "x"},
+		{Kind: octxiliary.ValueString, String: "y"},
+		{Kind: octxiliary.ValueString, String: "series"},
+	}
 }

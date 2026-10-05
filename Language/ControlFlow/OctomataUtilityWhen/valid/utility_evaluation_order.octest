@@ -1,0 +1,165 @@
+package MainValid
+
+// What a utility `when` evaluates inside a flow state
+// (Language/reference/runtime/21-octomata.md, "Utility `when`").
+//
+// Every form follows one rule. The cases are visited in source order: a
+// condition, and its score only when the condition holds. Then the value of
+// the one selected arm is evaluated and no other: not the value of a case
+// that lost, nothing of a case whose condition is false, and the else value
+// only when no condition held. `when policy` decides which arm is selected
+// from the scores and its commitment; it needs no value to do so.
+//
+// OutOfRange stops the program when it is called, so a fact that passes shows
+// the expression was not evaluated.
+
+fn OutOfRange(values: Int[]) -> Int {
+    return values[9]
+}
+
+flow PolicySkipsTheValueOfAFalseCase(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case OutOfRange(values) when false score 100
+            case 7 when true score 1
+            else 0
+        }
+        return next
+    }
+}
+
+flow PolicySkipsTheScoreOfAFalseCase(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case 1 when false score OutOfRange(values)
+            case 7 when true score 1
+            else 0
+        }
+        return next
+    }
+}
+
+flow PolicySkipsTheValueOfALosingCase(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case OutOfRange(values) when true score 1
+            case 7 when true score 100
+            else 0
+        }
+        return next
+    }
+}
+
+flow PolicySkipsElseWhenACaseHolds(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case 7 when true score 1
+            else OutOfRange(values)
+        }
+        return next
+    }
+}
+
+record Plan {
+    Code: Int
+}
+
+fn OutOfRangePlan(values: Int[]) -> Plan {
+    return Plan { Code: values[9] }
+}
+
+// The same rules for a policy whose result is a record, not a scalar.
+flow RecordPolicySkipsAFalseCaseAndElse(values: Int[]) -> Int {
+    state Decide {
+        let next = when policy {
+            hysteresis: 0
+            min_commit: 0
+        } {
+            case OutOfRangePlan(values) when false score OutOfRange(values)
+            case Plan { Code: 7 } when true score 1
+            else OutOfRangePlan(values)
+        }
+        return next.Code
+    }
+}
+
+flow StandaloneSkipsAFalseCaseAndElse(values: Int[]) -> Int {
+    state Decide {
+        let next = when utility {
+            case OutOfRange(values) when false score OutOfRange(values)
+            case 7 when true score 5
+            else OutOfRange(values)
+        }
+        return next
+    }
+}
+
+enum Dispatch {
+    Idle
+    Send(Int)
+}
+
+fn DispatchCode(dispatch: Dispatch) -> Int {
+    return match dispatch {
+        case Dispatch.Idle => 0
+        case Dispatch.Send(value) => value
+    }
+}
+
+flow EnumTargetedPayloadIsDelayed(values: Int[]) -> Int {
+    state Decide {
+        let next = when utility Dispatch {
+            case Dispatch.Send(OutOfRange(values)) when true score 1
+            case Dispatch.Send(7) when true score 5
+            else Dispatch.Idle
+        }
+        return DispatchCode(next)
+    }
+}
+
+[Fact]
+fn PolicyEvaluatesOnlyTheSelectedValue() -> Void {
+    let losing = PolicySkipsTheValueOfALosingCase([1])
+    Step(losing)
+    Assert.Equal(7, Assert.LGTM(Result(losing), "result"), "the value of a case that lost is not evaluated")
+
+
+    let value = PolicySkipsTheValueOfAFalseCase([1])
+    Step(value)
+    Assert.Equal(7, Assert.LGTM(Result(value), "result"), "the value of a false case is not evaluated")
+
+    let score = PolicySkipsTheScoreOfAFalseCase([1])
+    Step(score)
+    Assert.Equal(7, Assert.LGTM(Result(score), "result"), "the score of a false case is not evaluated")
+
+    let fallback = PolicySkipsElseWhenACaseHolds([1])
+    Step(fallback)
+    Assert.Equal(7, Assert.LGTM(Result(fallback), "result"), "else is not evaluated while a case holds")
+
+    let plan = RecordPolicySkipsAFalseCaseAndElse([1])
+    Step(plan)
+    Assert.Equal(7, Assert.LGTM(Result(plan), "result"), "a record policy skips a false case and the else value")
+}
+
+[Fact]
+fn StandaloneUtilityInAStateSkipsWhatItDoesNotNeed() -> Void {
+    let plain = StandaloneSkipsAFalseCaseAndElse([1])
+    Step(plain)
+    Assert.Equal(7, Assert.LGTM(Result(plain), "result"), "a false case and the else value are not evaluated")
+
+    let targeted = EnumTargetedPayloadIsDelayed([1])
+    Step(targeted)
+    Assert.Equal(7, Assert.LGTM(Result(targeted), "result"), "a losing payload is not evaluated")
+}

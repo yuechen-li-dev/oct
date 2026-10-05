@@ -1,0 +1,8 @@
+package WrapperUndeclaredRecordArg
+
+// The manifest names this record as an argument type of BadUndeclaredArg
+// without declaring it as a transport type.
+record TestOptions {
+    Count: Int
+    Name: String
+}

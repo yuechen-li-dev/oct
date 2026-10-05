@@ -418,8 +418,13 @@ func lowerFallibleFlowCall(call ast.CallExpr, env map[string]string, locals map[
 func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, error) {
 	switch expression := expr.(type) {
 	case ast.UtilityWhenExpr:
-		if expression.EnumTarget != nil && utilityWhenHasPayloadCandidate(expression) {
-			return nil, unsupported("compiled enum-targeted utility payload candidates require delayed payload lowering")
+		// For the Go backend a utility `when` is ordinary control flow, with
+		// a `when policy` site reached through two builtin calls; see
+		// lowerUtilityWhen. The Verilog profile keeps the structured node
+		// below: hardware evaluates every operand combinationally, and its
+		// emitter builds the selection network from the cases.
+		if activeFlowExpressionContext == nil || activeFlowExpressionContext.program.Profile != "Verilog" {
+			return lowerSharedFlowExpression(expr, env, locals)
 		}
 		hysteresis, err := lowerFlowExpr(expression.Policy.Hysteresis, env, locals, pkg, boardFieldTypes)
 		if err != nil {

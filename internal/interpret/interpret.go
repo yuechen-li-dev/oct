@@ -223,12 +223,23 @@ type FlowRuntimeInstance struct {
 	DirtyBoardFields map[string]struct{}
 }
 
+// utilityWhenSiteState is what a `when policy` site remembers between
+// evaluations: the arm it is committed to, the score that arm was committed
+// with, and for how many evaluations it has held.
+//
+// The commitment is to an arm of the `when`, identified by its position, and
+// not to the value that arm produced. An arm whose value changes from one
+// evaluation to the next is still the same choice, and two arms that happen
+// to produce equal values are different choices.
 type utilityWhenSiteState struct {
 	HasCurrent bool
-	Current    Value
-	Score      int64
-	CommitAge  int64
+	// Arm is the index of the committed case, or utilityElseArm.
+	Arm       int
+	CommitAge int64
 }
+
+// utilityElseArm identifies the `else` arm of a utility `when`.
+const utilityElseArm = -1
 
 func (v Value) String() string {
 	switch v.Kind {
@@ -2228,14 +2239,16 @@ func (i interpreter) evalIfExpr(env *environment, pkgName string, expr ast.IfExp
 }
 
 func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr ast.UtilityWhenExpr) (evalResult, error) {
-	var instance *FlowRuntimeInstance
-	if expr.ControllerBound {
-		flowBinding, ok := env.lookup(flowInstanceBindingName)
-		if !ok || flowBinding.value.Kind != ValueFlow || flowBinding.value.Flow == nil {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: utility when requires flow instance context")
-		}
-		instance = flowBinding.value.Flow
+	// A standalone `when utility`, plain or enum-targeted, is a one-shot
+	// choice. It has no policy and no commitment.
+	if !expr.ControllerBound {
+		return i.evalStandaloneUtilityWhenExpr(env, pkgName, expr)
 	}
+	flowBinding, ok := env.lookup(flowInstanceBindingName)
+	if !ok || flowBinding.value.Kind != ValueFlow || flowBinding.value.Flow == nil {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: utility when requires flow instance context")
+	}
+	instance := flowBinding.value.Flow
 
 	hysteresisResult, err := i.evalExpr(env, pkgName, expr.Policy.Hysteresis)
 	if err != nil {
@@ -2261,16 +2274,14 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 	hysteresis := hysteresisResult.value.Int
 	minCommit := minCommitResult.value.Int
 
-	if expr.EnumTarget != nil && !expr.ControllerBound {
-		return i.evalEnumTargetedUtilityWhenExpr(env, pkgName, expr)
-	}
-
+	// The cases are visited in source order: a condition, and its score only
+	// when the condition holds. No value is evaluated yet.
 	type candidate struct {
-		value Value
+		arm   int
 		score int64
 	}
 	validCandidates := make([]candidate, 0, len(expr.Cases))
-	for _, whenCase := range expr.Cases {
+	for index, whenCase := range expr.Cases {
 		condition, err := i.evalExpr(env, pkgName, whenCase.Condition)
 		if err != nil {
 			return evalResult{}, err
@@ -2296,76 +2307,72 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 			return evalResult{}, fmt.Errorf("runtime invariant violation: utility when case score must be Int, got %s", scoreResult.value.Kind)
 		}
 
-		valueResult, err := i.evalExpr(env, pkgName, whenCase.Value)
-		if err != nil {
-			return evalResult{}, err
-		}
-		if valueResult.hasError {
-			return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
-		}
-		validCandidates = append(validCandidates, candidate{value: valueResult.value, score: scoreResult.value.Int})
+		validCandidates = append(validCandidates, candidate{arm: index, score: scoreResult.value.Int})
 	}
 
-	var next candidate
-	hasSelection := false
-	if len(validCandidates) == 0 {
-		elseValue, err := i.evalExpr(env, pkgName, expr.Else)
-		if err != nil {
-			return evalResult{}, err
-		}
-		if elseValue.hasError {
-			return evalResult{hasError: true, errorVal: elseValue.errorVal}, nil
-		}
-		next = candidate{value: elseValue.value, score: 0}
-		hasSelection = true
-	} else {
+	// The highest score leads and the earliest case leads a tie. With no case
+	// valid, the else arm leads.
+	next := candidate{arm: utilityElseArm, score: 0}
+	if len(validCandidates) > 0 {
 		next = validCandidates[0]
-		hasSelection = true
 		for _, c := range validCandidates[1:] {
 			if c.score > next.score {
 				next = c
 			}
 		}
 	}
-	if !hasSelection {
-		return evalResult{}, fmt.Errorf("runtime invariant violation: utility when could not select value")
+
+	// The committed arm keeps its place while its condition still holds and
+	// either it has not been held for min_commit evaluations or the leader
+	// does not beat it by more than hysteresis. Both scores are the ones of
+	// this evaluation.
+	siteState := instance.UtilityWhenSites[expr.SiteID]
+	if siteState.HasCurrent {
+		if siteState.Arm != utilityElseArm && (siteState.Arm < 0 || siteState.Arm >= len(expr.Cases)) {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: utility when site %d is committed to arm %d of %d", expr.SiteID, siteState.Arm, len(expr.Cases))
+		}
+		for _, committed := range validCandidates {
+			if committed.arm != siteState.Arm {
+				continue
+			}
+			commitActive := siteState.CommitAge < minCommit
+			hysteresisBlocks := next.score <= committed.score+hysteresis
+			if commitActive || hysteresisBlocks {
+				next = committed
+			}
+			break
+		}
 	}
 
-	if expr.ControllerBound {
-		siteState := instance.UtilityWhenSites[expr.SiteID]
-		if siteState.HasCurrent {
-			currentStillValid := false
-			for _, c := range validCandidates {
-				if valuesEqual(c.value, siteState.Current) {
-					currentStillValid = true
-					break
-				}
-			}
-			if currentStillValid {
-				commitActive := siteState.CommitAge < minCommit
-				hysteresisBlocks := next.score <= siteState.Score+hysteresis
-				if commitActive || hysteresisBlocks {
-					next = candidate{value: siteState.Current, score: siteState.Score}
-				}
-			}
-		}
-		updated := siteState
-		if !updated.HasCurrent || !valuesEqual(updated.Current, next.value) {
-			updated.HasCurrent = true
-			updated.Current = cloneValue(next.value)
-			updated.Score = next.score
-			updated.CommitAge = 1
-		} else {
-			updated.Score = next.score
-			updated.CommitAge++
-		}
-		instance.UtilityWhenSites[expr.SiteID] = updated
+	// Only the selected arm's value is evaluated.
+	selected := expr.Else
+	if next.arm != utilityElseArm {
+		selected = expr.Cases[next.arm].Value
+	}
+	valueResult, err := i.evalExpr(env, pkgName, selected)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if valueResult.hasError {
+		return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
 	}
 
-	return evalResult{value: next.value}, nil
+	updated := siteState
+	if !updated.HasCurrent || updated.Arm != next.arm {
+		updated = utilityWhenSiteState{HasCurrent: true, Arm: next.arm, CommitAge: 1}
+	} else {
+		updated.CommitAge++
+	}
+	instance.UtilityWhenSites[expr.SiteID] = updated
+
+	return evalResult{value: valueResult.value}, nil
 }
 
-func (i interpreter) evalEnumTargetedUtilityWhenExpr(env *environment, pkgName string, expr ast.UtilityWhenExpr) (evalResult, error) {
+// evalStandaloneUtilityWhenExpr evaluates the conditions in source order, a
+// score only when its condition holds, and then the value of the selected
+// case alone, or the else value when no condition held. The highest score
+// wins and the earliest case wins a tie.
+func (i interpreter) evalStandaloneUtilityWhenExpr(env *environment, pkgName string, expr ast.UtilityWhenExpr) (evalResult, error) {
 	type candidate struct {
 		valueExpr ast.Expr
 		score     int64
@@ -2680,7 +2687,22 @@ regularCall:
 	}
 	if !ok {
 		if wrapperFn, wrapperOK := i.wrapperIndex.lookup(targetPkg, functionName); wrapperOK {
-			return i.evalGenericWrapperCall(wrapperFn, arguments)
+			// A wrapper function belongs to its package as a source function
+			// does: values cross the package boundary on the way in and out
+			// under the same naming rule.
+			if targetPkg != pkgName {
+				for index := range arguments {
+					arguments[index] = dequalifyTargetPackageValue(arguments[index], targetPkg)
+				}
+			}
+			result, err := i.evalGenericWrapperCall(wrapperFn, arguments)
+			if err != nil || result.hasError {
+				return result, err
+			}
+			if targetPkg != pkgName {
+				result.value = qualifyCrossPackageValue(result.value, targetPkg)
+			}
+			return result, nil
 		}
 		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", functionKey)
 	}

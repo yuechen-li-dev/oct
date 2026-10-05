@@ -1,0 +1,30 @@
+package LaneFixture
+
+// Synthetic fixture for cmd/oct/lane_attributes_test.go. It is about the
+// runner's reporting, not about Oct semantics.
+
+[Fact]
+fn Both() -> Void {
+    Assert.True(true, "runs in both lanes")
+}
+
+[Fact]
+[Interpreted("fixture: interpreted only")]
+fn OnlyInterpreted() -> Void {
+    let mount = UIMount(UIText("idle"))
+    Assert.Equal(0, Len(UIDrainEvents(mount)), "reaches a builtin the compiled lane does not build")
+}
+
+[Fact]
+[Compiled("fixture: compiled only")]
+fn OnlyCompiled() -> Void {
+    Assert.True(true, "runs in the compiled lane")
+}
+
+[Theory]
+[InlineData(1)]
+[InlineData(2)]
+[Compiled("fixture: compiled theory")]
+fn OnlyCompiledTheory(value: Int) -> Void {
+    Assert.True(value > 0, "each row runs in the compiled lane")
+}

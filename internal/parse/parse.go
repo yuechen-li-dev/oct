@@ -36,6 +36,44 @@ type parser struct {
 	nextUtilityWhenSiteID int
 	docByLine             map[int]ast.DocComment
 	markupSpans           []ast.MarkupSpan
+	// literalNameBindings records, innermost last, each binding in scope of
+	// a name that also begins a literal. See literalNameIsBound.
+	literalNameBindings []string
+}
+
+// `vector[a, b]` is a vector literal, and `vector[i]` indexes a value named
+// `vector`. The two have the same shape, so the name decides: where a
+// parameter, a `let` or `var`, a loop variable or a match binding named
+// `vector` is in scope, `vector[...]` indexes it, and elsewhere it is the
+// literal. Scope here is lexical and follows the source order, as it does for
+// every other name: a binding is visible from the statement after it to the
+// end of its block.
+//
+// `matrix` needs none of this. Its literal is `matrix[[...]]`, which one token
+// of lookahead tells apart from an index.
+
+// enterNameScope returns a mark for leaveNameScope.
+func (p *parser) enterNameScope() int { return len(p.literalNameBindings) }
+
+// leaveNameScope drops the bindings made since the mark.
+func (p *parser) leaveNameScope(mark int) { p.literalNameBindings = p.literalNameBindings[:mark] }
+
+// bindValueName records that name now refers to a value. Only a name that
+// also begins a literal needs recording.
+func (p *parser) bindValueName(name string) {
+	if name == "vector" {
+		p.literalNameBindings = append(p.literalNameBindings, name)
+	}
+}
+
+// literalNameIsBound reports whether name refers to a value at this point.
+func (p *parser) literalNameIsBound(name string) bool {
+	for _, bound := range p.literalNameBindings {
+		if bound == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *parser) parseFile(src source.File) (ast.File, error) {
@@ -84,6 +122,8 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	pendingInlineData := make([]ast.InlineDataRow, 0)
 	pendingSuites := make([]string, 0)
 	var pendingCycleTime ast.Expr
+	pendingLane := ""
+	pendingLaneReason := ""
 	pendingMakePlan := false
 	pendingMakePure := false
 	pendingMakeNoWhile := false
@@ -209,13 +249,23 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 					return ast.File{}, p.errorAtCurrent("duplicate [CycleTime] attribute on function")
 				}
 				pendingCycleTime = attribute.value
+			case "Interpreted", "Compiled":
+				lane := strings.ToLower(attribute.kind)
+				if pendingLane == lane {
+					return ast.File{}, p.errorAtCurrent(fmt.Sprintf("duplicate [%s] attribute on function", attribute.kind))
+				}
+				if pendingLane != "" {
+					return ast.File{}, p.errorAtCurrent("[Interpreted] and [Compiled] cannot both apply to the same function; a test that runs in both lanes takes neither")
+				}
+				pendingLane = lane
+				pendingLaneReason = attribute.reason
 			}
 			continue
 		}
 		switch p.current().Kind {
 		case lex.Identifier:
 			if p.current().Lexeme == "template" {
-				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 					return ast.File{}, p.errorAtCurrent("attributes cannot apply to a template declaration")
 				}
 				p.advance()
@@ -253,7 +303,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 					return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 				}
-				if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+				if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 					return ast.File{}, p.errorAtCurrent("test attributes cannot apply to a query declaration")
 				}
 				flow, err := p.parseQueryDecl()
@@ -266,7 +316,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if p.current().Lexeme != "go" {
 				return ast.File{}, p.errorAtCurrent("expected top-level declaration")
 			}
-			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("attributes cannot apply to an OctGo import declaration")
 			}
 			function, err := p.parseGoImportDecl()
@@ -278,7 +328,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 			}
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			conceptDecl, recordDecl, err := p.parseConceptDecl()
@@ -294,7 +344,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 			}
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			record, err := p.parseRecordDecl()
@@ -306,7 +356,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 			}
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			enumDecl, err := p.parseEnumDecl()
@@ -406,6 +456,15 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			} else if pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("[CycleTime] must apply to a [Theory] function")
 			}
+			if pendingLane != "" {
+				if !function.IsFact && !function.IsTheory {
+					return ast.File{}, p.errorAtCurrent("[Interpreted] and [Compiled] must apply to a [Fact] or [Theory] function")
+				}
+				function.TestLane = pendingLane
+				function.TestLaneReason = pendingLaneReason
+				pendingLane = ""
+				pendingLaneReason = ""
+			}
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				function.IsMakeFile = file.IsMakeFile
 				function.IsMakePlan = pendingMakePlan
@@ -438,7 +497,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 			}
-			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
 			flow, err := p.parseFlowDecl()
@@ -450,7 +509,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			return ast.File{}, p.errorAtCurrent("expected 'concept', 'record', 'enum', 'fn', 'async fn', 'flow', or 'query' at top level")
 		}
 	}
-	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil || pendingLane != "" {
 		return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 	}
 	if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
@@ -498,6 +557,8 @@ func (p *parser) parseQueryDecl() (ast.FlowDecl, error) {
 }
 
 func (p *parser) parseQueryDeclWithTemplate(isTemplate bool) (ast.FlowDecl, error) {
+	// Parameters are in scope for the body and no further.
+	defer p.leaveNameScope(p.enterNameScope())
 	queryToken, err := p.expect(lex.Identifier, "expected 'query' at top level")
 	if err != nil {
 		return ast.FlowDecl{}, err
@@ -898,6 +959,7 @@ func stmtContainsWhile(stmt ast.Stmt) bool {
 
 type testAttribute struct {
 	kind      string
+	reason    string
 	values    []ast.Expr
 	value     ast.Expr
 	suiteName string
@@ -996,6 +1058,26 @@ func (p *parser) parseTestAttribute() (testAttribute, error) {
 			return testAttribute{}, err
 		}
 		return testAttribute{kind: "Suite", suiteName: strings.TrimSpace(stringLiteral.Value)}, nil
+	case "Interpreted", "Compiled":
+		// A lane restriction states why. Without the reason it would be a
+		// way to hide a failure in the other lane.
+		requirement := fmt.Sprintf("[%s] requires a reason: [%s(\"why this test belongs to one lane\")]", name.Lexeme, name.Lexeme)
+		if p.current().Kind != lex.LeftParen {
+			return testAttribute{}, p.errorAtCurrent(requirement)
+		}
+		p.advance()
+		if p.current().Kind != lex.StringLiteral || strings.TrimSpace(p.current().Lexeme) == "" {
+			return testAttribute{}, p.errorAtCurrent(requirement)
+		}
+		reason := strings.TrimSpace(p.current().Lexeme)
+		p.advance()
+		if _, err := p.expect(lex.RightParen, fmt.Sprintf("expected ')' after [%s] reason", name.Lexeme)); err != nil {
+			return testAttribute{}, err
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+			return testAttribute{}, err
+		}
+		return testAttribute{kind: name.Lexeme, reason: reason}, nil
 	default:
 		return testAttribute{}, p.errorAtToken(name, fmt.Sprintf("unsupported attribute [%s]", name.Lexeme))
 	}
@@ -1119,6 +1201,8 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 }
 
 func (p *parser) parseFunctionDeclWithTemplate(isTemplate bool) (ast.FunctionDecl, error) {
+	// Parameters are in scope for the body and no further.
+	defer p.leaveNameScope(p.enterNameScope())
 	fnToken, err := p.expect(lex.KeywordFn, "expected 'fn' at top level")
 	if err != nil {
 		return ast.FunctionDecl{}, err
@@ -1182,6 +1266,8 @@ func (p *parser) parseFunctionDeclWithTemplate(isTemplate bool) (ast.FunctionDec
 }
 
 func (p *parser) parseGoImportDecl() (ast.FunctionDecl, error) {
+	// Parameters are in scope for the body and no further.
+	defer p.leaveNameScope(p.enterNameScope())
 	goToken, err := p.expect(lex.Identifier, "expected 'go' at top level")
 	if err != nil {
 		return ast.FunctionDecl{}, err
@@ -1234,6 +1320,8 @@ func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {
 }
 
 func (p *parser) parseFlowDeclWithTemplate(isTemplate bool) (ast.FlowDecl, error) {
+	// Parameters are in scope for the body and no further.
+	defer p.leaveNameScope(p.enterNameScope())
 	if _, err := p.expect(lex.KeywordFlow, "expected 'flow' at top level"); err != nil {
 		return ast.FlowDecl{}, err
 	}
@@ -1368,6 +1456,7 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 			return nil, err
 		}
 		parameters = append(parameters, ast.Parameter{Name: name.Lexeme, Type: typeRef})
+		p.bindValueName(name.Lexeme)
 
 		if !p.match(lex.Comma) {
 			break
@@ -1538,6 +1627,7 @@ func (p *parser) parseBlock() (ast.Block, error) {
 	if _, err := p.expect(lex.LeftBrace, "expected '{' to start block"); err != nil {
 		return ast.Block{}, err
 	}
+	defer p.leaveNameScope(p.enterNameScope())
 
 	var statements []ast.Stmt
 	for p.current().Kind != lex.RightBrace {
@@ -1751,6 +1841,9 @@ func (p *parser) parseLetStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The name is bound after its initializer: `let vector = vector[1.0, 2.0]`
+	// builds a literal and then names it.
+	p.bindValueName(name.Lexeme)
 	return ast.LetStmt{Name: name.Lexeme, TypeHint: typeHint, Value: value}, nil
 }
 
@@ -1775,6 +1868,7 @@ func (p *parser) parseVarStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	p.bindValueName(name.Lexeme)
 	return ast.VarStmt{Name: name.Lexeme, TypeHint: typeHint, Value: value}, nil
 }
 
@@ -1941,7 +2035,11 @@ func (p *parser) parseForStmt() (ast.Stmt, error) {
 			}
 		}
 	}
+	// The loop variable is in scope for the body, not for its own range.
+	loopScope := p.enterNameScope()
+	p.bindValueName(name.Lexeme)
 	body, err := p.parseBlock()
+	p.leaveNameScope(loopScope)
 	if err != nil {
 		return nil, err
 	}
@@ -2039,7 +2137,10 @@ func (p *parser) parseMatchArm(expectedName string) (string, ast.Block, error) {
 	if _, err := p.expect(lex.Arrow, fmt.Sprintf("expected arrow after %s arm", expectedName)); err != nil {
 		return "", ast.Block{}, err
 	}
+	armScope := p.enterNameScope()
+	p.bindValueName(binding.Lexeme)
 	body, err := p.parseBlock()
+	p.leaveNameScope(armScope)
 	if err != nil {
 		return "", ast.Block{}, err
 	}
@@ -2480,11 +2581,16 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 		return ast.BoolLiteral{Value: false}, nil
 	case lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.KeywordDescend:
 		p.advance()
-		if token.Lexeme == "vector" && p.current().Kind == lex.LeftBracket {
+		if token.Lexeme == "vector" && p.current().Kind == lex.LeftBracket && !p.literalNameIsBound("vector") {
 			return p.parseVectorLiteralExpr()
 		}
+		// `matrix[[...]]` is the literal. `matrix[` followed by anything else
+		// indexes a value named `matrix`; `matrix[]` stays on the literal path
+		// so that it reports an empty literal.
 		if token.Lexeme == "matrix" && p.current().Kind == lex.LeftBracket {
-			return p.parseMatrixLiteralExpr()
+			if next := p.peek(1).Kind; next == lex.LeftBracket || next == lex.RightBracket {
+				return p.parseMatrixLiteralExpr()
+			}
 		}
 		return ast.IdentifierExpr{Name: token.Lexeme}, nil
 	case lex.LeftParen:
@@ -2667,6 +2773,11 @@ func (p *parser) parseMarkupChildren(tag string, cursor int) ([]ast.MarkupChild,
 }
 
 func (p *parser) parseFunctionExpr() (ast.Expr, error) {
+	// A function value sees its parameters and its captures, and nothing of
+	// the function around it. Capture values are read in the outer scope.
+	outerBindings := p.literalNameBindings
+	p.literalNameBindings = nil
+	defer func() { p.literalNameBindings = outerBindings }()
 	fnToken, err := p.expect(lex.KeywordFn, "expected 'fn'")
 	if err != nil {
 		return nil, err
@@ -2712,10 +2823,14 @@ func (p *parser) parseFunctionExpr() (ast.Expr, error) {
 			if _, err := p.expect(lex.Colon, "expected ':' after capture name"); err != nil {
 				return nil, err
 			}
+			innerBindings := p.literalNameBindings
+			p.literalNameBindings = outerBindings
 			value, err := p.parseExpression()
+			p.literalNameBindings = innerBindings
 			if err != nil {
 				return nil, err
 			}
+			p.bindValueName(name.Lexeme)
 			function.Captures = append(function.Captures, ast.CaptureBinding{Name: name.Lexeme, Value: value, Line: name.Line, Column: name.Column})
 			p.match(lex.Comma)
 		}
@@ -2742,7 +2857,10 @@ func (p *parser) parseBatchExpr() (ast.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	itemScope := p.enterNameScope()
+	p.bindValueName(itemName.Lexeme)
 	body, err := p.parseBlock()
+	p.leaveNameScope(itemScope)
 	if err != nil {
 		return nil, err
 	}
@@ -2763,7 +2881,7 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 	switch modeToken.Lexeme {
 	case "policy":
 		controllerBound = true
-		policy, err = p.parseUtilityWhenPolicy(true)
+		policy, err = p.parseUtilityWhenPolicy()
 		if err != nil {
 			return nil, err
 		}
@@ -2775,15 +2893,10 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			enumTarget = &target
-			policy = ast.UtilityWhenPolicy{
-				Hysteresis: ast.IntegerLiteral{Value: "0"},
-				MinCommit:  ast.IntegerLiteral{Value: "0"},
-			}
-		} else {
-			policy, err = p.parseStandaloneUtilityWhenPolicy()
-			if err != nil {
-				return nil, err
-			}
+		}
+		policy, err = p.parseStandaloneUtilityWhenPolicy()
+		if err != nil {
+			return nil, err
 		}
 	default:
 		return nil, p.errorAtToken(modeToken, "expected 'policy' or 'utility' after 'when'")
@@ -2856,23 +2969,21 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 	}, nil
 }
 
+// parseStandaloneUtilityWhenPolicy supplies the policy of a `when utility`.
+// A standalone utility `when` is a one-shot choice that keeps no commitment
+// between evaluations, so hysteresis and min_commit could not do anything
+// there. A policy block is rejected instead of being accepted and ignored.
 func (p *parser) parseStandaloneUtilityWhenPolicy() (ast.UtilityWhenPolicy, error) {
-	if p.current().Kind != lex.LeftBrace {
-		return ast.UtilityWhenPolicy{
-			Hysteresis: ast.IntegerLiteral{Value: "0"},
-			MinCommit:  ast.IntegerLiteral{Value: "0"},
-		}, nil
+	if p.current().Kind == lex.LeftBrace && p.position+1 < len(p.tokens) && p.tokens[p.position+1].Kind == lex.Identifier {
+		return ast.UtilityWhenPolicy{}, p.errorAtToken(p.tokens[p.position+1], "`when utility` keeps no commitment between evaluations, so it takes no policy fields; `hysteresis` and `min_commit` belong to `when policy` inside a flow state")
 	}
-	if p.position+1 >= len(p.tokens) || p.tokens[p.position+1].Kind != lex.Identifier {
-		return ast.UtilityWhenPolicy{
-			Hysteresis: ast.IntegerLiteral{Value: "0"},
-			MinCommit:  ast.IntegerLiteral{Value: "0"},
-		}, nil
-	}
-	return p.parseUtilityWhenPolicy(false)
+	return ast.UtilityWhenPolicy{
+		Hysteresis: ast.IntegerLiteral{Value: "0"},
+		MinCommit:  ast.IntegerLiteral{Value: "0"},
+	}, nil
 }
 
-func (p *parser) parseUtilityWhenPolicy(requireAllFields bool) (ast.UtilityWhenPolicy, error) {
+func (p *parser) parseUtilityWhenPolicy() (ast.UtilityWhenPolicy, error) {
 	if _, err := p.expect(lex.LeftBrace, "expected '{' to start utility when policy"); err != nil {
 		return ast.UtilityWhenPolicy{}, err
 	}
@@ -2911,17 +3022,11 @@ func (p *parser) parseUtilityWhenPolicy(requireAllFields bool) (ast.UtilityWhenP
 		}
 	}
 	p.advance()
-	if hysteresis == nil && requireAllFields {
+	if hysteresis == nil {
 		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'hysteresis'")
 	}
-	if minCommit == nil && requireAllFields {
-		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'min_commit'")
-	}
-	if hysteresis == nil {
-		hysteresis = ast.IntegerLiteral{Value: "0"}
-	}
 	if minCommit == nil {
-		minCommit = ast.IntegerLiteral{Value: "0"}
+		return ast.UtilityWhenPolicy{}, p.errorAtCurrent("utility policy requires 'min_commit'")
 	}
 	return ast.UtilityWhenPolicy{Hysteresis: hysteresis, MinCommit: minCommit}, nil
 }
@@ -3147,7 +3252,10 @@ func (p *parser) parseMatchExpr() (ast.Expr, error) {
 		if _, err := p.expect(lex.Arrow, "expected arrow after match case"); err != nil {
 			return nil, err
 		}
+		caseScope := p.enterNameScope()
+		p.bindValueName(binding)
 		value, err := p.parseExpression()
+		p.leaveNameScope(caseScope)
 		if err != nil {
 			return nil, err
 		}

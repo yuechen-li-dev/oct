@@ -1,0 +1,78 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Kind: String
+    Dependencies: Dependency[]
+    Wrappers: Wrapper[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+record Wrapper {
+    Name: String
+    Family: String
+    Protocol: String
+    SidecarCommand: String
+    GoModuleDir: String
+    TransportTypes: WrapperTransportType[]
+    Functions: WrapperFunction[]
+}
+
+record WrapperTransportType {
+    Name: String
+    Kind: String
+    Fields: WrapperTransportField[]
+}
+
+record WrapperTransportField {
+    Name: String
+    Type: String
+}
+
+record WrapperFunction {
+    OctName: String
+    WireName: String
+    Args: String[]
+    Return: String
+    Fallible: Bool
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "WrapperLibrary"
+        Version: "0.1.0"
+        Description: "A library whose manifest declares wrapper functions"
+        Kind: "wrapper"
+        Dependencies: []
+        Wrappers: [
+            Wrapper {
+                Name: "test-wrapper"
+                Family: "TestWrapper"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-test-wrapper"
+                GoModuleDir: "wrappers/test"
+                TransportTypes: [
+                    WrapperTransportType {
+                        Name: "WrapperLibrary.TestOptions"
+                        Kind: "record"
+                        Fields: [
+                            WrapperTransportField { Name: "Count" Type: "Int" },
+                            WrapperTransportField { Name: "Name" Type: "String" }
+                        ]
+                    }
+                ]
+                Functions: [
+                    WrapperFunction { OctName: "EchoRaw" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "AddRaw" WireName: "TestAddInt" Args: ["Int", "Int"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "NextOptionsRaw" WireName: "TestEchoOptions" Args: ["WrapperLibrary.TestOptions"] Return: "WrapperLibrary.TestOptions" Fallible: true }
+                ]
+            }
+        ]
+    }
+}

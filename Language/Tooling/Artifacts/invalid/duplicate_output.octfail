@@ -1,0 +1,13 @@
+expect artifact error: "duplicate artifact output path"
+
+package Main
+
+[Artifact]
+fn FirstWriter() -> Void {
+    Artifact.WriteText("duplicate.txt", "first")
+}
+
+[Artifact]
+fn SecondWriter() -> Void {
+    Artifact.WriteText("duplicate.txt", "second")
+}

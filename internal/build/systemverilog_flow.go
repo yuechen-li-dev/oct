@@ -575,8 +575,8 @@ func (c *svContext) emitFlowModule(b *strings.Builder, moduleName string, flow M
 		prefix := fmt.Sprintf("UtilitySite%d", site.ID)
 		ports = append(ports,
 			fmt.Sprintf("    output logic %sHasCurrent", prefix),
-			fmt.Sprintf("    output %s %sCurrent", c.svType(site.Type), prefix),
-			fmt.Sprintf("    output logic signed [63:0] %sScore", prefix),
+			// The site is committed to an arm, by position; -1 is `else`.
+			fmt.Sprintf("    output logic signed [31:0] %sArm", prefix),
 			fmt.Sprintf("    output logic signed [63:0] %sCommitAge", prefix),
 		)
 	}
@@ -610,11 +610,11 @@ func (c *svContext) emitFlowModule(b *strings.Builder, moduleName string, flow M
 	}
 	for _, site := range sortedPersistentSVFlowUtilitySites(emit.utilitySites) {
 		prefix := fmt.Sprintf("UtilitySite%d", site.ID)
-		fmt.Fprintf(b, "logic Next%sHasCurrent;\n%s Next%sCurrent;\nlogic signed [63:0] Next%sScore;\nlogic signed [63:0] Next%sCommitAge;\n", prefix, c.svType(site.Type), prefix, prefix, prefix)
+		fmt.Fprintf(b, "logic Next%sHasCurrent;\nlogic signed [31:0] Next%sArm;\nlogic signed [63:0] Next%sCommitAge;\n", prefix, prefix, prefix)
 	}
 	for _, site := range sortedSVFlowUtilitySites(emit.utilitySites) {
 		prefix := fmt.Sprintf("UtilityComb%d", site.ID)
-		fmt.Fprintf(b, "logic %sValid;\nlogic %sCurrentStillValid;\n%s %sBestValue;\nlogic signed [63:0] %sBestScore;\nlogic signed [63:0] %sHysteresis;\nlogic signed [63:0] %sMinCommit;\n", prefix, prefix, c.svType(site.Type), prefix, prefix, prefix, prefix)
+		fmt.Fprintf(b, "logic %sValid;\nlogic %sCurrentStillValid;\nlogic signed [63:0] %sCurrentScore;\nlogic signed [31:0] %sBestArm;\n%s %sBestValue;\nlogic signed [63:0] %sBestScore;\nlogic signed [63:0] %sHysteresis;\nlogic signed [63:0] %sMinCommit;\n", prefix, prefix, prefix, prefix, c.svType(site.Type), prefix, prefix, prefix, prefix)
 	}
 	for _, local := range collectSVFlowLocals(flow) {
 		fmt.Fprintf(b, "%s %s;\n", c.svType(local.Type), emit.localNames[local.Name])
@@ -651,11 +651,11 @@ func (c *svContext) emitFlowModule(b *strings.Builder, moduleName string, flow M
 	}
 	for _, site := range sortedPersistentSVFlowUtilitySites(emit.utilitySites) {
 		prefix := fmt.Sprintf("UtilitySite%d", site.ID)
-		fmt.Fprintf(b, "    Next%sHasCurrent = %sHasCurrent;\n    Next%sCurrent = %sCurrent;\n    Next%sScore = %sScore;\n    Next%sCommitAge = %sCommitAge;\n", prefix, prefix, prefix, prefix, prefix, prefix, prefix, prefix)
+		fmt.Fprintf(b, "    Next%sHasCurrent = %sHasCurrent;\n    Next%sArm = %sArm;\n    Next%sCommitAge = %sCommitAge;\n", prefix, prefix, prefix, prefix, prefix, prefix)
 	}
 	for _, site := range sortedSVFlowUtilitySites(emit.utilitySites) {
 		prefix := fmt.Sprintf("UtilityComb%d", site.ID)
-		fmt.Fprintf(b, "    %sValid = 1'b0;\n    %sCurrentStillValid = 1'b0;\n    %sBestValue = '0;\n    %sBestScore = '0;\n    %sHysteresis = '0;\n    %sMinCommit = '0;\n", prefix, prefix, prefix, prefix, prefix, prefix)
+		fmt.Fprintf(b, "    %sValid = 1'b0;\n    %sCurrentStillValid = 1'b0;\n    %sCurrentScore = '0;\n    %sBestArm = -32'sd1;\n    %sBestValue = '0;\n    %sBestScore = '0;\n    %sHysteresis = '0;\n    %sMinCommit = '0;\n", prefix, prefix, prefix, prefix, prefix, prefix, prefix, prefix)
 	}
 	for _, local := range collectSVFlowLocals(flow) {
 		fmt.Fprintf(b, "    %s = '0;\n", emit.localNames[local.Name])
@@ -702,7 +702,7 @@ func (c *svContext) emitFlowModule(b *strings.Builder, moduleName string, flow M
 	}
 	for _, site := range sortedPersistentSVFlowUtilitySites(emit.utilitySites) {
 		prefix := fmt.Sprintf("UtilitySite%d", site.ID)
-		fmt.Fprintf(b, "        %sHasCurrent <= 1'b0;\n        %sCurrent <= '0;\n        %sScore <= '0;\n        %sCommitAge <= '0;\n", prefix, prefix, prefix, prefix)
+		fmt.Fprintf(b, "        %sHasCurrent <= 1'b0;\n        %sArm <= '0;\n        %sCommitAge <= '0;\n", prefix, prefix, prefix)
 	}
 	b.WriteString("    end else begin\n        State <= NextState;\n        Instruction <= NextInstruction;\n        Done <= NextDone;\n        Suspended <= NextSuspended;\n        Fault <= NextFault;\n")
 	if flow.Return != "Void" {
@@ -719,7 +719,7 @@ func (c *svContext) emitFlowModule(b *strings.Builder, moduleName string, flow M
 	}
 	for _, site := range sortedPersistentSVFlowUtilitySites(emit.utilitySites) {
 		prefix := fmt.Sprintf("UtilitySite%d", site.ID)
-		fmt.Fprintf(b, "        %sHasCurrent <= Next%sHasCurrent;\n        %sCurrent <= Next%sCurrent;\n        %sScore <= Next%sScore;\n        %sCommitAge <= Next%sCommitAge;\n", prefix, prefix, prefix, prefix, prefix, prefix, prefix, prefix)
+		fmt.Fprintf(b, "        %sHasCurrent <= Next%sHasCurrent;\n        %sArm <= Next%sArm;\n        %sCommitAge <= Next%sCommitAge;\n", prefix, prefix, prefix, prefix, prefix, prefix)
 	}
 	b.WriteString("    end\nend\n\nendmodule\n")
 	return nil
@@ -1295,14 +1295,28 @@ func (e *svFlowEmit) emitSharedEnumValue(value MIREnumValue, names map[string]st
 	return "{" + strings.Join(parts, ", ") + "}", nil
 }
 
+// emitUtilityExpression builds the selection network of a utility `when`.
+//
+// The cases are compared in source order: the highest score among those whose
+// condition holds leads, the earliest case leads a tie, and the else arm leads
+// when none holds. A `when policy` site is committed to an arm, by position,
+// and not to the value the arm produced: the committed arm keeps its place
+// while its condition holds and either it has been held for fewer than
+// min_commit evaluations or the leader does not beat its committed score by
+// more than hysteresis. The value is then taken from the one selected arm.
+// Hardware evaluates every operand combinationally, so "not evaluated" has no
+// meaning here; the selection is what matches the other backends.
 func (e *svFlowEmit) emitUtilityExpression(b *strings.Builder, utility MIRFlowUtilityWhenExpr, target string) error {
 	prefix := fmt.Sprintf("UtilityComb%d", utility.SiteID)
 	valid := prefix + "Valid"
 	currentStillValid := prefix + "CurrentStillValid"
+	currentScore := prefix + "CurrentScore"
+	bestArm := prefix + "BestArm"
 	bestValue := prefix + "BestValue"
 	bestScore := prefix + "BestScore"
 	hysteresis := prefix + "Hysteresis"
 	minCommit := prefix + "MinCommit"
+	statePrefix := fmt.Sprintf("UtilitySite%d", utility.SiteID)
 	hysteresisValue, err := e.flowExpressionString(utility.Hysteresis)
 	if err != nil {
 		return err
@@ -1312,7 +1326,8 @@ func (e *svFlowEmit) emitUtilityExpression(b *strings.Builder, utility MIRFlowUt
 		return err
 	}
 	fmt.Fprintf(b, "%s%s = %s;\n%s%s = %s;\n", e.indent, hysteresis, hysteresisValue, e.indent, minCommit, minCommitValue)
-	for _, candidate := range utility.Cases {
+	values := make([]string, 0, len(utility.Cases))
+	for index, candidate := range utility.Cases {
 		condition, err := e.flowExpressionString(candidate.Condition)
 		if err != nil {
 			return err
@@ -1325,10 +1340,12 @@ func (e *svFlowEmit) emitUtilityExpression(b *strings.Builder, utility MIRFlowUt
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(b, "%sif (%s) begin\n%s    if (!%s || %s > %s) begin\n%s        %s = 1'b1;\n%s        %s = %s;\n%s        %s = %s;\n%s    end\n", e.indent, condition, e.indent, valid, score, bestScore, e.indent, valid, e.indent, bestValue, value, e.indent, bestScore, score, e.indent)
+		values = append(values, value)
+		fmt.Fprintf(b, "%sif (%s) begin\n%s    if (!%s || %s > %s) begin\n%s        %s = 1'b1;\n%s        %s = 32'sd%d;\n%s        %s = %s;\n%s    end\n", e.indent, condition, e.indent, valid, score, bestScore, e.indent, valid, e.indent, bestArm, index, e.indent, bestScore, score, e.indent)
 		if utility.ControllerBound {
-			statePrefix := fmt.Sprintf("UtilitySite%d", utility.SiteID)
-			fmt.Fprintf(b, "%s    if (Next%sHasCurrent && %s == Next%sCurrent) %s = 1'b1;\n", e.indent, statePrefix, value, statePrefix, currentStillValid)
+			// The committed arm's condition holds: note that, and its score
+			// at this evaluation.
+			fmt.Fprintf(b, "%s    if (Next%sHasCurrent && Next%sArm == 32'sd%d) begin\n%s        %s = 1'b1;\n%s        %s = %s;\n%s    end\n", e.indent, statePrefix, statePrefix, index, e.indent, currentStillValid, e.indent, currentScore, score, e.indent)
 		}
 		fmt.Fprintf(b, "%send\n", e.indent)
 	}
@@ -1336,12 +1353,19 @@ func (e *svFlowEmit) emitUtilityExpression(b *strings.Builder, utility MIRFlowUt
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(b, "%sif (!%s) begin\n%s    %s = 1'b1;\n%s    %s = %s;\n%s    %s = 64'sd0;\n%send\n", e.indent, valid, e.indent, valid, e.indent, bestValue, elseValue, e.indent, bestScore, e.indent)
+	fmt.Fprintf(b, "%sif (!%s) begin\n%s    %s = 1'b1;\n%s    %s = -32'sd1;\n%s    %s = 64'sd0;\n%send\n", e.indent, valid, e.indent, valid, e.indent, bestArm, e.indent, bestScore, e.indent)
 	if utility.ControllerBound {
-		statePrefix := fmt.Sprintf("UtilitySite%d", utility.SiteID)
-		fmt.Fprintf(b, "%sif (Next%sHasCurrent && %s && ((Next%sCommitAge < %s) || (%s <= Next%sScore + %s))) begin\n%s    %s = Next%sCurrent;\n%s    %s = Next%sScore;\n%send\n", e.indent, statePrefix, currentStillValid, statePrefix, minCommit, bestScore, statePrefix, hysteresis, e.indent, bestValue, statePrefix, e.indent, bestScore, statePrefix, e.indent)
-		fmt.Fprintf(b, "%sif (!Next%sHasCurrent || Next%sCurrent != %s) begin\n%s    Next%sHasCurrent = 1'b1;\n%s    Next%sCurrent = %s;\n%s    Next%sScore = %s;\n%s    Next%sCommitAge = 64'sd1;\n%send else begin\n%s    Next%sScore = %s;\n%s    Next%sCommitAge = Next%sCommitAge + 64'sd1;\n%send\n", e.indent, statePrefix, statePrefix, bestValue, e.indent, statePrefix, e.indent, statePrefix, bestValue, e.indent, statePrefix, bestScore, e.indent, statePrefix, e.indent, e.indent, statePrefix, bestScore, e.indent, statePrefix, statePrefix, e.indent)
+		// The committed arm keeps its place while its condition holds and
+		// either min_commit has not elapsed or the leader does not beat it by
+		// more than hysteresis, both scores being this evaluation's.
+		fmt.Fprintf(b, "%sif (Next%sHasCurrent && %s && ((Next%sCommitAge < %s) || (%s <= %s + %s))) begin\n%s    %s = Next%sArm;\n%send\n", e.indent, statePrefix, currentStillValid, statePrefix, minCommit, bestScore, currentScore, hysteresis, e.indent, bestArm, statePrefix, e.indent)
+		fmt.Fprintf(b, "%sif (!Next%sHasCurrent || Next%sArm != %s) begin\n%s    Next%sHasCurrent = 1'b1;\n%s    Next%sArm = %s;\n%s    Next%sCommitAge = 64'sd1;\n%send else begin\n%s    Next%sCommitAge = Next%sCommitAge + 64'sd1;\n%send\n", e.indent, statePrefix, statePrefix, bestArm, e.indent, statePrefix, e.indent, statePrefix, bestArm, e.indent, statePrefix, e.indent, e.indent, statePrefix, statePrefix, e.indent)
 	}
+	fmt.Fprintf(b, "%scase (%s)\n", e.indent, bestArm)
+	for index, value := range values {
+		fmt.Fprintf(b, "%s    32'sd%d: %s = %s;\n", e.indent, index, bestValue, value)
+	}
+	fmt.Fprintf(b, "%s    default: %s = %s;\n%sendcase\n", e.indent, bestValue, elseValue, e.indent)
 	fmt.Fprintf(b, "%s%s = %s;\n", e.indent, target, bestValue)
 	return nil
 }

@@ -1,0 +1,12 @@
+expect error: "function 'WrapperRecordArgMismatch.DescribeOptions' argument 1 expects WrapperRecordArgMismatch.TestOptions, got String"
+
+package Main
+
+import WrapperRecordArgMismatch
+
+// The manifest of WrapperRecordArgMismatch declares DescribeOptions with a
+// record argument. A call is checked against the manifest's signature, as a
+// call to a source function is checked against its declaration.
+fn Main() -> Int ! Error {
+    return Len(WrapperRecordArgMismatch.DescribeOptions("x")?)
+}

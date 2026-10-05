@@ -1,0 +1,9 @@
+expect artifact error: "anything"
+
+package Main
+
+// Synthetic fixture: the artifact is produced, so the contract fails.
+[Artifact]
+fn Writes() -> Void {
+    Artifact.WriteText("out.txt", "published")
+}

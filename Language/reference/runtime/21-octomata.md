@@ -59,7 +59,7 @@ Octomata and records are complementary:
 - Board writes are valid only inside flow state bodies (including nested `if`/`when` inside a state body).
 - Controller utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
 - Standalone utility form `when utility { case value when condition score Int ... else value }` is an expression form valid wherever expressions are allowed.
-- Standalone `when utility` also accepts optional policy fields via `when utility { hysteresis: Int min_commit: Int } { ... }`; omitted fields default to `0`.
+- Standalone `when utility` takes no policy fields. It keeps no commitment between evaluations, so `hysteresis` and `min_commit` would have nothing to act on; writing them is an error.
 - `remember` stores the current state as a resume target.
 - `resume` jumps to the remembered target.
 - Resume storage is a single slot.
@@ -150,8 +150,8 @@ and variant constructors. External Go does not need compiler-private
 A checkpoint is legal after a turn ended at `yield`. It represents the machine
 after the yield: version and flow fingerprints, named state and opaque
 continuation position, construction values, private board, resume slot,
-feature-observed history, typed utility commitment state, and the last yielded
-value needed to preserve `DidYield`/`Yielded` observability. The completed turn
+feature-observed history, the commitment of each `when policy` site, and the
+last yielded value needed to preserve `DidYield`/`Yielded` observability. The completed turn
 input and state locals are absent. Restore rejects incompatible version, flow,
 fingerprint, state/continuation, board, construction, utility-site, and yield
 schemas with machine-readable reasons.
@@ -165,8 +165,11 @@ for the experimental host boundary; that byte encoding and generated naming
 are not a permanent Oct 1.0 ABI and may change across compiler revisions.
 Logical checkpoint schema version 3 adds deterministic typed recursive values
 for records, nested records, plain and payload enums, arrays, vectors, and
-matrices. Older logical checkpoint versions are rejected rather than silently
-reinterpreted.
+matrices. Version 4 records the commitment of a `when policy` site as the arm
+it is committed to and how long it has been held, in place of the value that
+arm produced and the score it had; a site of any result type is therefore
+checkpointable, in both lanes. Older logical
+checkpoint versions are rejected rather than silently reinterpreted.
 
 For the deterministic, effect-free subset, continuing an in-memory machine and
 serializing, restoring, then continuing from the same boundary must produce the
@@ -530,15 +533,52 @@ fn LocalOwner(a: Int, b: Int) -> Int {
 In utility `when`, the `else` arm is the default selected value when no case qualifies as the winner.
 It is not a statement-style `return`; it is the fallback candidate in the selection set.
 
-Standalone utility selection evaluates policy expressions first, then visits
-cases in source order. Each condition is evaluated once. A false condition
-skips its score and value. For each true condition, its dimensionless `Int`
-score and value are evaluated once. The greatest score wins; equal scores keep
-the earliest source case. If no condition is true, only the required `else`
-value is evaluated. All case values and `else` must have one result type, and
-the expression returns that type directly. Because scores are `Int`, NaN is
-not representable in the established utility surface. `Float` scores and a
-separate decision-evidence result are not part of this form.
+Standalone utility selection visits the cases in source order. Each condition
+is evaluated once. A false condition skips its score. For each true condition
+its dimensionless `Int` score is evaluated once. The greatest score wins; equal
+scores keep the earliest source case. Then the value of the selected case is
+evaluated, and no other value: a case that lost, or whose condition was false,
+contributes nothing but its condition and, when that held, its score. If no
+condition is true, the required `else` value is evaluated. All case values and
+`else` must have one result type, and the expression returns that type
+directly. Because scores are `Int`, NaN is not representable in the established
+utility surface. `Float` scores and a separate decision-evidence result are not
+part of this form.
+
+This is the rule `if`, `switch` and `match` follow: an expression that is not
+selected is not evaluated. It cannot fail, a `?` in it does not propagate, and
+a call in it does not run. The plain form and the enum-targeted form below
+follow it alike, in the interpreted and in the compiled lane, in functions and
+in flow states.
+
+Controller-bound `when policy` follows the same rule: conditions in order, a
+score only for a true condition, and then the value of the one selected arm.
+It differs in how the arm is selected, which is from the scores and the site's
+commitment and never from a value.
+
+A site is committed to an arm of the `when`, identified by its position, and
+not to the value that arm produced:
+
+- An arm whose value changes from one evaluation to the next is still the same
+  choice. While it is held, the value delivered is the arm's value at that
+  evaluation.
+- Two arms that produce equal values are different choices. Moving from one
+  to the other is a change of commitment.
+- The `else` arm is selected only while no condition is true. It is never held
+  against a case, whatever `hysteresis` and `min_commit` say.
+
+The committed arm keeps its place while its condition is true and either it
+has been held for fewer than `min_commit` evaluations or the leading arm does
+not beat it by more than `hysteresis`. Otherwise the leading arm, the one with
+the greatest score, is selected and becomes the commitment.
+
+Both scores in that comparison are the scores of this evaluation. The score
+an arm had when it was committed is not remembered: a committed arm whose
+score has fallen is as easy to replace as its present score says, and one
+whose score has risen is as hard.
+
+A `when policy` may be the whole of a `let` or `return`, or part of a larger
+expression; its commitment is the same in either place.
 
 Use this when multiple valid choices compete and you need explicit arbitration.
 Avoid this when a single guard decides the branch; guard `when` is the simpler form.
@@ -558,7 +598,7 @@ when utility PumpJudgment {
 }
 ```
 
-This enum-targeted form is still one-shot utility selection. It supports tag-only variants and explicit single-payload variant construction such as `LabDecision.Retest(3)`, `LabDecision.Treat(2.5)`, and `LabDecision.Escalate("critical")`. Payload expressions are evaluated only for the selected candidate or selected `else` fallback; losing candidate payloads are not evaluated. Utility cases do not bind payloads, and selected payloads are analyzed later with ordinary `match`.
+This enum-targeted form is still one-shot utility selection. It supports tag-only variants and explicit single-payload variant construction such as `LabDecision.Retest(3)`, `LabDecision.Treat(2.5)`, and `LabDecision.Escalate("critical")`. Payload expressions are evaluated only for the selected candidate or selected `else` fallback; losing candidate payloads are not evaluated. That is the standalone rule above, applied to payloads. Utility cases do not bind payloads, and selected payloads are analyzed later with ordinary `match`.
 
 It does not add hidden state, controller commitment memory, hysteresis, `min_commit`, or enum-attached policy. Octomata remains responsible for behavioral progression through states, boards, guard `when`, and controller-bound `when policy`.
 
@@ -587,9 +627,9 @@ flow PumpController(pressure: Float, fault: Bool) -> Int {
 
 `hysteresis` and `min_commit` exist to prevent unstable arbitration behavior.
 
-- `hysteresis`: requires a meaningful score gap before switching away from current choice.
+- `hysteresis`: requires a meaningful score gap, measured now, before switching away from the committed arm.
   - Practical effect: reduces chatter near threshold ties.
-- `min_commit`: forces a chosen policy to stick for a minimum number of ticks/steps.
+- `min_commit`: forces the committed arm to stick for a minimum number of evaluations.
   - Practical effect: prevents immediate flip-flop from transient noise.
 
 Without them (unstable near threshold):

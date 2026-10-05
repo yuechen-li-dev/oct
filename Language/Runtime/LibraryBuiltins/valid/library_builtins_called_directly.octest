@@ -1,0 +1,37 @@
+package LibraryBuiltins
+
+// The builtins under the standard libraries are runtime primitives of the
+// language. The interpreted lane implements them inside `oct`, and the
+// compiled lane sends them to a first-party sidecar. A program may call one
+// directly and gets the same answer in both lanes. The compiled lane needs
+// the sidecars of the builtins it reaches: here octxiliary-hash and
+// octxiliary-text.
+
+[Fact]
+fn HashOfTextIsTheSameInBothLanes() -> Void {
+    Assert.Equal("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", HashSha256Text("abc"), "SHA-256 of abc")
+}
+
+[Fact]
+fn RegexBuiltinsAreTheSameInBothLanes() -> Void ! Error {
+    Assert.True(RegexIsMatch("^a+b$", "aaab")?, "the pattern matches")
+    Assert.False(RegexIsMatch("^a+b$", "abb")?, "the pattern does not match")
+    Assert.Equal("x-y-z", RegexReplaceAll(" +", "x y   z", "-")?, "runs of spaces are replaced")
+    let parts = RegexSplit(",", "a,b,c")?
+    Assert.Equal(3, Len(parts), "three parts")
+    Assert.Equal("c", parts[2], "the last part")
+    let found = RegexFindAll("[0-9]+", "a1 b22 c333")?
+    Assert.Equal(3, Len(found), "three numbers")
+    Assert.Equal("22", found[1], "the second number")
+}
+
+[Fact]
+fn AnInvalidPatternIsAnErrorInBothLanes() -> Void ! Error {
+    // A call that succeeds first: without it, a compiled run with no sidecar
+    // would satisfy the match below with the wrong error.
+    Assert.True(RegexIsMatch("x", "x")?, "the builtin is reachable")
+    match RegexIsMatch("(", "x") {
+        ok(matched) => { Assert.True(false, "an unclosed group is not a pattern") }
+        err(e) => { Assert.True(true, "the builtin reports the pattern") }
+    }
+}

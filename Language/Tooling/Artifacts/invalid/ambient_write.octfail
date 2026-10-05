@@ -1,0 +1,8 @@
+expect artifact error: "outside Artifact.Write*"
+
+package Main
+
+[Artifact]
+fn UsesAmbientWrite() -> Void {
+    FileWriteText("ambient.txt", "not allowed")!
+}

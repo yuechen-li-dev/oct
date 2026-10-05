@@ -12,29 +12,24 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/yuechen-li-dev/oct/internal/sidecarcache"
 )
 
 var (
-	testSidecarDirOnce sync.Once
-	testSidecarDirPath string
-	testSidecarDirErr  error
-	testSidecarMu      sync.Mutex
-	testSidecarBuilt   = map[string]struct{}{}
-	testOctBinOnce     sync.Once
-	testOctBinDir      string
-	testOctBinPath     string
-	testOctBinErr      error
-	sharedExpBaseOnce  sync.Once
-	sharedExpBaseDir   string
-	sharedExpBaseURL   string
-	sharedExpBaseErr   error
+	testSidecarMu     sync.Mutex
+	testOctBinOnce    sync.Once
+	testOctBinDir     string
+	testOctBinPath    string
+	testOctBinErr     error
+	sharedExpBaseOnce sync.Once
+	sharedExpBaseDir  string
+	sharedExpBaseURL  string
+	sharedExpBaseErr  error
 )
 
 func TestMain(m *testing.M) {
 	code := m.Run()
-	if testSidecarDirPath != "" {
-		_ = os.RemoveAll(testSidecarDirPath)
-	}
 	if testOctBinDir != "" {
 		_ = os.RemoveAll(testOctBinDir)
 	}
@@ -44,35 +39,39 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// sharedTestSidecarDir returns a directory holding the named sidecars for the
+// slow wrapper lanes. See cachedTestSidecarDir.
 func sharedTestSidecarDir(t *testing.T, names ...string) string {
 	t.Helper()
 	requireSlowOctxiliary(t)
+	return cachedTestSidecarDir(t, names...)
+}
+
+// cachedTestSidecarDir returns a directory holding the named sidecars, for
+// use as OCT_WRAPPER_PATH. A directory the environment already names is used
+// when it has them. Otherwise the sidecars come from the persistent cache of
+// internal/sidecarcache: they are built the first time and reused by every
+// later run until their sources change, so asking for them costs a source
+// listing, not a build.
+func cachedTestSidecarDir(t *testing.T, names ...string) string {
+	t.Helper()
 	if envDir, ok := existingSidecarDir(names...); ok {
 		return envDir
 	}
-	testSidecarDirOnce.Do(func() {
-		testSidecarDirPath, testSidecarDirErr = os.MkdirTemp("", "oct-sidecars-*")
-	})
-	if testSidecarDirErr != nil {
-		t.Fatalf("create shared sidecar dir: %v", testSidecarDirErr)
+	commands := make([]string, 0, len(names))
+	for _, name := range names {
+		commands = append(commands, octxiliaryCommandName(name))
 	}
-	repo := filepath.Join("..", "..")
 	testSidecarMu.Lock()
 	defer testSidecarMu.Unlock()
-	for _, name := range names {
-		command := octxiliaryCommandName(name)
-		if _, ok := testSidecarBuilt[command]; ok {
-			continue
-		}
-		outPath := filepath.Join(testSidecarDirPath, sidecarBinaryName(command))
-		build := exec.Command("go", "build", "-o", outPath, "./cmd/"+command)
-		build.Dir = repo
-		if out, err := build.CombinedOutput(); err != nil {
-			t.Fatalf("build %s: %v\n%s", command, err, strings.TrimSpace(string(out)))
-		}
-		testSidecarBuilt[command] = struct{}{}
+	result, err := sidecarcache.Ensure(filepath.Join("..", ".."), commands)
+	if err != nil {
+		t.Fatalf("prepare sidecars %v: %v", commands, err)
 	}
-	return testSidecarDirPath
+	if len(result.Built) > 0 {
+		t.Logf("built sidecars %v into %s", result.Built, result.Dir)
+	}
+	return result.Dir
 }
 
 func existingSidecarDir(names ...string) (string, bool) {

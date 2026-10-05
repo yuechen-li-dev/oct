@@ -1639,107 +1639,45 @@ func octBatchHelpers() string {
 	return strings.ReplaceAll(helpers, "__OCT_BATCH_MIN_ITEMS_PER_WORKER__", fmt.Sprint(batchplan.MinItemsPerWorker))
 }
 
-const __octUtilityCandidate = `
-type __octUtilCandidate[T any] struct {
-	Valid bool
-	Value T
-	Score int
-}
-`
-
-const __octGenericUtilityHelpers = `
+// __octUtilityHelpers is the commitment of a `when policy` site in a compiled
+// flow. The site is committed to an arm, identified by its position in the
+// `when`, and not to the value that arm produced.
+const __octUtilityHelpers = `
 type __octUtilitySiteState struct {
-	HasCurrent bool
-	Current any
-	Score int
-	CommitAge int
+	HasCurrent bool ` + "`json:\"has_current\"`" + `
+	Arm        int  ` + "`json:\"arm\"`" + `
+	CommitAge  int  ` + "`json:\"commit_age\"`" + `
 }
 
-func __octUtilSelect[T any](sites map[int]__octUtilitySiteState, siteID int, hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue T) T {
-	valid := make([]__octUtilCandidate[T], 0, len(candidates))
-	for _, c := range candidates {
-		if c.Valid {
-			valid = append(valid, c)
+// __octUtilCommittedArm is the arm the site is committed to. A site that has
+// made no choice yet answers with a number no arm has.
+func __octUtilCommittedArm(site *__octUtilitySiteState) int {
+	if !site.HasCurrent {
+		return -2
+	}
+	return site.Arm
+}
+
+// __octUtilCommit applies the policy. leader is the arm with the highest
+// score among those whose condition held, or -1 for the else arm with score
+// 0. committedHolds says whether the committed arm's condition held, and
+// committedScore is its score at this evaluation when it did. The committed
+// arm keeps its place while it holds and either it has been held for fewer
+// than minCommit evaluations or the leader does not beat it by more than
+// hysteresis.
+func __octUtilCommit(site *__octUtilitySiteState, hysteresis int, minCommit int, leader int, leaderScore int, committedHolds bool, committedScore int) int {
+	next := leader
+	if site.HasCurrent && committedHolds {
+		if site.CommitAge < minCommit || leaderScore <= committedScore+hysteresis {
+			next = site.Arm
 		}
 	}
-	next := __octUtilCandidate[T]{Valid: true, Value: elseValue, Score: 0}
-	if len(valid) > 0 {
-		next = valid[0]
-		for _, c := range valid[1:] {
-			if c.Score > next.Score {
-				next = c
-			}
-		}
-	}
-	site := sites[siteID]
-	if site.HasCurrent {
-		currentStillValid := false
-		for _, c := range valid {
-			if reflect.DeepEqual(c.Value, site.Current) {
-				currentStillValid = true
-				break
-			}
-		}
-		if currentStillValid {
-			commitActive := site.CommitAge < minCommit
-			hysteresisBlocks := next.Score <= site.Score+hysteresis
-			if commitActive || hysteresisBlocks {
-				next = __octUtilCandidate[T]{Valid: true, Value: site.Current.(T), Score: site.Score}
-			}
-		}
-	}
-	if !site.HasCurrent || !reflect.DeepEqual(site.Current, next.Value) {
-		sites[siteID] = __octUtilitySiteState{HasCurrent: true, Current: next.Value, Score: next.Score, CommitAge: 1}
+	if !site.HasCurrent || site.Arm != next {
+		*site = __octUtilitySiteState{HasCurrent: true, Arm: next, CommitAge: 1}
 	} else {
-		site.Score = next.Score
-		site.CommitAge++
-		sites[siteID] = site
-	}
-	return next.Value
-}
-`
-
-const __octScalarUtilityHelpers = `
-type __octScalarUtilitySiteState[T comparable] struct {
-	HasCurrent bool
-	Current T
-	Score int
-	CommitAge int
-}
-
-func __octUtilSelectScalar[T comparable](site *__octScalarUtilitySiteState[T], hysteresis int, minCommit int, candidates []__octUtilCandidate[T], elseValue T) T {
-	next := __octUtilCandidate[T]{}
-	for _, candidate := range candidates {
-		if candidate.Valid && (!next.Valid || candidate.Score > next.Score) {
-			next = candidate
-		}
-	}
-	if !next.Valid {
-		next = __octUtilCandidate[T]{Valid: true, Value: elseValue, Score: 0}
-	}
-	if site.HasCurrent {
-		currentStillValid := false
-		for _, candidate := range candidates {
-			if candidate.Valid && candidate.Value == site.Current {
-				currentStillValid = true
-				break
-			}
-		}
-		if currentStillValid {
-			commitActive := site.CommitAge < minCommit
-			hysteresisBlocks := next.Score <= site.Score+hysteresis
-			if commitActive || hysteresisBlocks {
-				next = __octUtilCandidate[T]{Valid: true, Value: site.Current, Score: site.Score}
-			}
-		}
-	}
-	if !site.HasCurrent || site.Current != next.Value {
-		*site = __octScalarUtilitySiteState[T]{HasCurrent: true, Current: next.Value, Score: next.Score, CommitAge: 1}
-	} else {
-		site.Score = next.Score
 		site.CommitAge++
 	}
-	return next.Value
+	return next
 }
 `
 

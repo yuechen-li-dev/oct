@@ -45,7 +45,7 @@ func TestCheckRuntimeOctFailDecidesPerLane(t *testing.T) {
 				return run()
 			}}
 		}
-		actual, err := checkRuntimeOctFail("boom", c.mode, []octFailLane{lane("interpreted", c.interpreted), lane("compiled", c.compiled)})
+		actual, err := checkRuntimeOctFail([]string{"boom"}, c.mode, []octFailLane{lane("interpreted", c.interpreted), lane("compiled", c.compiled)})
 		if got := strings.Join(ran, ","); got != c.wantRan {
 			t.Errorf("%s: lanes run = %q, want %q", c.name, got, c.wantRan)
 		}
@@ -58,44 +58,40 @@ func TestCheckRuntimeOctFailDecidesPerLane(t *testing.T) {
 	}
 }
 
-func TestParseOctFailExpectationReadsBothHeaders(t *testing.T) {
-	cases := []struct {
-		content     string
-		expected    string
-		runtime     bool
-		source      string
-		errContains string
-	}{
-		{"expect error: \"a\"\nbody\n", "a", false, "body\n", ""},
-		{"\n\nexpect runtime error: \"b c\"\nbody\n", "b c", true, "body\n", ""},
-		{"expect runtime error: \"\"\nbody\n", "", false, "", "non-empty"},
-		{"expect warning: \"a\"\nbody\n", "", false, "", "malformed expectation header"},
-		{"expect error: \"a\"\nexpect runtime error: \"b\"\n", "", false, "", "multiple expectation headers"},
-		{"expect runtime error: \"a\"\nexpect error: \"b\"\n", "", false, "", "multiple expectation headers"},
-		{"\n \n", "", false, "", "missing expectation header"},
-	}
-	for _, c := range cases {
-		expected, runtime, source, err := parseOctFailExpectation(c.content)
-		if c.errContains != "" {
-			if err == nil || !strings.Contains(err.Error(), c.errContains) {
-				t.Errorf("%q: err = %v, want one containing %q", c.content, err, c.errContains)
-			}
-			continue
+// The exported parser serves corpora that only compile and take one
+// expectation. Any other fixture handed to one of them is an error, not a
+// fixture that "failed to fail".
+func TestParseOctFailFixtureServesOnlyThePlainForm(t *testing.T) {
+	for _, content := range []string{
+		"expect runtime error: \"a\"\nbody\n",
+		"expect artifact error: \"a\"\nbody\n",
+		"expect error: \"a\"\nexpect error: \"b\"\nbody\n",
+	} {
+		if _, _, err := ParseOctFailFixture(content); err == nil {
+			t.Errorf("%q was accepted as a plain compile-time expectation", content)
 		}
-		if err != nil || expected != c.expected || runtime != c.runtime || source != c.source {
-			t.Errorf("%q: got (%q, %v, %q, %v)", c.content, expected, runtime, source, err)
-		}
-	}
-}
-
-// The exported parser serves corpora that only compile. A runtime fixture
-// handed to one of them is an error, not a fixture that "failed to fail".
-func TestParseOctFailFixtureRefusesRuntimeHeader(t *testing.T) {
-	if _, _, err := ParseOctFailFixture("expect runtime error: \"a\"\nbody\n"); err == nil {
-		t.Fatalf("a runtime header was accepted as a compile-time expectation")
 	}
 	if expected, source, err := ParseOctFailFixture("expect error: \"a\"\nbody\n"); err != nil || expected != "a" || source != "body\n" {
 		t.Fatalf("compile-time header: got (%q, %q, %v)", expected, source, err)
+	}
+}
+
+// Every expected text must appear in the one failure.
+func TestOctFailRequiresEveryExpectedText(t *testing.T) {
+	failure := errors.New("instantiating A -> B from b.oct: return is Float<m^2>")
+	if actual, err := judgeCompileTimeOctFail([]string{"A -> B", "b.oct", "Float<m^2>"}, failure); err != nil {
+		t.Errorf("all texts present: got (%q, %v)", actual, err)
+	}
+	if _, err := judgeCompileTimeOctFail([]string{"A -> B", "c.oct"}, failure); err == nil || !strings.Contains(err.Error(), `"c.oct"`) {
+		t.Errorf("a missing text was not reported: %v", err)
+	}
+	fails := func() (string, bool, error) { return "runtime error: boom at 3", true, nil }
+	lanes := []octFailLane{{name: "interpreted", run: fails}}
+	if actual, err := checkRuntimeOctFail([]string{"boom", "at 3"}, "interpreted", lanes); err != nil {
+		t.Errorf("all runtime texts present: got (%q, %v)", actual, err)
+	}
+	if _, err := checkRuntimeOctFail([]string{"boom", "at 4"}, "interpreted", lanes); err == nil || !strings.Contains(err.Error(), `"at 4"`) {
+		t.Errorf("a missing runtime text was not reported: %v", err)
 	}
 }
 
@@ -103,21 +99,45 @@ func TestParseOctFailFixtureRefusesRuntimeHeader(t *testing.T) {
 // compiler's complaint about generated code. That can no longer happen.
 func TestCompileTimeOctFailIsNotSatisfiedByAGoBuildFailure(t *testing.T) {
 	rejected := errors.New("function Main: operator + not defined for String and Int")
-	if actual, err := judgeCompileTimeOctFail("operator + not defined", rejected); err != nil || actual != rejected.Error() {
+	if actual, err := judgeCompileTimeOctFail([]string{"operator + not defined"}, rejected); err != nil || actual != rejected.Error() {
 		t.Errorf("a compiler rejection with the expected text: got (%q, %v)", actual, err)
 	}
-	if _, err := judgeCompileTimeOctFail("some other text", rejected); err == nil {
+	if _, err := judgeCompileTimeOctFail([]string{"some other text"}, rejected); err == nil {
 		t.Errorf("a compiler rejection without the expected text was accepted")
 	}
-	if _, err := judgeCompileTimeOctFail("anything", nil); err == nil {
+	if _, err := judgeCompileTimeOctFail([]string{"anything"}, nil); err == nil {
 		t.Errorf("a source that compiled was accepted")
 	}
 	goBuild := fmt.Errorf("%w: exit status 1: invalid operation: operator + not defined on xs (variable of type []int)", build.ErrGeneratedProgramDidNotBuild)
-	actual, err := judgeCompileTimeOctFail("operator + not defined", goBuild)
+	actual, err := judgeCompileTimeOctFail([]string{"operator + not defined"}, goBuild)
 	if err == nil {
 		t.Fatalf("a Go build failure satisfied the contract")
 	}
 	if !strings.Contains(actual, "the generated program did not build") {
 		t.Errorf("the report does not say what happened: %q", actual)
+	}
+}
+
+// An artifact fixture passes only when evaluation fails with every expected
+// text and leaves nothing in the output root.
+func TestJudgeArtifactOctFail(t *testing.T) {
+	failure := errors.New("1 artifact(s) failed")
+	stdout := "Execution: build-time-interpreted\nFAIL Main.Fails (x.octest): fatal error: stops here\n"
+	if actual, err := judgeArtifactOctFail([]string{"FAIL Main.Fails", "stops here"}, stdout, failure, nil); err != nil || !strings.Contains(actual, "fatal error: stops here; 1 artifact(s) failed") {
+		t.Errorf("failed evaluation with every text: got (%q, %v)", actual, err)
+	}
+	if actual, err := judgeArtifactOctFail([]string{"stops here"}, "", nil, nil); err == nil || actual != "artifact evaluation completed" {
+		t.Errorf("completed evaluation: got (%q, %v)", actual, err)
+	}
+	if _, err := judgeArtifactOctFail([]string{"stops here", "elsewhere"}, stdout, failure, nil); err == nil || !strings.Contains(err.Error(), `"elsewhere"`) {
+		t.Errorf("a missing text was not reported: %v", err)
+	}
+	// The header line of the report is not part of the failure.
+	if _, err := judgeArtifactOctFail([]string{"build-time-interpreted"}, stdout, failure, nil); err == nil {
+		t.Errorf("text from outside the FAIL lines satisfied the contract")
+	}
+	actual, err := judgeArtifactOctFail([]string{"stops here"}, stdout, failure, []string{"out/a.txt"})
+	if err == nil || !strings.Contains(actual, "still published out/a.txt") {
+		t.Errorf("published output after a failure: got (%q, %v)", actual, err)
 	}
 }

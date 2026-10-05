@@ -10,18 +10,6 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/plotrender"
 )
 
-type plotSize struct {
-	width  int
-	height int
-}
-
-type plotLabels struct {
-	title  string
-	x      string
-	y      string
-	legend string
-}
-
 func main() {
 	if err := octxiliary.ReadHandshake(os.Stdin); err != nil {
 		return
@@ -57,6 +45,9 @@ func main() {
 	}
 }
 
+// The three wire functions take the arguments of the builtins of the same
+// name: the data, the output path, the width and height in pixels, and the
+// title, x label, y label and legend.
 func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 	if req.Family != "Plot" {
 		return octxiliary.Value{}, fmt.Errorf("unknown family %q", req.Family)
@@ -64,19 +55,20 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 	if !req.HasArgs {
 		return octxiliary.Value{}, fmt.Errorf("generic args missing")
 	}
+	xyKinds := []octxiliary.ValueKind{octxiliary.ValueFloatArray, octxiliary.ValueFloatArray, octxiliary.ValueString, octxiliary.ValueInt, octxiliary.ValueInt, octxiliary.ValueString, octxiliary.ValueString, octxiliary.ValueString, octxiliary.ValueString}
 	switch req.Function {
 	case "PlotRenderLine":
-		if err := expect(req.Args, octxiliary.ValueFloatArray, octxiliary.ValueFloatArray, octxiliary.ValueString, octxiliary.ValueRecord, octxiliary.ValueRecord); err != nil {
+		if err := expect(req.Args, xyKinds...); err != nil {
 			return octxiliary.Value{}, err
 		}
 		return renderXY(req.Function, plotrender.KindLine, req.Args)
 	case "PlotRenderScatter":
-		if err := expect(req.Args, octxiliary.ValueFloatArray, octxiliary.ValueFloatArray, octxiliary.ValueString, octxiliary.ValueRecord, octxiliary.ValueRecord); err != nil {
+		if err := expect(req.Args, xyKinds...); err != nil {
 			return octxiliary.Value{}, err
 		}
 		return renderXY(req.Function, plotrender.KindScatter, req.Args)
 	case "PlotRenderHistogram":
-		if err := expect(req.Args, octxiliary.ValueFloatArray, octxiliary.ValueInt, octxiliary.ValueString, octxiliary.ValueRecord, octxiliary.ValueRecord); err != nil {
+		if err := expect(req.Args, octxiliary.ValueFloatArray, octxiliary.ValueInt, octxiliary.ValueString, octxiliary.ValueInt, octxiliary.ValueInt, octxiliary.ValueString, octxiliary.ValueString, octxiliary.ValueString, octxiliary.ValueString); err != nil {
 			return octxiliary.Value{}, err
 		}
 		return renderHistogram(req.Function, req.Args)
@@ -86,76 +78,26 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 }
 
 func renderXY(functionName string, kind plotrender.Kind, args []octxiliary.Value) (octxiliary.Value, error) {
-	size, err := decodeSize(args[3])
-	if err != nil {
-		return octxiliary.Value{}, err
-	}
-	labels, err := decodeLabels(args[4])
-	if err != nil {
-		return octxiliary.Value{}, err
-	}
 	if err := finiteFloats(args[0].Floats, "x"); err != nil {
 		return octxiliary.Value{}, err
 	}
 	if err := finiteFloats(args[1].Floats, "y"); err != nil {
 		return octxiliary.Value{}, err
 	}
-	if err := plotrender.Render(plotrender.Request{FunctionName: functionName, Kind: kind, XS: args[0].Floats, YS: args[1].Floats, OutputPath: args[2].String, Width: plotrender.PixelLength(size.width), Height: plotrender.PixelLength(size.height), Title: labels.title, XLabel: labels.x, YLabel: labels.y, Legend: labels.legend}); err != nil {
+	if err := plotrender.Render(plotrender.Request{FunctionName: functionName, Kind: kind, XS: args[0].Floats, YS: args[1].Floats, OutputPath: args[2].String, Width: plotrender.PixelLength(args[3].Int), Height: plotrender.PixelLength(args[4].Int), Title: args[5].String, XLabel: args[6].String, YLabel: args[7].String, Legend: args[8].String}); err != nil {
 		return octxiliary.Value{}, err
 	}
 	return octxiliary.Value{Kind: octxiliary.ValueInt, Int: 0}, nil
 }
 
 func renderHistogram(functionName string, args []octxiliary.Value) (octxiliary.Value, error) {
-	size, err := decodeSize(args[3])
-	if err != nil {
-		return octxiliary.Value{}, err
-	}
-	labels, err := decodeLabels(args[4])
-	if err != nil {
-		return octxiliary.Value{}, err
-	}
 	if err := finiteFloats(args[0].Floats, "values"); err != nil {
 		return octxiliary.Value{}, err
 	}
-	if err := plotrender.Render(plotrender.Request{FunctionName: functionName, Kind: plotrender.KindHistogram, XS: args[0].Floats, OutputPath: args[2].String, Width: plotrender.PixelLength(size.width), Height: plotrender.PixelLength(size.height), Title: labels.title, XLabel: labels.x, YLabel: labels.y, Legend: labels.legend, HistogramBin: args[1].Int}); err != nil {
+	if err := plotrender.Render(plotrender.Request{FunctionName: functionName, Kind: plotrender.KindHistogram, XS: args[0].Floats, OutputPath: args[2].String, Width: plotrender.PixelLength(args[3].Int), Height: plotrender.PixelLength(args[4].Int), Title: args[5].String, XLabel: args[6].String, YLabel: args[7].String, Legend: args[8].String, HistogramBin: args[1].Int}); err != nil {
 		return octxiliary.Value{}, err
 	}
 	return octxiliary.Value{Kind: octxiliary.ValueInt, Int: 0}, nil
-}
-
-func decodeSize(value octxiliary.Value) (plotSize, error) {
-	if value.Kind != octxiliary.ValueRecord || value.RecordType != "Plot.Size" {
-		return plotSize{}, fmt.Errorf("expected Plot.Size record")
-	}
-	if len(value.Fields) != 2 || value.Fields[0].Name != "Width" || value.Fields[1].Name != "Height" {
-		return plotSize{}, fmt.Errorf("Plot.Size fields must be Width, Height")
-	}
-	if value.Fields[0].Value.Kind != octxiliary.ValueInt || value.Fields[1].Value.Kind != octxiliary.ValueInt {
-		return plotSize{}, fmt.Errorf("Plot.Size fields must be Int")
-	}
-	return plotSize{width: value.Fields[0].Value.Int, height: value.Fields[1].Value.Int}, nil
-}
-
-func decodeLabels(value octxiliary.Value) (plotLabels, error) {
-	if value.Kind != octxiliary.ValueRecord || value.RecordType != "Plot.Labels" {
-		return plotLabels{}, fmt.Errorf("expected Plot.Labels record")
-	}
-	want := []string{"Title", "X", "Y", "Legend"}
-	if len(value.Fields) != len(want) {
-		return plotLabels{}, fmt.Errorf("Plot.Labels fields must be Title, X, Y, Legend")
-	}
-	strings := make([]string, len(want))
-	for i, name := range want {
-		if value.Fields[i].Name != name {
-			return plotLabels{}, fmt.Errorf("Plot.Labels fields must be Title, X, Y, Legend")
-		}
-		if value.Fields[i].Value.Kind != octxiliary.ValueString {
-			return plotLabels{}, fmt.Errorf("Plot.Labels field %s must be String", name)
-		}
-		strings[i] = value.Fields[i].Value.String
-	}
-	return plotLabels{title: strings[0], x: strings[1], y: strings[2], legend: strings[3]}, nil
 }
 
 func finiteFloats(values []float64, label string) error {

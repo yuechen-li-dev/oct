@@ -786,7 +786,7 @@ func TestCheckValidatesM41aFlowStaticSurface(t *testing.T) {
 		"flow Boarded(flag: Bool) -> Int { board { FaultLatched: Bool Count: Int Cooldown: Float Label: String } state S { when { case flag -> { remember board.FaultLatched = true board.Count = board.Count + 1 goto Hold } else -> { board.Label = \"idle\" suspend } } } state Hold { return board.Count } } fn Main() -> Int { return 0 }",
 		"flow Utility(flag: Bool) -> Int { state S { let x = when policy { hysteresis: 2 min_commit: 1 } { case 7 when flag score 100 else 3 } return x } } fn Main() -> Int { return 0 }",
 		"fn Main(flag: Bool) -> Int { return when utility { case 7 when flag score 100 else 3 } }",
-		"fn Main(flag: Bool) -> Int { return when utility { hysteresis: 2 } { case 7 when flag score 100 else 3 } }",
+		"fn Main(flag: Bool) -> Int { return when utility { case 7 when flag score 100 else 3 } }",
 		"flow Remembered(flag: Bool) -> Int { state A { remember goto B } state B { if flag { resume } return 3 } } fn Main() -> Int { return 0 }",
 	}
 	for _, src := range validPrograms {

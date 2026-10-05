@@ -83,6 +83,12 @@ func LoadWithImportAnchor(path string, anchor string) (Program, error) {
 	return loadFromFileAnchored(path, filepath.Dir(path), false, nil, anchor)
 }
 
+// LoadForTestWithImportAnchor is LoadWithImportAnchor for a test source: the
+// copied file may declare test attributes such as [Artifact].
+func LoadForTestWithImportAnchor(path string, anchor string) (Program, error) {
+	return loadFromFileAnchored(path, filepath.Dir(path), true, nil, anchor)
+}
+
 func load(path string, includeTests bool) (Program, error) {
 	return loadWithSelectedFiles(path, includeTests, nil)
 }
@@ -256,9 +262,15 @@ type builder struct {
 	manifestDeps     map[string]map[string]string
 	cachedDeps       map[string]string
 	selectedFiles    map[string]map[string]struct{}
+	// entryPackage is the first package loaded: the program or the selected
+	// test file's package. See validateManifest.
+	entryPackage string
 }
 
 func (b *builder) loadPackage(packageName string, directory string) error {
+	if b.entryPackage == "" {
+		b.entryPackage = packageName
+	}
 	if _, ok := b.visited[packageName]; ok {
 		return nil
 	}
@@ -603,22 +615,33 @@ func (b *builder) validateManifest(packageName string, directory string) (manife
 			return manifestValidationResult{}, fmt.Errorf("read package manifest %s: %w", manifestPath, err)
 		}
 	}
+	// The manifest of an imported package is read whenever it exists, and one
+	// that is wrong is an error even where a manifest is not required.
+	// Dropping it would silently remove the package's wrapper declarations
+	// and leave its stub bodies to run.
+	//
+	// The entry package's manifest is checked only where manifests are
+	// required. A file selected on its own runs beside a manifest that is
+	// wrong, which cmd/oct's single-file target tests pin, and a milestone
+	// directory run on its own borrows a family manifest that names the
+	// family and not the milestone's package.
+	strict := b.requireManifests || packageName != b.entryPackage
 	manifestFile, err := parseFile(manifestPath)
 	if err != nil {
-		if !b.requireManifests {
+		if !strict {
 			return manifestValidationResult{}, nil
 		}
 		return manifestValidationResult{}, err
 	}
 	if err := validateManifestFile(packageName, manifestFile); err != nil {
-		if !b.requireManifests {
+		if !strict {
 			return manifestValidationResult{}, nil
 		}
 		return manifestValidationResult{}, err
 	}
 	metadata, err := pkgmgr.LoadManifestMetadata(manifestPath)
 	if err != nil {
-		if !b.requireManifests {
+		if !strict {
 			return manifestValidationResult{}, nil
 		}
 		return manifestValidationResult{}, err

@@ -6,43 +6,12 @@ record PackageManifest {
     Description: String
     Authors: String[]
     Date: String
-    Kind: String
     Dependencies: Dependency[]
-    Wrappers: Wrapper[]
 }
 
 record Dependency {
     Name: String
     VersionRequirement: String
-}
-
-record Wrapper {
-    Name: String
-    Family: String
-    Protocol: String
-    SidecarCommand: String
-    GoModuleDir: String
-    TransportTypes: WrapperTransportType[]
-    Functions: WrapperFunction[]
-}
-
-record WrapperTransportType {
-    Name: String
-    Kind: String
-    Fields: WrapperTransportField[]
-}
-
-record WrapperTransportField {
-    Name: String
-    Type: String
-}
-
-record WrapperFunction {
-    OctName: String
-    WireName: String
-    Args: String[]
-    Return: String
-    Fallible: Bool
 }
 
 fn Manifest() -> PackageManifest {
@@ -52,44 +21,6 @@ fn Manifest() -> PackageManifest {
         Authors: ["Codex"]
         Date: "2026-06-15"
         Description: "Thin IO wrappers for practical external package integration"
-        Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
-        Wrappers: [
-            Wrapper {
-                Name: "io-csv"
-                Family: "Csv"
-                Protocol: "octxiliary.v0"
-                SidecarCommand: "octxiliary-csv"
-                GoModuleDir: "octxiliary"
-                TransportTypes: []
-                Functions: [
-                    WrapperFunction { OctName: "Read" WireName: "CsvRead" Args: ["String"] Return: "String[][]" Fallible: true },
-                    WrapperFunction { OctName: "Write" WireName: "CsvWrite" Args: ["String", "String[][]"] Return: "Int" Fallible: true }
-                ]
-            },
-            Wrapper {
-                Name: "xlsx"
-                Family: "Xlsx"
-                Protocol: "octxiliary.v0"
-                SidecarCommand: "octxiliary-xlsx"
-                GoModuleDir: "octxiliary"
-                TransportTypes: [
-                    WrapperTransportType {
-                        Name: "IO.Workbook"
-                        Kind: "handle"
-                        Fields: [
-                            WrapperTransportField { Name: "Handle" Type: "Int" }
-                        ]
-                    }
-                ]
-                Functions: [
-                    WrapperFunction { OctName: "CreateWorkbook" WireName: "XlsxCreateWorkbook" Args: [] Return: "IO.Workbook" Fallible: false },
-                    WrapperFunction { OctName: "AddSheet" WireName: "XlsxAddSheet" Args: ["IO.Workbook", "String"] Return: "Int" Fallible: true },
-                    WrapperFunction { OctName: "SetCellString" WireName: "XlsxSetCellString" Args: ["IO.Workbook", "String", "String", "String"] Return: "Int" Fallible: true },
-                    WrapperFunction { OctName: "SetCellFloat" WireName: "XlsxSetCellFloat" Args: ["IO.Workbook", "String", "String", "Float"] Return: "Int" Fallible: true },
-                    WrapperFunction { OctName: "SaveWorkbook" WireName: "XlsxSaveWorkbook" Args: ["IO.Workbook", "String"] Return: "Int" Fallible: true }
-                ]
-            }
-        ]
     }
 }

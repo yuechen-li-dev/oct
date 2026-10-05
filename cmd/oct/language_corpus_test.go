@@ -38,34 +38,32 @@ var languagePackageSets = []string{
 	"Language/Types/TemplateTortureM0/packages",
 }
 
-// Directories another test owns. Each is an expected failure, or needs a
-// harness this test does not have.
+// Directories another test owns, with the reason this test cannot run them.
 var languageRunElsewhere = map[string]string{
-	"Language/Tooling/Artifacts/valid":                                  "artifact entry points; internal/tester/artifact_phase_test.go and internal/build/compiler_test.go",
-	"Language/Tooling/Artifacts/invalid":                                "one expected artifact failure per file; internal/tester/artifact_phase_test.go",
-	"Language/Tooling/ConceptCapabilitiesM2/valid":                      "artifact entry points that need native grants; internal/tester/artifact_phase_test.go",
-	"Language/Tooling/ConceptCapabilitiesM2/invalid":                    "one expected artifact failure per file; internal/tester/artifact_phase_test.go",
-	"Language/Testing/CompiledOctxiliary/valid":                         "needs built wrapper sidecars and is compiled-only; toolchain lane, cmd/oct/generic_octxiliary_test.go",
-	"Language/Testing/CompiledOctxiliary/invalid/fallible_mismatch":     "expected lowering failure; cmd/oct/generic_octxiliary_test.go",
-	"Language/Testing/CompiledOctxiliary/invalid/record_arg_mismatch":   "expected lowering failure; cmd/oct/generic_octxiliary_test.go",
-	"Language/Testing/CompiledOctxiliary/invalid/return_mismatch":       "expected lowering failure; cmd/oct/generic_octxiliary_test.go",
-	"Language/Testing/CompiledOctxiliary/invalid/undeclared_record_arg": "expected manifest failure; cmd/oct/generic_octxiliary_test.go",
-	"Language/Testing/InterpretedOctxiliary/valid":                      "needs the test wrapper sidecar and is interpreted-only; toolchain lane",
-	"Language/Types/Bytes/valid":                                        "needs the io wrapper sidecar; toolchain lane",
-	"Language/Types/TemplateTortureM0/provenance":                       "expected instantiation failure; internal/project/template_torture_m0_test.go",
+	"Language/Tooling/ConceptCapabilitiesM2/valid": "artifact entry points that are run with native grants, one of them to be refused; internal/tester/artifact_phase_test.go",
 }
 
-// A lane that is known not to support a directory yet. The lane must fail,
-// and with this text: when support arrives the entry has to go.
+// Directories whose tests call a wrapper sidecar. They are run with
+// OCT_WRAPPER_PATH set to the sidecar cache (internal/sidecarcache), which
+// builds a sidecar the first time it is asked for and reuses it afterwards.
+// Every other directory runs with no sidecar available.
+var languageSidecars = map[string][]string{
+	"Language/Runtime/LibraryBuiltins/valid":       {"octxiliary-hash", "octxiliary-text"},
+	"Language/Testing/CompiledOctxiliary/valid":    {"octxiliary-test-wrapper", "octxiliary-io"},
+	"Language/Testing/InterpretedOctxiliary/valid": {"octxiliary-test-wrapper"},
+	"Language/Types/Bytes/valid":                   {"octxiliary-io"},
+}
+
+// A known gap is a directory that fails in one lane because that lane lacks a
+// feature. The failure is required: when the lane gains the feature the entry
+// fails this test and has to be removed.
 type corpusGap struct {
 	directory string
 	lane      corpusLane
 	contains  string
 }
 
-var languageKnownGaps = []corpusGap{
-	{"Language/Expressions/UtilityWhen/valid", laneCompiled, "compiled enum-targeted utility payload candidates require delayed payload lowering"},
-}
+var languageKnownGaps = []corpusGap{}
 
 var corpusFactAttribute = regexp.MustCompile(`(?m)^\s*\[(Fact|Theory)\b`)
 
@@ -116,6 +114,11 @@ func TestLanguageCorpusRunsInBothLanes(t *testing.T) {
 			t.Errorf("%s holds no .octest files; remove it from languageKnownGaps", gap.directory)
 		}
 	}
+	for directory := range languageSidecars {
+		if !seen[directory] {
+			t.Errorf("%s holds no .octest files; remove it from languageSidecars", directory)
+		}
+	}
 	sort.Strings(targets)
 
 	for _, directory := range targets {
@@ -136,7 +139,11 @@ func TestLanguageCorpusRunsInBothLanes(t *testing.T) {
 		}
 		for _, lane := range []corpusLane{laneInterpreted, laneCompiled} {
 			t.Run(directory+"/"+string(lane), func(t *testing.T) {
-				stdout, stderr, err := runOctInRepository(t, repo, "test", path, "--execution", string(lane))
+				wrapperPath := ""
+				if sidecars, needed := languageSidecars[directory]; needed {
+					wrapperPath = absoluteTestPath(t, cachedTestSidecarDir(t, sidecars...))
+				}
+				stdout, stderr, err := runOctWithWrapperPath(t, repo, wrapperPath, "test", path, "--execution", string(lane))
 				if gap, known := gapFor(directory, lane); known {
 					if err == nil {
 						t.Fatalf("%s now passes in the %s lane; remove it from languageKnownGaps", directory, lane)
@@ -248,22 +255,43 @@ func corpusFailureLines(stdout string) string {
 }
 
 // runOctInRepository runs the oct binary with the repository root as its
-// working directory, which is where a person runs it from.
+// working directory, which is where a person runs it from. No wrapper sidecar
+// is available to the run.
 func runOctInRepository(t *testing.T, repo string, args ...string) (string, string, error) {
 	t.Helper()
-	binary := sharedTestOctBinary(t)
-	if !filepath.IsAbs(binary) {
-		absolute, err := filepath.Abs(binary)
-		if err != nil {
-			t.Fatal(err)
-		}
-		binary = absolute
-	}
-	cmd := exec.Command(binary, args...)
+	return runOctWithWrapperPath(t, repo, "", args...)
+}
+
+// runOctWithWrapperPath is runOctInRepository with OCT_WRAPPER_PATH set to
+// wrapperPath. An empty wrapperPath removes the variable, so that a sidecar
+// directory in the caller's environment cannot make a fixture pass.
+func runOctWithWrapperPath(t *testing.T, repo string, wrapperPath string, args ...string) (string, string, error) {
+	t.Helper()
+	cmd := exec.Command(absoluteTestPath(t, sharedTestOctBinary(t)), args...)
 	cmd.Dir = repo
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "OCT_WRAPPER_PATH=") {
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	if wrapperPath != "" {
+		cmd.Env = append(cmd.Env, "OCT_WRAPPER_PATH="+wrapperPath)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
+}
+
+func absoluteTestPath(t *testing.T, path string) string {
+	t.Helper()
+	if filepath.IsAbs(path) {
+		return path
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return absolute
 }

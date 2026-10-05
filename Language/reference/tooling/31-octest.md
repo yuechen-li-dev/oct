@@ -4,7 +4,7 @@
 
 `oct test` executes test contracts from `.octest` and `.octfail` files.
 `.octest` files are ordinary Oct package files with test-lane metadata; they use normal `package`, `import`, typechecking, and package-root resolution rules.
-`.octfail` files are negative contracts: they pass only when the declared error substring is produced, either when the source is compiled or, for a runtime expectation, when its `Main` runs.
+`.octfail` files are negative contracts: they pass only when the declared error substring is produced, when the source is compiled, when its `Main` runs (a runtime expectation), or when its `[Artifact]` entry points are evaluated (an artifact expectation).
 
 `oct test <path>` discovers `.octest` and `.octfail` files recursively under `<path>`.
 A single `.octest` file may also contain `[Artifact]` and `[Benchmark]` functions, but `oct test` runs only `[Fact]` and `[Theory]` cases plus `.octfail` checks.
@@ -108,10 +108,12 @@ fn FallibleSmoke() -> Void {
 }
 ```
 
-An `.octfail` file holds a program that must fail. Its first non-blank line is one expectation header, and the rest is ordinary Oct source checked as a `.oct` file. The source is checked as a copy, on its own: it may `import` a library of the repository it lives in, but files and packages beside it are not part of it.
+An `.octfail` file holds a program that must fail. It begins with one or more expectation lines, and the rest is Oct source. The source is checked as a copy, on its own: it may `import` a package, but the files beside it are not part of it.
 
 - `expect error: "<non-empty substring>"` is a compile-time contract. The file passes when compilation fails with an error containing the substring. It fails if the source compiles.
 - `expect runtime error: "<non-empty substring>"` is a runtime contract. The source must compile, and running its `Main` must stop with a failure whose message contains the substring: a runtime error, a failed `Assert.True`, a failed `!` unwrap, or an `Error` returned from a fallible `Main`. The file fails if the source does not compile, if `Main` runs to completion, or if the message does not contain the substring.
+
+- `expect artifact error: "<non-empty substring>"` is an artifact contract. The source is a test source that declares `[Artifact]` entry points, and the file passes when `oct artifact` evaluation of it fails with the substring in a `FAIL` line or in the error, and publishes nothing. It fails if evaluation completes, and it fails if the evaluation fails but leaves an output behind. Artifact evaluation has one implementation, so the result is the same in every execution mode.
 
 A runtime contract is checked per execution lane. Under the default `--execution auto` the interpreted lane and the compiled lane must both fail with the expected text; `--execution interpreted` and `--execution compiled` check that lane alone. Neither lane stands in for the other. A compiled run that does not stop within 30 seconds fails the contract.
 
@@ -129,7 +131,58 @@ fn Main() -> Void {
 }
 ```
 
-A file with a malformed header, an empty substring, or more than one header is an error.
+An artifact contract:
+
+```oct
+expect artifact error: "artifact failure is visible"
+
+package Main
+
+[Artifact]
+fn FailsFallibly() -> Void ! Error {
+    Artifact.WriteText("must-not-publish.txt", "staged before failure")
+    let _value = FailArtifact()?
+}
+
+fn FailArtifact() -> Int ! Error {
+    return error("artifact failure is visible")
+}
+```
+
+### Several expectation lines
+
+A file may state several expectation lines. They come first, one after another with no blank line between them, and all name the same kind of failure. The one failure must contain every text. Use this when a diagnostic has to carry several facts that are not adjacent in the message:
+
+```oct
+expect error: "instantiating Shapes.Outer<Float<m>> -> Shapes.Inner<Float<m>> from"
+expect error: "inner.oct"
+expect error: "function expects Float<m>, but return is Float<m^2>"
+
+package Main
+
+import Shapes
+
+fn Main() -> Float<m> {
+    return Shapes.Outer<Float<m>>(2.0m)
+}
+```
+
+### A failure that needs more than one file
+
+The source of an `.octfail` is one file. When the failure needs more — a second source file, or a `manifest.oct` — put those in a package and import it. A `Packages/` directory beside the fixture is searched before the repository's `Libraries/`:
+
+```text
+invalid/
+  wrapper_return_mismatch.octfail        import WrapperReturnMismatch
+  Packages/
+    WrapperReturnMismatch/
+      manifest.oct
+      WrapperReturnMismatch.oct
+```
+
+The manifest of an imported package is read whenever it exists. One that does not parse or validate is an error for the program that imports the package, including for a program in a directory that requires no manifest.
+
+A file with a malformed expectation line, an empty substring, expectation lines of different kinds, or an expectation line after the source has begun is an error.
 
 ## Skips and cycle time
 
@@ -150,14 +203,43 @@ oct test <path> --execution auto
 ```
 
 `auto` is the default when `--execution` is omitted.
-In `auto`, the runner first tries compiled execution for each `.octest` case and falls back to interpreted execution when compiled execution is unsupported for that case.
+In `auto`, the runner first tries compiled execution for each `.octest` case and falls back to interpreted execution when compiled execution is unsupported for that case. Tests restricted to one lane are the exception; see [Execution lane restrictions](#execution-lane-restrictions-interpreted-and-compiled).
 In `compiled`, a test case must run through the compiled test path or it fails.
 In `interpreted`, tests run through source interpretation.
 
 Compiled test execution may build and run generated compiled artifacts internally, but users should treat this as a test execution mode rather than a stable artifact layout. When `OCT_KEEP_TEST_ARTIFACTS=1` is used for diagnostics, each owned runner scope retains distinct `<case>.generated.go` source and `<case>.octbin[.exe]` executable paths; the Windows executable suffix is `.octbin.exe`.
-Some packages still use language/library features that are not compiled-supported, and missing wrapper sidecars can affect compiled wrapper tests.
+Some packages still use language/library features that are not compiled-supported. A compiled test that reaches a standard-library builtin needs that builtin's sidecar, and a test that calls a manifest wrapper function needs the wrapper's sidecar in both lanes; see [17 standard libraries](../language/17-standard-libraries.md) and [33 oct pkg](./33-oct-pkg.md).
 Interpreted and compiled parity is tracked by package and test coverage, so do not assume every test package compiles until it has been run in compiled mode.
 A compile-time `.octfail` is checked the same way in every execution mode. A runtime `.octfail` is run in the lanes that the execution mode selects.
+
+## Execution lane restrictions: `[Interpreted]` and `[Compiled]`
+
+A `[Fact]` or `[Theory]` may be restricted to one execution lane, interpreted or compiled:
+
+```oct
+[Fact]
+[Interpreted("reaches UIMount, which the compiled lane does not build")]
+fn MountHasNoEventsBeforeInput() -> Void {
+    let mount = UIMount(UIText("idle"))
+    Assert.Equal(0, Len(UIDrainEvents(mount)), "no events before any input")
+}
+
+[Fact]
+[Compiled("measures the generated program; the interpreter is not what is being timed")]
+fn CompiledSumStaysUnderItsBudget() -> Void {
+    Assert.True(SumToMillion() > 0, "the compiled sum runs")
+}
+```
+
+- The reason is required. It is a non-empty string literal, and the runner prints it whenever it skips the test.
+- The attribute applies to `[Fact]` and `[Theory]` functions only. On a `[Theory]` it covers every `[InlineData]` row. It does not apply to `[Artifact]` or `[Benchmark]` functions.
+- `[Interpreted]` and `[Compiled]` cannot both apply to one function. A test that runs in both lanes takes neither.
+- `--execution interpreted` reports a `[Compiled]` test as `SKIP`, and `--execution compiled` reports an `[Interpreted]` test as `SKIP`. A skipped test is counted as skipped, not as passed.
+- `--execution auto` runs every test, each in its own lane. A `[Compiled]` test that the compiled lane cannot build or run fails; it does not fall back to interpreted execution. An `[Interpreted]` test is not counted as a fallback.
+- The compiled lane does not build an `[Interpreted]` test, so such a test may reach a builtin the compiled lane does not support without affecting the other tests in its file.
+- The whole file is still parsed and typechecked in every mode. A lane restriction selects execution; it does not excuse a type error.
+
+Use a lane restriction only when the lane is the subject of the test: the two lanes are specified to behave differently and the test pins one of those behaviours. Do not use it for a feature that one lane is missing. A test for a missing feature should fail in that lane until the feature is implemented; restricting it hides the gap.
 
 ## File and layout conventions
 

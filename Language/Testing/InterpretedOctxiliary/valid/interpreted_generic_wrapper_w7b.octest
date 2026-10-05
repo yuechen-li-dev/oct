@@ -19,8 +19,3 @@ fn InterpretedGenericWrapperW7bSidecarError() -> Void ! Error {
         }
     }
 }
-
-[Fact]
-fn InterpretedGenericWrapperW7bSourcePrecedence() -> Void ! Error {
-    Assert.Equal("source:value", ShadowRaw("value")?, "source function should take precedence over manifest raw metadata")
-}

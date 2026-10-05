@@ -1,0 +1,41 @@
+package IfErrNotEqualNil
+
+fn ParsePort(raw: String) -> Int ! Error {
+    if raw == "443" {
+        return 443
+    }
+    return error("invalid port")
+}
+
+// The compatibility-oriented spelling of `return ParsePort(raw)?`.
+fn PortCompat(raw: String) -> Int ! Error {
+    let port = IfErrNotEqualNil<Int>(ParsePort(raw)?)
+    return port
+}
+
+[Fact]
+fn HandledValueIsReturnedUnchanged() -> Void {
+    Assert.Equal(443, IfErrNotEqualNil<Int>(ParsePort("443")!), "an Int passes through")
+    Assert.Equal("nil", IfErrNotEqualNil<String>("nil"), "a String passes through")
+    Assert.True(IfErrNotEqualNil<Bool>(true), "a Bool passes through")
+}
+
+[Fact]
+fn ErrorIsPropagatedBeforeTheWrapperIsCalled() -> Void {
+    var outcome = "unset"
+    match PortCompat("eighty") {
+        ok(_) => { outcome = "ok" }
+        err(_) => { outcome = "err" }
+    }
+    Assert.Equal("err", outcome, "`?` returned the error; the wrapper had nothing to do")
+}
+
+[Fact]
+fn CompatSpellingAgreesWithPostfixPropagation() -> Void {
+    var viaCompat = 0
+    match PortCompat("443") {
+        ok(port) => { viaCompat = port }
+        err(_) => { viaCompat = -1 }
+    }
+    Assert.Equal(ParsePort("443")!, viaCompat, "same value as `ParsePort(raw)?`")
+}

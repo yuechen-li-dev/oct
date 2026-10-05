@@ -6,31 +6,12 @@ record PackageManifest {
     Description: String
     Authors: String[]
     Date: String
-    Kind: String
     Dependencies: Dependency[]
-    Wrappers: Wrapper[]
 }
 
 record Dependency {
     Name: String
     VersionRequirement: String
-}
-
-record Wrapper {
-    Name: String
-    Family: String
-    Protocol: String
-    SidecarCommand: String
-    GoModuleDir: String
-    Functions: WrapperFunction[]
-}
-
-record WrapperFunction {
-    OctName: String
-    WireName: String
-    Args: String[]
-    Return: String
-    Fallible: Bool
 }
 
 fn Manifest() -> PackageManifest {
@@ -40,21 +21,6 @@ fn Manifest() -> PackageManifest {
         Authors: ["Codex"]
         Date: "2026-06-15"
         Description: "Thin archive wrappers for practical zip workflows"
-        Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
-        Wrappers: [
-            Wrapper {
-                Name: "archive"
-                Family: "Archive"
-                Protocol: "octxiliary.v0"
-                SidecarCommand: "octxiliary-archive"
-                GoModuleDir: "octxiliary"
-                Functions: [
-                    WrapperFunction { OctName: "ListEntries" WireName: "ZipListEntries" Args: ["String"] Return: "String[]" Fallible: true },
-                    WrapperFunction { OctName: "ExtractAll" WireName: "ZipExtractAll" Args: ["String", "String"] Return: "Int" Fallible: true },
-                    WrapperFunction { OctName: "CreateFromFiles" WireName: "ZipCreateFromFiles" Args: ["String", "String[]"] Return: "Int" Fallible: true }
-                ]
-            }
-        ]
     }
 }

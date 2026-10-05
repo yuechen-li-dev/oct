@@ -1,0 +1,7 @@
+package WrapperRecordArgMismatch
+
+// DescribeOptions is declared by the manifest and takes this record.
+record TestOptions {
+    Count: Int
+    Name: String
+}

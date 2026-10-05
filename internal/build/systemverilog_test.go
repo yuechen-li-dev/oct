@@ -118,7 +118,8 @@ func TestVerilogM2FlowGoldensAndSequentialState(t *testing.T) {
 	}{
 		{"basic_fsm", []string{"module Counter(", "input  logic Clock", "always_ff @(posedge Clock)", "State_Count", "State_Emit", "NextBoard_Count", "NextYieldValid = 1'b1", "NextDone = 1'b1", "module WaitOnce(", "module SumFour(", "for (Local_i = 64'sd0"}},
 		{"remember_resume", []string{"module Interruptible(", "NextHasResumeTarget = 1'b1", "NextResumeState = NextState", "NextState = NextResumeState", "NextHasResumeTarget = 1'b0"}},
-		{"utility_policy", []string{"module UtilityController(", "UtilitySite0Current", "UtilitySite0CommitAge", "UtilityComb0BestScore", "NextUtilitySite0CommitAge < UtilityComb0MinCommit", "UtilityComb0BestScore <= NextUtilitySite0Score + UtilityComb0Hysteresis"}},
+		{"utility_standalone", []string{"module UtilityChooser(", "UtilityComb0BestArm = 32'sd1", "case (UtilityComb0BestArm)", "default: UtilityComb0BestValue = 64'sd0"}},
+		{"utility_policy", []string{"module UtilityController(", "UtilitySite0Arm", "UtilityComb0BestArm", "NextUtilitySite0Arm == 32'sd1", "UtilitySite0CommitAge", "UtilityComb0BestScore", "NextUtilitySite0CommitAge < UtilityComb0MinCommit", "UtilityComb0BestScore <= UtilityComb0CurrentScore + UtilityComb0Hysteresis"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -1,0 +1,16 @@
+expect artifact error: "FAIL Main.Fails"
+expect artifact error: "the artifact stops here"
+
+package Main
+
+// Synthetic fixture for cmd/oct/octfail_artifact_test.go: an [Artifact] entry
+// point that stages an output and then fails.
+[Artifact]
+fn Fails() -> Void ! Error {
+    Artifact.WriteText("staged.txt", "staged before the failure")
+    let _value = Stop()?
+}
+
+fn Stop() -> Int ! Error {
+    return error("the artifact stops here")
+}

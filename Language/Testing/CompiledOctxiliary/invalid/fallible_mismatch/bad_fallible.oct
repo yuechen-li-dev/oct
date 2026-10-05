@@ -1,5 +1,0 @@
-package Main
-
-fn BadFallible(value: String) -> String {
-    return value
-}

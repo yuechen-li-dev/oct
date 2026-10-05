@@ -14,9 +14,21 @@ The whole corpus is run by one Go test, in both execution lanes:
 go test -tags=integration ./cmd/oct -run TestLanguageCorpusRunsInBothLanes
 ```
 
-It runs every directory that holds `.octest` files in the interpreted lane and in the compiled lane, evaluates directories of `[Artifact]` entry points with `oct artifact`, and checks every `.octfail`. A directory that cannot be run that way is listed in `cmd/oct/language_corpus_test.go` with the reason: package sets that are run from their root, expected failures and wrapper fixtures that another test owns, and compiled-lane gaps. The list is checked too. An entry whose directory is gone, or whose failure no longer happens, fails the test.
+It runs every directory that holds `.octest` files in the interpreted lane and in the compiled lane, evaluates directories of `[Artifact]` entry points with `oct artifact`, and checks every `.octfail`. `cmd/oct/language_corpus_test.go` lists what it treats differently, with the reason: package sets that are run from their root, the one directory another test runs with native grants, the directories that need a wrapper sidecar, and compiled-lane gaps (none at present). The lists are checked too. An entry whose directory is gone, or whose failure no longer happens, fails the test.
 
-A new fixture directory needs no registration. If it does not pass in both lanes, the test fails until it does or until it is listed with a reason.
+A new fixture directory needs no registration. If it does not pass in both lanes, the test fails until it does.
+
+### Fixtures that belong to one lane
+
+A fact whose subject is one execution lane says so in the source, with the reason: `[Interpreted("...")]` or `[Compiled("...")]`. The other lane reports it as skipped. Use this only when the two lanes are specified to behave differently. A feature that one lane is missing is not a reason; that fixture should fail until the feature exists. `Language/reference/tooling/31-octest.md` has the rules.
+
+### Fixtures that must fail
+
+An expected failure is an `.octfail`, not an `.octest` that a Go test expects to fail. There are three forms: `expect error:` for a source that must be rejected, `expect runtime error:` for a `Main` that must stop, and `expect artifact error:` for `[Artifact]` entry points that must fail. A failure that needs a second file or a manifest puts those in a `Packages/<Name>/` directory beside the fixture and imports it.
+
+### Sidecars
+
+Four directories need a sidecar: two call manifest wrapper functions, which go to a sidecar in both lanes, and two reach standard-library builtins that the compiled lane runs in one. The test builds the sidecars it needs once, into a cache keyed by their sources (`internal/sidecarcache`), and reuses them until those sources, `go.mod`, `go.sum` or the Go toolchain change. The cache is in the user cache directory; `OCT_SIDECAR_CACHE_DIR` names another place. Every other directory runs with no sidecar available.
 
 ## Imports
 

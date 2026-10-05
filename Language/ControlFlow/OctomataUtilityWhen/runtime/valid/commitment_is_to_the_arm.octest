@@ -1,0 +1,131 @@
+package MainValid
+
+// A `when policy` site is committed to an arm of the `when`, identified by
+// its position, and not to the value that arm produced. Each flow below gives
+// a different answer under the two readings; the expected one is the arm's.
+
+// An arm whose value changes from one evaluation to the next is still the
+// same choice, so hysteresis holds it, and what is delivered is the arm's
+// value now. Compared by value, 101 is not the 100 that was committed, the
+// commitment would be lost, and the challenger would win with 2.
+flow HeldArmWithAChangingValue() -> Int {
+    state Decide {
+        var t = 0
+        var last = 0
+        while true {
+            last = when policy {
+                hysteresis: 8
+                min_commit: 1
+            } {
+                case 100 + t when true score 60
+                case 2 when t > 0 score 65
+                else 0
+            }
+            if t == 1 {
+                return last
+            }
+            t = t + 1
+        }
+    }
+}
+
+// Two arms that produce equal values are different choices. The second arm
+// takes over at t == 2 and is then held for min_commit evaluations, so the
+// third arm cannot replace it at t == 3. Compared by value, the takeover would
+// not count as a change, the commitment would be three evaluations old, and
+// the third arm would win with 9.
+flow EqualValuesAreDifferentArms() -> Int {
+    state Decide {
+        var t = 0
+        var last = 0
+        while true {
+            last = when policy {
+                hysteresis: 0
+                min_commit: 2
+            } {
+                case 7 when true score 10
+                case 7 when t > 0 score 20
+                case 9 when t > 2 score 30
+                else 0
+            }
+            if t == 3 {
+                return last
+            }
+            t = t + 1
+        }
+    }
+}
+
+// The else arm is delivered only while no condition holds; it is never held
+// against a case. Compared by value, the committed 0 would match the first
+// case's 0, count as still valid, and be held by the hysteresis.
+flow ElseIsNotHeldAgainstACase() -> Int {
+    state Decide {
+        var t = 0
+        var last = 0
+        while true {
+            last = when policy {
+                hysteresis: 100
+                min_commit: 1
+            } {
+                case 0 when t > 0 score 5
+                case 3 when t > 0 score 50
+                else 0
+            }
+            if t == 1 {
+                return last
+            }
+            t = t + 1
+        }
+    }
+}
+
+// A policy inside a larger expression keeps its commitment like any other.
+flow PolicyInsideALargerExpression() -> Int {
+    state Decide {
+        var t = 0
+        var last = 0
+        while true {
+            last = 100 + when policy {
+                hysteresis: 8
+                min_commit: 1
+            } {
+                case 1 when true score 60
+                case 2 when t > 0 score 65
+                else 0
+            }
+            if t == 1 {
+                return last
+            }
+            t = t + 1
+        }
+    }
+}
+
+[Fact]
+fn CommitmentFollowsTheArmWhenItsValueChanges() -> Void {
+    let f = HeldArmWithAChangingValue()
+    Step(f)
+    Assert.Equal(101, Assert.LGTM(Result(f), "result"), "the held arm delivers its value at this evaluation")
+}
+
+[Fact]
+fn ArmsWithEqualValuesAreSeparateCommitments() -> Void {
+    let f = EqualValuesAreDifferentArms()
+    Step(f)
+    Assert.Equal(7, Assert.LGTM(Result(f), "result"), "the arm that just took over is held for min_commit evaluations")
+}
+
+[Fact]
+fn TheElseArmIsNeverHeld() -> Void {
+    let f = ElseIsNotHeldAgainstACase()
+    Step(f)
+    Assert.Equal(3, Assert.LGTM(Result(f), "result"), "a case replaces else at once, whatever the hysteresis")
+}
+
+[Fact]
+fn APolicyInsideALargerExpressionKeepsItsCommitment() -> Void {
+    let f = PolicyInsideALargerExpression()
+    Step(f)
+    Assert.Equal(101, Assert.LGTM(Result(f), "result"), "the challenger within hysteresis does not replace the current arm")
+}

@@ -13,4 +13,4 @@ Common failures:
 - missing file paths
 - invalid gzip payloads for decompression
 
-Compiled mode lowers these functions through the generic Octxiliary `octxiliary-compression` sidecar declared in `manifest.oct`.
+Compiled mode runs the gzip builtins these functions call in the `octxiliary-compression` sidecar.

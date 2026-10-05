@@ -474,11 +474,22 @@ func packFloatArray(value Value) ([]float64, error) {
 	return out, nil
 }
 
+// localTransportName is the name a transport type has inside the wrapper's
+// own package. A manifest names a record of its package either bare or
+// qualified with the package name; on the wire the manifest's spelling is
+// used, and inside the package the record is known by its bare name.
+func localTransportName(fn interpretedWrapperFunction, name string) string {
+	if fn.PackageName == "" {
+		return name
+	}
+	return strings.TrimPrefix(name, fn.PackageName+".")
+}
+
 func packInterpretedHandle(fn interpretedWrapperFunction, transport project.TransportTypeMetadata, value Value) (octxiliary.Value, error) {
 	if value.Kind != ValueRecord {
 		return octxiliary.Value{}, fmt.Errorf("expects handle record %s, got %s", transport.Name, value.Kind)
 	}
-	if value.Record.TypeName != transport.Name {
+	if localTransportName(fn, value.Record.TypeName) != localTransportName(fn, transport.Name) {
 		return octxiliary.Value{}, fmt.Errorf("expects handle record %s, got %s", transport.Name, value.Record.TypeName)
 	}
 	handle, ok := value.Record.Fields["Handle"]
@@ -498,7 +509,7 @@ func packInterpretedRecord(fn interpretedWrapperFunction, transport project.Tran
 	if value.Kind != ValueRecord {
 		return octxiliary.Value{}, fmt.Errorf("expects record %s, got %s", transport.Name, value.Kind)
 	}
-	if value.Record.TypeName != transport.Name {
+	if localTransportName(fn, value.Record.TypeName) != localTransportName(fn, transport.Name) {
 		return octxiliary.Value{}, fmt.Errorf("expects record %s, got %s", transport.Name, value.Record.TypeName)
 	}
 	fields := make([]octxiliary.FieldValue, 0, len(transport.Fields))
@@ -571,14 +582,14 @@ func unpackInterpretedWrapperReturn(fn interpretedWrapperFunction, value octxili
 				if !ok {
 					return Value{}, fmt.Errorf("Octxiliary record response %s missing field %s", typ, field.Name)
 				}
-				unpacked, err := unpackInterpretedWrapperReturn(interpretedWrapperFunction{Return: field.Type, TransportTypes: fn.TransportTypes, Family: fn.Family}, raw)
+				unpacked, err := unpackInterpretedWrapperReturn(interpretedWrapperFunction{PackageName: fn.PackageName, Return: field.Type, TransportTypes: fn.TransportTypes, Family: fn.Family}, raw)
 				if err != nil {
 					return Value{}, fmt.Errorf("Octxiliary record response %s field %s: %w", typ, field.Name, err)
 				}
 				fields[field.Name] = unpacked
 				order = append(order, field.Name)
 			}
-			return Value{Kind: ValueRecord, Record: RecordValue{TypeName: typ, FieldOrder: order, Fields: fields}}, nil
+			return Value{Kind: ValueRecord, Record: RecordValue{TypeName: localTransportName(fn, typ), FieldOrder: order, Fields: fields}}, nil
 		}
 		if value.HandleFamily != fn.Family {
 			return Value{}, fmt.Errorf("Octxiliary handle response family mismatch: expected %s, got %s", fn.Family, value.HandleFamily)
@@ -589,7 +600,7 @@ func unpackInterpretedWrapperReturn(fn interpretedWrapperFunction, value octxili
 		if value.HandleID <= 0 {
 			return Value{}, fmt.Errorf("Octxiliary handle response ID must be positive")
 		}
-		return Value{Kind: ValueRecord, Record: RecordValue{TypeName: typ, FieldOrder: []string{"Handle"}, Fields: map[string]Value{"Handle": {Kind: ValueInt, Int: int64(value.HandleID)}}}}, nil
+		return Value{Kind: ValueRecord, Record: RecordValue{TypeName: localTransportName(fn, typ), FieldOrder: []string{"Handle"}, Fields: map[string]Value{"Handle": {Kind: ValueInt, Int: int64(value.HandleID)}}}}, nil
 	}
 }
 

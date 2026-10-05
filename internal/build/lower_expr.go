@@ -771,15 +771,20 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if meta, ok, err := c.genericWrapperMetadataForCallee(e.Callee); err != nil {
 			return "", "", false, err
 		} else if ok {
+			// ret and fallible were read from the wrapper entry itself, or
+			// from the bodyless `go fn` declaration that an OctGo host
+			// derived the entry from. The two must agree.
 			effectiveReturn := meta.Return
 			if !strings.Contains(effectiveReturn, ".") && ret == meta.PackageName+"."+effectiveReturn {
 				effectiveReturn = ret
 			}
+			// An invariant, not a diagnostic: nothing a program can write
+			// makes the two differ.
 			if ret != effectiveReturn {
-				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest return %s does not match Oct stub return %s", meta.PackageName, meta.OctName, meta.Return, ret)
+				return "", "", false, fmt.Errorf("internal error: wrapper function %s.%s is declared with return %s and its wrapper entry says %s", meta.PackageName, meta.OctName, ret, meta.Return)
 			}
 			if fallible != meta.Fallible {
-				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest fallible %t does not match Oct stub fallible %t", meta.PackageName, meta.OctName, meta.Fallible, fallible)
+				return "", "", false, fmt.Errorf("internal error: wrapper function %s.%s is declared fallible %t and its wrapper entry says %t", meta.PackageName, meta.OctName, fallible, meta.Fallible)
 			}
 			if len(argTypes) != len(meta.Args) {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s expects %d arguments, got %d", meta.PackageName, meta.OctName, len(meta.Args), len(argTypes))
@@ -804,6 +809,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			tmp := c.temp(localType)
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: lowerMIRValues(args, nil), ArgTypes: effectiveArgTypes, RetType: effectiveReturn, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
 			return tmp, effectiveReturn, meta.Fallible, nil
+		}
+		if builtin {
+			if sidecar, ok := lookupSidecarBuiltin(callee); ok {
+				return c.lowerSidecarBuiltinCall(sidecar, args, argTypes)
+			}
 		}
 		if builtin && callee == "BoardSnapshot" {
 			if len(argTypes) != 1 {
@@ -1177,41 +1187,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.BatchExpr:
 		return c.lowerBatchExpr(e)
 	case ast.UtilityWhenExpr:
-		if e.EnumTarget != nil && utilityWhenHasPayloadCandidate(e) {
-			return "", "", false, unsupported("compiled enum-targeted utility payload candidates require delayed payload lowering")
-		}
-		h, _, _, err := c.lowerExpr(e.Policy.Hysteresis)
-		if err != nil {
-			return "", "", false, err
-		}
-		m, _, _, err := c.lowerExpr(e.Policy.MinCommit)
-		if err != nil {
-			return "", "", false, err
-		}
-		elseExpr, resultType, _, err := c.lowerExpr(e.Else)
-		if err != nil {
-			return "", "", false, err
-		}
-		cases := make([]string, 0, len(e.Cases))
-		valueType := goType(resultType)
-		for _, wc := range e.Cases {
-			v, _, _, err := c.lowerExpr(wc.Value)
-			if err != nil {
-				return "", "", false, err
-			}
-			cond, _, _, err := c.lowerExpr(wc.Condition)
-			if err != nil {
-				return "", "", false, err
-			}
-			score, _, _, err := c.lowerExpr(wc.Score)
-			if err != nil {
-				return "", "", false, err
-			}
-			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", cond, v, score))
-		}
-		c.usesUtilityWhen = true
-		return fmt.Sprintf("__octUtilSelect[%s](map[int]__octUtilitySiteState{}, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
-			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), resultType, false, nil
+		return c.lowerUtilityWhen(e)
 	case ast.ParenExpr:
 		return c.lowerExpr(e.Inner)
 	default:
@@ -1219,16 +1195,179 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	}
 }
 
-func utilityWhenHasPayloadCandidate(e ast.UtilityWhenExpr) bool {
-	if _, ok := e.Else.(ast.CallExpr); ok {
-		return true
+// The two builtin calls through which lowered code reaches the commitment of
+// a `when policy` site. The site lives in the flow instance; these name it by
+// its site ID, which is the first argument, always a literal.
+const (
+	// utilityCommittedArmBuiltin(site) is the arm the site is committed to,
+	// or utilityNoArm when it has made no choice yet.
+	utilityCommittedArmBuiltin = "Utility.CommittedArm"
+	// utilityCommitBuiltin(site, hysteresis, minCommit, leader, leaderScore,
+	// committedHolds, committedScore) applies the policy and returns the arm
+	// to deliver.
+	utilityCommitBuiltin = "Utility.Commit"
+)
+
+// utilityElseArm identifies the `else` arm of a utility `when`.
+const utilityElseArm = -1
+
+// lowerUtilityWhen lowers every utility `when` for the Go backend: the
+// standalone `when utility`, plain or enum-targeted, in a function or a flow
+// state, and the controller-bound `when policy` in a flow state.
+//
+// The cases are visited in source order: a condition, and its score only when
+// the condition holds. The highest score leads and the earliest case leads a
+// tie; with no condition true the `else` arm leads. Then the value of one arm
+// alone is evaluated. A value that is not selected is never evaluated, so its
+// `?` cannot propagate and a call in it does not run. The interpreter follows
+// the same order.
+//
+// A standalone form delivers the leader. `when policy` first asks its site,
+// which is committed to an arm and not to a value: the committed arm keeps
+// its place while its condition still holds and either it has been held for
+// fewer than min_commit evaluations or the leader does not beat its committed
+// score by more than hysteresis.
+func (c *lowerCtx) lowerUtilityWhen(e ast.UtilityWhenExpr) (string, string, bool, error) {
+	// The Verilog profile refuses a function that contains one.
+	c.usesUtilityWhen = true
+	newBlock := func() int {
+		id := len(c.blocks)
+		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", id)})
+		return id
 	}
-	for _, c := range e.Cases {
-		if _, ok := c.Value.(ast.CallExpr); ok {
-			return true
+	assign := func(target string, expression string, typ string) {
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: target, Value: lowerMIRValue(expression, typ)})
+	}
+	hold := func(valueExpr ast.Expr, typ string) (string, error) {
+		value, _, _, err := c.lowerExpr(valueExpr)
+		if err != nil {
+			return "", err
 		}
+		held := c.temp(typ)
+		assign(held, value, typ)
+		return held, nil
 	}
-	return false
+
+	site := mirInt(fmt.Sprint(e.SiteID))
+	hysteresis, minCommit, committed, committedHolds, committedScore := "", "", "", "", ""
+	if e.ControllerBound {
+		if activeFlowExpressionContext == nil {
+			return "", "", false, fmt.Errorf("when policy is only valid inside flow state bodies; outside flows use switch or when utility")
+		}
+		var err error
+		if hysteresis, err = hold(e.Policy.Hysteresis, "Int"); err != nil {
+			return "", "", false, err
+		}
+		if minCommit, err = hold(e.Policy.MinCommit, "Int"); err != nil {
+			return "", "", false, err
+		}
+		committed = c.temp("Int")
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: committed, Callee: utilityCommittedArmBuiltin, Args: []MIRValue{site}, ArgTypes: []string{"Int"}, Builtin: true, RetType: "Int"})
+		committedHolds = c.temp("Bool")
+		assign(committedHolds, "false", "Bool")
+		committedScore = c.temp("Int")
+		assign(committedScore, "0", "Int")
+	}
+
+	// selected is the index of the leading case, or utilityElseArm while no
+	// condition has held.
+	selected := c.temp("Int")
+	selectedScore := c.temp("Int")
+	assign(selected, fmt.Sprintf("0 - %d", -utilityElseArm), "Int")
+	assign(selectedScore, "0", "Int")
+
+	for index, candidate := range e.Cases {
+		condition, _, _, err := c.lowerExpr(candidate.Condition)
+		if err != nil {
+			return "", "", false, err
+		}
+		conditionEnd := c.cur
+		scoreID := newBlock()
+		leadID := newBlock()
+		nextID := newBlock()
+		c.blocks[conditionEnd].Terminator = MIRBranch{Cond: lowerMIRValue(condition, "Bool"), TrueTarget: c.blocks[scoreID].Label, FalseTarget: c.blocks[nextID].Label}
+
+		c.cur = scoreID
+		// Hold the score in a temporary: the comparison and the assignment
+		// below must see one evaluation of it.
+		heldScore, err := hold(candidate.Score, "Int")
+		if err != nil {
+			return "", "", false, err
+		}
+		if e.ControllerBound {
+			// This case is the committed arm and its condition holds: note
+			// that, and its score at this evaluation.
+			isCommitted := c.temp("Bool")
+			assign(isCommitted, fmt.Sprintf("%s == %d", committed, index), "Bool")
+			scoreEnd := c.cur
+			committedID := newBlock()
+			afterID := newBlock()
+			c.blocks[scoreEnd].Terminator = MIRBranch{Cond: lowerMIRValue(isCommitted, "Bool"), TrueTarget: c.blocks[committedID].Label, FalseTarget: c.blocks[afterID].Label}
+			c.cur = committedID
+			assign(committedHolds, "true", "Bool")
+			assign(committedScore, heldScore, "Int")
+			c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[afterID].Label}
+			c.cur = afterID
+		}
+		leads := c.temp("Bool")
+		assign(leads, fmt.Sprintf("%s < 0 || %s > %s", selected, heldScore, selectedScore), "Bool")
+		c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(leads, "Bool"), TrueTarget: c.blocks[leadID].Label, FalseTarget: c.blocks[nextID].Label}
+
+		c.cur = leadID
+		assign(selected, fmt.Sprint(index), "Int")
+		assign(selectedScore, heldScore, "Int")
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[nextID].Label}
+
+		c.cur = nextID
+	}
+
+	if e.ControllerBound {
+		decided := c.temp("Int")
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+			Target:   decided,
+			Callee:   utilityCommitBuiltin,
+			Args:     []MIRValue{site, lowerMIRValue(hysteresis, "Int"), lowerMIRValue(minCommit, "Int"), lowerMIRValue(selected, "Int"), lowerMIRValue(selectedScore, "Int"), lowerMIRValue(committedHolds, "Bool"), lowerMIRValue(committedScore, "Int")},
+			ArgTypes: []string{"Int", "Int", "Int", "Int", "Int", "Bool", "Int"},
+			Builtin:  true,
+			RetType:  "Int",
+		})
+		selected = decided
+	}
+
+	mergeID := newBlock()
+	out := ""
+	resultType := ""
+	deliver := func(valueExpr ast.Expr) error {
+		value, valueType, _, err := c.lowerExpr(valueExpr)
+		if err != nil {
+			return err
+		}
+		if out == "" {
+			out = c.temp(valueType)
+			resultType = valueType
+		}
+		assign(out, value, resultType)
+		c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[mergeID].Label}
+		return nil
+	}
+	for index, candidate := range e.Cases {
+		isSelected := c.temp("Bool")
+		assign(isSelected, fmt.Sprintf("%s == %d", selected, index), "Bool")
+		testEnd := c.cur
+		valueID := newBlock()
+		nextID := newBlock()
+		c.blocks[testEnd].Terminator = MIRBranch{Cond: lowerMIRValue(isSelected, "Bool"), TrueTarget: c.blocks[valueID].Label, FalseTarget: c.blocks[nextID].Label}
+		c.cur = valueID
+		if err := deliver(candidate.Value); err != nil {
+			return "", "", false, err
+		}
+		c.cur = nextID
+	}
+	if err := deliver(e.Else); err != nil {
+		return "", "", false, err
+	}
+	c.cur = mergeID
+	return out, resultType, false, nil
 }
 
 func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error) {
@@ -2098,6 +2237,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		if builtin.IsName(x.Name) {
 			normalized := x.Name
+			if sidecar, ok := builtin.LookupSidecar(normalized); ok {
+				return normalized, sidecar.Result.Oct, true, sidecar.Fallible, nil
+			}
 			switch normalized {
 			case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
 				ret := "String"
@@ -2224,6 +2366,15 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return pkgIdent.Name + "." + x.Field, typeRefStringForPackage(pkgIdent.Name, fn.ReturnType), false, fn.IsFallible, nil
 			}
 		}
+		// A function that the imported package's manifest declares has no
+		// source declaration to find.
+		if meta, ok := findGenericWrapperFunction(importPkg, x.Field); ok {
+			ret := meta.Return
+			if !strings.Contains(ret, ".") && findTransportRecord(meta.TransportTypes, ret).ok {
+				ret = meta.PackageName + "." + ret
+			}
+			return pkgIdent.Name + "." + x.Field, ret, true, meta.Fallible, nil
+		}
 		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, x.Field)
 	default:
 		return "", "", false, false, fmt.Errorf("unsupported callee %T", callee)
@@ -2250,6 +2401,50 @@ func (c *lowerCtx) resolveCompiledBuiltinAlias(name string) (string, string, boo
 	default:
 		return "", "", false, false, unsupportedBuiltin(name)
 	}
+}
+
+// lookupSidecarBuiltin exists because the call lowering has a local named
+// builtin.
+func lookupSidecarBuiltin(name string) (builtin.SidecarBuiltin, bool) {
+	return builtin.LookupSidecar(name)
+}
+
+// lowerSidecarBuiltinCall lowers a call to a builtin that the compiled lane
+// runs in a first-party sidecar. The typechecker has already checked the
+// call; the checks here guard the table against drifting from it.
+func (c *lowerCtx) lowerSidecarBuiltinCall(sidecar builtin.SidecarBuiltin, args []string, argTypes []string) (string, string, bool, error) {
+	if len(argTypes) != len(sidecar.Params) {
+		return "", "", false, fmt.Errorf("internal error: builtin %s takes %d arguments in the sidecar table, got %d", sidecar.Name, len(sidecar.Params), len(argTypes))
+	}
+	wireTypes := make([]string, len(argTypes))
+	handles := make([]string, len(argTypes))
+	for i, param := range sidecar.Params {
+		if transportRuntimeBaseType(argTypes[i]) != transportRuntimeBaseType(param.Oct) {
+			return "", "", false, fmt.Errorf("internal error: builtin %s argument %d is %s in the sidecar table, got %s", sidecar.Name, i+1, param.Oct, argTypes[i])
+		}
+		wireTypes[i] = param.Oct
+		handles[i] = param.Handle
+	}
+	result := sidecar.Result.Oct
+	localType := result
+	if sidecar.Fallible {
+		localType = fallibleType(result)
+	}
+	tmp := c.temp(localType)
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{
+		Target:         tmp,
+		OctName:        sidecar.Name,
+		Family:         sidecar.Family,
+		WireName:       sidecar.Name,
+		SidecarCommand: sidecar.Sidecar,
+		Args:           lowerMIRValues(args, nil),
+		ArgTypes:       wireTypes,
+		RetType:        result,
+		Fallible:       sidecar.Fallible,
+		ArgHandles:     handles,
+		RetHandle:      sidecar.Result.Handle,
+	})
+	return tmp, result, sidecar.Fallible, nil
 }
 
 type genericWrapperCallMetadata struct {
@@ -3162,7 +3357,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		}
 		return "String[]", nil
 	default:
-		return "", fmt.Errorf("compiled mode does not yet support builtin %s", name)
+		return "", unsupportedBuiltin(name)
 	}
 }
 

@@ -13,4 +13,4 @@ Thin wrappers over Go `time` using RFC3339/ISO-8601 strings.
 Common failures:
 - invalid time format strings for parse/format helpers
 
-Compiled mode lowers these functions through the generic Octxiliary `octxiliary-time` sidecar declared in `manifest.oct`. The public parse and format APIs preserve the existing normalized RFC3339 string return values; Unix-second conversion remains available through `UnixSecondsNow` and `FormatUnixSeconds`.
+Compiled mode runs the time builtins these functions call in the `octxiliary-time` sidecar. The public parse and format APIs preserve the existing normalized RFC3339 string return values; Unix-second conversion remains available through `UnixSecondsNow` and `FormatUnixSeconds`.

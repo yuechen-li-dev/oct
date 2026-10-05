@@ -16,7 +16,6 @@ import (
 const (
 	pdfFamily          = "Pdf"
 	pdfPageHandleType  = "Pdf.PdfPage"
-	pdfTextStyleRecord = "Pdf.TextStyle"
 	pdfPixelsPerInch   = 96.0
 	pdfPointsPerInch   = 72.0
 	pdfDefaultFontName = "Inter"
@@ -144,7 +143,7 @@ func (t *pageTable) dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 		}
 		return octxiliary.Value{Kind: octxiliary.ValueInt, Int: 0}, nil
 	case "PdfDrawTextStyled":
-		if err := expect(req.Args, octxiliary.ValueHandle, octxiliary.ValueInt, octxiliary.ValueInt, octxiliary.ValueString, octxiliary.ValueRecord); err != nil {
+		if err := expect(req.Args, octxiliary.ValueHandle, octxiliary.ValueInt, octxiliary.ValueInt, octxiliary.ValueString, octxiliary.ValueInt, octxiliary.ValueInt, octxiliary.ValueInt, octxiliary.ValueInt); err != nil {
 			return octxiliary.Value{}, err
 		}
 		page, err := t.get(req.Args[0])
@@ -157,7 +156,7 @@ func (t *pageTable) dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 		if err := validateCoordinate(req.Args[2].Int, "y"); err != nil {
 			return octxiliary.Value{}, err
 		}
-		style, err := decodeTextStyle(req.Args[4])
+		style, err := newTextStyle(req.Args[4].Int, req.Args[5].Int, req.Args[6].Int, req.Args[7].Int)
 		if err != nil {
 			return octxiliary.Value{}, err
 		}
@@ -356,34 +355,21 @@ func (p *pdfPage) save(path string) error {
 	return nil
 }
 
-func decodeTextStyle(value octxiliary.Value) (textStyle, error) {
-	if value.Kind != octxiliary.ValueRecord || value.RecordType != pdfTextStyleRecord {
-		return textStyle{}, fmt.Errorf("expected %s record", pdfTextStyleRecord)
-	}
-	want := []string{"Size", "ColorR", "ColorG", "ColorB"}
-	if len(value.Fields) != len(want) {
-		return textStyle{}, fmt.Errorf("%s fields must be Size, ColorR, ColorG, ColorB", pdfTextStyleRecord)
-	}
-	decoded := make([]int, len(want))
-	for i, name := range want {
-		field := value.Fields[i]
-		if field.Name != name {
-			return textStyle{}, fmt.Errorf("%s fields must be Size, ColorR, ColorG, ColorB", pdfTextStyleRecord)
-		}
-		if field.Value.Kind != octxiliary.ValueInt {
-			return textStyle{}, fmt.Errorf("%s field %s must be Int", pdfTextStyleRecord, name)
-		}
-		decoded[i] = field.Value.Int
-	}
-	if decoded[0] <= 0 {
+// newTextStyle checks the four style arguments of PdfDrawTextStyled, which
+// arrive as the builtin passes them: size, then red, green and blue.
+func newTextStyle(size int, colorR int, colorG int, colorB int) (textStyle, error) {
+	if size <= 0 {
 		return textStyle{}, fmt.Errorf("text style size must be positive")
 	}
-	for i, channel := range decoded[1:] {
-		if channel < 0 || channel > 255 {
-			return textStyle{}, fmt.Errorf("text style color channel %s must be in [0, 255]", want[i+1])
+	for _, channel := range []struct {
+		name  string
+		value int
+	}{{"ColorR", colorR}, {"ColorG", colorG}, {"ColorB", colorB}} {
+		if channel.value < 0 || channel.value > 255 {
+			return textStyle{}, fmt.Errorf("text style color channel %s must be in [0, 255]", channel.name)
 		}
 	}
-	return textStyle{size: decoded[0], colorR: decoded[1], colorG: decoded[2], colorB: decoded[3]}, nil
+	return textStyle{size: size, colorR: colorR, colorG: colorG, colorB: colorB}, nil
 }
 
 func validateCoordinate(value int, name string) error {

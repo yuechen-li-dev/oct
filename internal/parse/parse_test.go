@@ -1325,21 +1325,15 @@ func TestBuildFileParsesRecordTableCellSchema(t *testing.T) {
 	}
 }
 
-func TestBuildFileParsesStandaloneUtilityWhenWithExplicitPolicy(t *testing.T) {
-	file := parseSource(t, "fn Main(flag: Bool) -> Int { return when utility { hysteresis: 5 } { case 1 when flag score 10 else 0 } }")
-	returnStmt, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
-	if !ok {
-		t.Fatalf("expected return statement, got %T", file.Functions[0].Body.Statements[0])
+// A standalone utility `when` keeps no commitment, so policy fields could not
+// do anything there. They are rejected, not accepted and ignored.
+func TestBuildFileRejectsPolicyFieldsOnStandaloneUtilityWhen(t *testing.T) {
+	for _, policy := range []string{"{ hysteresis: 5 }", "{ min_commit: 2 }", "{ hysteresis: 0 min_commit: 0 }"} {
+		assertParseErrorContains(t, "fn Main(flag: Bool) -> Int { return when utility "+policy+" { case 1 when flag score 10 else 0 } }", "`when utility` keeps no commitment between evaluations, so it takes no policy fields")
 	}
-	whenExpr, ok := returnStmt.Value.(ast.UtilityWhenExpr)
-	if !ok {
-		t.Fatalf("expected utility when expression, got %T", returnStmt.Value)
-	}
-	if _, ok := whenExpr.Policy.Hysteresis.(ast.IntegerLiteral); !ok {
-		t.Fatalf("expected explicit hysteresis policy literal, got %T", whenExpr.Policy.Hysteresis)
-	}
-	if _, ok := whenExpr.Policy.MinCommit.(ast.IntegerLiteral); !ok {
-		t.Fatalf("expected default min_commit literal, got %T", whenExpr.Policy.MinCommit)
+	file := parseSource(t, "fn Main(flag: Bool) -> Int { return when utility { case 1 when flag score 10 else 0 } }")
+	if _, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt).Value.(ast.UtilityWhenExpr); !ok {
+		t.Fatalf("a standalone utility when without a policy block did not parse")
 	}
 }
 
@@ -1524,5 +1518,129 @@ func TestBuildFileRejectsInvalidMakeAttributes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			assertParseErrorContainsWithPath(t, tc.path, tc.source, tc.want)
 		})
+	}
+}
+
+func TestBuildFileParsesLaneAttributes(t *testing.T) {
+	file := parseSourceWithPath(t, "x.octest", "package Main\n[Fact]\n[Interpreted(\"subject is the interpreter\")]\nfn Alpha() -> Void { return }\n[Compiled(\" subject is the harness \")]\n[Theory]\n[InlineData(1)]\nfn Beta(x: Int) -> Void { return }\n[Fact]\nfn Gamma() -> Void { return }\n")
+	want := []struct{ lane, reason string }{
+		{"interpreted", "subject is the interpreter"},
+		{"compiled", "subject is the harness"},
+		{"", ""},
+	}
+	for i, w := range want {
+		fn := file.Functions[i]
+		if fn.TestLane != w.lane || fn.TestLaneReason != w.reason {
+			t.Errorf("%s: lane = %q reason = %q, want %q %q", fn.Name, fn.TestLane, fn.TestLaneReason, w.lane, w.reason)
+		}
+	}
+}
+
+// A lane restriction without a stated reason is a way to hide a failure in
+// the other lane, so the reason is part of the syntax.
+func TestBuildFileRejectsInvalidLaneAttributes(t *testing.T) {
+	cases := []struct{ source, want string }{
+		{"[Fact]\n[Compiled]\nfn Bad() -> Void { return }\n", "[Compiled] requires a reason"},
+		{"[Fact]\n[Interpreted]\nfn Bad() -> Void { return }\n", "[Interpreted] requires a reason"},
+		{"[Fact]\n[Compiled()]\nfn Bad() -> Void { return }\n", "[Compiled] requires a reason"},
+		{"[Fact]\n[Compiled(\"  \")]\nfn Bad() -> Void { return }\n", "[Compiled] requires a reason"},
+		{"[Fact]\n[Compiled(7)]\nfn Bad() -> Void { return }\n", "[Compiled] requires a reason"},
+		{"[Fact]\n[Compiled(\"a\")]\n[Interpreted(\"b\")]\nfn Bad() -> Void { return }\n", "[Interpreted] and [Compiled] cannot both apply to the same function"},
+		{"[Fact]\n[Compiled(\"a\")]\n[Compiled(\"b\")]\nfn Bad() -> Void { return }\n", "duplicate [Compiled] attribute on function"},
+		{"[Compiled(\"a\")]\nfn Bad() -> Void { return }\n", "[Interpreted] and [Compiled] must apply to a [Fact] or [Theory] function"},
+		{"[Artifact]\n[Compiled(\"a\")]\nfn Bad() -> Void { return }\n", "[Interpreted] and [Compiled] must apply to a [Fact] or [Theory] function"},
+		{"[Benchmark]\n[Interpreted(\"a\")]\nfn Bad() -> Void { return }\n", "[Interpreted] and [Compiled] must apply to a [Fact] or [Theory] function"},
+		{"[Compiled(\"a\")]\nrecord Bad { Value: Int }\n", "test attributes must apply to a function declaration"},
+		{"[Fact]\nfn Good() -> Void { return }\n[Interpreted(\"a\")]\n", "test attributes must apply to a function declaration"},
+	}
+	for _, c := range cases {
+		assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n"+c.source, c.want)
+	}
+	assertParseErrorContainsWithPath(t, "bad.oct", "package Main\n[Compiled(\"a\")]\nfn Bad() -> Void { return }\n", "[Compiled] is only valid in .octest files or Make.oct")
+}
+
+// `vector[...]` is a literal unless a value named `vector` is in scope, in
+// which case it indexes that value. Each case marks the expression that is
+// returned and says which reading it must get.
+func TestBuildFileResolvesVectorBracketByScope(t *testing.T) {
+	cases := []struct {
+		name    string
+		source  string
+		literal bool
+	}{
+		{"nothing bound", "fn F() -> Float { return vector[1.0][0] }", true},
+		{"parameter", "fn F(vector: Float[]) -> Float { return vector[0] }", false},
+		{"let, after it", "fn F() -> Float { let vector = [1.0] return vector[0] }", false},
+		{"var, after it", "fn F() -> Float { var vector = [1.0] return vector[0] }", false},
+		{"loop variable", "fn F() -> Float { for vector in 0..1 { return vector[0] } return 0.0 }", false},
+		{"batch item", "fn F(xs: Float[][]) -> Float { let ys = batch xs as vector { return vector[0] } return 0.0 }", false},
+		{"binding ended with its block", "fn F(flag: Bool) -> Float { if flag { let vector = [1.0] } return vector[1.0][0] }", true},
+		{"flow parameter in a state", "flow G(vector: Float[]) -> Float { state S { return vector[0] } }", false},
+		{"function value parameter", "fn F() -> Float { let f = fn(vector: Float[]) -> Float { return vector[0] } return 0.0 }", false},
+		{"outer local inside a function value", "fn F() -> Float { let vector = [1.0] let f = fn() -> Float { return vector[1.0][0] } return 0.0 }", true},
+		{"capture inside a function value", "fn F() -> Float { let vector = [1.0] let f = fn() -> Float with { vector: vector } { return vector[0] } return 0.0 }", false},
+		{"capture value, read in the enclosing function", "fn F() -> Float { let vector = [1.0] let f = fn() -> Float with { first: vector[0] } { return first } return 0.0 }", false},
+		{"another function's parameter", "fn A(vector: Float[]) -> Float { return 0.0 }\nfn F() -> Float { return vector[1.0][0] }", true},
+	}
+	for _, c := range cases {
+		file := parseSource(t, c.source)
+		found, isLiteral := false, false
+		var visitBlock func(block ast.Block)
+		var visitExpr func(expr ast.Expr)
+		visitExpr = func(expr ast.Expr) {
+			switch e := expr.(type) {
+			case ast.IndexExpr:
+				switch target := e.Target.(type) {
+				case ast.VectorLiteralExpr:
+					found, isLiteral = true, true
+				case ast.IdentifierExpr:
+					if target.Name == "vector" {
+						found, isLiteral = true, false
+					}
+				}
+			case ast.VectorLiteralExpr:
+				found, isLiteral = true, true
+			case ast.FunctionExpr:
+				for _, capture := range e.Captures {
+					visitExpr(capture.Value)
+				}
+				visitBlock(e.Body)
+			case ast.BatchExpr:
+				visitBlock(e.Body)
+			}
+		}
+		visitBlock = func(block ast.Block) {
+			for _, statement := range block.Statements {
+				switch s := statement.(type) {
+				case ast.ReturnStmt:
+					if s.Value != nil {
+						visitExpr(s.Value)
+					}
+				case ast.LetStmt:
+					visitExpr(s.Value)
+				case ast.ForStmt:
+					visitBlock(s.Body)
+				case ast.IfStmt:
+					visitBlock(s.ThenBody)
+				}
+			}
+		}
+		for _, function := range file.Functions {
+			if function.Name == "F" {
+				visitBlock(function.Body)
+			}
+		}
+		for _, flow := range file.Flows {
+			for _, state := range flow.States {
+				visitBlock(state.Body)
+			}
+		}
+		if !found {
+			t.Errorf("%s: no `vector[...]` found in %q", c.name, c.source)
+			continue
+		}
+		if isLiteral != c.literal {
+			t.Errorf("%s: read as literal = %v, want %v", c.name, isLiteral, c.literal)
+		}
 	}
 }

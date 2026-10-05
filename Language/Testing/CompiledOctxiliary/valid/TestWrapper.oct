@@ -1,74 +1,15 @@
 package Main
 
+// The functions of this fixture are declared by manifest.oct and served by
+// the octxiliary-test-wrapper sidecar. A manifest entry is a wrapper
+// function's whole definition, so nothing here gives one a body. The records
+// are the transport types the manifest names.
+
 record TestOptions {
     Count: Int
     Name: String
 }
 
-fn EchoString(value: String) -> String ! Error {
-    return error("TestWrapper.EchoString requires compiled Octxiliary lowering")
-}
-
-fn JoinStrings(values: String[]) -> String ! Error {
-    return error("TestWrapper.JoinStrings requires compiled Octxiliary lowering")
-}
-
-fn BytesLen(values: Bytes) -> Int ! Error {
-    return error("TestWrapper.BytesLen requires compiled Octxiliary lowering")
-}
-
-fn EchoStringRows(rows: String[][]) -> String[][] ! Error {
-    return error("TestWrapper.EchoStringRows requires compiled Octxiliary lowering")
-}
-
-fn RowCount(rows: String[][]) -> Int ! Error {
-    return error("TestWrapper.RowCount requires compiled Octxiliary lowering")
-}
-
-fn SumFloats(values: Float[]) -> Float ! Error {
-    return error("TestWrapper.SumFloats requires compiled Octxiliary lowering")
-}
-
-fn DescribeOptions(options: TestOptions) -> String ! Error {
-    return error("TestWrapper.DescribeOptions requires compiled Octxiliary lowering")
-}
-
-fn ReturnOptions() -> TestOptions ! Error {
-    return error("TestWrapper.ReturnOptions requires compiled Octxiliary lowering")
-}
-
-fn Not(value: Bool) -> Bool ! Error {
-    return error("TestWrapper.Not requires compiled Octxiliary lowering")
-}
-
-fn AddInt(left: Int, right: Int) -> Int ! Error {
-    return error("TestWrapper.AddInt requires compiled Octxiliary lowering")
-}
-
-fn Half(value: Float) -> Float ! Error {
-    return error("TestWrapper.Half requires compiled Octxiliary lowering")
-}
-
-fn Touch() -> Void ! Error {
-    return
-}
-
-fn TouchDirect() -> Void {
-    return
-}
-
-fn AlwaysFails() -> String ! Error {
-    return error("TestWrapper.AlwaysFails requires compiled Octxiliary lowering")
-}
-
 record TestHandle {
     Handle: Int
-}
-
-fn CreateHandle() -> TestHandle {
-    return TestHandle { Handle: 0 }
-}
-
-fn UseHandle(handle: TestHandle) -> Int ! Error {
-    return error("TestWrapper.UseHandle requires compiled Octxiliary lowering")
 }

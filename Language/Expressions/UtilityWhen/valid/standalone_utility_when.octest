@@ -8,17 +8,6 @@ fn PickWithDefaults(aOpen: Bool, bOpen: Bool) -> Int {
     }
 }
 
-fn PickWithExplicitPolicy(aOpen: Bool, bOpen: Bool) -> Int {
-    return when utility {
-        hysteresis: 7
-        min_commit: 3
-    } {
-        case 1 when aOpen score 10
-        case 2 when bOpen score 8
-        else 0
-    }
-}
-
 fn LocalJunctionOwner(probeA: Int, probeB: Int) -> Int {
     return when utility {
         case 100 when probeA > 0 score probeA
@@ -32,24 +21,6 @@ fn StandaloneUtilityDefaultsSelectWinner() -> Void {
     Assert.Equal(1, PickWithDefaults(true, true), "higher score should win")
     Assert.Equal(2, PickWithDefaults(false, true), "only valid candidate should win")
     Assert.Equal(0, PickWithDefaults(false, false), "else should win when no candidate is valid")
-}
-
-[Fact]
-fn StandaloneUtilityDefaultsMatchExplicitZeroPolicy() -> Void {
-    let withDefaults = when utility {
-        case 1 when true score 50
-        case 2 when true score 40
-        else 0
-    }
-    let withExplicitZeros = when utility {
-        hysteresis: 0
-        min_commit: 0
-    } {
-        case 1 when true score 50
-        case 2 when true score 40
-        else 0
-    }
-    Assert.Equal(withDefaults, withExplicitZeros, "omitted policy should default to zero values")
 }
 
 [Fact]
@@ -73,4 +44,30 @@ fn LocalJunctionOwnerUsesStandaloneUtilityWithoutFlowCeremony() -> Void {
     Assert.Equal(100, LocalJunctionOwner(9, 5), "probe with higher utility wins")
     Assert.Equal(200, LocalJunctionOwner(1, 7), "other branch can win when score is higher")
     Assert.Equal(-1, LocalJunctionOwner(0, 0), "fallback applies when no candidate is valid")
+}
+
+// The score orders the cases whose condition holds. It does not decide
+// whether a case is a candidate: one true condition is enough to keep `else`
+// out, whatever the score.
+fn OnlyCaseScores(open: Bool, score: Int) -> Int {
+    return when utility {
+        case 7 when open score score
+        else 0
+    }
+}
+
+fn BothCasesScore(first: Int, second: Int) -> Int {
+    return when utility {
+        case 1 when true score first
+        case 2 when true score second
+        else 0
+    }
+}
+
+[Fact]
+fn ACaseWhoseConditionHoldsBeatsElseAtAnyScore() -> Void {
+    Assert.Equal(7, OnlyCaseScores(true, 0), "a score of zero")
+    Assert.Equal(7, OnlyCaseScores(true, -3), "a negative score")
+    Assert.Equal(0, OnlyCaseScores(false, 99), "else only while no condition holds")
+    Assert.Equal(2, BothCasesScore(-5, -2), "the greater of two negative scores")
 }

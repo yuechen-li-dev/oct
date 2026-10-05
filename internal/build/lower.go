@@ -254,9 +254,6 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			if fn.IsArtifact {
 				continue
 			}
-			if _, isWrapper := findGenericWrapperFunction(pkg, fn.Name); isWrapper {
-				continue
-			}
 			if fn.IsTestFile && !fn.IsBenchmark {
 				if pkgName != program.Entry {
 					continue
@@ -324,9 +321,6 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 					continue
 				}
 				if !isReachableFunction(reachable, pkgName, fn.Name) {
-					continue
-				}
-				if _, isWrapper := findGenericWrapperFunction(pkg, fn.Name); isWrapper {
 					continue
 				}
 				if _, ok := emitted[pkgName]; ok {
@@ -976,7 +970,14 @@ func unsupported(feature string) error {
 	return fmt.Errorf("compiled mode does not yet support %s", feature)
 }
 
+// unsupportedBuiltin is the refusal for a builtin the compiled lane cannot
+// emit. The Artifact builtins write through a capability that only
+// `oct artifact` evaluation holds; a compiled program never has it, so for
+// them this is not a feature the compiled lane is still missing.
 func unsupportedBuiltin(name string) error {
+	if spelling, ok := builtin.ArtifactPhaseSpelling(name); ok {
+		return fmt.Errorf("%s is available only during `oct artifact` evaluation; a compiled program cannot call it", spelling)
+	}
 	return unsupported("builtin " + name)
 }
 

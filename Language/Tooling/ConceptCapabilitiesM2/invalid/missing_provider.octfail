@@ -1,0 +1,6 @@
+expect artifact error: "is not a package-local function"
+
+package Main
+
+[Artifact(MissingCapabilities)]
+fn Emit() -> Void { return }

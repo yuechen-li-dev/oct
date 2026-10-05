@@ -1,0 +1,14 @@
+expect artifact error: "function expects Int, but return is String"
+
+package Main
+
+// Synthetic fixture: a test source that does not typecheck never reaches
+// artifact evaluation, and that is also an artifact failure.
+[Artifact]
+fn Writes() -> Void {
+    Artifact.WriteText("out.txt", "never written")
+}
+
+fn Wrong() -> Int {
+    return "text"
+}

@@ -27,38 +27,6 @@ func TestCompiledGenericOctxiliaryWrapperFixture(t *testing.T) {
 	}
 }
 
-func TestCompiledGenericOctxiliaryRejectsManifestReturnMismatch(t *testing.T) {
-	requireSlowOctxiliary(t)
-	repo := filepath.Join("..", "..")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/CompiledOctxiliary/invalid/return_mismatch/bad_return.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("expected manifest return mismatch failure, got success:\n%s", string(out))
-	}
-	text := string(out)
-	if !strings.Contains(text, "manifest return") || !strings.Contains(text, "BadReturn") {
-		t.Fatalf("expected manifest return mismatch diagnostic for BadReturn, got:\n%s", text)
-	}
-}
-
-func TestCompiledGenericOctxiliaryRejectsManifestFallibleMismatch(t *testing.T) {
-	requireSlowOctxiliary(t)
-	repo := filepath.Join("..", "..")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/CompiledOctxiliary/invalid/fallible_mismatch/bad_fallible.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("expected manifest fallible mismatch failure, got success:\n%s", string(out))
-	}
-	text := string(out)
-	if !strings.Contains(text, "manifest fallible") || !strings.Contains(text, "BadFallible") {
-		t.Fatalf("expected manifest fallible mismatch diagnostic for BadFallible, got:\n%s", text)
-	}
-}
-
 func TestCompiledGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
 	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
@@ -97,7 +65,7 @@ func TestCompiledGenericOctxiliaryRejectsUndeclaredRecordArg(t *testing.T) {
 	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command(sharedTestOctBinary(t), "pkg", "wrappers")
-	cmd.Dir = filepath.Join(repo, "Language", "Testing", "CompiledOctxiliary", "invalid", "undeclared_record_arg")
+	cmd.Dir = filepath.Join(repo, "Language", "Testing", "CompiledOctxiliary", "invalid", "Packages", "WrapperUndeclaredRecordArg")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("expected undeclared record arg failure, got success:\n%s", string(out))
@@ -107,28 +75,12 @@ func TestCompiledGenericOctxiliaryRejectsUndeclaredRecordArg(t *testing.T) {
 	}
 }
 
-func TestCompiledGenericOctxiliaryRejectsRecordArgMismatch(t *testing.T) {
-	requireSlowOctxiliary(t)
-	repo := filepath.Join("..", "..")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/CompiledOctxiliary/invalid/record_arg_mismatch/bad_record_arg_mismatch.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("expected record arg mismatch failure, got success:\n%s", string(out))
-	}
-	text := string(out)
-	if !strings.Contains(text, "argument 1 expects Main.TestOptions, got String") {
-		t.Fatalf("expected record arg mismatch diagnostic, got:\n%s", text)
-	}
-}
-
 func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
 	requireSlowOctxiliary(t)
 	t.Parallel()
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest", "--execution", "interpreted")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/InterpretedOctxiliary/valid", "--execution", "interpreted")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
 	out, err := cmd.CombinedOutput()
@@ -136,7 +88,7 @@ func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
 		t.Fatalf("interpreted generic wrapper fixture failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
 	text := string(out)
-	for _, expected := range []string{"PASS Main.InterpretedGenericWrapperW7bSuccess", "PASS Main.InterpretedGenericWrapperW7bSidecarError", "PASS Main.InterpretedGenericWrapperW7bSourcePrecedence"} {
+	for _, expected := range []string{"PASS Main.InterpretedGenericWrapperW7bSuccess", "PASS Main.InterpretedGenericWrapperW7bSidecarError", "PASS Main.AnImportedPackagesWrapperFunctionsAreCallable", "PASS Main.ARecordOfTheWrappersPackageGoesInAndComesBack"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("expected %s, got:\n%s", expected, text)
 		}

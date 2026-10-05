@@ -14,9 +14,14 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/project"
 )
 
-// Version 3 adds deterministic aggregate value payloads (records, enums,
+// Version 3 added deterministic aggregate value payloads (records, enums,
 // vectors, and matrices) to the logical checkpoint schema.
-const FlowCheckpointVersion = 3
+//
+// Version 4 records the commitment of a `when policy` site as the arm it is
+// committed to and how long it has been held. It replaces the value that arm
+// produced and the score it was committed at, neither of which the policy
+// reads any more.
+const FlowCheckpointVersion = 4
 
 const FlowCheckpointCursorTopLevelNext = "top-level-statement-next"
 
@@ -232,11 +237,10 @@ func (i interpreter) instantiateFlowFromCheckpoint(pkg string, flowName string, 
 		if _, duplicate := inst.UtilityWhenSites[site.SiteID]; duplicate {
 			return nil, checkpointErr(FlowCheckpointUtilitySiteMismatch, fmt.Sprintf("duplicate site %d", site.SiteID))
 		}
-		current, err := restoreCheckpointValueWithoutType(site.Current)
-		if err != nil {
-			return nil, checkpointErr(FlowCheckpointUtilitySiteMismatch, fmt.Sprintf("site %d: %v", site.SiteID, err))
+		if site.Arm < utilityElseArm {
+			return nil, checkpointErr(FlowCheckpointUtilitySiteMismatch, fmt.Sprintf("site %d: arm %d", site.SiteID, site.Arm))
 		}
-		inst.UtilityWhenSites[site.SiteID] = utilityWhenSiteState{HasCurrent: site.HasCurrent, Current: current, Score: site.Score, CommitAge: site.CommitAge}
+		inst.UtilityWhenSites[site.SiteID] = utilityWhenSiteState{HasCurrent: site.HasCurrent, Arm: site.Arm, CommitAge: site.CommitAge}
 	}
 	inst.DirtyBoardFields = make(map[string]struct{})
 	return inst, nil
@@ -261,11 +265,13 @@ type FlowCheckpoint struct {
 	StepCount       int
 }
 
+// FlowUtilityCheckpoint is the commitment of one `when policy` site. Arm is
+// the index of the committed case, or -1 for the else arm; it is meaningful
+// only when HasCurrent is set.
 type FlowUtilityCheckpoint struct {
 	SiteID     int
 	HasCurrent bool
-	Current    FlowCheckpointValue
-	Score      int64
+	Arm        int
 	CommitAge  int64
 }
 
@@ -414,15 +420,7 @@ func exportFlowUtilityCheckpoint(inst *FlowRuntimeInstance) ([]FlowUtilityCheckp
 	out := make([]FlowUtilityCheckpoint, 0, len(ids))
 	for _, id := range ids {
 		site := inst.UtilityWhenSites[id]
-		current := FlowCheckpointValue{}
-		if site.HasCurrent {
-			var err error
-			current, err = checkpointValue(site.Current)
-			if err != nil {
-				return nil, checkpointErr(FlowCheckpointUnsupportedValueType, fmt.Sprintf("utility site %d: %v", id, err))
-			}
-		}
-		out = append(out, FlowUtilityCheckpoint{SiteID: id, HasCurrent: site.HasCurrent, Current: current, Score: site.Score, CommitAge: site.CommitAge})
+		out = append(out, FlowUtilityCheckpoint{SiteID: id, HasCurrent: site.HasCurrent, Arm: site.Arm, CommitAge: site.CommitAge})
 	}
 	return out, nil
 }

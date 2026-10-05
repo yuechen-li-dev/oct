@@ -100,3 +100,15 @@ func IsCompilerOwnedNamespace(namespace string) bool {
 		return false
 	}
 }
+
+// ArtifactPhaseSpelling returns the written name of a builtin that exists only
+// during `oct artifact` evaluation, such as "Artifact.WriteText" for
+// "ArtifactWriteText". The second result is false for any other builtin.
+func ArtifactPhaseSpelling(name string) (string, bool) {
+	for symbol, canonical := range namespaceAliases["Artifact"] {
+		if canonical == name {
+			return "Artifact." + symbol, true
+		}
+	}
+	return "", false
+}

@@ -6,31 +6,12 @@ record PackageManifest {
     Description: String
     Authors: String[]
     Date: String
-    Kind: String
     Dependencies: Dependency[]
-    Wrappers: Wrapper[]
 }
 
 record Dependency {
     Name: String
     VersionRequirement: String
-}
-
-record Wrapper {
-    Name: String
-    Family: String
-    Protocol: String
-    SidecarCommand: String
-    GoModuleDir: String
-    Functions: WrapperFunction[]
-}
-
-record WrapperFunction {
-    OctName: String
-    WireName: String
-    Args: String[]
-    Return: String
-    Fallible: Bool
 }
 
 fn Manifest() -> PackageManifest {
@@ -40,20 +21,6 @@ fn Manifest() -> PackageManifest {
         Authors: ["Codex"]
         Date: "2026-06-15"
         Description: "Thin CSV wrappers for raw row-major string tables"
-        Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }, Dependency { Name: "IO" VersionRequirement: "0.1.0" }]
-        Wrappers: [
-            Wrapper {
-                Name: "csv"
-                Family: "Csv"
-                Protocol: "octxiliary.v0"
-                SidecarCommand: "octxiliary-csv"
-                GoModuleDir: "octxiliary"
-                Functions: [
-                    WrapperFunction { OctName: "Read" WireName: "CsvRead" Args: ["String"] Return: "String[][]" Fallible: true },
-                    WrapperFunction { OctName: "Write" WireName: "CsvWrite" Args: ["String", "String[][]"] Return: "Int" Fallible: true }
-                ]
-            }
-        ]
     }
 }

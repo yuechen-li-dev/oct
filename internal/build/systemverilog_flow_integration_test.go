@@ -25,7 +25,7 @@ func TestVerilogM2IcarusAndYosysEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	wslRoot := "/mnt/" + strings.ToLower(root[:1]) + strings.ReplaceAll(filepath.ToSlash(root[2:]), " ", "\\ ")
-	fixtures := []string{"basic_fsm", "remember_resume", "utility_policy"}
+	fixtures := []string{"basic_fsm", "remember_resume", "utility_policy", "utility_standalone"}
 	for _, fixture := range fixtures {
 		t.Run(fixture, func(t *testing.T) {
 			golden := "Language/Profiles/VerilogM2/valid/" + fixture + "/" + fixture + ".golden.sv"
@@ -38,7 +38,7 @@ func TestVerilogM2IcarusAndYosysEvidence(t *testing.T) {
 			}
 		})
 	}
-	tops := map[string]string{"basic_fsm": "Counter", "remember_resume": "Interruptible", "utility_policy": "UtilityController"}
+	tops := map[string]string{"basic_fsm": "Counter", "remember_resume": "Interruptible", "utility_policy": "UtilityController", "utility_standalone": "UtilityChooser"}
 	for _, fixture := range fixtures {
 		yosys := "cd " + wslRoot + " && yosys -p 'read_verilog -sv Language/Profiles/VerilogM2/valid/" + fixture + "/" + fixture + ".golden.sv; hierarchy -check -top " + tops[fixture] + "; proc; opt; check; stat'"
 		output, err := exec.Command("wsl", "sh", "-lc", yosys).CombinedOutput()

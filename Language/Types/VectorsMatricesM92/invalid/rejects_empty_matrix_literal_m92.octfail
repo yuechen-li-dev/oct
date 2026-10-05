@@ -1,0 +1,7 @@
+expect error: "empty matrix literals are not supported"
+package Main
+
+fn Main() -> Int {
+    let empty = matrix[]
+    return 0
+}

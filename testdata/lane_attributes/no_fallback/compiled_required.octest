@@ -1,0 +1,11 @@
+package LaneFixture
+
+// Synthetic fixture: a [Compiled] fact the compiled lane cannot build. Under
+// `--execution auto` it must fail; it must not fall back to the interpreter.
+
+[Fact]
+[Compiled("fixture: must not fall back")]
+fn CompiledFactThatCannotBeBuilt() -> Void {
+    let mount = UIMount(UIText("idle"))
+    Assert.Equal(0, Len(UIDrainEvents(mount)), "unreachable in the compiled lane")
+}

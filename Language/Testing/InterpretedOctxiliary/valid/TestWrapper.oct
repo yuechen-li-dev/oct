@@ -1,5 +1,9 @@
 package Main
 
+// Oct functions in front of manifest wrapper functions. Each wrapper function
+// has a name of its own in manifest.oct (the Raw names), and the function
+// here calls it.
+
 fn EchoString(text: String) -> String ! Error {
     return EchoStringRaw(text)?
 }
@@ -14,8 +18,4 @@ fn BoolNot(value: Bool) -> Bool ! Error {
 
 fn NotOk() -> String ! Error {
     return NotOkRaw()?
-}
-
-fn ShadowRaw(text: String) -> String ! Error {
-    return "source:" + text
 }
