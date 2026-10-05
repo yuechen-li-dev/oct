@@ -1,0 +1,29 @@
+expect runtime error: "assertion failed: the program ran to its last statement"
+
+package Main
+
+// A contract for a whole program, which only an `.octfail` runs from `Main`
+// in both lanes. Each function below is called from one place: as a repeated
+// value, as a count, and as the count of a matrix row. The compiled program
+// must carry all three and run to the assertion at the end.
+fn OnlyARepeatedValue() -> Int {
+    return 7
+}
+
+fn OnlyACount() -> Int {
+    return 3
+}
+
+fn OnlyARowCount() -> Int {
+    return 2
+}
+
+fn Main() -> Void {
+    let values = [OnlyARepeatedValue() ... 2]
+    let counted = [0 ... OnlyACount()]
+    let rows = matrix[[1.0, 2.0] ... OnlyARowCount()]
+    if values[1] != 7 or Len(counted) != 3 or rows[1, 1] != 2.0 {
+        Assert.True(false, "a repeated element was not evaluated as written")
+    }
+    Assert.True(false, "the program ran to its last statement")
+}

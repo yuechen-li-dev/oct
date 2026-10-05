@@ -1,0 +1,9 @@
+expect error: "expected '[' to start matrix row; a `[` after the count of a matrix row starts the next row"
+
+package Main
+
+fn Main() -> Int {
+    let counts = [2, 1]
+    let m = matrix[[1.0, 2.0] ... counts[0] + 1]
+    return 0
+}

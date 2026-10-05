@@ -1,0 +1,21 @@
+expect runtime error: "runtime error: index 5 out of bounds for array of length 2"
+
+package Main
+
+flow Replace(k: Int) -> Int {
+    board {
+        Grid: Float[][]
+    }
+
+    state Start {
+        board.Grid = [[0.5, 0.5], [0.5, 0.5]]
+        board.Grid[k] = [1.5, 1.5]
+        return Len(board.Grid)
+    }
+}
+
+fn Main() -> Int {
+    let run = Replace(5)
+    Step(run)
+    return Result(run)!
+}

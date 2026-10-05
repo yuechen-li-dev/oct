@@ -1,0 +1,9 @@
+expect error: "let grid: expected Float[][], got Int[]"
+
+package Main
+
+fn Main() -> Int {
+    let ns = [1, 1]
+    let grid: Float[][] = ns
+    return Len(grid)
+}

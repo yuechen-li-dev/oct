@@ -2165,14 +2165,22 @@ func walkExpr(expr ast.Expr, visitCall func(ast.CallExpr)) {
 		for _, elem := range e.Elements {
 			walkExpr(elem, visitCall)
 		}
+	case ast.RepeatExpr:
+		walkExpr(e.Value, visitCall)
+		if e.Count != nil {
+			walkExpr(e.Count, visitCall)
+		}
 	case ast.VectorLiteralExpr:
 		for _, elem := range e.Elements {
 			walkExpr(elem, visitCall)
 		}
 	case ast.MatrixLiteralExpr:
-		for _, row := range e.Rows {
+		for index, row := range e.Rows {
 			for _, elem := range row {
 				walkExpr(elem, visitCall)
+			}
+			if count := e.RowCount(index); count != nil {
+				walkExpr(count, visitCall)
 			}
 		}
 	case ast.IndexExpr:

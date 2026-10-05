@@ -1,0 +1,8 @@
+expect error: "a repeated matrix row needs a count, as in `[0.0, 0.0] ... n`"
+
+package Main
+
+fn Main() -> Int {
+    let m = matrix[[0.5, 1.0] ...]
+    return 0
+}

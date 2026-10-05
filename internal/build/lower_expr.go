@@ -734,6 +734,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			if i < len(expectedArgTypes) {
 				expected = expectedArgTypes[i]
 			}
+			if builtin && callee == "Step" && i == 1 {
+				// `Step(instance, input)`: the flow declares the type of its
+				// turn input, and the input is an argument to that type.
+				if _, input, _, ok := parseFlowInstanceDetails(argTypes[0]); ok {
+					expected = input
+				}
+			}
 			v, at, _, err := c.withExpectedType(expected, func() (string, string, bool, error) { return c.lowerExpr(a) })
 			if err != nil {
 				return "", "", false, err
@@ -855,7 +862,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		tmp := c.temp(localType)
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: callee, Args: lowerMIRValues(args, nil), ArgTypes: argTypes, Builtin: builtin, RetType: ret})
 		return tmp, ret, fallible, nil
+	case ast.RepeatExpr:
+		return "", "", false, fmt.Errorf("internal error: `...` reached the compiled lowering outside an array literal")
 	case ast.ArrayLiteralExpr:
+		if hasRepeatedElement(e.Elements) {
+			return c.lowerRepeatedArrayLiteral(e, "")
+		}
 		vals := []string{}
 		typeName := "Int"
 		hint, hasHint := c.expectedArrayElemType()
@@ -884,6 +896,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: typeName, Values: lowerMIRValues(vals, nil)})
 		return tmp, typeName + "[]", false, nil
 	case ast.VectorLiteralExpr:
+		if hasRepeatedElement(e.Elements) {
+			built, elemType, err := c.lowerRepeatedElements(e.Elements, "", false, "", func(elem string) string { return "Vector<" + elem + ">" })
+			if err != nil {
+				return "", "", false, err
+			}
+			return built, "Vector<" + elemType + ">", false, nil
+		}
 		vals := make([]string, 0, len(e.Elements))
 		elemType := "Int"
 		for i, el := range e.Elements {
@@ -901,6 +920,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: tmp, ElemType: elemType, Values: lowerMIRValues(vals, nil)})
 		return tmp, vectorType, false, nil
 	case ast.MatrixLiteralExpr:
+		if e.RowCounts != nil || matrixHasRepeatedElement(e) {
+			return c.lowerRepeatedMatrixLiteral(e)
+		}
 		rows := make([]string, 0, len(e.Rows))
 		elemType := "Int"
 		hint, hasHint := c.expectedMatrixElemType()
@@ -1058,7 +1080,21 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if !strings.Contains(typeName, ".") {
 			typeName = c.pkg.Name + "." + typeName
 		}
-		for _, f := range e.Fields {
+		// A column of a record table that ends in `value ...` is completed to
+		// the table's row count. The columns that state their length are
+		// lowered first, in the order written, and the first of them gives
+		// the count; the filled columns follow, in the order written.
+		_, _, isTable := c.lookupRecordTable(typeName)
+		needsExtent := isTable && hasRepeatedFill(e.Fields)
+		tableExtent := ""
+		filled := map[int]ast.ArrayLiteralExpr{}
+		vals = make([]string, len(e.Fields))
+		for index, f := range e.Fields {
+			names = append(names, f.Name)
+			if literal, fill := ast.EndsInFill(f.Value); fill && isTable {
+				filled[index] = literal
+				continue
+			}
 			fieldType, hasFieldType := c.lookupRecordFieldType(typeName, f.Name)
 			var v, t string
 			var err error
@@ -1072,9 +1108,33 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			if hasFieldType {
 				v = coerceExprToType(v, t, fieldType)
+				t = fieldType
 			}
-			vals = append(vals, v)
-			names = append(names, f.Name)
+			// Arrays are values: the record holds its own copy, so a later
+			// write to the variable it was built from does not reach it.
+			vals[index] = cloneCompiledValueExpr(v, t)
+			if needsExtent && tableExtent == "" {
+				tableExtent = c.temp("Int")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tableExtent, Callee: "Len", Args: []MIRValue{lowerMIRValue(v, t)}, ArgTypes: []string{t}, Builtin: true, RetType: "Int"})
+			}
+		}
+		for index, f := range e.Fields {
+			literal, fill := filled[index]
+			if !fill {
+				continue
+			}
+			if tableExtent == "" {
+				return "", "", false, fmt.Errorf("internal error: record table '%s' has no column that gives its row count", typeName)
+			}
+			fieldType, hasFieldType := c.lookupRecordFieldType(typeName, f.Name)
+			if !hasFieldType {
+				return "", "", false, fmt.Errorf("internal error: record table '%s' has no column '%s'", typeName, f.Name)
+			}
+			v, t, _, err := c.withExpectedType(fieldType, func() (string, string, bool, error) { return c.lowerRepeatedArrayLiteral(literal, tableExtent) })
+			if err != nil {
+				return "", "", false, err
+			}
+			vals[index] = coerceExprToType(v, t, fieldType)
 		}
 		tmp := c.temp(typeName)
 		if table, _, ok := c.lookupRecordTable(typeName); ok && len(vals) > 0 {
@@ -1122,12 +1182,52 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return "", "", false, fmt.Errorf("record update requires record source")
 		}
 		overrides := make(map[string]string, len(e.Fields))
+		sourceTable, _, sourceIsTable := c.lookupRecordTable(sourceType)
 		for _, field := range e.Fields {
-			value, _, _, err := c.lowerExpr(field.Value)
+			if literal, fill := ast.EndsInFill(field.Value); fill && sourceIsTable && len(sourceTable.Fields) > 0 {
+				// The table being updated fixes the length of a replacement
+				// column, so the column may end in `value ...`.
+				columnType := ""
+				for _, declared := range fieldTypes {
+					if declared.Name == field.Name {
+						columnType = declared.Type
+					}
+				}
+				if columnType == "" {
+					return "", "", false, fmt.Errorf("internal error: record table '%s' has no column '%s'", sourceType, field.Name)
+				}
+				firstName, firstType := sourceTable.Fields[0].Name, ""
+				for _, declared := range fieldTypes {
+					if declared.Name == firstName {
+						firstType = declared.Type
+					}
+				}
+				extent := c.temp("Int")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: extent, Callee: "Len", Args: []MIRValue{lowerMIRValue(fmt.Sprintf("%s.%s", source, firstName), firstType)}, ArgTypes: []string{firstType}, Builtin: true, RetType: "Int"})
+				value, valueType, _, err := c.withExpectedType(columnType, func() (string, string, bool, error) { return c.lowerRepeatedArrayLiteral(literal, extent) })
+				if err != nil {
+					return "", "", false, err
+				}
+				overrides[field.Name] = coerceExprToType(value, valueType, columnType)
+				continue
+			}
+			// The field's declared type decides what the replacement is, as
+			// it does in a record literal.
+			fieldType := ""
+			for _, declared := range fieldTypes {
+				if declared.Name == field.Name {
+					fieldType = declared.Type
+				}
+			}
+			value, valueType, _, err := c.withExpectedType(fieldType, func() (string, string, bool, error) { return c.lowerExpr(field.Value) })
 			if err != nil {
 				return "", "", false, err
 			}
-			overrides[field.Name] = value
+			if fieldType != "" {
+				value = coerceExprToType(value, valueType, fieldType)
+				valueType = fieldType
+			}
+			overrides[field.Name] = cloneCompiledValueExpr(value, valueType)
 		}
 		names := make([]string, 0, len(fieldTypes))
 		values := make([]string, 0, len(fieldTypes))
@@ -1193,6 +1293,244 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	default:
 		return "", "", false, fmt.Errorf("unsupported expression %T", e)
 	}
+}
+
+// The builtin calls that carry the runtime checks of a repeated literal
+// element. Each returns the value it has checked.
+const (
+	// repeatCountBuiltin(count) is count, and fails when it is negative.
+	repeatCountBuiltin = "Repeat.Count"
+	// repeatFillBuiltin(extent, have) is the number of elements `value ...`
+	// adds to an array that holds have of its extent elements, and fails
+	// when the array already holds more.
+	repeatFillBuiltin = "Repeat.Fill"
+	// repeatRowExtentBuiltin(rows, index) is the length of rows[index], and
+	// fails as an array bounds error when index is out of range.
+	repeatRowExtentBuiltin = "Repeat.RowExtent"
+	// repeatRowBuiltin(rows, row) is row, about to become the next row of the
+	// matrix rows; it fails when row is not as long as the first.
+	repeatRowBuiltin = "Repeat.Row"
+)
+
+func isRepeatBuiltin(name string) bool {
+	switch name {
+	case repeatCountBuiltin, repeatFillBuiltin, repeatRowExtentBuiltin, repeatRowBuiltin:
+		return true
+	}
+	return false
+}
+
+func hasRepeatedElement(elements []ast.Expr) bool {
+	for _, element := range elements {
+		if _, repeated := element.(ast.RepeatExpr); repeated {
+			return true
+		}
+	}
+	return false
+}
+
+// hasRepeatedFill reports whether a field of a record literal is an array
+// literal that ends in `value ...`.
+func hasRepeatedFill(fields []ast.RecordLiteralField) bool {
+	for _, field := range fields {
+		if _, fill := ast.EndsInFill(field.Value); fill {
+			return true
+		}
+	}
+	return false
+}
+
+func matrixHasRepeatedElement(e ast.MatrixLiteralExpr) bool {
+	for _, row := range e.Rows {
+		if hasRepeatedElement(row) {
+			return true
+		}
+	}
+	return false
+}
+
+// lowerRepeatedArrayLiteral lowers an array literal that has a repeated
+// element. extent is the length the surrounding construct fixes, for a
+// literal that ends in `value ...`, and is empty otherwise.
+func (c *lowerCtx) lowerRepeatedArrayLiteral(e ast.ArrayLiteralExpr, extent string) (string, string, bool, error) {
+	hint, hasHint := c.expectedArrayElemType()
+	built, elemType, err := c.lowerRepeatedElements(e.Elements, hint, hasHint, extent, func(elem string) string { return elem + "[]" })
+	if err != nil {
+		return "", "", false, err
+	}
+	return built, elemType + "[]", false, nil
+}
+
+// lowerRepeatCount lowers the count of `value ... count` or of a repeated
+// matrix row into a temporary that holds the checked count.
+func (c *lowerCtx) lowerRepeatCount(count ast.Expr) (string, error) {
+	raw, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(count) })
+	if err != nil {
+		return "", err
+	}
+	checked := c.temp("Int")
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: checked, Callee: repeatCountBuiltin, Args: []MIRValue{lowerMIRValue(raw, "Int")}, ArgTypes: []string{"Int"}, Builtin: true, RetType: "Int"})
+	return checked, nil
+}
+
+// lowerCountedLoop emits a loop that runs body count times. The body is
+// lowered once and executed once for each turn, which is what gives a
+// repeated element one evaluation for each element it stands for.
+func (c *lowerCtx) lowerCountedLoop(count string, body func() error) error {
+	newBlock := func() int {
+		id := len(c.blocks)
+		c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", id)})
+		return id
+	}
+	turn := c.temp("Int")
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: turn, Value: lowerMIRValue("0", "Int")})
+	headID, bodyID, afterID := newBlock(), newBlock(), newBlock()
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[headID].Label}
+
+	c.cur = headID
+	more := c.temp("Bool")
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: more, Value: lowerMIRValue(fmt.Sprintf("%s < %s", turn, count), "Bool")})
+	c.blocks[c.cur].Terminator = MIRBranch{Cond: lowerMIRValue(more, "Bool"), TrueTarget: c.blocks[bodyID].Label, FalseTarget: c.blocks[afterID].Label}
+
+	c.cur = bodyID
+	if err := body(); err != nil {
+		return err
+	}
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: turn, Value: lowerMIRValue(fmt.Sprintf("%s + 1", turn), "Int")})
+	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[headID].Label}
+
+	c.cur = afterID
+	return nil
+}
+
+// lowerRepeatedElements builds, element by element, the list that the
+// elements of an array, vector or matrix-row literal stand for. A plain
+// element is appended once. A repeated one is appended in a loop, and its
+// value is lowered inside the loop, so it is evaluated once for each element.
+//
+// hint is the element type the context expects, when it expects one;
+// otherwise the first element gives it. container names the type of the list
+// for an element type. The result is the temporary and the element type.
+func (c *lowerCtx) lowerRepeatedElements(elements []ast.Expr, hint string, hasHint bool, extent string, container func(string) string) (string, string, error) {
+	elemType, typed := hint, hasHint
+	listType := ""
+	if typed {
+		listType = container(elemType)
+	}
+	out := c.temp(listType)
+	constructBlock, constructIndex := c.cur, len(c.blocks[c.cur].Statements)
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: out, ElemType: elemType})
+
+	appendValue := func(valueExpr ast.Expr) error {
+		var value, valueType string
+		var err error
+		if hasHint {
+			value, valueType, _, err = c.withExpectedType(hint, func() (string, string, bool, error) { return c.lowerExpr(valueExpr) })
+		} else {
+			value, valueType, _, err = c.lowerExpr(valueExpr)
+		}
+		if err != nil {
+			return err
+		}
+		if hasHint {
+			value = coerceExprToType(value, valueType, hint)
+		} else if !typed {
+			// The first element lowered names the element type. The list
+			// was declared before it, so its declaration is completed now.
+			elemType, typed = valueType, true
+			listType = container(elemType)
+			c.locals[out] = listType
+			c.blocks[constructBlock].Statements[constructIndex] = MIRConstructArray{Target: out, ElemType: elemType}
+		}
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: out, Callee: "Append", Args: []MIRValue{lowerMIRValue(out, listType), lowerMIRValue(value, elemType)}, ArgTypes: []string{listType, elemType}, Builtin: true, RetType: listType})
+		return nil
+	}
+
+	for _, element := range elements {
+		repeat, repeated := element.(ast.RepeatExpr)
+		if !repeated {
+			if err := appendValue(element); err != nil {
+				return "", "", err
+			}
+			continue
+		}
+		var count string
+		if repeat.IsFill() {
+			if extent == "" {
+				return "", "", fmt.Errorf("internal error: `value ...` reached the compiled lowering with no fixed length")
+			}
+			have := c.temp("Int")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: have, Callee: "Len", Args: []MIRValue{lowerMIRValue(out, listType)}, ArgTypes: []string{listType}, Builtin: true, RetType: "Int"})
+			count = c.temp("Int")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: count, Callee: repeatFillBuiltin, Args: []MIRValue{lowerMIRValue(extent, "Int"), lowerMIRValue(have, "Int")}, ArgTypes: []string{"Int", "Int"}, Builtin: true, RetType: "Int"})
+		} else {
+			var err error
+			if count, err = c.lowerRepeatCount(repeat.Count); err != nil {
+				return "", "", err
+			}
+		}
+		if err := c.lowerCountedLoop(count, func() error { return appendValue(repeat.Value) }); err != nil {
+			return "", "", err
+		}
+	}
+	if !typed {
+		return "", "", fmt.Errorf("internal error: a repeated literal with no elements to type it")
+	}
+	return out, elemType, nil
+}
+
+// lowerRepeatedMatrixLiteral lowers a matrix literal in which an element or
+// a row is repeated. A row written `[...] ... count` is lowered inside a
+// loop, so it is evaluated count times, each time as a row of its own.
+func (c *lowerCtx) lowerRepeatedMatrixLiteral(e ast.MatrixLiteralExpr) (string, string, bool, error) {
+	hint, hasHint := c.expectedMatrixElemType()
+	elemType, typed := hint, hasHint
+	matrixType := ""
+	if typed {
+		matrixType = "Matrix<" + elemType + ">"
+	}
+	out := c.temp(matrixType)
+	constructBlock, constructIndex := c.cur, len(c.blocks[c.cur].Statements)
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructArray{Target: out, ElemType: "Vector<" + elemType + ">"})
+
+	appendRow := func(row []ast.Expr) error {
+		built, rowElemType, err := c.lowerRepeatedElements(row, hint, hasHint, "", func(elem string) string { return "Vector<" + elem + ">" })
+		if err != nil {
+			return err
+		}
+		if !typed {
+			elemType, typed = rowElemType, true
+			matrixType = "Matrix<" + elemType + ">"
+			c.locals[out] = matrixType
+			c.blocks[constructBlock].Statements[constructIndex] = MIRConstructArray{Target: out, ElemType: "Vector<" + elemType + ">"}
+		}
+		rowType := "Vector<" + elemType + ">"
+		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements,
+			MIRCall{Target: built, Callee: repeatRowBuiltin, Args: []MIRValue{lowerMIRValue(out, matrixType), lowerMIRValue(built, rowType)}, ArgTypes: []string{matrixType, rowType}, Builtin: true, RetType: rowType},
+			MIRCall{Target: out, Callee: "Append", Args: []MIRValue{lowerMIRValue(out, matrixType), lowerMIRValue(built, rowType)}, ArgTypes: []string{matrixType, rowType}, Builtin: true, RetType: matrixType})
+		return nil
+	}
+
+	for index, row := range e.Rows {
+		rowCount := e.RowCount(index)
+		if rowCount == nil {
+			if err := appendRow(row); err != nil {
+				return "", "", false, err
+			}
+			continue
+		}
+		count, err := c.lowerRepeatCount(rowCount)
+		if err != nil {
+			return "", "", false, err
+		}
+		if err := c.lowerCountedLoop(count, func() error { return appendRow(row) }); err != nil {
+			return "", "", false, err
+		}
+	}
+	if !typed {
+		return "", "", false, fmt.Errorf("internal error: a repeated matrix literal with no rows to type it")
+	}
+	return out, matrixType, false, nil
 }
 
 // The two builtin calls through which lowered code reaches the commitment of
@@ -2121,24 +2459,21 @@ func (c *lowerCtx) resolveCallArgTypes(callee ast.Expr) []string {
 		}
 		return out
 	}
+	for _, flow := range pkg.Flows {
+		if flow.Name != fnName {
+			continue
+		}
+		out := make([]string, 0, len(flow.Parameters))
+		for _, param := range flow.Parameters {
+			out = append(out, typeRefStringForPackage(pkgName, param.Type))
+		}
+		return out
+	}
 	return nil
 }
 
 func goCoerceArg(expr string, actual string, expected string) string {
-	if isIntScalarTypeString(actual) && isFloatLikeType(expected) {
-		return fmt.Sprintf("float64(%s)", expr)
-	}
-	if isIntArrayTypeString(actual) && isFloatArrayTypeString(expected) {
-		return fmt.Sprintf("__octIntArrayToFloat(%s)", expr)
-	}
-	if expected == "Complex" && isNumericTypeString(actual) {
-		return fmt.Sprintf("complex(float64(%s), 0)", expr)
-	}
-	return expr
-}
-
-func isFloatLikeType(t string) bool {
-	return t == "Float" || (strings.HasPrefix(t, "Float<") && strings.HasSuffix(t, ">"))
+	return coerceExprToType(expr, actual, expected)
 }
 
 func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, error) {
@@ -2236,79 +2571,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			return x.Name, ret, true, meta.Fallible, nil
 		}
 		if builtin.IsName(x.Name) {
-			normalized := x.Name
-			if sidecar, ok := builtin.LookupSidecar(normalized); ok {
-				return normalized, sidecar.Result.Oct, true, sidecar.Fallible, nil
-			}
-			switch normalized {
-			case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
-				ret := "String"
-				switch normalized {
-				case "StringByteLength", "StringRuneCount":
-					ret = "Int"
-				case "StringContains", "StringStartsWith", "StringEndsWith":
-					ret = "Bool"
-				case "StringSplitLines":
-					ret = "String[]"
-				}
-				return normalized, ret, true, false, nil
-			case "MarkdownH1", "MarkdownH2", "MarkdownH3", "MarkdownParagraph", "MarkdownBlank", "MarkdownHorizontalRule", "MarkdownBullets", "MarkdownNumbered", "MarkdownCodeBlock", "MarkdownCallout", "MarkdownImage", "MarkdownFigure", "MarkdownTable", "MarkdownTableWithColumns", "MarkdownKeyValueTable", "MarkdownSection", "MarkdownSubsection", "MarkdownReport", "MarkdownEscapeText", "MarkdownEscapeTableCell":
-				return normalized, compiledMarkdownBuiltinReturnType(normalized), true, false, nil
-			case "RoundToInt", "FloorToInt", "CeilToInt":
-				return normalized, "Int", true, false, nil
-			case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue", "BaseUnit", "Clamp01":
-				return normalized, "Float", true, false, nil
-			case "Abs":
-				return normalized, "Float", true, false, nil
-			case "FormatFloat":
-				return normalized, "String", true, false, nil
-			case "Require":
-				return normalized, "Void", true, false, nil
-			case "ArrayCrossSection", "Array.CrossSection":
-				return "ArrayCrossSection", "Void", true, false, nil
-			case "ArrayWhere", "Array.Where":
-				return "ArrayWhere", "Void", true, false, nil
-			case "FileReadText":
-				return normalized, "String", true, true, nil
-			case "FileReadBytes":
-				return normalized, "Bytes", true, true, nil
-			case "FileReadLines", "DirectoryList":
-				return normalized, "String[]", true, true, nil
-			case "FileWriteText", "FileWriteLines", "FileWriteBytes":
-				return normalized, "Int", true, true, nil
-			case "FileExists":
-				return normalized, "Bool", true, false, nil
-			case "FileDelete", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
-				return normalized, "Int", true, true, nil
-			case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
-				return normalized, "String", true, true, nil
-			case "JsonSave":
-				return normalized, "Int", true, true, nil
-			case "CsvRead", "CsvReadRows":
-				return normalized, "String[][]", true, true, nil
-			case "CsvReadTable":
-				return normalized, "Csv.Table", true, true, nil
-			case "CsvReadMatrix":
-				return normalized, "Float[][]", true, true, nil
-			case "CsvWrite", "CsvWriteRows":
-				return normalized, "Int", true, true, nil
-			case "MakeExecRaw", "MakeExecInRaw":
-				return normalized, "Make.ProcessResult", true, true, nil
-			case "MakeToolRaw", "MakeReadTextRaw", "MakeHashFileRaw":
-				return normalized, "String", true, true, nil
-			case "MakeEnvRaw":
-				return normalized, "Make.EnvValue", true, true, nil
-			case "MakeExistsRaw", "MakeIsFileRaw", "MakeIsDirRaw":
-				return normalized, "Bool", true, false, nil
-			case "MakeMkdirAllRaw", "MakeRemoveRaw", "MakeCopyRaw", "MakeWriteTextRaw", "MakeModifiedTimeRaw":
-				return normalized, "Int", true, true, nil
-			case "MakeGlobRaw":
-				return normalized, "String[]", true, true, nil
-			case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
-				return normalized, "String", true, false, nil
-			default:
-				return "", "", false, false, unsupportedBuiltin(x.Name)
-			}
+			return c.resolveCompiledBuiltinByName(x.Name)
 		}
 		return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name)
 	case ast.FieldAccessExpr:
@@ -2322,7 +2585,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return aliasName, compiledMarkdownBuiltinReturnType(aliasName), true, false, nil
 			}
 			if builtin.IsName(aliasName) {
-				return c.resolveCompiledBuiltinAlias(aliasName)
+				// The alias is another spelling of the builtin, as
+				// `IO.ReadText` is of `FileReadText`.
+				return c.resolveCompiledBuiltinByName(aliasName)
 			}
 		}
 		if builtin.IsName(builtinName) {
@@ -2381,11 +2646,17 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 	}
 }
 
-func (c *lowerCtx) resolveCompiledBuiltinAlias(name string) (string, string, bool, bool, error) {
-	switch name {
+// resolveCompiledBuiltinByName answers for a builtin called by its own name:
+// the name the lowered call carries, its result type, and whether it is
+// fallible. A builtin the compiled lane does not have is refused by name.
+func (c *lowerCtx) resolveCompiledBuiltinByName(normalized string) (string, string, bool, bool, error) {
+	if sidecar, ok := builtin.LookupSidecar(normalized); ok {
+		return normalized, sidecar.Result.Oct, true, sidecar.Fallible, nil
+	}
+	switch normalized {
 	case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
 		ret := "String"
-		switch name {
+		switch normalized {
 		case "StringByteLength", "StringRuneCount":
 			ret = "Int"
 		case "StringContains", "StringStartsWith", "StringEndsWith":
@@ -2393,13 +2664,63 @@ func (c *lowerCtx) resolveCompiledBuiltinAlias(name string) (string, string, boo
 		case "StringSplitLines":
 			ret = "String[]"
 		}
-		return name, ret, true, false, nil
-	case "ArrayCrossSection":
+		return normalized, ret, true, false, nil
+	case "MarkdownH1", "MarkdownH2", "MarkdownH3", "MarkdownParagraph", "MarkdownBlank", "MarkdownHorizontalRule", "MarkdownBullets", "MarkdownNumbered", "MarkdownCodeBlock", "MarkdownCallout", "MarkdownImage", "MarkdownFigure", "MarkdownTable", "MarkdownTableWithColumns", "MarkdownKeyValueTable", "MarkdownSection", "MarkdownSubsection", "MarkdownReport", "MarkdownEscapeText", "MarkdownEscapeTableCell":
+		return normalized, compiledMarkdownBuiltinReturnType(normalized), true, false, nil
+	case "RoundToInt", "FloorToInt", "CeilToInt":
+		return normalized, "Int", true, false, nil
+	case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue", "BaseUnit", "Clamp01":
+		return normalized, "Float", true, false, nil
+	case "Abs":
+		return normalized, "Float", true, false, nil
+	case "FormatFloat":
+		return normalized, "String", true, false, nil
+	case "Require":
+		return normalized, "Void", true, false, nil
+	case "ArrayCrossSection", "Array.CrossSection":
 		return "ArrayCrossSection", "Void", true, false, nil
-	case "ArrayWhere":
+	case "ArrayWhere", "Array.Where":
 		return "ArrayWhere", "Void", true, false, nil
+	case "FileReadText":
+		return normalized, "String", true, true, nil
+	case "FileReadBytes":
+		return normalized, "Bytes", true, true, nil
+	case "FileReadLines", "DirectoryList":
+		return normalized, "String[]", true, true, nil
+	case "FileWriteText", "FileWriteLines", "FileWriteBytes":
+		return normalized, "Int", true, true, nil
+	case "FileExists":
+		return normalized, "Bool", true, false, nil
+	case "FileDelete", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
+		return normalized, "Int", true, true, nil
+	case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
+		return normalized, "String", true, true, nil
+	case "JsonSave":
+		return normalized, "Int", true, true, nil
+	case "CsvRead", "CsvReadRows":
+		return normalized, "String[][]", true, true, nil
+	case "CsvReadTable":
+		return normalized, "Csv.Table", true, true, nil
+	case "CsvReadMatrix":
+		return normalized, "Float[][]", true, true, nil
+	case "CsvWrite", "CsvWriteRows":
+		return normalized, "Int", true, true, nil
+	case "MakeExecRaw", "MakeExecInRaw":
+		return normalized, "Make.ProcessResult", true, true, nil
+	case "MakeToolRaw", "MakeReadTextRaw", "MakeHashFileRaw":
+		return normalized, "String", true, true, nil
+	case "MakeEnvRaw":
+		return normalized, "Make.EnvValue", true, true, nil
+	case "MakeExistsRaw", "MakeIsFileRaw", "MakeIsDirRaw":
+		return normalized, "Bool", true, false, nil
+	case "MakeMkdirAllRaw", "MakeRemoveRaw", "MakeCopyRaw", "MakeWriteTextRaw", "MakeModifiedTimeRaw":
+		return normalized, "Int", true, true, nil
+	case "MakeGlobRaw":
+		return normalized, "String[]", true, true, nil
+	case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
+		return normalized, "String", true, false, nil
 	default:
-		return "", "", false, false, unsupportedBuiltin(name)
+		return "", "", false, false, unsupportedBuiltin(normalized)
 	}
 }
 
@@ -2614,10 +2935,14 @@ func (c *lowerCtx) resolveEnumVariantConstructor(enumType string, variant string
 			if len(args) != 1 {
 				return "", "", true, fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumType, variant)
 			}
-			payload, _, _, err := c.lowerExpr(args[0])
+			// The variant's declared payload type decides what the payload
+			// is, as a parameter's type does for an argument.
+			payloadType := typeRefStringForPackage(enumPkg, *declaredVariant.Payload)
+			payload, actualType, _, err := c.withExpectedType(payloadType, func() (string, string, bool, error) { return c.lowerExpr(args[0]) })
 			if err != nil {
 				return "", "", true, err
 			}
+			payload = cloneCompiledValueExpr(coerceExprToType(payload, actualType, payloadType), payloadType)
 			return fmt.Sprintf("%s_%s{Tag: %s_%s_tag, Payload: %s}", enumPkg, enumName, enumName, variant, payload), enumPkg + "." + enumName, true, nil
 		}
 		return "", "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
@@ -2759,16 +3084,6 @@ func isFloatScalarTypeString(t string) bool {
 
 func isIntScalarTypeString(t string) bool {
 	return t == "Int" || (strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">"))
-}
-
-func isFloatArrayTypeString(t string) bool {
-	elem, ok := parseArrayElemType(t)
-	return ok && isFloatScalarTypeString(elem)
-}
-
-func isIntArrayTypeString(t string) bool {
-	elem, ok := parseArrayElemType(t)
-	return ok && isIntScalarTypeString(elem)
 }
 
 func isNumericTypeString(t string) bool {

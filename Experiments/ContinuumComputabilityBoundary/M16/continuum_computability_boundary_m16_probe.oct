@@ -195,16 +195,6 @@ fn Normalize2(vx: Float, vy: Float) -> Float[] {
     return [vx / mag, vy / mag]
 }
 
-fn Clamp01(value: Float) -> Float {
-    if value < 0.0 {
-        return 0.0
-    }
-    if value > 1.0 {
-        return 1.0
-    }
-    return value
-}
-
 fn IsInsideCircle(boundary: CurvedBoundary2D, x: Float, y: Float) -> Bool {
     let dx = x - boundary.CenterX
     let dy = y - boundary.CenterY
@@ -413,75 +403,72 @@ fn PropagateBoundaryOrientation(lattice: Lattice2D, boundaryOrientation: Orienta
     var oy = boundaryOrientation.Oy
     var strength = boundaryOrientation.Strength
 
+    // Each pass is one sweep in place: a cell filled earlier in the sweep is a
+    // neighbor to the cells after it. The results in REPORT.md are those of
+    // this sweep. A pass that read only the values from before the pass would
+    // cancel the tangents that meet at the centre of the circle and leave the
+    // interior cell with no orientation.
     for _ in 0..passes {
-        var nextOx = ox
-        var nextOy = oy
-        var nextStrength = strength
-
         for j in 0..lattice.Ny {
             for i in 0..lattice.Nx {
                 let idx = LatticeIndex(lattice, i, j)
                 if strength[idx] == 0.0 {
                     var sumX = 0.0
-                var sumY = 0.0
-                var count = 0
-                var maxNeighborStrength = 0.0
+                    var sumY = 0.0
+                    var count = 0
+                    var maxNeighborStrength = 0.0
 
-                let li = i - 1
-                let ri = i + 1
-                let dj = j - 1
-                let uj = j + 1
+                    let li = i - 1
+                    let ri = i + 1
+                    let dj = j - 1
+                    let uj = j + 1
 
-                if HasCell(lattice, li, j) {
-                    let nidx = LatticeIndex(lattice, li, j)
-                    if strength[nidx] > 0.0 {
-                        sumX = sumX + ox[nidx]
-                        sumY = sumY + oy[nidx]
-                        count = count + 1
-                        maxNeighborStrength = MaxFloat(maxNeighborStrength, strength[nidx])
+                    if HasCell(lattice, li, j) {
+                        let nidx = LatticeIndex(lattice, li, j)
+                        if strength[nidx] > 0.0 {
+                            sumX = sumX + ox[nidx]
+                            sumY = sumY + oy[nidx]
+                            count = count + 1
+                            maxNeighborStrength = MaxFloat(maxNeighborStrength, strength[nidx])
+                        }
                     }
-                }
-                if HasCell(lattice, ri, j) {
-                    let nidx = LatticeIndex(lattice, ri, j)
-                    if strength[nidx] > 0.0 {
-                        sumX = sumX + ox[nidx]
-                        sumY = sumY + oy[nidx]
-                        count = count + 1
-                        maxNeighborStrength = MaxFloat(maxNeighborStrength, strength[nidx])
+                    if HasCell(lattice, ri, j) {
+                        let nidx = LatticeIndex(lattice, ri, j)
+                        if strength[nidx] > 0.0 {
+                            sumX = sumX + ox[nidx]
+                            sumY = sumY + oy[nidx]
+                            count = count + 1
+                            maxNeighborStrength = MaxFloat(maxNeighborStrength, strength[nidx])
+                        }
                     }
-                }
-                if HasCell(lattice, i, dj) {
-                    let nidx = LatticeIndex(lattice, i, dj)
-                    if strength[nidx] > 0.0 {
-                        sumX = sumX + ox[nidx]
-                        sumY = sumY + oy[nidx]
-                        count = count + 1
-                        maxNeighborStrength = MaxFloat(maxNeighborStrength, strength[nidx])
+                    if HasCell(lattice, i, dj) {
+                        let nidx = LatticeIndex(lattice, i, dj)
+                        if strength[nidx] > 0.0 {
+                            sumX = sumX + ox[nidx]
+                            sumY = sumY + oy[nidx]
+                            count = count + 1
+                            maxNeighborStrength = MaxFloat(maxNeighborStrength, strength[nidx])
+                        }
                     }
-                }
-                if HasCell(lattice, i, uj) {
-                    let nidx = LatticeIndex(lattice, i, uj)
-                    if strength[nidx] > 0.0 {
-                        sumX = sumX + ox[nidx]
-                        sumY = sumY + oy[nidx]
-                        count = count + 1
-                        maxNeighborStrength = MaxFloat(maxNeighborStrength, strength[nidx])
+                    if HasCell(lattice, i, uj) {
+                        let nidx = LatticeIndex(lattice, i, uj)
+                        if strength[nidx] > 0.0 {
+                            sumX = sumX + ox[nidx]
+                            sumY = sumY + oy[nidx]
+                            count = count + 1
+                            maxNeighborStrength = MaxFloat(maxNeighborStrength, strength[nidx])
+                        }
                     }
-                }
 
                     if count > 0 {
                         let normalized = Normalize2(sumX / Float(count), sumY / Float(count))
-                        nextOx[idx] = normalized[0]
-                        nextOy[idx] = normalized[1]
-                        nextStrength[idx] = decay * maxNeighborStrength
+                        ox[idx] = normalized[0]
+                        oy[idx] = normalized[1]
+                        strength[idx] = decay * maxNeighborStrength
                     }
                 }
             }
         }
-
-        ox = nextOx
-        oy = nextOy
-        strength = nextStrength
     }
 
     return OrientationTransportField2D {

@@ -1,0 +1,108 @@
+package RepeatedElements
+
+// A column of a record table can end in `value ...`. The columns that state
+// their length give the table its row count, and the filled column is
+// completed to it.
+
+enum StageKind {Input Compute Output}
+
+record Meta {Native: Bool}
+
+record table Measurements {
+    Stage: String
+    Kind: StageKind
+    Latency: Float
+    Count: Int
+    Meta: Meta
+}
+
+record table Marks {
+    Value: Float
+    Valid: Bool
+}
+
+fn StageNames() -> String[] {
+    return ["a", "b", "c", "d"]
+}
+
+fn Flag(n: Int) -> Bool ! Error {
+    if n < 0 {
+        return error("negative")
+    }
+    return true
+}
+
+fn BuildMarks(values: Float[], n: Int) -> Marks ! Error {
+    return Marks {
+        Valid: [Flag(n)? ...]
+        Value: values
+    }
+}
+
+[Fact]
+fn ColumnsAreFilledToTheRowCount() -> Void {
+    let table = Measurements {
+        Kind: [StageKind.Input, StageKind.Compute ...]
+        Stage: StageNames()
+        Latency: [0.0 ...]
+        Count: [0 ...]
+        Meta: [Meta {Native: true} ...]
+    }
+    Assert.Equal(4, Len(table), "the column that states its length gives the row count")
+    Assert.Equal(StageKind.Input, table.Kind[0], "the elements before `...` come first")
+    Assert.Equal(StageKind.Compute, table.Kind[3], "and the last of them is repeated")
+    Assert.Equal(0.0, table.Latency[3], "a column that is all one value")
+    Assert.Equal(true, table[3].Meta.Native, "record cells")
+}
+
+[Fact]
+fn FilledColumnMayComeFirst() -> Void {
+    let marks = Marks {
+        Valid: [true ...]
+        Value: [1.0, 2.0, 3.0]
+    }
+    Assert.Equal(3, Len(marks), "a later column gives the row count")
+    Assert.True(marks.Valid[2], "the earlier column is filled to it")
+}
+
+[Fact]
+fn CountedColumnStatesItsLength() -> Void {
+    let marks = Marks { Value: [1.0 ... 3] Valid: [true ...] }
+    Assert.Equal(3, Len(marks), "`value ... count` gives the row count")
+    Assert.True(marks.Valid[2], "and `value ...` follows it")
+}
+
+[Fact]
+fn FillAddsNothingWhenTheColumnIsComplete() -> Void {
+    let empty = Marks { Value: [] Valid: [true ...] }
+    Assert.Equal(0, Len(empty), "an empty table")
+    let exact = Marks { Value: [1.0, 2.0] Valid: [true, false, true ...] }
+    Assert.Equal(2, Len(exact), "as many elements before `...` as the table has rows")
+    Assert.Equal(false, exact.Valid[1], "they are the column")
+}
+
+[Fact]
+fn WithReplacesAColumnFilledToTheTable() -> Void {
+    let marks = Marks { Value: [1.0, 2.0, 3.0] Valid: [true ...] }
+    let cleared = marks with {
+        Valid: [false ...]
+        Value: [9.0, 0.0 ...]
+    }
+    Assert.Equal(3, Len(cleared), "the table keeps its row count")
+    Assert.Equal(false, cleared.Valid[2], "a replacement that is all one value")
+    Assert.Equal(9.0, cleared.Value[0], "elements before `...`")
+    Assert.Equal(0.0, cleared.Value[2], "then the fill")
+    Assert.Equal(true, marks.Valid[2], "the table it was made from is unchanged")
+}
+
+[Fact]
+fn ErrorInAFilledColumnPropagates() -> Void {
+    let built = BuildMarks([1.0, 2.0], 1)!
+    Assert.Equal(true, built.Valid[1], "success")
+    var failed = false
+    match BuildMarks([1.0, 2.0], -1) {
+        ok(_) => { failed = false }
+        err(_) => { failed = true }
+    }
+    Assert.True(failed, "`?` in a filled column returns the error")
+}

@@ -38,23 +38,6 @@ fn ResultBangOnlyAfterCompletionInRealFlow() -> Void {
     Assert.True(value > 0.0, "result bang should be used only after completion")
 }
 
-
-[Suite("Experiments.OctErgonomicsLab.M1")]
-[Suite("Experiments.OctErgonomicsLab.M1.Artifacts")]
-[Fact]
-fn ArtifactFilesExistAfterGenerate() -> Void {
-    GenerateM1Artifacts()
-    let root = "out/test-artifacts/experiments_oct_ergonomics_lab_m1"
-    let octagonText = IO.ReadText(IO.JoinPath([root, "m1_octomata_scalar_board_probe.octagon"]))!
-    let markdownText = IO.ReadText(IO.JoinPath([root, "m1_octomata_scalar_board_probe.md"]))!
-    let metricsText = IO.ReadText(IO.JoinPath([root, "metrics.csv"]))!
-    let summaryText = IO.ReadText(IO.JoinPath([root, "summary.json"]))!
-    Assert.True(Len(octagonText) > 0, "octagon artifact must exist")
-    Assert.True(Len(markdownText) > 0, "markdown artifact must exist")
-    Assert.True(Len(metricsText) > 0, "csv artifact must exist")
-    Assert.True(Len(summaryText) > 0, "json artifact must exist")
-}
-
 [Suite("Experiments.OctErgonomicsLab.M1")]
 [Suite("Experiments.OctErgonomicsLab.M1.Artifacts")]
 [Artifact]

@@ -568,3 +568,25 @@ func assertTokenKinds(t *testing.T, tokens []Token, expected ...TokenKind) {
 		}
 	}
 }
+
+// `...` is one token, however it is spaced against its neighbours, and it
+// never swallows the dots of a range or of a float.
+func TestAnalyzeEllipsis(t *testing.T) {
+	result, err := Analyze(source.File{
+		Path: "ellipsis.oct",
+		Text: "[0...n, 1.5 ... 2, 0..3, 7....5]",
+	})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertTokenKinds(t, result.Tokens,
+		LeftBracket,
+		IntLiteral, Ellipsis, Identifier, Comma,
+		FloatLiteral, Ellipsis, IntLiteral, Comma,
+		IntLiteral, DotDot, IntLiteral, Comma,
+		IntLiteral, Ellipsis, Dot, IntLiteral,
+		RightBracket,
+		EOF,
+	)
+}

@@ -1,0 +1,28 @@
+expect runtime error: "assertion failed: the program ran to its last statement"
+
+// The only conversion in this program is the argument of a call whose value a
+// flow state discards. The program must build in both lanes and run to its
+// last statement, which is the assertion this file expects.
+
+package Main
+
+fn FirstHalf(xs: Float[]) -> Float {
+    return xs[0] / 2
+}
+
+flow Discard(ns: Int[]) -> Int {
+    state Run {
+        FirstHalf(ns)
+        return Len(ns)
+    }
+}
+
+fn Main() -> Void {
+    let ns = [1, 1]
+    let run = Discard(ns)
+    Step(run)
+    if Result(run)! != 2 {
+        Assert.True(false, "the flow did not compute what it was written to")
+    }
+    Assert.True(false, "the program ran to its last statement")
+}

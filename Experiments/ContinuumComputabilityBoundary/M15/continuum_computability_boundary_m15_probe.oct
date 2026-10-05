@@ -173,16 +173,6 @@ fn SqrtNewton(value: Float) -> Float {
     return x
 }
 
-fn Clamp01(value: Float) -> Float {
-    if value < 0.0 {
-        return 0.0
-    }
-    if value > 1.0 {
-        return 1.0
-    }
-    return value
-}
-
 fn IsInsideCircle(boundary: CurvedBoundary2D, x: Float, y: Float) -> Bool {
     let dx = x - boundary.CenterX
     let dy = y - boundary.CenterY

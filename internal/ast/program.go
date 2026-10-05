@@ -488,6 +488,38 @@ type ArrayLiteralExpr struct {
 	Elements []Expr
 }
 
+// RepeatExpr is one element of an array, vector or matrix-row literal that
+// stands for several: `Value ... Count` is Count elements, and `Value ...`
+// with no count fills the rest of an array whose length the surrounding
+// construct fixes. It appears nowhere else.
+//
+// Value is evaluated once for each element it produces, in order, exactly as
+// if the element had been written out that many times. Count is evaluated
+// once, before any of them.
+type RepeatExpr struct {
+	Value Expr
+	// Count is nil for the fill form.
+	Count  Expr
+	Line   int
+	Column int
+}
+
+func (RepeatExpr) exprNode() {}
+
+// IsFill reports whether the repetition has no count of its own.
+func (r RepeatExpr) IsFill() bool { return r.Count == nil }
+
+// EndsInFill reports whether expr is an array literal whose last element is
+// `value ...`, and returns the literal. Only the last element can be one.
+func EndsInFill(expr Expr) (ArrayLiteralExpr, bool) {
+	literal, ok := expr.(ArrayLiteralExpr)
+	if !ok || len(literal.Elements) == 0 {
+		return ArrayLiteralExpr{}, false
+	}
+	repeat, repeated := literal.Elements[len(literal.Elements)-1].(RepeatExpr)
+	return literal, repeated && repeat.IsFill()
+}
+
 func (ArrayLiteralExpr) exprNode() {}
 
 type VectorLiteralExpr struct {
@@ -498,6 +530,18 @@ func (VectorLiteralExpr) exprNode() {}
 
 type MatrixLiteralExpr struct {
 	Rows [][]Expr
+	// RowCounts is nil, or has one entry for each row: the count of a row
+	// written `[...] ... count`, and nil for a row written once. A pass that
+	// rebuilds the literal must carry it over.
+	RowCounts []Expr
+}
+
+// RowCount is the repetition count of row index, or nil.
+func (m MatrixLiteralExpr) RowCount(index int) Expr {
+	if index < len(m.RowCounts) {
+		return m.RowCounts[index]
+	}
+	return nil
 }
 
 func (MatrixLiteralExpr) exprNode() {}

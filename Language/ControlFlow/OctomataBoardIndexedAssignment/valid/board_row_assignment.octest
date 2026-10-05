@@ -1,0 +1,46 @@
+package ControlFlowOctomataBoardIndexedAssignment
+
+// `board.Field[i] = row` replaces a whole row of a two-dimensional board
+// field. It is the statement `rows[i] = row` is for a local: the new row is
+// copied, and it must be as long as the row it replaces.
+
+flow KeepRow(row: Float[]) -> Float {
+    board {
+        Grid: Float[][]
+    }
+
+    state Start {
+        board.Grid = [[0.5, 0.5], [0.5, 0.5]]
+        board.Grid[1] = row
+        board.Grid[1, 0] = 9.5
+        return row[0] + board.Grid[1][0]
+    }
+}
+
+flow ReplaceRows() -> Float {
+    board {
+        Grid: Float[][]
+    }
+
+    state Start {
+        board.Grid = [[0.5, 0.5], [0.5, 0.5]]
+        board.Grid[0] = [1.5, 2.5]
+        board.Grid[1] = board.Grid[0]
+        board.Grid[0, 1] = 7.5
+        return board.Grid[0][0] + board.Grid[0][1] + board.Grid[1][0] + board.Grid[1][1]
+    }
+}
+
+[Fact]
+fn AnAssignedRowIsACopy() -> Void {
+    let run = KeepRow([1.5, 2.5])
+    Step(run)
+    Assert.Equal(11.0, Result(run)!, "a later write to the board leaves the row assigned from as it was")
+}
+
+[Fact]
+fn ARowCopiedFromAnotherRowIsIndependent() -> Void {
+    let run = ReplaceRows()
+    Step(run)
+    Assert.Equal(13.0, Result(run)!, "1.5 + 7.5 + 1.5 + 2.5")
+}

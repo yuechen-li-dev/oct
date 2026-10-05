@@ -1,0 +1,16 @@
+expect error: "[OCT-RTBL011] record table 'Marks': every column ends in `...`, so no column gives the row count"
+
+package Main
+
+record table Marks {
+    Value: Float
+    Valid: Bool
+}
+
+fn Main() -> Int {
+    let marks = Marks {
+        Value: [0.0 ...]
+        Valid: [true ...]
+    }
+    return Len(marks)
+}

@@ -10,12 +10,14 @@ Type matching is exact, including dimensions and nominal names.
 
 - Array literal form is `[a, b, c]`.
 - Empty array literal form is `[]`, but only in explicit array-typed context.
-- All array literal elements must have one exact type.
+- All array literal elements must have one exact type. A declared `Float` takes an `Int` as that `Float`; see "Declared types and numeric values" in [02 Types](./02-types.md).
+- Arrays are values. `var ys = xs` gives `ys` its own elements, and a later write to either array does not reach the other. The same holds for an array assigned to a variable, to a board field or to a row, and for an array bound to a state local.
+- `value ... count` in an array literal stands for `count` elements, and `value ...` as the last element fills an array whose length is already fixed. See [Repeated elements](#repeated-elements).
 - Array type forms are `T[]`, `T[][]`, and deeper nested container forms.
 - Indexing form is `xs[i]`.
 - Index expressions must have type `Int`.
 - Indexed assignment requires a mutable array binding (`var`).
-- Indexed assignment values must match the element type exactly.
+- Indexed assignment values must match the element type exactly. A declared `Float` takes an `Int` as that `Float`; see "Declared types and numeric values" in [02 Types](./02-types.md).
 - `array[i] = value` replaces one element of a 1D array.
 - For a nested two-dimensional array, `rows[i, j] = value` replaces one scalar element and `rows[i] = row` replaces a whole row.
 - Whole-row assignment requires an exact row element type and the same runtime length as the destination row. It copies the RHS row value; it does not create mutable aliasing between rows.
@@ -47,8 +49,50 @@ Type matching is exact, including dimensions and nominal names.
 - `Array.CrossSection` and `Array.Where` are for 1D arrays only. Vectors, matrices, and tensors have separate rank-aware APIs and are not accepted as direct values.
 - `Array.Where` remains a compiler-owned polymorphic array operation; do not spell it `Array.Where<T>`. User-authored bounded generic helpers use explicit `template fn Name<T>` declarations instead.
 - `Array.Where` does not add NumPy-style broadcasting, scalar masks, or matrix/vector/tensor mask indexing syntax.
-- Whole-row assignment does not add slices, column assignment, submatrix assignment, broadcasting, shape coercion, or implicit resizing.
+- Whole-row assignment does not add slices, column assignment, submatrix assignment, broadcasting, shape coercion, or implicit resizing. `rows[i] = [value ...]` writes a new row of the same length; it does not resize.
 - Negative indices, reverse ranges, lazy views, `Array.TryCrossSection`, `Array.Copy`, `Array.Take`, `Array.Drop`, and `Array.Window` are deferred/not part of M0.
+
+## Repeated elements
+
+`...` is the ellipsis, and it means what it means in prose: "and so on".
+
+```oct
+let zeros = [0.0 ... n]            // n elements, each 0.0
+let mixed = [1 ... 2, 2 ... 3, 9]  // 1, 1, 2, 2, 2, 9
+let grid = [[0.0 ... cols] ... rows]
+```
+
+### `value ... count`
+
+- `value ... count` is an element of an array literal that stands for `count` elements. It can be mixed with ordinary elements and with other repeated elements, in any order.
+- `count` is an `Int` expression. It is everything between `...` and the next `,` or `]`, and it need not be a constant.
+- A count of zero adds no elements. `[1.5 ... 0]` is an empty `Float[]`: the element still names the type, so no type annotation is needed.
+- A negative count is an error: a compile error when the count is a constant, and the runtime error `repeat count must not be negative, got <n>` otherwise.
+- The count is evaluated once, before the value. The value is then evaluated once for each element, exactly as if it had been written out that many times. `[Entropy.Seed()! ... 8]` reads the random source eight times, and a `?` in the value or in the count returns its error from the enclosing function.
+- Each element is its own value. Writing to `grid[0]` above does not change `grid[1]`.
+- The element type is the type of the value. The usual rule holds: every element of the literal has that one type.
+
+### `value ...`
+
+- `value ...` with no count fills the rest of an array whose length something else has already fixed. It is the last element of its literal, and the elements before it come first: `[1, 2, 0 ...]`.
+- Three places fix a length:
+  - a column of a `record table` literal, which is filled to the table's row count; see [Records](11-records.md#record-tables);
+  - a replacement column in a table `with`, which is filled to the table being updated;
+  - whole-row assignment, `rows[i] = [value ...]`, which is filled to the length of the row being replaced. The target is a two-dimensional array in a local variable or in a board field.
+- Anywhere else nothing fixes the length, and `value ...` is a compile error that says to write a count. A declared type such as `Float[]` says what the elements are, not how many.
+- The value is evaluated once for each element it adds. When the literal already has as many elements as the length, it adds none.
+- More elements before `...` than the length allows is an error: a compile error where both are constants, and the runtime error ``array literal has <n> elements before `...` and its length is fixed at <m>`` otherwise.
+- `rows[i] = [value ...]` checks the index first. A negative or out-of-range index fails with `index <i> out of bounds for array of length <n>`.
+
+### What `...` is not
+
+- It does not spread a collection into arguments or into another literal: `F(xs ...)` is an error.
+- It is not a range. A range is `a..b`, with two dots.
+- It is not a slice: `xs[1 ...]` is an error. Use `Array.CrossSection`.
+- It takes one count. A repeated group is repeated by nesting: `[[0 ... n] ... m]`.
+- `.octagon` data does not accept it; a data file writes every element.
+
+`oct fmt` writes one space on each side of `...`, and none before a closing `]`: `[0.0 ... n]`, `[true ...]`.
 
 ## Examples
 
@@ -60,6 +104,18 @@ package Main
 fn Main() -> Int {
     let grid = [[1, 2], [3, 4]]
     return grid[1][0]
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Int {
+    let cols = 3
+    var rows = [[0 ... cols] ... 2]
+    rows[0] = [1, 2 ...]
+    rows[1] = [7 ...]
+    return rows[0][2] + rows[1][0]
 }
 ```
 
@@ -111,5 +167,14 @@ package Main
 fn Main() -> Int<m>[] {
     var xs = [1m, 2m]
     return Append(xs, 3s)
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Int {
+    let zeros = [0.0 ...]
+    return Len(zeros)
 }
 ```

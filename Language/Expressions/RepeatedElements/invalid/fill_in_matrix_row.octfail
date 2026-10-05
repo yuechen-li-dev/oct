@@ -1,0 +1,8 @@
+expect error: "`...` needs a count here, as in `value ... n`"
+
+package Main
+
+fn Main() -> Int {
+    let m = matrix[[0.5 ...] [1.0]]
+    return 0
+}

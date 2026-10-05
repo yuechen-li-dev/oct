@@ -95,6 +95,8 @@ func validateDataValue(expr ast.Expr) error {
 		return fmt.Errorf(".octagon does not allow switch expressions")
 	case ast.IfExpr:
 		return fmt.Errorf(".octagon does not allow if expressions")
+	case ast.RepeatExpr:
+		return fmt.Errorf(".octagon does not allow `...`; write every element")
 	case ast.VectorLiteralExpr, ast.MatrixLiteralExpr:
 		return fmt.Errorf(".octagon does not allow vector or matrix literals")
 	default:

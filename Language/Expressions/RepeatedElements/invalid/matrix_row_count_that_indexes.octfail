@@ -1,0 +1,10 @@
+expect error: "repeat count must be Int, got Int[]; a `[` after the count of a matrix row starts the next row, so a count that indexes something is written in parentheses"
+
+package Main
+
+// `counts[1]` after a row is the count `counts` and the row `[1]`.
+fn Main() -> Int {
+    let counts = [2, 1]
+    let m = matrix[[1 ... 2] ... counts[1]]
+    return 0
+}

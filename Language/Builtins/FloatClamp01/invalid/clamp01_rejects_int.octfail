@@ -1,0 +1,7 @@
+expect error: "function 'Clamp01' argument 1 expects Float, got Int"
+
+package Main
+
+fn Main() -> Float {
+    return Clamp01(1)
+}

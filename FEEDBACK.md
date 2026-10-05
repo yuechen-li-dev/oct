@@ -744,3 +744,173 @@ Qualifying records on the way out, as enums are, is not enough: a record of the 
 Status: Open
 
 ---
+
+Observation:
+An `Int` is accepted where a `Float` is declared, and the two lanes then disagree about the value. `let x: Float = 1` followed by `x / 2` is `0` interpreted and `0.5` compiled. The same holds for an `Int` variable bound as `Float`, an `Int` argument to a `Float` parameter, and an `Int` array literal used as a `Float[]` local, argument, return value or record field. The typechecker accepts all of them, the compiled lane converts, and the interpreter keeps the `Int`. `Language/reference/language/03-expressions.md` says "Implicit conversion is not allowed", and `docs/COMPILED_SUPPORT.md` (M28a) records the compiled conversion as a fix. Found while writing contracts for `[1 ... n]` in a `Float[]` context; no contract was written for it.
+
+Suggestion:
+Decide which of the three is the language. If an `Int` does not convert, reject it in the typechecker and say to write `1.0` or `Float(n)`. If it does, the interpreter has to convert at every place the typechecker accepts it, and the reference has to say so.
+
+Status: Resolved
+
+Resolution: The declaration decides: `let x: Float = 1` binds the `Float`. The interpreter now converts at every place the typechecker admits an `Int` for a `Float`, or an `Int` or `Float` for a `Complex` (`internal/interpret/conform.go`), and the compiled lane converts at the places where it did not build or panicked: flow sites, row and element assignment, record update fields, enum payloads, nested arrays, vectors and matrices. The rule is in "Declared types and numeric values" in `02-types.md`; contracts are under `Language/Types/DeclaredNumericTypes`, 30 facts in both lanes.
+
+---
+
+Observation:
+Whole-row assignment to a board field is not checked in the compiled lane. With `board.Grid = [[0.5, 0.5], [0.5, 0.5]]`, `board.Grid[1] = [9.5]` fails interpreted with `row length mismatch: expected 2, got 1`; compiled, the program completes and the row has one element. A local `rows[i] = row` is checked in both lanes. The compiled statement is a bare Go slice assignment (`emitGoFlowFieldIndexAssign`), so an index out of range is also a Go panic with a stack trace in place of the array bounds error. `board.Grid[i] = [value ...]` is not affected: it reads the row's length and checks the index itself.
+
+Suggestion:
+Lower a one-index assignment to a two-dimensional board field through the helper that local rows use, and add an `.octfail` for the mismatch.
+
+Status: Resolved
+
+Resolution: The compiled statement goes through the row helper a local row uses, so the length is checked and the row is copied. Contracts: `Language/ControlFlow/OctomataBoardIndexedAssignment/invalid/board_row_length_mismatch.octfail` and `valid/board_row_assignment.octest`.
+
+---
+
+Observation:
+A compiled runtime error whose message carries a code prints a Go stack trace. `runtime error [OCT-RTBL003]: record table ... columns have inconsistent lengths` and `[OCT-RTBL004]` arrive in the output of a compiled `.octfail` as `panic: runtime error [OCT-RTBL003]: ... [recovered, repanicked]` followed by goroutine frames, while `runtime error: ...` messages are one line. The interpreter reports both forms as one line.
+
+Suggestion:
+Have the generated program's top-level recovery accept `runtime error [` as it accepts `runtime error: `.
+
+Status: Open
+
+---
+
+Observation:
+`value ...` fills only where a table or a row assignment fixes a length, because Oct has no array type with a length in it. In Concept the form is most at home initializing a statically sized array. `let xs: Float[] = [0.0 ...]` is a compile error that says to write a count. Row fill is also limited to two-dimensional arrays, the only depth at which both lanes implement whole-row assignment.
+
+Suggestion:
+If Oct gains a sized array type, let its declaration fix the length for `value ...`; the check, the two evaluators and the diagnostic are already written around "a length fixed by the context".
+
+Status: Deferred
+
+---
+
+Observation:
+The compiled test runner names its generated Go file after the package and the absolute path of the `.octest` file (`sanitizeHarnessName` in `internal/tester/tester.go`), so whether a test can run depends on where the repository is checked out. A fixture named `builtin_reached_only_from_a_flow_statement.octest` gave a 256-character file name in a worktree under a long scratch path and failed with "write generated go ...: file name too long"; it was renamed. The longest name in the tree is now 192 characters under `C:\Users\<name>\source\repos\oct`, before the temporary directory is added.
+
+Suggestion:
+Keep a readable prefix of the name and replace the rest with a short hash of the whole of it.
+
+Status: Open
+
+---
+
+Observation:
+A state local read after a `suspend` is accepted, and the two lanes give different values. `state Run { var x = 7  suspend  return x }` returns `7` interpreted and `0` compiled. `Language/reference/runtime/21-octomata.md` says state locals "do not cross `goto`, `suspend`, `yield`, or turn boundaries". The typechecker enforces this for `yield` only, and only for the block the `yield` stands in: a local of an enclosing block stays in scope after a nested `yield`, and a loop that contains one is not treated as a boundary. `Experiments/RfAdaptiveLinkControllerProbe/M0` kept its index and its result in locals across a `suspend`; its test passed interpreted on a result of two elements where one per sample was meant, and failed compiled. It now keeps them on the board. No other source in the repository reads a local after a `suspend`.
+
+Suggestion:
+Treat `suspend` as `yield` is treated, and drop the locals of every enclosing block of the state body, not only the innermost. When a name fails to resolve for this reason, say that it was a state local before a turn boundary and belongs on the board; today the message is "undefined variable".
+
+Status: Open
+
+---
+
+Observation:
+A `suspend` or `yield` inside an `if`, a loop or a `when` action resumes after the top-level statement of the state body that contains it, not after itself. In `if ready { yield 1  board.A = 50 }` the assignment never runs, in either lane, and `while i < n { ...  suspend }` leaves the loop for good at its first `suspend`. `Language/ControlFlow/OctomataFlowNestedTransferM1/valid/nested_transfer.octest` pins this for `suspend` ("should continue after the containing statement"). The reference does not state it, and for `yield` it says the opposite: "preserves the continuation immediately after the yield". Nothing warns about the statements that can no longer run.
+
+Suggestion:
+Decide which is the language. If a nested boundary really leaves the containing statement, say so in the reference and reject a statement that follows one in the same block as unreachable. If the continuation is meant to be the next statement, both lanes need it, and a loop with a `suspend` in it becomes the generator it reads as.
+
+Status: Open
+
+---
+
+Observation:
+A failed `Assert.Equal` reports its message and neither value: `assertion failed: length`. Finding out what the two sides were takes a second program that prints them.
+
+Suggestion:
+Append the expected and actual values to the failure, in both lanes, at least for scalars and strings.
+
+Status: Open
+
+---
+
+Observation:
+`Experiments/ContinuumComputabilityBoundary/M16` computed different numbers from the ones its report records, and its last test failed. An earlier version of this entry said the test asserted a verdict the probe did not reach. That was wrong. The probe was written when `var next = current` shared the array with `current`: its transport sweep wrote into `nextOx` while reading `ox`, and those were one array, so each pass ran in place. Arrays became values on 2026-06-15 (`value_copy_semantics_ofix1.octest`). The same source then ran each pass from a snapshot, the tangents that meet at the centre of the circle cancelled, and the interior cell had no orientation. With the toolchain of 2026-06-04 the test passes; with today's it reported an interior magnitude of 0 for path A where the report's results need 0.707.
+
+Suggestion:
+Experiments written before 2026-06-15 that write to a copy while reading the original now compute something else, and only a test strict enough to notice says so. M16 is the only directory under `Experiments/` with this shape (`var nextX = x` followed by writes to `nextX`). Recorded numbers of older experiments are otherwise unverified against the current toolchain.
+
+Status: Resolved
+
+Resolution: The sweep is written in place, which is what it did. Both lanes give the twelve values of the 2026-06-04 toolchain to the last digit, and the directory's five tests pass.
+
+---
+
+Observation:
+An element assignment in the interpreter copies the whole array. `xs[i] = value` clones `xs` and stores the clone (`assignNestedArrayIndex`), so filling an array by index is quadratic. An interpreter value is 592 bytes (`unsafe.Sizeof(Value{})`), so one write to a `Float[]` of 8,000 elements copies 4.7 MB. Measured on 2 cores, interpreted: 2,000 elements 1.7 s, 4,000 elements 7.5 s, 8,000 elements 26 s. The compiled lane does the same loops in milliseconds. Eleven experiment tests took 39 to 100 s each interpreted where their whole directory takes 1 to 3 s compiled, and `PrometheusSgemmAlgorithmLab/M19` `M19RectangularStressHoldsIndexingInvariants`, whose largest matrix is 193 by 129, did not finish in 900 s interpreted and takes under a second compiled. Copying only the outer slice in place of a deep clone was tried and changes nothing: for scalars the two are the same copy.
+
+Suggestion:
+Write in place when the binding owns its array, or make a value small. Every other holder of an array would have to be shown to hold its own copy first: a record field, an element of an array of arrays, an enum payload, a flow parameter and a returned value all share storage with the variable they came from today, and are safe only because a write makes a new array.
+
+Status: Open
+
+---
+
+Observation:
+In the compiled lane `Append` writes into storage its argument shares. A record field holds the array it was built from without copying it, and `Append(record.Field, value)` is Go's `append`, which writes into spare capacity. With `var xs = [1.0]`, two appends to `xs`, `let r = Pack { Values: xs }`, `xs = Append(xs, 4.0)` and then `let w = Append(r.Values, 9.0)`, `xs[3]` is `9.0` compiled and `4.0` interpreted. Found by reasoning about the board fixes in this pass.
+
+Suggestion:
+An `Append` whose result is not assigned back to its own first argument should never write into the array it was given: `append(xs[:len(xs):len(xs)], value)`. It is copied afterwards already, so the cost does not change.
+
+Status: Resolved
+
+Resolution: The cause was the record, not `Append`: a record field, a `with` replacement and an enum payload held the array or matrix they were built from without copying it, so a write to the variable also changed the record. They now hold a copy, as an element of an array of arrays already did. Contract: `Language/Types/Arrays/valid/value_copy_semantics_in_aggregates.octest`, six facts, five of which failed compiled before. `Append` is unchanged.
+
+---
+
+Observation:
+The reference says "Implicit conversion is not allowed" (`03-expressions.md`), and mixed `Int` and `Float` arithmetic and comparison are accepted and give a `Float` result in both lanes: `3 + 1.5`, `3 * 1.5`, `3 > 1.5`, `[1.5, 2.5] * 3`. One contract pins it, `Language/Expressions/Arithmetic/valid/mixed_division_promotes_to_float.octest`, for `/` only. The reference does not state the promotion.
+
+Suggestion:
+Decide whether `1.5 + 1` is the language. If it is, the reference should say so beside the declared-type rule, and the other operators need contracts. If it is not, the typechecker should reject it and say to write `1.0`.
+
+Status: Open
+
+---
+
+Observation:
+A whole-row assignment with the row index out of range reports different text in the two lanes. Interpreted: `runtime error: index 5 out of bounds for array of length 2`. Compiled: `runtime error: row index 5 out of bounds for array with 2 rows`. This holds for a local and, since this pass, for a board field. A runtime `.octfail` cannot state either.
+
+Suggestion:
+One message. The interpreter's is the one the other array bounds errors use.
+
+Status: Resolved
+
+Resolution: The compiled row helper reports the interpreter's text. Contracts: `Language/Types/Arrays/invalid/whole_row_assignment_index_out_of_bounds.octfail` and `Language/ControlFlow/OctomataBoardIndexedAssignment/invalid/board_row_index_out_of_bounds.octfail`, each checked in both lanes.
+
+---
+
+Observation:
+A state local cannot be assigned by index in a compiled flow. `var held = board.Trace` followed by `held[1] = 3.5` in a state body fails with "compiled mode does not yet support flow statement ast.IndexAssignStmt". The interpreted lane runs it.
+
+Suggestion:
+Lower it as the same statement is lowered in a function.
+
+Status: Open
+
+---
+
+Observation:
+In the interpreted lane a matrix assigned to a board field shares storage with the variable it came from. In a state body, `var m = matrix[[1.5, 2.5] [3.5, 4.5]]`, `board.Grid = m`, `m[0, 0] = 9.5` leaves `board.Grid[0, 0]` at `9.5`. A matrix element is the one thing the interpreter writes in place, and board field assignment is the one place a value is stored without being copied. Arrays are not affected: an element write makes a new array. No contract can be written for both lanes yet, because the compiled lane does not lower `m[0, 0] = value` on a state local (the entry above).
+
+Suggestion:
+Copy a value that holds a matrix when it is assigned to a board field. Lowering index assignment on a state local in the compiled lane comes first, so that the fix can have a contract.
+
+Status: Open
+
+---
+
+Observation:
+An array read out of bounds is a Go panic in the compiled lane. `let ns = [1, 1]`, `let k = 5`, `return ns[k]` stops interpreted with `runtime error: index 5 out of bounds for array of length 2`, and compiled with `panic: runtime error: index out of range [5] with length 2 [recovered, repanicked]` followed by goroutine frames. The same holds for an element assignment `xs[k] = value`. Row assignment and filled rows go through helpers and report the interpreter's text. A runtime `.octfail` cannot state the ordinary array bounds error for both lanes.
+
+Suggestion:
+Read and write elements through a checked helper, or recover the Go bounds panic in the generated `main` and report it in Oct's words.
+
+Status: Open
+
+---

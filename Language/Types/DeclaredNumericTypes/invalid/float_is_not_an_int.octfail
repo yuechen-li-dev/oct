@@ -1,0 +1,8 @@
+expect error: "let n: expected Int, got Float"
+
+package Main
+
+fn Main() -> Int {
+    let n: Int = 1.5
+    return n
+}

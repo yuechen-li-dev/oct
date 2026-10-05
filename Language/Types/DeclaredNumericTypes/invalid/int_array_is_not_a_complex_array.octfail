@@ -1,0 +1,9 @@
+expect error: "let zs: expected Complex[], got Int[]"
+
+package Main
+
+fn Main() -> Int {
+    let ns = [1, 1]
+    let zs: Complex[] = ns
+    return Len(zs)
+}

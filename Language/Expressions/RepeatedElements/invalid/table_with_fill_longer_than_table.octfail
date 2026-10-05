@@ -1,0 +1,18 @@
+expect runtime error: "runtime error: array literal has 3 elements before `...` and its length is fixed at 2"
+
+package Main
+
+record table Marks {
+    Value: Float
+    Valid: Bool
+}
+
+fn Count(n: Int) -> Int {
+    return n
+}
+
+fn Main() -> Int {
+    let marks = Marks { Value: [1.0 ... Count(2)] Valid: [true ...] }
+    let cleared = marks with { Valid: [true, false, true, false ...] }
+    return 0
+}

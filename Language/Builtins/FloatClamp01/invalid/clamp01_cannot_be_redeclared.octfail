@@ -1,0 +1,19 @@
+expect error: "function Clamp01: cannot redeclare built-in function"
+
+package Main
+
+// `Clamp01` is a builtin. A program that declares its own is rejected, and
+// calls the builtin instead.
+fn Clamp01(value: Float) -> Float {
+    if value < 0.0 {
+        return 0.0
+    }
+    if value > 1.0 {
+        return 1.0
+    }
+    return value
+}
+
+fn Main() -> Float {
+    return Clamp01(0.5)
+}

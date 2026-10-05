@@ -127,6 +127,9 @@ func dumpFlowStmt(stmt MIRFlowStmt) string {
 		for _, index := range s.Indices {
 			parts = append(parts, dumpFlowExpr(index))
 		}
+		if s.RowFill {
+			return fmt.Sprintf("%s.%s[%s] = fill-row %s", s.Target, s.Field, strings.Join(parts, "]["), dumpFlowExpr(s.Value))
+		}
 		return fmt.Sprintf("%s.%s[%s] = %s", s.Target, s.Field, strings.Join(parts, "]["), dumpFlowExpr(s.Value))
 	case MIRFlowReturn:
 		if s.Value == nil {

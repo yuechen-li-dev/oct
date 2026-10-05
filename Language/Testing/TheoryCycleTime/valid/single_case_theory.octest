@@ -1,0 +1,47 @@
+package TheoryCycleTime
+
+// A theory that declares a [CycleTime] may take no parameters and no
+// [InlineData] rows. It is then one case, run once under that cycle time.
+
+fn Triangle(n: Int) -> Int {
+    var total = 0
+    for i in 0..(n + 1) {
+        total = total + i
+    }
+    return total
+}
+
+fn TriangleOrError(n: Int) -> Int ! Error {
+    if n < 0 {
+        return error("negative")
+    }
+    return Triangle(n)
+}
+
+[Theory]
+[CycleTime(120.0s)]
+fn ASingleCaseNeedsNoRows() -> Void {
+    Assert.Equal(5050, Triangle(100), "the case ran")
+}
+
+[Theory]
+[Suite("TheoryCycleTime.Fallible")]
+[CycleTime(120.0s)]
+fn ASingleCaseMayBeFallible() -> Void ! Error {
+    let total = TriangleOrError(100)?
+    Assert.Equal(5050, total, "the case ran")
+}
+
+[CycleTime(120.0s)]
+[Theory]
+fn TheAttributesComeInEitherOrder() -> Void {
+    Assert.Equal(1, Triangle(1), "the case ran")
+}
+
+[Theory]
+[CycleTime(120.0s)]
+[InlineData(1, 1)]
+[InlineData(4, 10)]
+fn RowsStillGiveOneCaseEach(n: Int, expected: Int) -> Void {
+    Assert.Equal(expected, Triangle(n), "one case for each row")
+}

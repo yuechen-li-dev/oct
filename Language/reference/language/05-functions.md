@@ -46,7 +46,7 @@ Fallibility is part of the function signature.
 - Non-`Void` functions must return a value on every path.
 - `Void` functions may return with `return` or by reaching the end of the body.
 - Calls must provide exactly the declared number of arguments.
-- Each argument type must match the corresponding parameter type.
+- Each argument type must match the corresponding parameter type. A declared `Float` takes an `Int` as that `Float`; see "Declared types and numeric values" in [02 Types](./02-types.md).
 - Builtin names cannot be redeclared.
 - Reusable exact-typed functions may use `template fn Name<T>(...)`; see [19 Parametric templates](./19-parametrics.md).
 

@@ -1,0 +1,12 @@
+expect runtime error: "runtime error: repeat count must not be negative, got -1"
+
+package Main
+
+fn Count(n: Int) -> Int {
+    return n
+}
+
+fn Main() -> Int {
+    let m = matrix[[0.5, 1.0] ... Count(-1)]
+    return 0
+}

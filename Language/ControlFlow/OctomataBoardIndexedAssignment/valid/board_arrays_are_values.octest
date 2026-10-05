@@ -1,0 +1,99 @@
+package ControlFlowOctomataBoardIndexedAssignment
+
+// Arrays are values on the board as they are in a function. A board field
+// and a state local hold their own copy of what was assigned to them, so a
+// later write to the board reaches no other array.
+
+flow KeepField(xs: Float[]) -> Float {
+    board {
+        Trace: Float[]
+        Other: Float[]
+    }
+
+    state Start {
+        board.Trace = xs
+        board.Trace[0] = 9.5
+        board.Other = board.Trace
+        board.Other[1] = 7.5
+        return xs[0] + board.Trace[1] + board.Other[1]
+    }
+}
+
+flow LocalFromBoard() -> Float {
+    board {
+        Trace: Float[]
+    }
+
+    state Start {
+        board.Trace = [1.5, 2.5]
+        let before = board.Trace
+        var held = board.Trace
+        board.Trace[0] = 9.5
+        held = board.Trace
+        board.Trace[1] = 7.5
+        return before[0] + held[0] + held[1] + board.Trace[1]
+    }
+}
+
+flow Grow() -> Float {
+    board {
+        Trace: Float[]
+        Other: Float[]
+    }
+
+    state Start {
+        board.Trace = Append(board.Trace, 1.5)
+        board.Trace = Append(board.Trace, 2.5)
+        board.Trace = Append(board.Trace, 3.5)
+        board.Other = Append(board.Trace, 4.5)
+        board.Other[0] = 9.5
+        board.Trace = Append(board.Trace, 5.5)
+        return board.Trace[0] + board.Trace[3] + board.Other[0] + board.Other[3]
+    }
+}
+
+flow Emit() yields Float[] -> Float {
+    board {
+        Trace: Float[]
+    }
+
+    state Start {
+        board.Trace = [1.5, 2.5]
+        yield board.Trace
+        board.Trace[0] = 9.5
+        return board.Trace[0]
+    }
+}
+
+[Fact]
+fn AFieldAssignedFromAnArrayHoldsACopy() -> Void {
+    let source = [1.5, 2.5]
+    let run = KeepField(source)
+    Step(run)
+    Assert.Equal(11.5, Result(run)!, "1.5 from the parameter, 2.5 from Trace, 7.5 from Other")
+    Assert.Equal(1.5, source[0], "the caller's array is unchanged")
+}
+
+[Fact]
+fn AStateLocalHoldsACopy() -> Void {
+    let run = LocalFromBoard()
+    Step(run)
+    Assert.Equal(21.0, Result(run)!, "1.5 before the write, 9.5 and 2.5 when reassigned, 7.5 on the board")
+}
+
+[Fact]
+fn AppendingToOneFieldLeavesAnotherAlone() -> Void {
+    let run = Grow()
+    Step(run)
+    Assert.Equal(21.0, Result(run)!, "1.5 + 5.5 in Trace, 9.5 + 4.5 in Other")
+}
+
+[Fact]
+fn AYieldedArrayIsACopy() -> Void {
+    let run = Emit()
+    Step(run)
+    let first = Yielded(run)!
+    Step(run)
+    Assert.Equal(1.5, first[0], "a later write to the board does not reach what was yielded")
+    Assert.Equal(9.5, Result(run)!, "the board has the write")
+}

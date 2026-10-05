@@ -1,0 +1,17 @@
+expect error: "[OCT-RTBL002] record table 'Marks' column 'Valid' has 3 elements before `...` and column 'Value' gives the table 2 rows"
+
+package Main
+
+// The last element is the one repeated, so three elements stand before it.
+record table Marks {
+    Value: Float
+    Valid: Bool
+}
+
+fn Main() -> Int {
+    let marks = Marks {
+        Value: [1.0, 2.0]
+        Valid: [true, false, true, false ...]
+    }
+    return Len(marks)
+}

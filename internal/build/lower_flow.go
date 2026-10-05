@@ -5,12 +5,18 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"sort"
+	"strings"
 )
 
 type compiledExpressionContext struct {
-	program     project.Program
-	pkg         project.Package
-	flowName    string
+	program  project.Program
+	pkg      project.Package
+	flowName string
+	// returnType and yieldType are the types the flow declares for its
+	// result and for what it yields; yieldType is empty when it yields
+	// nothing.
+	returnType  string
+	yieldType   string
 	anonymousID int
 	functions   []MIRFunction
 }
@@ -19,7 +25,10 @@ var activeFlowExpressionContext *compiledExpressionContext
 
 func lowerFlow(program project.Program, pkgName string, flow ast.FlowDecl, pkg project.Package) (MIRFlow, []MIRFunction, error) {
 	previousExpressionContext := activeFlowExpressionContext
-	expressionContext := &compiledExpressionContext{program: program, pkg: pkg, flowName: flow.Name}
+	expressionContext := &compiledExpressionContext{program: program, pkg: pkg, flowName: flow.Name, returnType: typeRefStringForPackage(pkgName, flow.ReturnType)}
+	if flow.YieldType != nil {
+		expressionContext.yieldType = typeRefStringForPackage(pkgName, *flow.YieldType)
+	}
 	activeFlowExpressionContext = expressionContext
 	defer func() { activeFlowExpressionContext = previousExpressionContext }()
 	env := map[string]string{}
@@ -147,7 +156,7 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 		if _, exists := env[s.Name]; exists {
 			return nil, fmt.Errorf("flow local '%s' conflicts with existing binding", s.Name)
 		}
-		v, t, fallible, err := lowerFlowExprTyped(s.Value, env, locals, pkg, boardFieldTypes)
+		v, t, fallible, err := lowerFlowStoredTyped(s.Value, flowTypeHint(pkg, s.TypeHint), env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -167,7 +176,7 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 		if _, exists := env[s.Name]; exists {
 			return nil, fmt.Errorf("flow local '%s' conflicts with existing binding", s.Name)
 		}
-		v, t, fallible, err := lowerFlowExprTyped(s.Value, env, locals, pkg, boardFieldTypes)
+		v, t, fallible, err := lowerFlowStoredTyped(s.Value, flowTypeHint(pkg, s.TypeHint), env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -187,7 +196,7 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 		if !locals[s.Name] {
 			return nil, fmt.Errorf("flow assignment target '%s' is not a state local", s.Name)
 		}
-		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
+		v, err := lowerFlowExprTo(s.Value, env[s.Name], !isSelfAppendAssign(s.Name, s.Value), env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +206,7 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 	case ast.SuspendStmt:
 		return MIRFlowSuspend{}, nil
 	case ast.YieldStmt:
-		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
+		v, err := lowerFlowExprTo(s.Value, activeFlowExpressionContext.yieldType, false, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -207,7 +216,7 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 	case ast.ResumeStmt:
 		return MIRFlowResume{}, nil
 	case ast.FieldAssignStmt:
-		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
+		v, err := lowerFlowExprTo(s.Value, boardFieldType(s.Target, s.Field, boardFieldTypes), !isSelfAppendBoardAssign(s.Target, s.Field, s.Value), env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -221,16 +230,32 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 			}
 			indices = append(indices, lowered)
 		}
-		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
+		if literal, fill := ast.EndsInFill(s.Value); fill {
+			rowType := strings.TrimSuffix(boardFieldTypes[s.Field], "[]")
+			if s.Target != "board" || len(indices) != 1 || !isTwoDimensionalArrayType(boardFieldTypes[s.Field]) {
+				return nil, fmt.Errorf("internal error: `value ...` reached a board assignment that fixes no length")
+			}
+			v, err := lowerSharedFlowExpressionWith(env, locals, map[string]string{flowRowExtentLocal: "Int"}, func(ctx *lowerCtx) (string, string, bool, error) {
+				return ctx.withExpectedType(rowType, func() (string, string, bool, error) {
+					return ctx.lowerRepeatedArrayLiteral(literal, flowRowExtentLocal)
+				})
+			})
+			if err != nil {
+				return nil, err
+			}
+			return MIRFlowFieldIndexAssign{Target: s.Target, Field: s.Field, Indices: indices, Value: v, Row: true, RowFill: true}, nil
+		}
+		v, err := lowerFlowExprTo(s.Value, assignedElementType(boardFieldType(s.Target, s.Field, boardFieldTypes), len(indices)), false, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
-		return MIRFlowFieldIndexAssign{Target: s.Target, Field: s.Field, Indices: indices, Value: v}, nil
+		row := len(indices) == 1 && isTwoDimensionalArrayType(boardFieldType(s.Target, s.Field, boardFieldTypes))
+		return MIRFlowFieldIndexAssign{Target: s.Target, Field: s.Field, Indices: indices, Value: v, Row: row}, nil
 	case ast.ReturnStmt:
 		if s.Value == nil {
 			return MIRFlowReturn{}, nil
 		}
-		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
+		v, err := lowerFlowExprTo(s.Value, activeFlowExpressionContext.returnType, false, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -360,7 +385,7 @@ func lowerFlowWhenAction(action ast.WhenAction, env map[string]string, locals ma
 	case ast.WhenSuspendAction:
 		return MIRFlowWhenSuspend{}, nil
 	case ast.WhenReturnAction:
-		v, err := lowerFlowExpr(a.Value, env, locals, pkg, boardFieldTypes)
+		v, err := lowerFlowExprTo(a.Value, activeFlowExpressionContext.returnType, false, env, locals, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -401,6 +426,92 @@ func lowerFlowExprTyped(expr ast.Expr, env map[string]string, locals map[string]
 		return nil, "", false, err
 	}
 	return value, typ, fallible, nil
+}
+
+// lowerFlowStoredTyped lowers the value of a state local, with its type.
+// expected is the type the local was written with, or empty.
+func lowerFlowStoredTyped(expr ast.Expr, expected string, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, string, bool, error) {
+	value, err := lowerFlowExprTo(expr, expected, true, env, locals, pkg, boardFieldTypes)
+	if err != nil {
+		return nil, "", false, err
+	}
+	typ, fallible, err := flowExpressionType(value)
+	if err != nil {
+		return nil, "", false, err
+	}
+	return value, typ, fallible, nil
+}
+
+// lowerFlowExprTo lowers an expression whose value goes to a place: a board
+// field, a state local, what the flow yields or returns.
+//
+// expected is the declared type of the place, or empty when it declares
+// none. The declared type decides what the value is, as it does in an
+// ordinary function: an Int where a Float is declared becomes that Float.
+//
+// stored says that the place keeps the value. Arrays are values, so what a
+// board field or a state local keeps is a copy: a later write to the board
+// does not reach the array it was assigned from, as `var ys = xs` gives an
+// independent array in a function.
+func lowerFlowExprTo(expr ast.Expr, expected string, stored bool, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, error) {
+	verilog := activeFlowExpressionContext != nil && activeFlowExpressionContext.program.Profile == "Verilog"
+	if _, propagates := expr.(ast.PropagateExpr); propagates || verilog || (expected == "" && !stored) {
+		return lowerFlowExpr(expr, env, locals, pkg, boardFieldTypes)
+	}
+	return lowerSharedFlowExpressionWith(env, locals, nil, func(ctx *lowerCtx) (string, string, bool, error) {
+		return ctx.withExpectedType(expected, func() (string, string, bool, error) {
+			value, actual, fallible, err := ctx.lowerExpr(expr)
+			if err != nil || fallible {
+				return value, actual, fallible, err
+			}
+			if expected != "" {
+				if coerced := coerceExprToType(value, actual, expected); coerced != value {
+					value, actual = coerced, expected
+				}
+			}
+			if stored {
+				value = cloneCompiledValueExpr(value, actual)
+			}
+			return value, actual, false, nil
+		})
+	})
+}
+
+// isSelfAppendBoardAssign reports whether a statement is
+// `board.Field = Append(board.Field, value)`. The field already owns the
+// array it appends to, so nothing is copied.
+func isSelfAppendBoardAssign(target string, field string, value ast.Expr) bool {
+	call, ok := value.(ast.CallExpr)
+	if !ok || len(call.Arguments) != 2 {
+		return false
+	}
+	callee, ok := call.Callee.(ast.IdentifierExpr)
+	if !ok || callee.Name != "Append" {
+		return false
+	}
+	source, ok := call.Arguments[0].(ast.FieldAccessExpr)
+	if !ok || source.Field != field {
+		return false
+	}
+	owner, ok := source.Target.(ast.IdentifierExpr)
+	return ok && owner.Name == target
+}
+
+// flowTypeHint is the type a flow local was written with, or empty.
+func flowTypeHint(pkg string, hint *ast.TypeRef) string {
+	if hint == nil {
+		return ""
+	}
+	return typeRefStringForPackage(pkg, *hint)
+}
+
+// boardFieldType is the declared type of `board.field`, or empty when the
+// target is not the board.
+func boardFieldType(target string, field string, boardFieldTypes map[string]string) string {
+	if target != "board" {
+		return ""
+	}
+	return boardFieldTypes[field]
 }
 
 func lowerFallibleFlowCall(call ast.CallExpr, env map[string]string, locals map[string]bool, pkg string, boardFieldTypes map[string]string) (MIRFlowExpr, string, error) {
@@ -478,12 +589,26 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 }
 
 func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals map[string]bool) (MIRFlowExpr, error) {
+	return lowerSharedFlowExpressionWith(env, flowLocals, nil, func(ctx *lowerCtx) (string, string, bool, error) {
+		return ctx.lowerExpr(expr)
+	})
+}
+
+// lowerSharedFlowExpressionWith lowers one flow expression through the
+// ordinary block lowering. provided names Go locals that the statement
+// emitted around the expression defines, with their types; lower produces
+// the expression's value.
+func lowerSharedFlowExpressionWith(env map[string]string, flowLocals map[string]bool, provided map[string]string, lower func(*lowerCtx) (string, string, bool, error)) (MIRFlowExpr, error) {
 	shared := activeFlowExpressionContext
 	if shared == nil {
 		return nil, fmt.Errorf("internal error: missing compiled FLOW expression context")
 	}
-	ordinaryLocals := make(map[string]string, len(env))
-	goNames := make(map[string]string, len(env))
+	ordinaryLocals := make(map[string]string, len(env)+len(provided))
+	goNames := make(map[string]string, len(env)+len(provided))
+	for name, typ := range provided {
+		ordinaryLocals[name] = typ
+		goNames[name] = name
+	}
 	for name, typ := range env {
 		ordinaryLocals[name] = typ
 		switch {
@@ -507,7 +632,7 @@ func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals 
 		anonymousID: shared.anonymousID,
 		einTerms:    map[string]einsteinTermMeta{},
 	}
-	value, typ, fallible, err := ctx.lowerExpr(expr)
+	value, typ, fallible, err := lower(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -518,6 +643,9 @@ func lowerSharedFlowExpression(expr ast.Expr, env map[string]string, flowLocals 
 	resultLocals := make([]MIRField, 0)
 	for name, localType := range ctx.locals {
 		if _, external := env[name]; external {
+			continue
+		}
+		if _, external := provided[name]; external {
 			continue
 		}
 		resultLocals = append(resultLocals, MIRField{Name: ctx.goLocalName(name), Type: localType})

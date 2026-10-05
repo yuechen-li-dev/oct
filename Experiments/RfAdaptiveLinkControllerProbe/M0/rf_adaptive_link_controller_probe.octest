@@ -73,7 +73,7 @@ fn AdaptiveControllerRunsOnRfBuiltTrace() -> Void {
     Assert.Equal("Run", history[0], "history should begin in Run")
 
     match Result(f) {
-        ok(modes) => { Assert.True(Len(modes) > 0, "controller should return non-empty mode sequence") }
+        ok(modes) => { Assert.Equal(Len(trace.QualityScore) + 1, Len(modes), "controller should return the starting mode and one mode per RF sample") }
         err(e) => { Assert.True(false, "result should be available once flow completes") }
     }
 }

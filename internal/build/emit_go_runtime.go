@@ -15,6 +15,46 @@ func __octIntArrayToFloat(values []int) []float64 {
 	}
 	return out
 }
+
+func __octWidenRows[T any, U any](rows []T, widen func(T) U) []U {
+	out := make([]U, len(rows))
+	for i, row := range rows {
+		out[i] = widen(row)
+	}
+	return out
+}
+`
+
+// The runtime checks of a repeated literal element (`value ... count` and
+// `value ...`). Their messages are the interpreter's, word for word.
+const __octRepeatHelpers = `
+func __octRepeatCount(count int) int {
+	if count < 0 {
+		panic(fmt.Sprintf("runtime error: repeat count must not be negative, got %d", count))
+	}
+	return count
+}
+
+func __octRepeatFill(extent int, have int) int {
+	if have > extent {
+		panic(fmt.Sprintf("runtime error: array literal has %d elements before ` + "`...`" + ` and its length is fixed at %d", have, extent))
+	}
+	return extent - have
+}
+
+func __octRepeatRowExtent[T any](rows [][]T, index int) int {
+	if index < 0 || index >= len(rows) {
+		panic(fmt.Sprintf("runtime error: index %d out of bounds for array of length %d", index, len(rows)))
+	}
+	return len(rows[index])
+}
+
+func __octRepeatRow[T any](rows [][]T, row []T) []T {
+	if len(rows) > 0 && len(row) != len(rows[0]) {
+		panic(fmt.Sprintf("runtime error: matrix rows must all have equal length: expected %d, got %d", len(rows[0]), len(row)))
+	}
+	return row
+}
 `
 
 const __octComplexHelpers = `

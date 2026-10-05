@@ -78,12 +78,6 @@ fn PolicyAdaptive() -> PolicyConfig { return PolicyConfig { Name: "D-adaptive" M
 
 fn AllPolicies() -> PolicyConfig[] { return [PolicyBaseline(), PolicyGreedy(), PolicyConservative(), PolicyAdaptive()] }
 
-fn Clamp01(v: Float) -> Float {
-    if v < 0.0 { return 0.0 }
-    if v > 1.0 { return 1.0 }
-    return v
-}
-
 fn IsHardGate(obs: PhysicalObservation) -> Bool {
     return obs.RuntimeUnsafe or obs.SlotValid == false or obs.MemoryBudgetOk == false or obs.OutstandingDepth >= 2
 }

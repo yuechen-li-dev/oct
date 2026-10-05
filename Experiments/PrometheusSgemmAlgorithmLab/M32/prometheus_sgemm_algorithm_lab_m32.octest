@@ -12,20 +12,23 @@ fn M32HasRequiredBudgetSweep() -> Void {
     Assert.Equal(Len(budgets), 6, "M32 must include six budget points from 1.0 to 3.0 slots")
 }
 
-[Fact]
+[Theory]
+[CycleTime(480.0s)]
 fn M32RunsRegimesStrategiesAndBudgets() -> Void {
     let rows = M32RunAll()
     Assert.Equal(Len(rows), 180, "5 regimes x 6 strategies x 6 budgets expected")
 }
 
-[Fact]
+[Theory]
+[CycleTime(480.0s)]
 fn M32MarksInfeasibleWhenBudgetTooTight() -> Void {
     let rows = M32RunAll()
     let tripleTight = M32FeasibleScore(rows, "seq-lowvar-balanced", "1.25-slot", "C-fixed-triple")
     Assert.True(tripleTight < 0, "fixed-triple should be infeasible under tight hard memory ceiling")
 }
 
-[Fact]
+[Theory]
+[CycleTime(480.0s)]
 fn M32FinalRecommendationIsActionable() -> Void {
     let rows = M32RunAll()
     let rec = M32FinalRecommendationFrom(rows)

@@ -1,0 +1,9 @@
+M1OctagonSummary {
+    title: "FM Brown-Noise Kalman M1"
+    rowCount: (8)
+    artifactSkipNotes: ["sample CSV writes are bounded to <=1000 rows"]
+    limitations: ["Phase-domain FM path is not real carrier/IQ FM.", "M1 does not use real audio.", "Adaptive AR(1) model is diagnostic only."]
+    labelToleranceSnrEpsilonDb: (0.01)
+    labelToleranceWhitenessRelativeEpsilon: (0.01)
+    outputDiagnosticsCount: (8)
+}

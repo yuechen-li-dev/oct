@@ -20,6 +20,8 @@ Load and write are explicit through builtins.
   and `-0.5`), including inside arrays and record fields.
 - Disallowed surface includes package declarations, function declarations,
   bindings, arbitrary calls, control flow, and multiple top-level values.
+- A repeated element (`value ... count`, `value ...`) is not data. An array in
+  an `.octagon` file writes every element.
 - `WriteOctagon(path, value)` writes `.octagon` data and returns `Int` status.
 - `WriteOctagon` path must end with `.octagon`.
 - `WriteOctagon` value must be `.octagon`-representable.

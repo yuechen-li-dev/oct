@@ -1,0 +1,14 @@
+expect error: "a channel must be at most 255"
+
+package Main
+
+// A repeated element of a refined type is checked as a single element is.
+concept Channel = Int {
+    Require(Self >= 0, "a channel must be at least 0")
+    Require(Self <= 255, "a channel must be at most 255")
+}
+
+fn Main() -> Int {
+    let channels: Channel[] = [300 ... 2]
+    return Len(channels)
+}

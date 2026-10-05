@@ -1,0 +1,26 @@
+package Main
+
+record table Samples {
+Time: Float
+Valid: Bool
+}
+
+fn Build(n: Int, counts: Int[]) -> Int {
+let zeros = [0.0...n]
+let spaced = [1   ...   2, 2 ...3,9]
+let signed = [-1...3, 0...-n+4]
+let grid = [[0...n]...2]
+let table = Samples { Time: [0.0, 1.0] Valid: [true...] }
+let cleared = table with { Valid: [false   ...] }
+var rows = [[1, 2, 3], [4, 5, 6]]
+rows[1] = [9, 0...]
+let v = vector[0.5...3]
+let m = matrix[[1.0...3]...2]
+let after = matrix[[1.0, 0.0]...n[5.0, 6.0]...(counts[0])[7.0, 8.0]]
+let lines = matrix[
+[1.0...2]...n
+[5.0, 6.0]
+]
+let range = 0..n
+return Len(zeros) + Len(spaced)
+}

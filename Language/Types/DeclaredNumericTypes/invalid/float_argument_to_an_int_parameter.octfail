@@ -1,0 +1,11 @@
+expect error: "function 'Count' argument 1 expects Int, got Float"
+
+package Main
+
+fn Count(n: Int) -> Int {
+    return n
+}
+
+fn Main() -> Int {
+    return Count(1.5)
+}

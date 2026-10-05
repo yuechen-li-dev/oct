@@ -1,0 +1,133 @@
+package DeclaredNumericTypes
+
+fn FirstHalfOf(xs: Float[]) -> Float {
+    return xs[0] / 2
+}
+
+flow Hold(n: Int, ns: Int[]) -> Float {
+    board {
+        Level: Float
+        Trace: Float[]
+        Grid: Float[][]
+    }
+
+    state Run {
+        board.Level = 1
+        let fromLiteral = board.Level / 2
+        board.Level = n
+        board.Trace = [1, 1]
+        let traceFromLiteral = board.Trace[0] / 2
+        board.Trace = ns
+        board.Trace[0] = 3
+        board.Trace[1] = n
+        board.Grid = [[1.5, 2.5], [3.5, 4.5], [5.5, 6.5]]
+        board.Grid[0] = [1, 1]
+        board.Grid[1] = ns
+        board.Grid[2] = [1 ...]
+        board.Grid[0, 0] = n
+        return fromLiteral + board.Level / 2 + traceFromLiteral + board.Trace[0] / 2 + board.Trace[1] / 2 + board.Grid[0][0] / 2 + board.Grid[0][1] / 2 + board.Grid[1][0] / 2 + board.Grid[2][1] / 2
+    }
+}
+
+flow Scale(start: Float) -> Float {
+    state Run {
+        return start / 2
+    }
+}
+
+flow Locals(n: Int) -> Float {
+    state Run {
+        let declared: Float = n
+        var inferred = 2.5
+        inferred = n
+        return declared / 2 + inferred / 2
+    }
+}
+
+flow Emit(n: Int) yields Float -> Float {
+    state Run {
+        yield 1
+        yield n
+        return n
+    }
+}
+
+flow Choose(n: Int) -> Float {
+    state Run {
+        when {
+            case n > 0 -> return n
+            else -> return 2.5
+        }
+    }
+}
+
+flow Take() accepts amount: Float -> Float {
+    state Run {
+        return amount / 2
+    }
+}
+
+flow Discard(ns: Int[]) -> Float {
+    state Run {
+        FirstHalfOf(ns)
+        return 0.5
+    }
+}
+
+[Fact]
+fn BoardFieldsAreWhatTheBoardDeclares() -> Void {
+    let run = Hold(1, [1, 1])
+    Step(run)
+    // 0.5 + 0.5 + 0.5 + 1.5 + 0.5 + 0.5 + 0.5 + 0.5 + 0.5
+    Assert.Equal(5.5, Result(run)!, "every assignment to the board put Floats there")
+}
+
+[Fact]
+fn AFlowParameterIsWhatItDeclares() -> Void {
+    let n = 1
+    let fromLiteral = Scale(1)
+    let fromVariable = Scale(n)
+    Step(fromLiteral)
+    Step(fromVariable)
+    Assert.Equal(0.5, Result(fromLiteral)!, "a literal")
+    Assert.Equal(0.5, Result(fromVariable)!, "an Int variable")
+}
+
+[Fact]
+fn StateLocalsAreWhatTheyDeclare() -> Void {
+    let run = Locals(1)
+    Step(run)
+    Assert.Equal(1.0, Result(run)!, "a declared local and an assignment to an inferred one")
+}
+
+[Fact]
+fn AYieldAndAResultAreWhatTheFlowDeclares() -> Void {
+    let emit = Emit(1)
+    Step(emit)
+    Assert.Equal(0.5, Yielded(emit)! / 2, "a yielded literal")
+    Step(emit)
+    Assert.Equal(0.5, Yielded(emit)! / 2, "a yielded variable")
+    Step(emit)
+    Assert.Equal(0.5, Result(emit)! / 2, "the result")
+    let choose = Choose(1)
+    Step(choose)
+    Assert.Equal(0.5, Result(choose)! / 2, "a result returned from a `when`")
+}
+
+[Fact]
+fn ATurnInputIsWhatTheFlowAccepts() -> Void {
+    let n = 1
+    let fromLiteral = Take()
+    let fromVariable = Take()
+    Step(fromLiteral, 1)
+    Step(fromVariable, n)
+    Assert.Equal(0.5, Result(fromLiteral)!, "a literal")
+    Assert.Equal(0.5, Result(fromVariable)!, "an Int variable")
+}
+
+[Fact]
+fn AnArgumentInAStatementWhoseValueIsDiscarded() -> Void {
+    let run = Discard([1, 1])
+    Step(run)
+    Assert.Equal(0.5, Result(run)!, "the flow ran")
+}

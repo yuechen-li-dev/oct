@@ -2,7 +2,8 @@ package FmBrownNoiseKalman
 
 import IO
 
-[Fact]
+[Theory]
+[CycleTime(180.0s)]
 [Suite("Experiments.FmBrownNoiseKalman.M5")]
 [Suite("Experiments.FmBrownNoiseKalman.M5.FlowSmoke")]
 fn M5GridSizeIs27() -> Void ! Error {
@@ -10,7 +11,8 @@ fn M5GridSizeIs27() -> Void ! Error {
     Assert.Equal(27, Len(report.Cases), "grid")
 }
 
-[Fact]
+[Theory]
+[CycleTime(180.0s)]
 [Suite("Experiments.FmBrownNoiseKalman.M5")]
 [Suite("Experiments.FmBrownNoiseKalman.M5.FlowSmoke")]
 fn M5MetricsFiniteAndEquivalencePasses() -> Void ! Error {
@@ -25,7 +27,8 @@ fn M5MetricsFiniteAndEquivalencePasses() -> Void ! Error {
     }
 }
 
-[Fact]
+[Theory]
+[CycleTime(180.0s)]
 [Suite("Experiments.FmBrownNoiseKalman.M5")]
 fn M5LabelsAndGroupsAreComplete() -> Void ! Error {
     let report = RunM5Sweep()?

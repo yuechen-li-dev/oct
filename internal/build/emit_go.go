@@ -39,18 +39,33 @@ func analyzeGoSupportFeatures(module MIRModule, usedBuiltins map[string]bool) go
 		for _, field := range flow.Board {
 			features.NeedsClone = features.NeedsClone || compiledValueNeedsClone(field.Type)
 		}
-		walkFlowSharedStatements(flow, func(statement MIRStmt) {
-			if mirStatementContains(statement, "__octClone(") {
+		walkFlow(flow, func(statement MIRFlowStmt) {
+			if assign, ok := statement.(MIRFlowFieldIndexAssign); ok && assign.Row && !assign.RowFill {
+				features.NeedsRowAssign, features.NeedsClone = true, true
+			}
+		}, func(block MIRBlock) {
+			for _, statement := range block.Statements {
+				if mirStatementContains(statement, "__octClone(") {
+					features.NeedsClone = true
+				}
+				if mirStatementContains(statement, "__octRange{") {
+					features.NeedsRange = true
+				}
+				if mirStatementContains(statement, "__octIntArrayToFloat(") {
+					features.NeedsArrayCoercion = true
+				}
+				if _, ok := statement.(MIRRowAssign); ok {
+					features.NeedsRowAssign, features.NeedsClone = true, true
+				}
+			}
+			if mirTerminatorContains(block.Terminator, "__octClone(") {
 				features.NeedsClone = true
 			}
-			if mirStatementContains(statement, "__octRange{") {
+			if mirTerminatorContains(block.Terminator, "__octRange{") {
 				features.NeedsRange = true
 			}
-			if mirStatementContains(statement, "__octIntArrayToFloat(") {
+			if mirTerminatorContains(block.Terminator, "__octIntArrayToFloat(") {
 				features.NeedsArrayCoercion = true
-			}
-			if _, ok := statement.(MIRRowAssign); ok {
-				features.NeedsRowAssign, features.NeedsClone = true, true
 			}
 		})
 	}
@@ -417,7 +432,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tout.Set(value)\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")
 	}
 	if supportFeatures.NeedsRowAssign {
-		b.WriteString("func __octAssignRow[T any](matrix [][]T, row int, rhs []T) {\n\tif row < 0 || row >= len(matrix) { panic(fmt.Sprintf(\"runtime error: row index %d out of bounds for array with %d rows\", row, len(matrix))) }\n\tif len(rhs) != len(matrix[row]) { panic(fmt.Sprintf(\"runtime error: row length mismatch: expected %d, got %d\", len(matrix[row]), len(rhs))) }\n\tmatrix[row] = __octClone(rhs)\n}\n\n")
+		b.WriteString("func __octAssignRow[T any](matrix [][]T, row int, rhs []T) {\n\tif row < 0 || row >= len(matrix) { panic(fmt.Sprintf(\"runtime error: index %d out of bounds for array of length %d\", row, len(matrix))) }\n\tif len(rhs) != len(matrix[row]) { panic(fmt.Sprintf(\"runtime error: row length mismatch: expected %d, got %d\", len(matrix[row]), len(rhs))) }\n\tmatrix[row] = __octClone(rhs)\n}\n\n")
 	}
 	if usedBuiltins["ArrayCrossSection"] || usedBuiltins["Array.CrossSection"] {
 		b.WriteString("func __octArrayCrossSection[T any](values []T, r __octRange) []T {\n\tstart := 0\n\tif r.HasStart { start = r.Start }\n\tend := len(values)\n\tif r.HasEnd { end = r.End }\n\tstep := 1\n\tif r.HasStep { step = r.Step }\n\tif step <= 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range step must be positive, got %d\", step)) }\n\tif start < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start must be >= 0, got %d\", start)) }\n\tif end < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end must be >= 0, got %d\", end)) }\n\tif start > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d exceeds array length %d\", start, len(values))) }\n\tif end > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end %d exceeds array length %d\", end, len(values))) }\n\tif start > end { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d must be <= end %d\", start, end)) }\n\tcount := 0\n\tif start < end { count = ((end - start - 1) / step) + 1 }\n\tout := make([]T, 0, count)\n\tfor i := start; i < end; i += step { out = append(out, values[i]) }\n\treturn out\n}\n\n")
@@ -518,6 +533,12 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	if needsUtilityHelpers {
 		b.WriteString(__octUtilityHelpers)
+	}
+	for name := range usedBuiltins {
+		if isRepeatBuiltin(name) {
+			b.WriteString(__octRepeatHelpers)
+			break
+		}
 	}
 	if usesLinearAlgebraHelpers(usedBuiltins) {
 		b.WriteString(__octLinearAlgebraHelpers)
@@ -942,6 +963,15 @@ func collectFlowBuiltinsStmt(stmt MIRFlowStmt, usedBuiltins map[string]bool) {
 		}
 	case MIRFlowFieldAssign:
 		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+	case MIRFlowFieldIndexAssign:
+		for _, index := range s.Indices {
+			collectFlowBuiltinsExpr(index, usedBuiltins)
+		}
+		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+	case MIRFlowExprStmt:
+		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+	case MIRFlowYield:
+		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
 	case MIRFlowReturn:
 		if s.Value != nil {
 			collectFlowBuiltinsExpr(s.Value, usedBuiltins)
@@ -1001,7 +1031,30 @@ func collectFlowBuiltinsExpr(expr MIRFlowExpr, usedBuiltins map[string]bool) {
 	}
 }
 
+// walkFlowSharedStatements visits every MIR statement of every expression of
+// a flow.
 func walkFlowSharedStatements(flow MIRFlow, visit func(MIRStmt)) {
+	walkFlowSharedBlocks(flow, func(block MIRBlock) {
+		for _, statement := range block.Statements {
+			visit(statement)
+		}
+	})
+}
+
+// walkFlowSharedBlocks visits every MIR block of every expression of a flow.
+// The value of an expression is the terminator of its last block, so a pass
+// that looks for something in what a flow computes reads the terminators as
+// well as the statements.
+func walkFlowSharedBlocks(flow MIRFlow, visit func(MIRBlock)) {
+	walkFlow(flow, nil, visit)
+}
+
+// walkFlow visits every statement of a flow, at any depth, and every MIR
+// block of every expression in them. Either visitor may be nil.
+func walkFlow(flow MIRFlow, visitStmt func(MIRFlowStmt), visit func(MIRBlock)) {
+	if visit == nil {
+		visit = func(MIRBlock) {}
+	}
 	var walkExpr func(MIRFlowExpr)
 	var walkStmt func(MIRFlowStmt)
 	var walkAction func(MIRFlowWhenAction)
@@ -1009,9 +1062,7 @@ func walkFlowSharedStatements(flow MIRFlow, visit func(MIRStmt)) {
 		switch node := expr.(type) {
 		case MIRFlowSharedExpr:
 			for _, block := range node.Blocks {
-				for _, statement := range block.Statements {
-					visit(statement)
-				}
+				visit(block)
 			}
 		case MIRFlowUtilityWhenExpr:
 			walkExpr(node.Hysteresis)
@@ -1037,6 +1088,9 @@ func walkFlowSharedStatements(flow MIRFlow, visit func(MIRStmt)) {
 		}
 	}
 	walkStmt = func(statement MIRFlowStmt) {
+		if visitStmt != nil {
+			visitStmt(statement)
+		}
 		switch node := statement.(type) {
 		case MIRFlowLetStmt:
 			walkExpr(node.Value)
@@ -1054,6 +1108,8 @@ func walkFlowSharedStatements(flow MIRFlow, visit func(MIRStmt)) {
 				walkExpr(node.Value)
 			}
 		case MIRFlowYield:
+			walkExpr(node.Value)
+		case MIRFlowExprStmt:
 			walkExpr(node.Value)
 		case MIRFlowIf:
 			walkExpr(node.Condition)
@@ -1869,6 +1925,14 @@ func goStmt(s MIRStmt) (string, error) {
 				return emitRandomStreamCall(st.Callee, st.Target, args)
 			case "Entropy.Seed", "Entropy.IntBetween", "Entropy.Unit", "Entropy.Bytes":
 				return emitEntropyCall(st.Callee, st.Target, args)
+			case repeatCountBuiltin:
+				return fmt.Sprintf("%s = __octRepeatCount(%s)", st.Target, args[0]), nil
+			case repeatFillBuiltin:
+				return fmt.Sprintf("%s = __octRepeatFill(%s, %s)", st.Target, args[0], args[1]), nil
+			case repeatRowExtentBuiltin:
+				return fmt.Sprintf("%s = __octRepeatRowExtent(%s, %s)", st.Target, args[0], args[1]), nil
+			case repeatRowBuiltin:
+				return fmt.Sprintf("%s = __octRepeatRow(%s, %s)", st.Target, args[0], args[1]), nil
 			case utilityCommittedArmBuiltin, utilityCommitBuiltin:
 				// The site is a field of the flow instance, which is `f`
 				// wherever a flow state's expression is emitted.

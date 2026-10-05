@@ -1,0 +1,9 @@
+expect error: "let ns: expected Int[], got Float[]"
+
+package Main
+
+fn Main() -> Int {
+    let xs = [1.5]
+    let ns: Int[] = xs
+    return Len(ns)
+}

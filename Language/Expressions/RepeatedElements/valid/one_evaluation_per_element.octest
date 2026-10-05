@@ -1,0 +1,95 @@
+package RepeatedElements
+
+// A repeated element is evaluated once for each element it stands for, as if
+// it had been written out that many times. Its count is evaluated once.
+
+fn Checked(n: Int) -> Int ! Error {
+    if n < 0 {
+        return error("negative")
+    }
+    return n
+}
+
+fn CheckedRow(value: Int, count: Int) -> Int[] ! Error {
+    return [Checked(value)? ... count]
+}
+
+fn CheckedCount(count: Int) -> Int[] ! Error {
+    return [0 ... Checked(count)?]
+}
+
+[Fact]
+fn ElementIsEvaluatedForEachElement() -> Void {
+    // Entropy.Seed reads the operating system's random source, so eight
+    // evaluations give eight values and one evaluation would give one.
+    let seeds = [Entropy.Seed()! ... 8]
+    var distinct = false
+    for i in 1..8 {
+        if seeds[i] != seeds[0] {
+            distinct = true
+        }
+    }
+    Assert.True(distinct, "eight evaluations")
+}
+
+[Fact]
+fn VectorAndMatrixElementsAreEvaluatedForEachElement() -> Void {
+    let draws = vector[Entropy.Unit()! ... 8]
+    var distinct = false
+    for i in 1..8 {
+        if draws[i] != draws[0] {
+            distinct = true
+        }
+    }
+    Assert.True(distinct, "a vector element")
+    let cells = matrix[[Entropy.Unit()! ... 8]]
+    var distinctCells = false
+    for i in 1..8 {
+        if cells[0, i] != cells[0, 0] {
+            distinctCells = true
+        }
+    }
+    Assert.True(distinctCells, "an element of a matrix row")
+}
+
+[Fact]
+fn RepeatedMatrixRowIsEvaluatedForEachRow() -> Void {
+    let rows = matrix[[Entropy.Unit()!, 0.0] ... 8]
+    var distinct = false
+    for i in 1..8 {
+        if rows[i, 0] != rows[0, 0] {
+            distinct = true
+        }
+    }
+    Assert.True(distinct, "eight rows, eight evaluations")
+}
+
+[Fact]
+fn ErrorInAnElementPropagates() -> Void {
+    let row = CheckedRow(5, 2)!
+    Assert.Equal(2, Len(row), "success")
+    Assert.Equal(5, row[1], "the element")
+    var failed = false
+    match CheckedRow(-1, 2) {
+        ok(_) => { failed = false }
+        err(_) => { failed = true }
+    }
+    Assert.True(failed, "`?` in a repeated element returns the error")
+}
+
+[Fact]
+fn ZeroCountEvaluatesNoElement() -> Void {
+    let row = CheckedRow(-1, 0)!
+    Assert.Equal(0, Len(row), "the failing element is never evaluated")
+}
+
+[Fact]
+fn ErrorInACountPropagates() -> Void {
+    Assert.Equal(3, Len(CheckedCount(3)!), "success")
+    var failed = false
+    match CheckedCount(-1) {
+        ok(_) => { failed = false }
+        err(_) => { failed = true }
+    }
+    Assert.True(failed, "`?` in a count returns the error")
+}

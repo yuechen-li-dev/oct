@@ -1,0 +1,11 @@
+expect error: "`...` repeats an element inside an array literal, as in `[0 ... n]`; it does not spread a collection and it is not a range (a range is `a..b`)"
+
+package Main
+
+fn Main() -> Int {
+    var total = 0
+    for i in 0 ... 3 {
+        total = total + i
+    }
+    return total
+}

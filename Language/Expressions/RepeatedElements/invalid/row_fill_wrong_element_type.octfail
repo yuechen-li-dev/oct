@@ -1,0 +1,9 @@
+expect error: "array element 0 expects Int, got Bool"
+
+package Main
+
+fn Main() -> Int {
+    var rows = [[1, 2], [3, 4]]
+    rows[0] = [true ...]
+    return Len(rows)
+}

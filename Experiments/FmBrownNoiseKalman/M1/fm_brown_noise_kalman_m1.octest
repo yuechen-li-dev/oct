@@ -37,13 +37,13 @@ fn M1ModesProduceFiniteMetrics(mode: String) -> Void {
     Assert.True(finalA >= -0.99 and finalA <= 0.99, "adaptive finalA must be clamped")
 }
 
-[Theory]
+// The files are the recorded outputs of `oct artifact
+// Experiments/FmBrownNoiseKalman/M1`. A test reads them and does not write
+// them: Artifact.Write* runs only during artifact evaluation.
+[Fact]
 [Suite("Experiments.FmBrownNoiseKalman.M1")]
 [Suite("Experiments.FmBrownNoiseKalman.M1b")]
-[CycleTime(90.0s)]
-[InlineData(1)]
-fn M1ArtifactFilesWrite(_caseId: Int) -> Void ! Error {
-    let _ = M1ArtifactWriteAll()?
+fn M1RecordedArtifactsStayCompact() -> Void ! Error {
     let metricsRows = IO.Read("Experiments/FmBrownNoiseKalman/M1/metrics.csv")?
     Assert.True(Len(metricsRows) <= 32, "metrics csv must remain compact")
     let metricsJson = IO.Load("Experiments/FmBrownNoiseKalman/M1/metrics.json")?

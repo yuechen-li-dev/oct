@@ -1,0 +1,12 @@
+expect error: "repeat count is fallible and must be handled explicitly"
+
+package Main
+
+fn Count() -> Int ! Error {
+    return 2
+}
+
+fn Main() -> Int {
+    let values = [0 ... Count()]
+    return Len(values)
+}

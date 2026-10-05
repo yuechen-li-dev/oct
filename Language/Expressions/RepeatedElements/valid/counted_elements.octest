@@ -1,0 +1,103 @@
+package RepeatedElements
+
+// `value ... count` in an array literal stands for count elements, each one
+// the value. The count is an Int and need not be a constant.
+
+record Cell {
+    Alive: Bool
+    Age: Int
+}
+
+enum Slot {
+    Empty
+    Full(Int)
+}
+
+fn Zeros(n: Int) -> Float[] {
+    return [0.0 ... n]
+}
+
+[Fact]
+fn CountedElement() -> Void {
+    let sevens = [7 ... 4]
+    Assert.Equal(4, Len(sevens), "a constant count")
+    Assert.Equal(7, sevens[0], "first element")
+    Assert.Equal(7, sevens[3], "last element")
+    Assert.Equal(3, Len(Zeros(3)), "a count known only when the program runs")
+    Assert.Equal(0.0, Zeros(3)[2], "its elements")
+}
+
+[Fact]
+fn CountIsAnExpression() -> Void {
+    let n = 2
+    let counted = [1 ... n * 2 + 1]
+    Assert.Equal(5, Len(counted), "the count is everything after `...`")
+    let signed = [-1 ... 3]
+    Assert.Equal(-1, signed[2], "a signed element")
+}
+
+[Fact]
+fn SegmentsAndSingleElements() -> Void {
+    let mixed = [1 ... 2, 2 ... 3, 9]
+    Assert.Equal(6, Len(mixed), "two segments and one element")
+    Assert.Equal(1, mixed[1], "first segment")
+    Assert.Equal(2, mixed[2], "second segment starts")
+    Assert.Equal(2, mixed[4], "second segment ends")
+    Assert.Equal(9, mixed[5], "the single element")
+    let framed = [0, 5 ... 2, 0]
+    Assert.Equal(4, Len(framed), "a segment between elements")
+    Assert.Equal(5, framed[2], "the segment")
+}
+
+[Fact]
+fn ZeroCountGivesATypedEmptyArray() -> Void {
+    let none = [1.5 ... 0]
+    Assert.Equal(0, Len(none), "a constant zero")
+    Assert.Equal(0, Len(Zeros(0)), "a zero count when the program runs")
+    let grown = Append(none, 2.5)
+    Assert.Equal(2.5, grown[0], "the element names the array's type")
+    let tail = [1 ... 0, 4]
+    Assert.Equal(1, Len(tail), "a zero-count segment adds nothing")
+    Assert.Equal(4, tail[0], "the element after it")
+}
+
+[Fact]
+fn NestedArrays() -> Void {
+    let grid = [[0 ... 3] ... 2]
+    Assert.Equal(2, Len(grid), "rows")
+    Assert.Equal(3, Len(grid[1]), "columns")
+    let deep = [[[1 ... 2] ... 3] ... 4]
+    Assert.Equal(4, Len(deep), "depth three, outer")
+    Assert.Equal(3, Len(deep[3]), "depth three, middle")
+    Assert.Equal(2, Len(deep[3][2]), "depth three, inner")
+    Assert.Equal(1, deep[3][2][1], "depth three, element")
+}
+
+[Fact]
+fn ElementKinds() -> Void {
+    let cells = [Cell { Alive: false Age: 0 } ... 3]
+    Assert.Equal(3, Len(cells), "records")
+    Assert.False(cells[2].Alive, "a record element")
+    let slots = [Slot.Empty ... 2, Slot.Full(4) ... 2]
+    Assert.Equal(4, Len(slots), "enum values")
+    Assert.Equal(Slot.Full(4), slots[3], "a payload variant")
+    let names = ["" ... 2, "end"]
+    Assert.Equal("end", names[2], "strings")
+    let flags = [true ... 2]
+    Assert.True(flags[1], "booleans")
+    let lengths = [2m ... 3]
+    Assert.Equal(2m, lengths[2], "a dimensioned element keeps its dimension")
+}
+
+[Fact]
+fn EachElementIsItsOwnValue() -> Void {
+    var rows = [[0 ... 3] ... 2]
+    rows[0, 1] = 9
+    Assert.Equal(9, rows[0][1], "the element that was written")
+    Assert.Equal(0, rows[1][1], "the other row is untouched")
+    let row = [1, 2]
+    var copies = [row ... 2]
+    copies[0, 0] = 5
+    Assert.Equal(1, copies[1][0], "a repeated variable is copied for each element")
+    Assert.Equal(1, row[0], "and the variable keeps its value")
+}

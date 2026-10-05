@@ -1,0 +1,14 @@
+expect error: "Nothing fixes the length here"
+
+package Main
+
+// Only the columns of a record table share a length. A field of an
+// ordinary record has none.
+record Holder {
+    Values: Int[]
+}
+
+fn Main() -> Int {
+    let held = Holder { Values: [0 ...] }
+    return Len(held.Values)
+}

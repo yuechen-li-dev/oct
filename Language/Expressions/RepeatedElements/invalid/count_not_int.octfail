@@ -1,0 +1,8 @@
+expect error: "repeat count must be Int, got Float"
+
+package Main
+
+fn Main() -> Int {
+    let values = [0 ... 2.0]
+    return Len(values)
+}

@@ -1,0 +1,104 @@
+package DeclaredNumericTypes
+
+// A declared type decides what a value is. Every fact here divides by the
+// Int 2: a Float gives a half, and an Int that had stayed an Int would give
+// zero.
+
+[Fact]
+fn AnInferredBindingStaysAnInt() -> Void {
+    let n = 1
+    Assert.Equal(0, n / 2, "nothing declares this binding a Float")
+}
+
+[Fact]
+fn ABindingDeclaredFloatIsAFloat() -> Void {
+    let literal: Float = 1
+    Assert.Equal(0.5, literal / 2, "from a literal")
+    let n = 1
+    let fromVariable: Float = n
+    Assert.Equal(0.5, fromVariable / 2, "from an Int variable")
+    var mutable: Float = 1
+    Assert.Equal(0.5, mutable / 2, "a var")
+    Assert.Equal(1.0, literal, "the value is the Float equal to the Int")
+}
+
+[Fact]
+fn AssignmentToAFloatVariableKeepsItAFloat() -> Void {
+    let n = 1
+    var inferred = 1.5
+    inferred = 1
+    Assert.Equal(0.5, inferred / 2, "an inferred Float variable, from a literal")
+    inferred = n
+    Assert.Equal(0.5, inferred / 2, "an inferred Float variable, from a variable")
+    var declared: Float = 2.5
+    declared = n
+    Assert.Equal(0.5, declared / 2, "a declared Float variable")
+}
+
+[Fact]
+fn AccumulatingIntoADeclaredFloat() -> Void {
+    var total: Float = 0
+    var k = 0
+    while k < 3 {
+        total = total + 1
+        k = k + 1
+    }
+    Assert.Equal(1.5, total / 2, "the total started as the Float zero")
+}
+
+[Fact]
+fn AssignmentToAFloatArrayVariable() -> Void {
+    let ns = [1, 1]
+    var empty: Float[] = []
+    empty = [1, 1]
+    Assert.Equal(0.5, empty[0] / 2, "a literal, to a variable declared empty")
+    var inferred = [1.5]
+    inferred = ns
+    Assert.Equal(0.5, inferred[1] / 2, "an Int array variable")
+}
+
+[Fact]
+fn AssignmentToANestedFloatArrayVariable() -> Void {
+    let ns = [[1, 1], [1, 1]]
+    var grid = [[1.5]]
+    grid = ns
+    Assert.Equal(0.5, grid[1][0] / 2, "an Int[][] variable, to an inferred Float[][] variable")
+    Assert.Equal(0, ns[1][0] / 2, "the Int[][] is unchanged")
+}
+
+[Fact]
+fn AssignmentToAnElement() -> Void {
+    let n = 1
+    var values = [1.5, 2.5]
+    values[0] = 1
+    values[1] = n
+    Assert.Equal(0.5, values[0] / 2, "from a literal")
+    Assert.Equal(0.5, values[1] / 2, "from a variable")
+}
+
+[Fact]
+fn AssignmentToARowAndToACell() -> Void {
+    let n = 1
+    let ns = [1, 1]
+    var rows = [[1.5, 2.5], [3.5, 4.5], [5.5, 6.5]]
+    rows[0] = [1, 1]
+    rows[1] = ns
+    rows[2] = [1 ...]
+    Assert.Equal(0.5, rows[0][1] / 2, "a row from a literal")
+    Assert.Equal(0.5, rows[1][0] / 2, "a row from a variable")
+    Assert.Equal(0.5, rows[2][1] / 2, "a filled row")
+    rows[0, 0] = 3
+    rows[0, 1] = n
+    Assert.Equal(1.5, rows[0][0] / 2, "a cell from a literal")
+    Assert.Equal(0.5, rows[0][1] / 2, "a cell from a variable")
+}
+
+[Fact]
+fn AssignmentToAMatrixElement() -> Void {
+    let n = 1
+    var m = matrix[[1.5, 2.5] [3.5, 4.5]]
+    m[0, 0] = 3
+    m[1, 1] = n
+    Assert.Equal(1.5, m[0, 0] / 2, "from a literal")
+    Assert.Equal(0.5, m[1, 1] / 2, "from a variable")
+}

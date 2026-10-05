@@ -1,0 +1,13 @@
+expect runtime error: "runtime error: repeat count must not be negative, got -1"
+
+package Main
+
+// A count that is not a constant is checked when the literal is evaluated.
+fn Count(n: Int) -> Int {
+    return n
+}
+
+fn Main() -> Int {
+    let values = [0 ... Count(-1)]
+    return 0
+}

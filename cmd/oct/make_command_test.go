@@ -1014,6 +1014,11 @@ fn ShellToolProbe() -> Make.ProcessResult ! Error {
 fn ShellEnvGate() -> Make.ProcessResult ! Error {
     return Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_HELLO\" = yes"])?
 }
+
+[RequiresAuthority]
+fn ProbeTwice() -> String[] ! Error {
+    return [Make.Tool("go")? ... 2]
+}
 `)
 	stdout, stderr, err := executeCLIArgs("make", "doctor", "--file", makeFile)
 	if err != nil {
@@ -1024,6 +1029,8 @@ fn ShellEnvGate() -> Make.ProcessResult ! Error {
 		"Plan entrypoint: Plan() conventional",
 		"Suggestion: consider [MakePlan] [Pure] [NoWhile] for stricter validation",
 		"CheckTools: ok ([RequiresAuthority])",
+		// A host primitive called from a repeated element is still found.
+		"ProbeTwice: ok ([RequiresAuthority])",
 		"ShellToolProbe uses shell-shaped tool probe; prefer Make.Tool(\"go\")",
 		"ShellEnvGate uses shell-shaped env gate; prefer Make.Env(\"OCT_CHIMERA_HELLO\")",
 		"Validation: ok",

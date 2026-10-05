@@ -15,10 +15,11 @@ Use `var` only when reassignment is required.
 - `var` creates a mutable binding.
 - Assignment (`name = expr`) requires a mutable binding.
 - Bindings may include explicit type annotations: `let name: Type = expr` and `var name: Type = expr`.
-- Reassignment type must match the binding type exactly, including dimensions and nominal type identity.
+- An annotation decides what the value is: `let x: Float = 1` binds the `Float` equal to one, and `x / 2` is `0.5`. `let x = 1` binds an `Int`. See "Declared types and numeric values" in [02 Types](./02-types.md).
+- Reassignment type must match the binding type exactly, including dimensions and nominal type identity. An `Int` assigned to a `Float` variable is assigned as that `Float`, as the same section describes.
 - Record, enum, vector, and matrix updates use whole-value reassignment.
 - Array element assignment (`xs[i] = value`) requires `xs` bound with `var`.
-- Array element assignment value must match the array element type exactly.
+- Array element assignment value must match the array element type exactly, with the same exception: an `Int` assigned to an element of a `Float` array is assigned as that `Float`.
 - Assignment never changes a binding's declared/inferred type.
 
 ## Examples
