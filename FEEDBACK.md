@@ -532,7 +532,12 @@ So "a wrapper name has one definition" cannot be enforced by deleting one side. 
 Suggestion:
 Make the standard libraries ordinary source over builtins, as `Language/reference/language/17-standard-libraries.md` describes them, and teach the compiled lane to run those builtins through the first-party sidecars, as it already does for `CsvRead` and `FileReadText`. Keep manifest wrapper functions for native code outside the toolchain, with no source body, dispatched to the sidecar in both lanes. Then reject a name that has both. The 20 functions whose two signatures differ need the sidecar to accept the builtin's arguments, or an adapter in the compiled lane.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+Done as suggested. The eleven libraries declare no wrappers; the compiled lane lowers 39 library builtins to sidecar calls from the table in `internal/builtin/sidecar.go`, which `TestSidecarBuiltinTableAgreesWithTypechecker` checks against the typechecker. A handle is an `Int` in the builtin and a typed handle on the wire. The `pdf` and `plot` sidecars take the builtins' flat arguments in place of records. A source function with the name of a manifest wrapper function is a compile error (`Language/Testing/CompiledOctxiliary/invalid/wrapper_function_defined_twice.octfail`), and the reference states the rule in `tooling/33-oct-pkg.md`. Each library gives the same results as before in both lanes with sidecars present.
+
+Three defects had been hidden by the stub bodies, since no function with record arguments was ever defined by its manifest alone: the typechecker could not resolve a transport type that a manifest qualified with its own package's name; the interpreter refused such a record ("expects record Main.TestOptions, got TestOptions"); and the compiled lane could not resolve a call to an imported package's wrapper function. All three are fixed, and the generic wrapper fixture that was compiled-only runs in both lanes.
 
 ---
 
@@ -541,6 +546,19 @@ The manifests of the eleven standard wrapper libraries declare `GoModuleDir: "oc
 
 Suggestion:
 Settle this with the entry above. If the standard libraries stop declaring wrappers, the field goes with them.
+
+Status: Resolved
+
+Resolution:
+The standard libraries declare no wrappers, so they declare no module directory. `Registry/registry.oct` lists them as `library`. `Make` is the one first-party wrapper package left, and it has the same defect: see the next entry.
+
+---
+
+Observation:
+`Libraries/Make/manifest.oct` declares `GoModuleDir: "octxiliary"` and `Libraries/Make/octxiliary` does not exist. Its sidecar is built from `cmd/octxiliary-makehost`. `oct pkg wrappers` in `Libraries/Make` plans the missing path.
+
+Suggestion:
+Either let a first-party wrapper name its command package, or move the makehost sidecar's module under the library.
 
 Status: Open
 
@@ -672,6 +690,36 @@ Observation:
 
 Suggestion:
 Treat `score` in a utility `when` case as the keyword it is there, so that what follows starts an expression.
+
+Status: Open
+
+---
+
+Observation:
+Every library builtin that the compiled lane sends to a sidecar is implemented twice in Go: once in the interpreter (`internal/interpret/wrapper_*.go`) and once in the sidecar (`cmd/octxiliary-*`). The two are written separately and can drift; only the library tests, run in both lanes with sidecars, compare them. Plotting already avoids this: both sides call `internal/plotrender`.
+
+Suggestion:
+Give each family one Go package that holds the work, as `internal/plotrender` does, and have the interpreter builtin and the sidecar both call it.
+
+Status: Open
+
+---
+
+Observation:
+Eight library builtins have no compiled implementation, and a compiled program that reaches one is refused by name: `PdfDrawImage` and `PdfDrawImageSized` (a page and an image are handles of two different sidecars), `JsonLower`, `JsonLoadStructured`, `CsvWriteTable`, `CsvWriteMatrix`, `PlotLine` and `PlotScatter`. `Libraries/IO/IO.Json.octest` has 12 tests that fail compiled for `JsonLoadStructured`, and `Libraries/Pdf/Pdf.Core.octest` six for `PdfDrawImage`.
+
+Suggestion:
+Add the four data builtins and the two short plot forms to the sidecar table; they need wire functions and no new mechanism. Decide separately whether the image-handle form of `PdfDrawImage` should exist in the compiled lane or be retired in favour of `DrawImageBytes`.
+
+Status: Open
+
+---
+
+Observation:
+`Language/Testing/CompiledOctxiliary` and `Language/Testing/InterpretedOctxiliary` are named after the lane each once belonged to. Both run in both lanes now.
+
+Suggestion:
+Rename them when the corpus is next reorganized; two Go test files name the paths.
 
 Status: Open
 

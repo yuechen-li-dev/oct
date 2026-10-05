@@ -31,6 +31,11 @@
 - **Breaking:** `hysteresis` measures the leading arm against the committed arm's score at this evaluation. It used to measure against the score recorded when the arm was committed, so a committed arm whose score had since fallen was held against rivals that now beat it. The recorded score is removed from flow checkpoints and from the Verilog profile's ports.
 - A value named `vector` can be indexed. `vector[...]` indexes a parameter, local, loop variable, match binding or capture named `vector` where one is in scope, and is a literal everywhere else.
 - Fix compiled execution of a `when policy` inside a larger expression (did not build), and add a Verilog fixture for a standalone `when utility` in a flow state.
+- **Breaking:** a wrapper function has one definition, its entry in `manifest.oct`. A source function with the same name is a compile error in both lanes. It used to be accepted, with the interpreted lane running the body and the compiled lane the sidecar. To put Oct code in front of a wrapper function, give the manifest entry its own name and call it.
+- **Breaking:** `Archive`, `Compression`, `Csv`, `Hash`, `IO`, `Image`, `Json`, `Pdf`, `Plot`, `Text` and `Time` are ordinary libraries over builtins. Their manifests declare no wrappers, the registry lists them as `library`, and `oct pkg wrappers` no longer plans them. Their public functions and results are unchanged, and a compiled program needs the same sidecars as before.
+- The compiled lane runs 39 library builtins (zip, gzip, hash, regex, time, workbook, image, PDF and plot) through the first-party sidecars, so a direct call to one compiles. Still interpreted only: `PdfDrawImage`, `PdfDrawImageSized`, `JsonLower`, `JsonLoadStructured`, `CsvWriteTable`, `CsvWriteMatrix`, `PlotLine`, `PlotScatter`.
+- **Breaking (sidecar protocol):** `octxiliary-pdf` takes the text style of `PdfDrawTextStyled` as four integers, and `octxiliary-plot` takes size and labels as six flat arguments, in place of records. A compiled program and its sidecars must come from the same build.
+- Wrapper functions that a manifest alone declares now work wherever a source function does: with record and handle arguments in the interpreted lane, with transport types the manifest qualifies with its own package name, and called from an importing package in the compiled lane.
 
 ## v0.1.0 — initial preview
 

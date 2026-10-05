@@ -120,6 +120,24 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 			{Name: "Count", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: 11}},
 			{Name: "Name", Value: octxiliary.Value{Kind: octxiliary.ValueString, String: "returned"}},
 		}}, nil
+	case "TestEchoOptions":
+		// Returns the record it was given with Count raised by one. The
+		// record keeps the type name it arrived with, so a package other
+		// than Main can declare the record and get its own type back.
+		if err := expect(req.Args, octxiliary.ValueRecord); err != nil {
+			return octxiliary.Value{}, err
+		}
+		given := req.Args[0]
+		if !strings.HasSuffix(given.RecordType, ".TestOptions") || len(given.Fields) != 2 || given.Fields[0].Name != "Count" || given.Fields[1].Name != "Name" {
+			return octxiliary.Value{}, fmt.Errorf("unexpected record payload %#v", given)
+		}
+		if given.Fields[0].Value.Kind != octxiliary.ValueInt || given.Fields[1].Value.Kind != octxiliary.ValueString {
+			return octxiliary.Value{}, fmt.Errorf("unexpected record field kinds")
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueRecord, RecordType: given.RecordType, Fields: []octxiliary.FieldValue{
+			{Name: "Count", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: given.Fields[0].Value.Int + 1}},
+			{Name: "Name", Value: given.Fields[1].Value},
+		}}, nil
 	case "TestTouch", "TestTouchDirect":
 		if err := expect(req.Args); err != nil {
 			return octxiliary.Value{}, err

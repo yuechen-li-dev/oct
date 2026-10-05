@@ -80,7 +80,7 @@ func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest", "--execution", "interpreted")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/InterpretedOctxiliary/valid", "--execution", "interpreted")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
 	out, err := cmd.CombinedOutput()
@@ -88,7 +88,7 @@ func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
 		t.Fatalf("interpreted generic wrapper fixture failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
 	text := string(out)
-	for _, expected := range []string{"PASS Main.InterpretedGenericWrapperW7bSuccess", "PASS Main.InterpretedGenericWrapperW7bSidecarError", "PASS Main.InterpretedGenericWrapperW7bSourcePrecedence"} {
+	for _, expected := range []string{"PASS Main.InterpretedGenericWrapperW7bSuccess", "PASS Main.InterpretedGenericWrapperW7bSidecarError", "PASS Main.AnImportedPackagesWrapperFunctionsAreCallable", "PASS Main.ARecordOfTheWrappersPackageGoesInAndComesBack"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("expected %s, got:\n%s", expected, text)
 		}

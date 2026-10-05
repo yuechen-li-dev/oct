@@ -57,10 +57,20 @@ fn Manifest() -> PackageManifest {
                 Protocol: "octxiliary.v0"
                 SidecarCommand: "octxiliary-test-wrapper"
                 GoModuleDir: "wrappers/test"
-                TransportTypes: []
+                TransportTypes: [
+                    WrapperTransportType {
+                        Name: "WrapperLibrary.TestOptions"
+                        Kind: "record"
+                        Fields: [
+                            WrapperTransportField { Name: "Count" Type: "Int" },
+                            WrapperTransportField { Name: "Name" Type: "String" }
+                        ]
+                    }
+                ]
                 Functions: [
                     WrapperFunction { OctName: "EchoRaw" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true },
-                    WrapperFunction { OctName: "AddRaw" WireName: "TestAddInt" Args: ["Int", "Int"] Return: "Int" Fallible: true }
+                    WrapperFunction { OctName: "AddRaw" WireName: "TestAddInt" Args: ["Int", "Int"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "NextOptionsRaw" WireName: "TestEchoOptions" Args: ["WrapperLibrary.TestOptions"] Return: "WrapperLibrary.TestOptions" Fallible: true }
                 ]
             }
         ]

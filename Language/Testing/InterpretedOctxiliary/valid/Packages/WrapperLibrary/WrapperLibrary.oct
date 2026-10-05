@@ -1,8 +1,25 @@
 package WrapperLibrary
 
-// The manifest of this package declares EchoRaw and AddRaw. A manifest entry
-// is the whole definition of a wrapper function, so neither has a body here.
-// Echo is an ordinary function in front of one of them.
+// The manifest of this package declares EchoRaw, AddRaw and NextOptionsRaw. A
+// manifest entry is the whole definition of a wrapper function, so none of
+// them has a body here. TestOptions is the record NextOptionsRaw takes and
+// returns; the sidecar answers with Count raised by one.
+
+record TestOptions {
+    Count: Int
+    Name: String
+}
+
+// Ordinary functions in front of, and beside, the wrapper functions.
 fn Echo(text: String) -> String ! Error {
     return EchoRaw(text)?
+}
+
+fn Describe(options: TestOptions) -> String {
+    return options.Name + ":" + ToString(options.Count)
+}
+
+fn NextTwice(options: TestOptions) -> TestOptions ! Error {
+    let once = NextOptionsRaw(options)?
+    return NextOptionsRaw(once)?
 }

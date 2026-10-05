@@ -771,11 +771,18 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if meta, ok, err := c.genericWrapperMetadataForCallee(e.Callee); err != nil {
 			return "", "", false, err
 		} else if ok {
-			// The manifest entry is the function's only definition, so ret
-			// and fallible above were read from it.
+			// ret and fallible were read from the wrapper entry itself, or
+			// from the bodyless `go fn` declaration that an OctGo host
+			// derived the entry from. The two must agree.
 			effectiveReturn := meta.Return
 			if !strings.Contains(effectiveReturn, ".") && ret == meta.PackageName+"."+effectiveReturn {
 				effectiveReturn = ret
+			}
+			if ret != effectiveReturn {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s is declared with return %s and its wrapper entry says %s", meta.PackageName, meta.OctName, ret, meta.Return)
+			}
+			if fallible != meta.Fallible {
+				return "", "", false, fmt.Errorf("wrapper function %s.%s is declared fallible %t and its wrapper entry says %t", meta.PackageName, meta.OctName, fallible, meta.Fallible)
 			}
 			if len(argTypes) != len(meta.Args) {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s expects %d arguments, got %d", meta.PackageName, meta.OctName, len(meta.Args), len(argTypes))

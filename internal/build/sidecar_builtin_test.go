@@ -62,8 +62,26 @@ func TestSidecarBuiltinTableAgreesWithTypechecker(t *testing.T) {
 			if err != nil {
 				t.Fatalf("lowering %s: %v\n%s", entry.Name, err, source)
 			}
-			if _, err := emitGo(module); err != nil {
+			generated, err := emitGo(module)
+			if err != nil {
 				t.Fatalf("emitting %s: %v", entry.Name, err)
+			}
+			// A handle is an Int in the program and a typed handle on the
+			// wire: sent with its type, and checked for it when it comes back.
+			for i, param := range entry.Params {
+				if param.Handle == "" {
+					continue
+				}
+				sent := fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueHandle, HandleFamily: %q, HandleType: %q, HandleID: ", entry.Family, param.Handle)
+				if !strings.Contains(generated, sent) {
+					t.Fatalf("argument %d is not sent as a %s handle of family %s", i+1, param.Handle, entry.Family)
+				}
+			}
+			if entry.Result.Handle != "" {
+				checked := fmt.Sprintf("__octOctxiliaryValidateHandle(__value, %q, %q)", entry.Family, entry.Result.Handle)
+				if !strings.Contains(generated, checked) || !strings.Contains(generated, "__value.HandleID") {
+					t.Fatalf("the result is not checked and read as a %s handle of family %s", entry.Result.Handle, entry.Family)
+				}
 			}
 			var calls []MIRGenericOctxiliaryCall
 			for _, function := range module.Functions {

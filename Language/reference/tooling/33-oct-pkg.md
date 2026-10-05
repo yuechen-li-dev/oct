@@ -236,7 +236,7 @@ Do not declare sidecar build commands or runtime registry behavior beyond this s
 
 A `WrapperFunction` entry is the whole definition of the function named by `OctName`. The function is native code behind the sidecar, and both execution lanes run it by sending the call to the sidecar.
 
-- The package's source does not declare a function of that name. A source function with the name of a wrapper function is a compile error: one lane would run the body and the other the sidecar.
+- The package's source does not define a function of that name. A source function with the name of a wrapper function is a compile error: one lane would run the body and the other the sidecar. The bodyless `go fn` declaration of an OctGo companion is not a second definition; it has no body, and the OctGo host derives its wrapper entry from it ([05 functions](../language/05-functions.md)).
 - The function is called like any other function of the package: by its bare name inside the package, and as `Package.Name` from a package that imports it. Calls are checked against the manifest's `Args`, `Return` and `Fallible`.
 - To put Oct code in front of a wrapper function, give the manifest entry a name of its own and call it from a source function:
 
