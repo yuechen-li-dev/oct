@@ -942,6 +942,15 @@ func collectFlowBuiltinsStmt(stmt MIRFlowStmt, usedBuiltins map[string]bool) {
 		}
 	case MIRFlowFieldAssign:
 		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+	case MIRFlowFieldIndexAssign:
+		for _, index := range s.Indices {
+			collectFlowBuiltinsExpr(index, usedBuiltins)
+		}
+		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+	case MIRFlowExprStmt:
+		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
+	case MIRFlowYield:
+		collectFlowBuiltinsExpr(s.Value, usedBuiltins)
 	case MIRFlowReturn:
 		if s.Value != nil {
 			collectFlowBuiltinsExpr(s.Value, usedBuiltins)

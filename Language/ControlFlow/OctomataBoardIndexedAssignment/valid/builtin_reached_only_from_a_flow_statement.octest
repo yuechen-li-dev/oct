@@ -1,0 +1,45 @@
+package ControlFlowOctomataBoardIndexedAssignment
+
+// A builtin may appear in a program only in the value or the index of a
+// board index assignment, or only in a `yield`. The compiled program still
+// carries what that builtin needs.
+
+flow CrossSectionIntoARow() -> Int {
+    board {
+        Values: Int[]
+        Rows: Int[][]
+    }
+
+    state Start {
+        board.Values = [1, 2, 3]
+        board.Rows = [[0, 0], [0, 0]]
+        board.Rows[0] = Array.CrossSection(board.Values, 0..2)
+        return board.Rows[0][1]
+    }
+}
+
+flow YieldedMask() accepts limit: Int yields Int -> Int {
+    board {
+        Values: Int[]
+    }
+
+    state Start {
+        board.Values = [1, 2, 3]
+        yield Len(Array.Where(board.Values, board.Values > limit))
+        goto Start
+    }
+}
+
+[Fact]
+fn BuiltinOnlyInABoardIndexAssignment() -> Void {
+    let run = CrossSectionIntoARow()
+    Step(run)
+    Assert.Equal(2, Result(run)!, "the cross section became the row")
+}
+
+[Fact]
+fn BuiltinOnlyInAYield() -> Void {
+    let run = YieldedMask()
+    Step(run, 1)
+    Assert.Equal(2, Yielded(run)!, "the yielded value")
+}
