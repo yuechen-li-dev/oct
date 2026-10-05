@@ -79,7 +79,7 @@ type layout struct {
 	inGeneric []bool // strictly inside a type argument list
 	unitTight []bool // part of a literal's unit suffix; joined to the token before
 	inMarkup  []bool // inside a markup element
-	rowStart  []bool // a '[' that starts a matrix row after the count of the row before
+	rowStart  []bool // a '[' that starts a row of a matrix literal
 
 	glue map[string]bool // memo for gluesSafely
 }
@@ -234,10 +234,12 @@ func (l *layout) classify() {
 	}
 }
 
-// markMatrixRows finds each '[' that starts a row of a matrix literal straight
-// after the count of the row before it, as in "[0.0, 0.0] ... n [1.0, 2.0]".
-// The parser reads that '[' as the next row whatever the spacing, and written
-// against the count it would look like an index.
+// markMatrixRows finds each '[' that starts a row of a matrix literal. Such
+// a '[' is an operand, never an index, and that matters for the row that
+// follows a count, as in "[0.0, 0.0] ... n [1.0, 2.0]": the parser reads the
+// '[' as the next row whatever the spacing, and written against the count it
+// would look like an index. The first row, after the literal's own '[', and a
+// row after another row's ']' are spaced by earlier rules.
 //
 // A matrix literal is recognised as the parser recognises it: the name
 // "matrix", then '[', then '[' or ']'.
@@ -251,10 +253,8 @@ func (l *layout) markMatrixRows() {
 		}
 		switch tok.Kind {
 		case lex.LeftBracket:
-			if len(open) > 0 && open[len(open)-1] && i > 0 {
-				if before := l.toks[i-1].Kind; before != lex.LeftBracket && before != lex.RightBracket {
-					l.rowStart[i] = true
-				}
+			if len(open) > 0 && open[len(open)-1] {
+				l.rowStart[i] = true
 			}
 			literal := i > 0 && i+1 < len(l.toks) && l.toks[i-1].Kind == lex.Identifier && l.toks[i-1].Lexeme == "matrix" &&
 				(l.toks[i+1].Kind == lex.LeftBracket || l.toks[i+1].Kind == lex.RightBracket)

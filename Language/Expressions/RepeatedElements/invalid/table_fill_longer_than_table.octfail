@@ -1,21 +1,17 @@
-expect runtime error: "runtime error: array literal has 3 elements before `...` and its length is fixed at 2"
+expect error: "[OCT-RTBL002] record table 'Marks' column 'Valid' has 3 elements before `...` and column 'Value' gives the table 2 rows"
 
 package Main
 
+// The last element is the one repeated, so three elements stand before it.
 record table Marks {
     Value: Float
     Valid: Bool
 }
 
-fn Count(n: Int) -> Int {
-    return n
-}
-
 fn Main() -> Int {
-    let values = [1.0 ... Count(2)]
     let marks = Marks {
-        Value: values
+        Value: [1.0, 2.0]
         Valid: [true, false, true, false ...]
     }
-    return 0
+    return Len(marks)
 }

@@ -1,0 +1,15 @@
+expect runtime error: "runtime error: index 5 out of bounds for array of length 2"
+
+package Main
+
+// The index is checked first. No row gives a length to compare the two
+// elements with, so the index is the error.
+fn Count(n: Int) -> Int {
+    return n
+}
+
+fn Main() -> Int {
+    var rows = [[1, 2], [3, 4]]
+    rows[Count(5)] = [7, 8, 0 ...]
+    return 0
+}
