@@ -10,4 +10,4 @@ Thin wrappers over Go `crypto/sha256`.
 
 Hex strings are lowercase and deterministic.
 
-Compiled mode lowers these functions through the generic Octxiliary `octxiliary-hash` sidecar declared in `manifest.oct`.
+Compiled mode runs the hash builtins these functions call in the `octxiliary-hash` sidecar.

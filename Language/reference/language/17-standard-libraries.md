@@ -98,6 +98,22 @@ Examples include file/path/directory/json/csv/zip/gzip/hash/image/regex/time/xls
 These are valid runtime primitives, but they are not the primary user-level programming story.
 The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compression.*`, `Hash.*`, `Text.*`, `Time.*`).
 
+A standard library is ordinary Oct source that calls these builtins. Each of its functions has one definition, its source body, and both execution lanes run that body. The lanes differ only in how they carry out a builtin:
+
+- The interpreted lane implements the builtin inside `oct`. It needs no sidecar.
+- The compiled lane sends the builtin to one of the first-party Octxiliary sidecars (`octxiliary-archive`, `-compression`, `-csv`, `-hash`, `-image`, `-io`, `-json`, `-pdf`, `-plot`, `-text`, `-time`, `-xlsx`). A compiled program finds a sidecar beside its executable or through `OCT_WRAPPER_PATH`, and reports the sidecar's name when it is missing.
+
+The sidecar is how the compiled lane implements a builtin; it is not a package wrapper. The standard libraries declare no `Wrappers` in their manifests, and a call to one of their functions is not a native operation during artifact evaluation. A direct call to one of these builtins compiles for the same reason the library's call does.
+
+Eight builtins of this group have no compiled implementation yet, and a program that reaches one is refused by the compiled lane with the builtin's name:
+
+- `PdfDrawImage` and `PdfDrawImageSized` take a page and an image, each a handle of a different sidecar. `Pdf.DrawImageBytes` with `Image.EncodePng` is the form both lanes run.
+- `JsonLower` and `JsonLoadStructured`, the structured JSON helpers.
+- `CsvWriteTable` and `CsvWriteMatrix`.
+- `PlotLine` and `PlotScatter`, the short forms without size and labels. `Plot.Line` and `Plot.Scatter` run in both lanes.
+
+Manifest wrapper functions are a different thing: native code outside the toolchain, defined by a package's `manifest.oct` alone. See [33 oct pkg](../tooling/33-oct-pkg.md).
+
 ## Notes on current documentation boundaries
 
 - The builtin reference intentionally no longer carries the full wrapper catalog; that content is conceptually owned by this page.

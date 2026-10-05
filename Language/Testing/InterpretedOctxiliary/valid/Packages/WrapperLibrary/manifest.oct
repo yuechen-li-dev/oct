@@ -20,7 +20,19 @@ record Wrapper {
     Protocol: String
     SidecarCommand: String
     GoModuleDir: String
+    TransportTypes: WrapperTransportType[]
     Functions: WrapperFunction[]
+}
+
+record WrapperTransportType {
+    Name: String
+    Kind: String
+    Fields: WrapperTransportField[]
+}
+
+record WrapperTransportField {
+    Name: String
+    Type: String
 }
 
 record WrapperFunction {
@@ -33,9 +45,9 @@ record WrapperFunction {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "WrapperReturnMismatch"
+        Name: "WrapperLibrary"
         Version: "0.1.0"
-        Description: "Return mismatch generic wrapper fixture"
+        Description: "A library whose manifest declares wrapper functions"
         Kind: "wrapper"
         Dependencies: []
         Wrappers: [
@@ -45,8 +57,10 @@ fn Manifest() -> PackageManifest {
                 Protocol: "octxiliary.v0"
                 SidecarCommand: "octxiliary-test-wrapper"
                 GoModuleDir: "wrappers/test"
+                TransportTypes: []
                 Functions: [
-                    WrapperFunction { OctName: "BadReturn" WireName: "TestEchoString" Args: ["String"] Return: "Int" Fallible: true }
+                    WrapperFunction { OctName: "EchoRaw" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "AddRaw" WireName: "TestAddInt" Args: ["Int", "Int"] Return: "Int" Fallible: true }
                 ]
             }
         ]

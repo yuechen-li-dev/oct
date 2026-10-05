@@ -217,15 +217,41 @@ Each `WrapperFunction` must declare non-empty `OctName`, non-empty `WireName`, `
 `Args` elements and `Return` must use one of the supported transport type strings:
 
 - `Void`
-- `Int`
+- `Int`, and `Int<unit>` such as `Int<px>`, which travels as an `Int`
 - `Float`
 - `Bool`
 - `String`
 - `String[]`
+- `String[][]`
+- `Float[]`
 - `Bytes`
+- the name of a record of the package that the wrapper declares in `TransportTypes`
+
+`TransportTypes: WrapperTransportType[]` is optional. Each entry declares a `Name`, a `Kind` of `"record"` or `"handle"`, and its `Fields` as `WrapperTransportField { Name Type }`. A `"record"` travels as its fields in the declared order. A `"handle"` is a record with the single field `Handle: Int`; it travels as a typed handle, which lets the sidecar refuse a handle of another kind. The `Name` is the record's name, bare or qualified with the package's own name.
 
 Within a single wrapper, duplicate `WrapperFunction.OctName` values and duplicate `WrapperFunction.WireName` values are rejected.
 Do not declare sidecar build commands or runtime registry behavior beyond this source-level manifest contract.
+
+### A wrapper function has one definition
+
+A `WrapperFunction` entry is the whole definition of the function named by `OctName`. The function is native code behind the sidecar, and both execution lanes run it by sending the call to the sidecar.
+
+- The package's source does not declare a function of that name. A source function with the name of a wrapper function is a compile error: one lane would run the body and the other the sidecar.
+- The function is called like any other function of the package: by its bare name inside the package, and as `Package.Name` from a package that imports it. Calls are checked against the manifest's `Args`, `Return` and `Fallible`.
+- To put Oct code in front of a wrapper function, give the manifest entry a name of its own and call it from a source function:
+
+```oct
+// manifest.oct declares
+//   WrapperFunction { OctName: "EchoRaw" WireName: "Echo" Args: ["String"] Return: "String" Fallible: true }
+
+fn Echo(text: String) -> String ! Error {
+    return EchoRaw(Trim(text))?
+}
+```
+
+A wrapper function needs its sidecar in both lanes. During artifact evaluation it is a native operation and needs a grant; see [18 concepts](../language/18-concepts.md).
+
+The standard libraries under `Libraries/` are not wrapper packages, with the one exception of `Make`. They are ordinary source over builtins; see [17 standard libraries](../language/17-standard-libraries.md).
 
 ## Wrapper build planning
 

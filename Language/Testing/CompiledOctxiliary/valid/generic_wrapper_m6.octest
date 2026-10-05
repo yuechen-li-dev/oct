@@ -1,7 +1,6 @@
 package Main
 
 [Fact]
-[Compiled("the source bodies in TestWrapper.oct are stubs; only the compiled lane replaces them with sidecar calls")]
 fn GenericWrapperM6ScalarListBytesAndVoid() -> Void ! Error {
     Assert.Equal("hello", EchoString("hello")?, "String wrapper should echo")
     Assert.Equal("a,b", JoinStrings(["a", "b"])?, "String[] wrapper should join")
@@ -37,7 +36,6 @@ fn GenericWrapperM6ScalarListBytesAndVoid() -> Void ! Error {
 }
 
 [Fact]
-[Compiled("the source bodies in TestWrapper.oct are stubs; only the compiled lane replaces them with sidecar calls")]
 fn GenericWrapperM6SidecarErrorPropagates() -> Void ! Error {
     match AlwaysFails() {
         ok(value) => {

@@ -2687,7 +2687,22 @@ regularCall:
 	}
 	if !ok {
 		if wrapperFn, wrapperOK := i.wrapperIndex.lookup(targetPkg, functionName); wrapperOK {
-			return i.evalGenericWrapperCall(wrapperFn, arguments)
+			// A wrapper function belongs to its package as a source function
+			// does: values cross the package boundary on the way in and out
+			// under the same naming rule.
+			if targetPkg != pkgName {
+				for index := range arguments {
+					arguments[index] = dequalifyTargetPackageValue(arguments[index], targetPkg)
+				}
+			}
+			result, err := i.evalGenericWrapperCall(wrapperFn, arguments)
+			if err != nil || result.hasError {
+				return result, err
+			}
+			if targetPkg != pkgName {
+				result.value = qualifyCrossPackageValue(result.value, targetPkg)
+			}
+			return result, nil
 		}
 		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", functionKey)
 	}

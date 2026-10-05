@@ -771,15 +771,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if meta, ok, err := c.genericWrapperMetadataForCallee(e.Callee); err != nil {
 			return "", "", false, err
 		} else if ok {
+			// The manifest entry is the function's only definition, so ret
+			// and fallible above were read from it.
 			effectiveReturn := meta.Return
 			if !strings.Contains(effectiveReturn, ".") && ret == meta.PackageName+"."+effectiveReturn {
 				effectiveReturn = ret
-			}
-			if ret != effectiveReturn {
-				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest return %s does not match Oct stub return %s", meta.PackageName, meta.OctName, meta.Return, ret)
-			}
-			if fallible != meta.Fallible {
-				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest fallible %t does not match Oct stub fallible %t", meta.PackageName, meta.OctName, meta.Fallible, fallible)
 			}
 			if len(argTypes) != len(meta.Args) {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s expects %d arguments, got %d", meta.PackageName, meta.OctName, len(meta.Args), len(argTypes))
@@ -2360,6 +2356,15 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			if fn.Name == x.Field {
 				return pkgIdent.Name + "." + x.Field, typeRefStringForPackage(pkgIdent.Name, fn.ReturnType), false, fn.IsFallible, nil
 			}
+		}
+		// A function that the imported package's manifest declares has no
+		// source declaration to find.
+		if meta, ok := findGenericWrapperFunction(importPkg, x.Field); ok {
+			ret := meta.Return
+			if !strings.Contains(ret, ".") && findTransportRecord(meta.TransportTypes, ret).ok {
+				ret = meta.PackageName + "." + ret
+			}
+			return pkgIdent.Name + "." + x.Field, ret, true, meta.Fallible, nil
 		}
 		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, x.Field)
 	default:

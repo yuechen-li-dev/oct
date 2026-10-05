@@ -33,9 +33,9 @@ record WrapperFunction {
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
-        Name: "WrapperFallibleMismatch"
+        Name: "WrapperDefinedTwice"
         Version: "0.1.0"
-        Description: "Fallibility mismatch generic wrapper fixture"
+        Description: "A wrapper function that also has a source body"
         Kind: "wrapper"
         Dependencies: []
         Wrappers: [
@@ -46,7 +46,7 @@ fn Manifest() -> PackageManifest {
                 SidecarCommand: "octxiliary-test-wrapper"
                 GoModuleDir: "wrappers/test"
                 Functions: [
-                    WrapperFunction { OctName: "BadFallible" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true }
+                    WrapperFunction { OctName: "Echo" WireName: "TestEchoString" Args: ["String"] Return: "String" Fallible: true }
                 ]
             }
         ]

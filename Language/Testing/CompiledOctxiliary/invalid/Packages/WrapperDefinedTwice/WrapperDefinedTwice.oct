@@ -1,0 +1,7 @@
+package WrapperDefinedTwice
+
+// The manifest of this package declares Echo as a wrapper function. This
+// body is a second definition of it.
+fn Echo(value: String) -> String ! Error {
+    return "source:" + value
+}

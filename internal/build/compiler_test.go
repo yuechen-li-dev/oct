@@ -2713,17 +2713,6 @@ fn main() -> Int {
 `,
 			wantErr: "compiled mode does not yet support builtin PlotLine",
 		},
-		{
-			name: "xlsx builtin",
-			source: `package Main
-
-fn main() -> Int {
-    let wb = XlsxCreateWorkbook()
-    return wb
-}
-`,
-			wantErr: "compiled mode does not yet support builtin XlsxCreateWorkbook",
-		},
 	}
 
 	for _, tc := range tests {

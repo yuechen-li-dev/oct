@@ -1,0 +1,8 @@
+package WrapperLibrary
+
+// The manifest of this package declares EchoRaw and AddRaw. A manifest entry
+// is the whole definition of a wrapper function, so neither has a body here.
+// Echo is an ordinary function in front of one of them.
+fn Echo(text: String) -> String ! Error {
+    return EchoRaw(text)?
+}

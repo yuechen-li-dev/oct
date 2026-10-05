@@ -279,6 +279,19 @@ FLOW shared-expression M1 status: ordinary FLOW value computation has no paralle
 
 - Compiled mode supports `Float(Int) -> Float` in flow expressions (including `let`, assignment RHS, return expressions, and nested arithmetic), `Clamp01(Float) -> Float`, and switch expressions in flow blocks (expression form only; no `else if` syntax).
 
+## 2026-10 Standard-library builtins through sidecars
+
+This section supersedes what the M6 to M30 sections below say about how the standard libraries reach their sidecars. Those sections remain as history.
+
+The standard libraries (`Archive`, `Compression`, `Csv`, `Hash`, `IO`, `Image`, `Json`, `Pdf`, `Plot`, `Text`, `Time`) are ordinary Oct source over builtins and declare no wrappers in their manifests. Each of their functions has one definition, its source body, and both lanes run it. The compiled lane lowers the builtins that the bodies call to calls on the first-party sidecars:
+
+- The table is `internal/builtin/sidecar.go`: one entry per builtin with its sidecar, wire family, argument and result types and fallibility. `TestSidecarBuiltinTableAgreesWithTypechecker` checks every entry against the typechecker.
+- A wire function has the builtin's name and arguments. A handle is an `Int` in the builtin and a typed handle on the wire (`IO.Workbook`, `Image.ImageHandle`, `Pdf.PdfPage`). The `octxiliary-pdf` and `octxiliary-plot` sidecars take flat arguments where they used to take `Pdf.TextStyle`, `Plot.Size` and `Plot.Labels` records.
+- `CsvRead`, `CsvWrite`, the JSON builtins and the file, path and directory builtins keep their earlier dedicated lowering.
+- A direct call to one of these builtins compiles. Not compiled yet: `PdfDrawImage`, `PdfDrawImageSized`, `JsonLower`, `JsonLoadStructured`, `CsvWriteTable`, `CsvWriteMatrix`, `PlotLine`, `PlotScatter`.
+
+Manifest wrapper functions are for native code outside the toolchain. The manifest entry is the function's only definition, a source function of the same name is a compile error, and both lanes dispatch the call to the sidecar. `Libraries/Make` is the first-party example. Fixtures: `Language/Testing/CompiledOctxiliary` and `Language/Testing/InterpretedOctxiliary` (both run in both lanes now, despite their names) and `Language/Runtime/LibraryBuiltins`.
+
 ## M6 Octxiliary generic wrapper lowering status
 
 M6 adds metadata-driven compiled lowering for manifest-declared Octxiliary wrapper functions whose argument and return transport types are limited to `Void`, `Int`, `Float`, `Bool`, `String`, `String[]`, and `Bytes`.

@@ -1,3 +1,8 @@
 package WrapperUndeclaredRecordArg
-record TestOptions { Count: Int Name: String }
-fn BadUndeclaredArg(options: TestOptions) -> String ! Error { return error("BadUndeclaredArg should fail during manifest validation") }
+
+// The manifest names this record as an argument type of BadUndeclaredArg
+// without declaring it as a transport type.
+record TestOptions {
+    Count: Int
+    Name: String
+}

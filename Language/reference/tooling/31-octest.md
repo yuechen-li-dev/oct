@@ -218,15 +218,16 @@ A `[Fact]` or `[Theory]` may be restricted to one execution lane, interpreted or
 
 ```oct
 [Fact]
-[Compiled("the source bodies are stubs; only the compiled lane replaces them with sidecar calls")]
-fn WrapperEchoesThroughTheSidecar() -> Void ! Error {
-    Assert.Equal("hello", EchoString("hello")?, "echo")
+[Interpreted("reaches UIMount, which the compiled lane does not build")]
+fn MountHasNoEventsBeforeInput() -> Void {
+    let mount = UIMount(UIText("idle"))
+    Assert.Equal(0, Len(UIDrainEvents(mount)), "no events before any input")
 }
 
 [Fact]
-[Interpreted("the interpreted lane runs the source body of a function the manifest also names")]
-fn SourceBodyRuns() -> Void ! Error {
-    Assert.Equal("source:value", ShadowRaw("value")?, "source body")
+[Compiled("measures the generated program; the interpreter is not what is being timed")]
+fn CompiledSumStaysUnderItsBudget() -> Void {
+    Assert.True(SumToMillion() > 0, "the compiled sum runs")
 }
 ```
 

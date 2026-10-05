@@ -1,0 +1,12 @@
+package Main
+
+import WrapperLibrary
+
+// A wrapper function belongs to the package whose manifest declares it, and
+// is called from another package as that package's source functions are.
+[Fact]
+fn AnImportedPackagesWrapperFunctionsAreCallable() -> Void ! Error {
+    Assert.Equal("hello", WrapperLibrary.Echo("hello")?, "a source function in front of a wrapper function")
+    Assert.Equal("hello", WrapperLibrary.EchoRaw("hello")?, "the wrapper function itself")
+    Assert.Equal(5, WrapperLibrary.AddRaw(2, 3)?, "a second wrapper function of the same sidecar")
+}

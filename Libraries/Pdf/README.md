@@ -36,7 +36,7 @@ Compiled Oct supports the Pdf text/page/save subset through `octxiliary-pdf`:
 - `DrawTextStyled`
 - `Save`
 
-`PdfPage` is a Pdf-sidecar-owned handle, and `TextStyle` is transported as a record argument. `DefaultTextStyle()` remains pure Oct.
+`PdfPage` is a Pdf-sidecar-owned handle. `DrawTextStyled` passes the fields of its `TextStyle` to the builtin, and so to the sidecar, as four integers. `DefaultTextStyle()` remains pure Oct.
 
 M30 adds compiled Image -> Pdf interop through explicit PNG bytes transfer:
 

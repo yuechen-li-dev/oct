@@ -48,6 +48,7 @@ var languageRunElsewhere = map[string]string{
 // builds a sidecar the first time it is asked for and reuses it afterwards.
 // Every other directory runs with no sidecar available.
 var languageSidecars = map[string][]string{
+	"Language/Runtime/LibraryBuiltins/valid":       {"octxiliary-hash", "octxiliary-text"},
 	"Language/Testing/CompiledOctxiliary/valid":    {"octxiliary-test-wrapper", "octxiliary-io"},
 	"Language/Testing/InterpretedOctxiliary/valid": {"octxiliary-test-wrapper"},
 	"Language/Types/Bytes/valid":                   {"octxiliary-io"},

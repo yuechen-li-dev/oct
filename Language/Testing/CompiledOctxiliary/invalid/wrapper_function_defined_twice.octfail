@@ -1,0 +1,13 @@
+expect error: "function WrapperDefinedTwice.Echo has two definitions"
+expect error: "A wrapper function is defined by its manifest entry alone"
+
+package Main
+
+import WrapperDefinedTwice
+
+// The manifest of WrapperDefinedTwice declares Echo as a wrapper function and
+// its source gives Echo a body. One lane would run the body and the other
+// the sidecar, so the package is rejected in both.
+fn Main() -> Int ! Error {
+    return Len(WrapperDefinedTwice.Echo("x")?)
+}

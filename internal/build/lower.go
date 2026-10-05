@@ -254,9 +254,6 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			if fn.IsArtifact {
 				continue
 			}
-			if _, isWrapper := findGenericWrapperFunction(pkg, fn.Name); isWrapper {
-				continue
-			}
 			if fn.IsTestFile && !fn.IsBenchmark {
 				if pkgName != program.Entry {
 					continue
@@ -324,9 +321,6 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 					continue
 				}
 				if !isReachableFunction(reachable, pkgName, fn.Name) {
-					continue
-				}
-				if _, isWrapper := findGenericWrapperFunction(pkg, fn.Name); isWrapper {
 					continue
 				}
 				if _, ok := emitted[pkgName]; ok {
