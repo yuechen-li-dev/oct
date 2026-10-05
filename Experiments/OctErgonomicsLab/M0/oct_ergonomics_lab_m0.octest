@@ -73,9 +73,12 @@ fn CsvReadShapeSmoke() -> Void {
     let matrixPath = IO.JoinPath([root, "matrix.csv"])
     let tablePath = IO.JoinPath([root, "table.csv"])
 
-    Artifact.WriteCsv(rowsPath, [["case", "status"], ["baseline", "hold"]])
-    Artifact.WriteCsv(matrixPath, [["1.0", "2.0"], ["3.5", "4.25"]])
-    Artifact.WriteCsv(tablePath, [["case", "status"], ["baseline", "hold"], ["improved", "promising"]])
+    // The inputs are test fixtures, not artifacts: Artifact.Write* runs only
+    // during `oct artifact`.
+    let _made = IO.MakeAll(root)!
+    let _rows = Csv.Write(rowsPath, [["case", "status"], ["baseline", "hold"]])!
+    let _matrix = Csv.Write(matrixPath, [["1.0", "2.0"], ["3.5", "4.25"]])!
+    let _table = Csv.Write(tablePath, [["case", "status"], ["baseline", "hold"], ["improved", "promising"]])!
 
     let rows = Csv.ReadRows(rowsPath)!
     Assert.Equal("case", rows[0][0], "rows header")
@@ -83,7 +86,7 @@ fn CsvReadShapeSmoke() -> Void {
     let firstRow = grid[0]
     Assert.Equal(2.0, firstRow[1], "matrix numeric parse")
 
-    let _table = Csv.ReadTable(tablePath)!
+    let _parsed = Csv.ReadTable(tablePath)!
     Assert.True(true, "ReadTable parses header csv; columnar record inspection not yet exposed in Oct")
 }
 

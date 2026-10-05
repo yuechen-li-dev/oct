@@ -187,32 +187,32 @@ fn M43Determinism() -> Void {
     Assert.Equal(a.WorkerQueueMapping, b.WorkerQueueMapping, "mapping should remain deterministic")
 }
 
-[Fact]
+[Artifact]
 fn EmitM43SubmitModeComparison() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_submit_mode_comparison.octagon", [M43SubmitModeComparisonTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM43QueueTopologyGateTable() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_queue_topology_gate_table.octagon", [M43QueueTopologyGateContractTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM43WorkerQueueMappingTable() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_worker_queue_mapping_table.octagon", [M43WorkerQueueMappingContractTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM43FailureDrainTable() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_failure_drain_table.octagon", [M43FailureDrainContractTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM43TransferInteractionTable() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_transfer_interaction_table.octagon", [M43TransferInteractionContractTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM43FinalContract() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M43/m43_final_contract.octagon", [M43RecommendationFromMetrics()])
 }

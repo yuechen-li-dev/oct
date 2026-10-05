@@ -82,10 +82,10 @@ fn AnchoredBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<
 
 fn Place(box: UIBox, child: UI) -> UI {
     if box.Kind == "absolute" {
-        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child)
+        return UIPlaceAbsolute(box.X, box.Y, box.Width, box.Height, child, 0)
     }
 
-    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child)
+    return UIPlaceAnchored(box.Left, box.Top, box.Right, box.Bottom, child, 0)
 }
 
 fn MountUI(root: UI) -> Mount { return Mount { Handle: UIMount(root) } }

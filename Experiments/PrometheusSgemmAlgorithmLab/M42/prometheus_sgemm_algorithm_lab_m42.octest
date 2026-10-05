@@ -237,32 +237,32 @@ fn M42Determinism() -> Void {
     Assert.Equal(a.WorkerQueueMapping, b.WorkerQueueMapping, "same scenario should produce same queue mapping")
 }
 
-[Fact]
+[Artifact]
 fn EmitM42CandidateComparison() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_candidate_comparison.octagon", [M42CandidateComparisonTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM42QueueTopologyTable() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_queue_topology_table.octagon", [M42QueueTopologyContractTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM42ResourceOwnershipContractTable() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_resource_ownership_table.octagon", [M42ResourceOwnershipContractTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM42FailureDrainTable() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_failure_drain_table.octagon", [M42FailureDrainContractTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM42TransferInteractionTable() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_transfer_interaction_table.octagon", [M42TransferInteractionContractTable()])
 }
 
-[Fact]
+[Artifact]
 fn EmitM42FinalContract() -> Void {
     let _status = WriteOctagon("Experiments/PrometheusSgemmAlgorithmLab/M42/m42_final_contract.octagon", [M42RecommendationFromMetrics()])
 }

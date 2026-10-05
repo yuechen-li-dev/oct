@@ -305,49 +305,72 @@ flow ClassifyLinkStep(qualityScore: Int) -> LinkState {
     }
 }
 
+// One RF sample is handled on each Step. What has to last from one Step to the
+// next lives on the board: state locals do not survive `suspend`, and a
+// `suspend` inside a loop resumes after the loop, not inside it.
 flow RunAdaptiveLinkController(trace: RfConditionTrace) -> Int[] {
+    board {
+        Index: Int
+        Current: Int
+        Modes: Int[]
+    }
+
     state Run {
-        var i = 0
-        var current = 0
-        var modes = [0]
-
-        while i < Len(trace.QualityScore) {
-            current = when policy {
-                hysteresis: 9
-                min_commit: 2
-            } {
-                case 2 when trace.QualityScore[i] < 40 score 110 - trace.QualityScore[i]
-                case 1 when trace.QualityScore[i] < 70 score 85 - Abs(trace.QualityScore[i] - 56)
-                case 0 when trace.QualityScore[i] >= 58 score trace.QualityScore[i]
-                else current
-            }
-
-            modes = Append(modes, current)
-            i = i + 1
-            suspend
+        if Len(board.Modes) == 0 {
+            board.Modes = [0]
+        }
+        if board.Index >= Len(trace.QualityScore) {
+            return board.Modes
         }
 
-        return modes
+        let quality = trace.QualityScore[board.Index]
+        board.Current = when policy {
+            hysteresis: 9
+            min_commit: 2
+        } {
+            case 2 when quality < 40 score 110 - quality
+            case 1 when quality < 70 score 85 - Abs(quality - 56)
+            case 0 when quality >= 58 score quality
+            else board.Current
+        }
+
+        board.Modes = Append(board.Modes, board.Current)
+        board.Index = board.Index + 1
+        if board.Index >= Len(trace.QualityScore) {
+            return board.Modes
+        }
+        suspend
+        goto Run
     }
 }
 
 flow RunNaiveController(trace: RfConditionTrace) -> Int[] {
-    state Run {
-        var i = 0
-        var modes = [0]
+    board {
+        Index: Int
+        Modes: Int[]
+    }
 
-        while i < Len(trace.QualityScore) {
-            let next = switch {
-                case trace.QualityScore[i] >= 70 => 0
-                case trace.QualityScore[i] >= 45 => 1
-                else => 2
-            }
-            modes = Append(modes, next)
-            i = i + 1
-            suspend
+    state Run {
+        if Len(board.Modes) == 0 {
+            board.Modes = [0]
+        }
+        if board.Index >= Len(trace.QualityScore) {
+            return board.Modes
         }
 
-        return modes
+        let quality = trace.QualityScore[board.Index]
+        let next = switch {
+            case quality >= 70 => 0
+            case quality >= 45 => 1
+            else => 2
+        }
+        board.Modes = Append(board.Modes, next)
+        board.Index = board.Index + 1
+        if board.Index >= Len(trace.QualityScore) {
+            return board.Modes
+        }
+        suspend
+        goto Run
     }
 }
 

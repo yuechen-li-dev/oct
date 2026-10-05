@@ -8,8 +8,9 @@ import (
 )
 
 func TestJsonIntentRecoveryLabCorpusValidation(t *testing.T) {
-	path := "../../Experiments/JsonIntentRecoveryLab/M0/corpus_validation.octest"
-	stdout, stderr, err := executeCLI("test", path)
+	// The experiment names its corpus files relative to the repository root,
+	// as every fixture does, so it is run as a process started there.
+	stdout, stderr, err := runOctInRepository(t, repoPath(t), "test", "Experiments/JsonIntentRecoveryLab/M0")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}

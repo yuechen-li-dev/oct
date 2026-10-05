@@ -238,17 +238,6 @@ fn MinFloat(a: Float, b: Float) -> Float {
     return b
 }
 
-fn Clamp01(value: Float) -> Float {
-    if value < 0.0 {
-        return 0.0
-    }
-    if value > 1.0 {
-        return 1.0
-    }
-
-    return value
-}
-
 fn GetCoverageOrCenter(lattice: Lattice2D, coverage: Float[], i: Int, j: Int, center: Float) -> Float {
     if HasCell(lattice, i, j) {
         return coverage[LatticeIndex(lattice, i, j)]

@@ -142,16 +142,6 @@ fn MinFloat(a: Float, b: Float) -> Float {
     return b
 }
 
-fn Clamp01(value: Float) -> Float {
-    if value < 0.0 {
-        return 0.0
-    }
-    if value > 1.0 {
-        return 1.0
-    }
-    return value
-}
-
 fn SqrtNewton(value: Float) -> Float {
     if value <= 0.0 {
         return 0.0

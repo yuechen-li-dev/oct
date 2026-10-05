@@ -34,8 +34,10 @@ fn BatchTrialsAreDeterministicAcrossRuns() -> Void ! Error {
 
 [Fact]
 fn OneInvalidSeedFailsWholeBatchAndNoPartialOutputIsExposed() -> Void {
+    var failed = false
     match RunTrials([4, 0 - 1, 6]) {
-        ok(value) => { Assert.True(false, "expected batch failure when one trial seed is invalid") }
-        err(e) => { return }
+        ok(_) => { failed = false }
+        err(_) => { failed = true }
     }
+    Assert.True(failed, "expected batch failure when one trial seed is invalid")
 }

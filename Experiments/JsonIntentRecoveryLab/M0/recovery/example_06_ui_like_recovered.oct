@@ -1,4 +1,4 @@
-package JsonIntentRecoveryLabM0
+package recovery
 
 record HeroSection {
     Slot: String
