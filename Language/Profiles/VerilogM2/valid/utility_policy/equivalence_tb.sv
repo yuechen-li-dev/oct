@@ -40,6 +40,13 @@ module utility_policy_tb;
         set_scores(1, 1, 10, 11); expect_yield(1, 0, 2);
         set_scores(1, 1, 10, 20); expect_yield(1, 0, 3);
         set_scores(1, 1, 10, 20); expect_yield(2, 1, 1);
+        // The second arm is held in its turn: by min_commit for two more
+        // evaluations, then by hysteresis while the leader is at most 2 above
+        // the 20 it was committed at. A lead of 3 ends the commitment.
+        set_scores(1, 1, 30, 20); expect_yield(2, 1, 2);
+        set_scores(1, 1, 30, 20); expect_yield(2, 1, 3);
+        set_scores(1, 1, 22, 20); expect_yield(2, 1, 4);
+        set_scores(1, 1, 23, 20); expect_yield(1, 0, 1);
         set_scores(0, 0, 0, 0); expect_yield(0, -1, 1);
         $display("utility-policy-equivalence-ok");
         $finish;

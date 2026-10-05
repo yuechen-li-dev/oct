@@ -1579,6 +1579,7 @@ func TestBuildFileResolvesVectorBracketByScope(t *testing.T) {
 		{"function value parameter", "fn F() -> Float { let f = fn(vector: Float[]) -> Float { return vector[0] } return 0.0 }", false},
 		{"outer local inside a function value", "fn F() -> Float { let vector = [1.0] let f = fn() -> Float { return vector[1.0][0] } return 0.0 }", true},
 		{"capture inside a function value", "fn F() -> Float { let vector = [1.0] let f = fn() -> Float with { vector: vector } { return vector[0] } return 0.0 }", false},
+		{"capture value, read in the enclosing function", "fn F() -> Float { let vector = [1.0] let f = fn() -> Float with { first: vector[0] } { return first } return 0.0 }", false},
 		{"another function's parameter", "fn A(vector: Float[]) -> Float { return 0.0 }\nfn F() -> Float { return vector[1.0][0] }", true},
 	}
 	for _, c := range cases {
@@ -1597,7 +1598,12 @@ func TestBuildFileResolvesVectorBracketByScope(t *testing.T) {
 						found, isLiteral = true, false
 					}
 				}
+			case ast.VectorLiteralExpr:
+				found, isLiteral = true, true
 			case ast.FunctionExpr:
+				for _, capture := range e.Captures {
+					visitExpr(capture.Value)
+				}
 				visitBlock(e.Body)
 			case ast.BatchExpr:
 				visitBlock(e.Body)

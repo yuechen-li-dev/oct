@@ -543,6 +543,9 @@ fn Main() -> Int { return 0 }
 		{name: "value", mutate: func(cp *FlowCheckpoint) { cp.Board.Fields[0].Value.Kind = string(ValueString) }, reason: FlowCheckpointBoardValueTypeMismatch, pkg: "Main", flow: "Waiter"},
 		{name: "resume", mutate: func(cp *FlowCheckpoint) { cp.HasResumeTarget = true; cp.ResumeTarget = "Missing" }, reason: FlowCheckpointResumeTargetMissing, pkg: "Main", flow: "Waiter"},
 		{name: "history", mutate: func(cp *FlowCheckpoint) { cp.StateHistory = append(cp.StateHistory, "Missing") }, reason: FlowCheckpointStateHistoryInvalid, pkg: "Main", flow: "Waiter"},
+		{name: "utility arm", mutate: func(cp *FlowCheckpoint) {
+			cp.UtilitySites = []FlowUtilityCheckpoint{{SiteID: 0, HasCurrent: true, Arm: utilityElseArm - 1}}
+		}, reason: FlowCheckpointUtilitySiteMismatch, pkg: "Main", flow: "Waiter"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

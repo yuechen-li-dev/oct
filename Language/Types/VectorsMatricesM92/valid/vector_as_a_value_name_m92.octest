@@ -58,6 +58,18 @@ fn BoundByMatchArm() -> Float {
     return first
 }
 
+enum Reading {
+    Samples(Float[])
+    Missing
+}
+
+fn BoundByMatchCase(reading: Reading) -> Float {
+    return match reading {
+        case Reading.Samples(vector) => vector[1]
+        case Reading.Missing => -1.0
+    }
+}
+
 fn BoundInsideAFunctionValue() -> Float {
     let pick = fn(vector: Float[]) -> Float {
         return vector[1]
@@ -74,6 +86,18 @@ fn CapturedByAFunctionValue() -> Float {
         return vector[index]
     }
     return pick(1)
+}
+
+fn CaptureValueIsReadOutside() -> Float {
+    let vector = [4.0, 5.0]
+    // A capture's value is an expression of the enclosing function, so
+    // `vector[0]` here indexes the local.
+    let pick = fn() -> Float with {
+        first: vector[0]
+    } {
+        return first
+    }
+    return pick()
 }
 
 fn LiteralInsideAFunctionValue() -> Float {
@@ -94,8 +118,10 @@ fn AValueNamedVectorIsIndexed() -> Void {
     Assert.Near(3.0, BoundByLet(), 0.0001, "a let named vector, initialized from a literal")
     Assert.Near(15.0, BoundByVar(), 0.0001, "a var named vector, assigned through an index")
     Assert.Near(7.0, BoundByMatchArm(), 0.0001, "a match binding named vector")
+    Assert.Near(7.0, BoundByMatchCase(Reading.Samples([6.0, 7.0])), 0.0001, "an enum payload binding named vector")
     Assert.Near(2.5, BoundInsideAFunctionValue(), 0.0001, "a function value's parameter named vector")
     Assert.Near(5.0, CapturedByAFunctionValue(), 0.0001, "a capture named vector")
+    Assert.Near(4.0, CaptureValueIsReadOutside(), 0.0001, "a capture's value is read in the enclosing function")
 }
 
 [Fact]
