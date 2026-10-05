@@ -1,0 +1,28 @@
+expect runtime error: "assertion failed: the program ran to its last statement"
+
+// The only conversion in this program is the value assigned to a board
+// field. The program must build in both lanes and run to its last statement,
+// which is the assertion this file expects.
+
+package Main
+
+flow Hold(ns: Int[]) -> Float {
+    board {
+        Trace: Float[]
+    }
+
+    state Run {
+        board.Trace = ns
+        return board.Trace[0] / 2
+    }
+}
+
+fn Main() -> Void {
+    let ns = [1, 1]
+    let run = Hold(ns)
+    Step(run)
+    if Result(run)! != 0.5 {
+        Assert.True(false, "the flow did not compute what it was written to")
+    }
+    Assert.True(false, "the program ran to its last statement")
+}
