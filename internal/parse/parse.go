@@ -2355,9 +2355,6 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 					return nil, err
 				}
 				indices = append(indices, index)
-				if p.current().Kind == lex.Ellipsis {
-					return nil, p.errorAtCurrent(ellipsisMisplaced)
-				}
 				if !p.match(lex.Comma) {
 					break
 				}
@@ -2509,9 +2506,6 @@ func (p *parser) parseCallArguments() ([]ast.Expr, error) {
 			return nil, err
 		}
 		arguments = append(arguments, argument)
-		if p.current().Kind == lex.Ellipsis {
-			return nil, p.errorAtCurrent(ellipsisMisplaced)
-		}
 		if !p.match(lex.Comma) {
 			break
 		}

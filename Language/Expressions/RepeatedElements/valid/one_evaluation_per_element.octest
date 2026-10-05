@@ -33,6 +33,38 @@ fn ElementIsEvaluatedForEachElement() -> Void {
 }
 
 [Fact]
+fn VectorAndMatrixElementsAreEvaluatedForEachElement() -> Void {
+    let draws = vector[Entropy.Unit()! ... 8]
+    var distinct = false
+    for i in 1..8 {
+        if draws[i] != draws[0] {
+            distinct = true
+        }
+    }
+    Assert.True(distinct, "a vector element")
+    let cells = matrix[[Entropy.Unit()! ... 8]]
+    var distinctCells = false
+    for i in 1..8 {
+        if cells[0, i] != cells[0, 0] {
+            distinctCells = true
+        }
+    }
+    Assert.True(distinctCells, "an element of a matrix row")
+}
+
+[Fact]
+fn RepeatedMatrixRowIsEvaluatedForEachRow() -> Void {
+    let rows = matrix[[Entropy.Unit()!, 0.0] ... 8]
+    var distinct = false
+    for i in 1..8 {
+        if rows[i, 0] != rows[0, 0] {
+            distinct = true
+        }
+    }
+    Assert.True(distinct, "eight rows, eight evaluations")
+}
+
+[Fact]
 fn ErrorInAnElementPropagates() -> Void {
     let row = CheckedRow(5, 2)!
     Assert.Equal(2, Len(row), "success")

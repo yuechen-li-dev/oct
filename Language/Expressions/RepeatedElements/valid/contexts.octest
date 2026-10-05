@@ -8,8 +8,35 @@ record table Readings {
     Valid: Bool
 }
 
+concept Channel = Int {
+    Require(Self >= 0, "a channel must be at least 0")
+    Require(Self <= 255, "a channel must be at most 255")
+}
+
+template fn Same<T>(value: T) -> T {
+    return value
+}
+
 template fn Filled<T>(value: T, n: Int) -> T[] {
-    return [value ... n]
+    return [Same<T>(value) ... Same<Int>(n)]
+}
+
+fn Channels(value: Int, n: Int) -> Channel[] ! Error {
+    return [Channel(value)? ... n]
+}
+
+// Each of these is called from one place only: as a repeated value, as a
+// count, and as the count of a matrix row.
+fn OnlyARepeatedValue() -> Int {
+    return 7
+}
+
+fn OnlyACount() -> Int {
+    return 3
+}
+
+fn OnlyARowCount() -> Int {
+    return 2
 }
 
 flow Sweep(n: Int) -> Int {
@@ -45,6 +72,31 @@ fn TemplateFunction() -> Void {
     Assert.Equal(3, Len(names), "a template's element type")
     Assert.Equal("x", names[2], "its elements")
     Assert.Equal(2, Len(Filled<Int>(7, 2)), "another instance")
+    Assert.Equal(7, Filled<Int>(7, 2)[1], "a template call as the repeated value and as the count")
+}
+
+[Fact]
+fn FunctionsCalledOnlyFromARepeatedElement() -> Void {
+    let values = [OnlyARepeatedValue() ... 2]
+    Assert.Equal(7, values[1], "a function called only as a repeated value")
+    let counted = [0 ... OnlyACount()]
+    Assert.Equal(3, Len(counted), "a function called only as a count")
+    let m = matrix[[1.0, 2.0] ... OnlyARowCount()]
+    Assert.Near(2.0, m[1, 1], 0.001, "a function called only as the count of a matrix row")
+}
+
+[Fact]
+fn RefinedElements() -> Void {
+    let known: Channel[] = [200 ... 3]
+    Assert.Equal(3, Len(known), "a constant that satisfies the concept")
+    let admitted = Channels(128, 2)!
+    Assert.Equal(2, Len(admitted), "a constructor as the repeated value")
+    var refused = false
+    match Channels(300, 2) {
+        ok(_) => { refused = false }
+        err(_) => { refused = true }
+    }
+    Assert.True(refused, "a value the concept refuses")
 }
 
 [Fact]
@@ -65,6 +117,16 @@ fn BatchBody() -> Void {
     }
     Assert.Equal(1, lengths[0], "first item")
     Assert.Equal(3, lengths[2], "last item")
+    // A value from outside the body that the body uses only as a repeated
+    // element, and another only as a count.
+    let fill = 4
+    let extra = 1
+    let sums = batch [1, 2] as x {
+        let row = [fill ... x + extra]
+        return row[0] * Len(row)
+    }
+    Assert.Equal(8, sums[0], "outer values in the first item")
+    Assert.Equal(12, sums[1], "outer values in the second item")
 }
 
 [Fact]
