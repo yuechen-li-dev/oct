@@ -61,14 +61,14 @@ func TestCanonicalRegistryWrapperSyncDoesNotBuildSidecars(t *testing.T) {
 	if _, stderr, err := executeCLIInDir(consumerDir, "pkg", "registry", "add", "oct", filepath.Join(root, "Registry")); err != nil {
 		t.Fatalf("registry add failed: %v %s", err, stderr)
 	}
-	if _, stderr, err := executeCLIInDir(consumerDir, "pkg", "add", "Archive@0.1.0"); err != nil {
+	if _, stderr, err := executeCLIInDir(consumerDir, "pkg", "add", "Make@0.1.0"); err != nil {
 		t.Fatalf("pkg add wrapper failed: %v %s", err, stderr)
 	}
 	stdout, stderr, err := executeCLIInDir(consumerDir, "pkg", "sync")
-	if err != nil || !strings.Contains(stdout, "Synced Archive 0.1.0") {
+	if err != nil || !strings.Contains(stdout, "Synced Make 0.1.0") {
 		t.Fatalf("pkg sync wrapper failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
-	if _, err := os.Stat(filepath.Join(consumerDir, ".oct", "packages", "Archive", "0.1.0", "manifest.oct")); err != nil {
+	if _, err := os.Stat(filepath.Join(consumerDir, ".oct", "packages", "Make", "0.1.0", "manifest.oct")); err != nil {
 		t.Fatalf("expected wrapper source manifest to be synced: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(consumerDir, ".oct", "wrappers")); !os.IsNotExist(err) {

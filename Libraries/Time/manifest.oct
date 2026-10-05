@@ -6,31 +6,12 @@ record PackageManifest {
     Description: String
     Authors: String[]
     Date: String
-    Kind: String
     Dependencies: Dependency[]
-    Wrappers: Wrapper[]
 }
 
 record Dependency {
     Name: String
     VersionRequirement: String
-}
-
-record Wrapper {
-    Name: String
-    Family: String
-    Protocol: String
-    SidecarCommand: String
-    GoModuleDir: String
-    Functions: WrapperFunction[]
-}
-
-record WrapperFunction {
-    OctName: String
-    WireName: String
-    Args: String[]
-    Return: String
-    Fallible: Bool
 }
 
 fn Manifest() -> PackageManifest {
@@ -40,23 +21,6 @@ fn Manifest() -> PackageManifest {
         Authors: ["Codex"]
         Date: "2026-06-15"
         Description: "Thin time wrappers for practical ISO-8601 workflows"
-        Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
-        Wrappers: [
-            Wrapper {
-                Name: "time"
-                Family: "Time"
-                Protocol: "octxiliary.v0"
-                SidecarCommand: "octxiliary-time"
-                GoModuleDir: "octxiliary"
-                Functions: [
-                    WrapperFunction { OctName: "NowIso8601" WireName: "TimeNowIso8601" Args: [] Return: "String" Fallible: false },
-                    WrapperFunction { OctName: "ParseIso8601" WireName: "TimeParseIso8601" Args: ["String"] Return: "String" Fallible: true },
-                    WrapperFunction { OctName: "FormatIso8601" WireName: "TimeFormatIso8601" Args: ["String"] Return: "String" Fallible: true },
-                    WrapperFunction { OctName: "UnixSecondsNow" WireName: "TimeUnixSecondsNow" Args: [] Return: "Int" Fallible: false },
-                    WrapperFunction { OctName: "FormatUnixSeconds" WireName: "TimeFormatUnixSecond" Args: ["Int"] Return: "String" Fallible: true }
-                ]
-            }
-        ]
     }
 }

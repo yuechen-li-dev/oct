@@ -805,6 +805,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: lowerMIRValues(args, nil), ArgTypes: effectiveArgTypes, RetType: effectiveReturn, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
 			return tmp, effectiveReturn, meta.Fallible, nil
 		}
+		if builtin {
+			if sidecar, ok := lookupSidecarBuiltin(callee); ok {
+				return c.lowerSidecarBuiltinCall(sidecar, args, argTypes)
+			}
+		}
 		if builtin && callee == "BoardSnapshot" {
 			if len(argTypes) != 1 {
 				return "", "", false, fmt.Errorf("BoardSnapshot expects 1 argument")
@@ -2227,6 +2232,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		}
 		if builtin.IsName(x.Name) {
 			normalized := x.Name
+			if sidecar, ok := builtin.LookupSidecar(normalized); ok {
+				return normalized, sidecar.Result.Oct, true, sidecar.Fallible, nil
+			}
 			switch normalized {
 			case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
 				ret := "String"
@@ -2379,6 +2387,50 @@ func (c *lowerCtx) resolveCompiledBuiltinAlias(name string) (string, string, boo
 	default:
 		return "", "", false, false, unsupportedBuiltin(name)
 	}
+}
+
+// lookupSidecarBuiltin exists because the call lowering has a local named
+// builtin.
+func lookupSidecarBuiltin(name string) (builtin.SidecarBuiltin, bool) {
+	return builtin.LookupSidecar(name)
+}
+
+// lowerSidecarBuiltinCall lowers a call to a builtin that the compiled lane
+// runs in a first-party sidecar. The typechecker has already checked the
+// call; the checks here guard the table against drifting from it.
+func (c *lowerCtx) lowerSidecarBuiltinCall(sidecar builtin.SidecarBuiltin, args []string, argTypes []string) (string, string, bool, error) {
+	if len(argTypes) != len(sidecar.Params) {
+		return "", "", false, fmt.Errorf("internal error: builtin %s takes %d arguments in the sidecar table, got %d", sidecar.Name, len(sidecar.Params), len(argTypes))
+	}
+	wireTypes := make([]string, len(argTypes))
+	handles := make([]string, len(argTypes))
+	for i, param := range sidecar.Params {
+		if transportRuntimeBaseType(argTypes[i]) != transportRuntimeBaseType(param.Oct) {
+			return "", "", false, fmt.Errorf("internal error: builtin %s argument %d is %s in the sidecar table, got %s", sidecar.Name, i+1, param.Oct, argTypes[i])
+		}
+		wireTypes[i] = param.Oct
+		handles[i] = param.Handle
+	}
+	result := sidecar.Result.Oct
+	localType := result
+	if sidecar.Fallible {
+		localType = fallibleType(result)
+	}
+	tmp := c.temp(localType)
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{
+		Target:         tmp,
+		OctName:        sidecar.Name,
+		Family:         sidecar.Family,
+		WireName:       sidecar.Name,
+		SidecarCommand: sidecar.Sidecar,
+		Args:           lowerMIRValues(args, nil),
+		ArgTypes:       wireTypes,
+		RetType:        result,
+		Fallible:       sidecar.Fallible,
+		ArgHandles:     handles,
+		RetHandle:      sidecar.Result.Handle,
+	})
+	return tmp, result, sidecar.Fallible, nil
 }
 
 type genericWrapperCallMetadata struct {

@@ -112,4 +112,3 @@ func ArtifactPhaseSpelling(name string) (string, bool) {
 	}
 	return "", false
 }
-

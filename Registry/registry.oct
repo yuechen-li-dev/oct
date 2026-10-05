@@ -31,7 +31,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Archive"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -81,7 +81,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Compression"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -121,7 +121,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Csv"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -211,7 +211,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Hash"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -221,7 +221,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "IO"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -241,7 +241,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Image"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -261,7 +261,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Json"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -361,7 +361,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Pdf"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -381,7 +381,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Plot"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -471,7 +471,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Text"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""
@@ -491,7 +491,7 @@ fn Registry() -> RegistryIndex {
             PackageEntry {
                 Name: "Time"
                 Version: "0.1.0"
-                Kind: "wrapper"
+                Kind: "library"
                 SourceKind: "local"
                 Source: ".."
                 Ref: ""

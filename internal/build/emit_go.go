@@ -1351,18 +1351,29 @@ func goStmt(s MIRStmt) (string, error) {
 			if err != nil {
 				return "", err
 			}
+			if i < len(st.ArgHandles) && st.ArgHandles[i] != "" {
+				valueArgs = append(valueArgs, fmt.Sprintf("octxiliary.Value{Kind: octxiliary.ValueHandle, HandleFamily: %q, HandleType: %q, HandleID: %s}", st.Family, st.ArgHandles[i], emittedArg))
+				continue
+			}
 			valueExpr, err := octxiliaryValueExprWithTransportFamily(st.ArgTypes[i], emittedArg, st.TransportTypes, st.Family)
 			if err != nil {
 				return "", err
 			}
 			valueArgs = append(valueArgs, valueExpr)
 		}
-		call := fmt.Sprintf("__octOctxiliaryGenericCall(%q, %q, %q, []octxiliary.Value{%s}, %s)", st.SidecarCommand, st.Family, st.WireName, strings.Join(valueArgs, ", "), octxiliaryKindExprWithTransport(st.RetType, st.TransportTypes))
+		kindExpr := octxiliaryKindExprWithTransport(st.RetType, st.TransportTypes)
 		retValidation := ""
+		extractExpr := octxiliaryValueExtractExprWithTransport(st.RetType, "__value", st.TransportTypes)
 		if transport := findTransportRecord(st.TransportTypes, st.RetType); transport.ok && transport.typ.Kind == "handle" {
 			retValidation = fmt.Sprintf("if __err := __octOctxiliaryValidateHandle(__value, %q, %q); __err != nil { ", st.Family, st.RetType)
 		}
-		extractExpr := octxiliaryValueExtractExprWithTransport(st.RetType, "__value", st.TransportTypes)
+		if st.RetHandle != "" {
+			// A sidecar builtin returns the handle as an Int.
+			kindExpr = "octxiliary.ValueHandle"
+			retValidation = fmt.Sprintf("if __err := __octOctxiliaryValidateHandle(__value, %q, %q); __err != nil { ", st.Family, st.RetHandle)
+			extractExpr = "__value.HandleID"
+		}
+		call := fmt.Sprintf("__octOctxiliaryGenericCall(%q, %q, %q, []octxiliary.Value{%s}, %s)", st.SidecarCommand, st.Family, st.WireName, strings.Join(valueArgs, ", "), kindExpr)
 		if st.Fallible {
 			if st.RetType == "Void" {
 				return fmt.Sprintf("%s = func() %s { __value, __err := %s; _ = __value; if __err != nil { return %s{Err: __err.Error(), IsErr: true} }; return %s{Value: __octVoid{}} }()", st.Target, goResultTypeName(st.RetType), call, goResultTypeName(st.RetType), goResultTypeName(st.RetType)), nil

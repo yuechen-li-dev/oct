@@ -160,6 +160,11 @@ type MIRGenericOctxiliaryCall struct {
 	RetType        string
 	Fallible       bool
 	TransportTypes []project.TransportTypeMetadata
+	// ArgHandles and RetHandle serve a sidecar builtin, which carries a
+	// handle as an Int. Where one is set it names the wire handle type that
+	// the Int stands for; ArgHandles is nil or has one entry per argument.
+	ArgHandles []string
+	RetHandle  string
 }
 
 func (MIRGenericOctxiliaryCall) mirStmt() {}
