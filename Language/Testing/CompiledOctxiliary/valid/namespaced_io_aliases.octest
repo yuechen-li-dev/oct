@@ -1,0 +1,23 @@
+package Main
+
+import IO
+
+// `IO.WriteText`, `IO.ReadText`, `IO.WriteLines` and `IO.ReadLines` are other
+// spellings of the builtins `FileWriteText`, `FileReadText`, `FileWriteLines`
+// and `FileReadLines`. A program outside the library calls them in both lanes.
+
+[Fact]
+fn NamespacedTextAliasesRoundTrip() -> Void ! Error {
+    let path = ".tmp/octxiliary_namespaced_text.txt"
+    let _w = IO.WriteText(path, "namespaced")?
+    Assert.Equal("namespaced", IO.ReadText(path)?, "text written and read through the IO namespace")
+}
+
+[Fact]
+fn NamespacedLineAliasesRoundTrip() -> Void ! Error {
+    let path = ".tmp/octxiliary_namespaced_lines.txt"
+    let _w = IO.WriteLines(path, ["first", "second"])?
+    let lines = IO.ReadLines(path)?
+    Assert.Equal(2, Len(lines), "lines written and read through the IO namespace")
+    Assert.Equal("second", lines[1], "the second line")
+}

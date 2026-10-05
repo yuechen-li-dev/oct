@@ -2553,79 +2553,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			return x.Name, ret, true, meta.Fallible, nil
 		}
 		if builtin.IsName(x.Name) {
-			normalized := x.Name
-			if sidecar, ok := builtin.LookupSidecar(normalized); ok {
-				return normalized, sidecar.Result.Oct, true, sidecar.Fallible, nil
-			}
-			switch normalized {
-			case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
-				ret := "String"
-				switch normalized {
-				case "StringByteLength", "StringRuneCount":
-					ret = "Int"
-				case "StringContains", "StringStartsWith", "StringEndsWith":
-					ret = "Bool"
-				case "StringSplitLines":
-					ret = "String[]"
-				}
-				return normalized, ret, true, false, nil
-			case "MarkdownH1", "MarkdownH2", "MarkdownH3", "MarkdownParagraph", "MarkdownBlank", "MarkdownHorizontalRule", "MarkdownBullets", "MarkdownNumbered", "MarkdownCodeBlock", "MarkdownCallout", "MarkdownImage", "MarkdownFigure", "MarkdownTable", "MarkdownTableWithColumns", "MarkdownKeyValueTable", "MarkdownSection", "MarkdownSubsection", "MarkdownReport", "MarkdownEscapeText", "MarkdownEscapeTableCell":
-				return normalized, compiledMarkdownBuiltinReturnType(normalized), true, false, nil
-			case "RoundToInt", "FloorToInt", "CeilToInt":
-				return normalized, "Int", true, false, nil
-			case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue", "BaseUnit", "Clamp01":
-				return normalized, "Float", true, false, nil
-			case "Abs":
-				return normalized, "Float", true, false, nil
-			case "FormatFloat":
-				return normalized, "String", true, false, nil
-			case "Require":
-				return normalized, "Void", true, false, nil
-			case "ArrayCrossSection", "Array.CrossSection":
-				return "ArrayCrossSection", "Void", true, false, nil
-			case "ArrayWhere", "Array.Where":
-				return "ArrayWhere", "Void", true, false, nil
-			case "FileReadText":
-				return normalized, "String", true, true, nil
-			case "FileReadBytes":
-				return normalized, "Bytes", true, true, nil
-			case "FileReadLines", "DirectoryList":
-				return normalized, "String[]", true, true, nil
-			case "FileWriteText", "FileWriteLines", "FileWriteBytes":
-				return normalized, "Int", true, true, nil
-			case "FileExists":
-				return normalized, "Bool", true, false, nil
-			case "FileDelete", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
-				return normalized, "Int", true, true, nil
-			case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
-				return normalized, "String", true, true, nil
-			case "JsonSave":
-				return normalized, "Int", true, true, nil
-			case "CsvRead", "CsvReadRows":
-				return normalized, "String[][]", true, true, nil
-			case "CsvReadTable":
-				return normalized, "Csv.Table", true, true, nil
-			case "CsvReadMatrix":
-				return normalized, "Float[][]", true, true, nil
-			case "CsvWrite", "CsvWriteRows":
-				return normalized, "Int", true, true, nil
-			case "MakeExecRaw", "MakeExecInRaw":
-				return normalized, "Make.ProcessResult", true, true, nil
-			case "MakeToolRaw", "MakeReadTextRaw", "MakeHashFileRaw":
-				return normalized, "String", true, true, nil
-			case "MakeEnvRaw":
-				return normalized, "Make.EnvValue", true, true, nil
-			case "MakeExistsRaw", "MakeIsFileRaw", "MakeIsDirRaw":
-				return normalized, "Bool", true, false, nil
-			case "MakeMkdirAllRaw", "MakeRemoveRaw", "MakeCopyRaw", "MakeWriteTextRaw", "MakeModifiedTimeRaw":
-				return normalized, "Int", true, true, nil
-			case "MakeGlobRaw":
-				return normalized, "String[]", true, true, nil
-			case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
-				return normalized, "String", true, false, nil
-			default:
-				return "", "", false, false, unsupportedBuiltin(x.Name)
-			}
+			return c.resolveCompiledBuiltinByName(x.Name)
 		}
 		return "", "", false, false, fmt.Errorf("unknown function '%s'", x.Name)
 	case ast.FieldAccessExpr:
@@ -2639,7 +2567,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return aliasName, compiledMarkdownBuiltinReturnType(aliasName), true, false, nil
 			}
 			if builtin.IsName(aliasName) {
-				return c.resolveCompiledBuiltinAlias(aliasName)
+				// The alias is another spelling of the builtin, as
+				// `IO.ReadText` is of `FileReadText`.
+				return c.resolveCompiledBuiltinByName(aliasName)
 			}
 		}
 		if builtin.IsName(builtinName) {
@@ -2698,11 +2628,17 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 	}
 }
 
-func (c *lowerCtx) resolveCompiledBuiltinAlias(name string) (string, string, bool, bool, error) {
-	switch name {
+// resolveCompiledBuiltinByName answers for a builtin called by its own name:
+// the name the lowered call carries, its result type, and whether it is
+// fallible. A builtin the compiled lane does not have is refused by name.
+func (c *lowerCtx) resolveCompiledBuiltinByName(normalized string) (string, string, bool, bool, error) {
+	if sidecar, ok := builtin.LookupSidecar(normalized); ok {
+		return normalized, sidecar.Result.Oct, true, sidecar.Fallible, nil
+	}
+	switch normalized {
 	case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
 		ret := "String"
-		switch name {
+		switch normalized {
 		case "StringByteLength", "StringRuneCount":
 			ret = "Int"
 		case "StringContains", "StringStartsWith", "StringEndsWith":
@@ -2710,13 +2646,63 @@ func (c *lowerCtx) resolveCompiledBuiltinAlias(name string) (string, string, boo
 		case "StringSplitLines":
 			ret = "String[]"
 		}
-		return name, ret, true, false, nil
-	case "ArrayCrossSection":
+		return normalized, ret, true, false, nil
+	case "MarkdownH1", "MarkdownH2", "MarkdownH3", "MarkdownParagraph", "MarkdownBlank", "MarkdownHorizontalRule", "MarkdownBullets", "MarkdownNumbered", "MarkdownCodeBlock", "MarkdownCallout", "MarkdownImage", "MarkdownFigure", "MarkdownTable", "MarkdownTableWithColumns", "MarkdownKeyValueTable", "MarkdownSection", "MarkdownSubsection", "MarkdownReport", "MarkdownEscapeText", "MarkdownEscapeTableCell":
+		return normalized, compiledMarkdownBuiltinReturnType(normalized), true, false, nil
+	case "RoundToInt", "FloorToInt", "CeilToInt":
+		return normalized, "Int", true, false, nil
+	case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue", "BaseUnit", "Clamp01":
+		return normalized, "Float", true, false, nil
+	case "Abs":
+		return normalized, "Float", true, false, nil
+	case "FormatFloat":
+		return normalized, "String", true, false, nil
+	case "Require":
+		return normalized, "Void", true, false, nil
+	case "ArrayCrossSection", "Array.CrossSection":
 		return "ArrayCrossSection", "Void", true, false, nil
-	case "ArrayWhere":
+	case "ArrayWhere", "Array.Where":
 		return "ArrayWhere", "Void", true, false, nil
+	case "FileReadText":
+		return normalized, "String", true, true, nil
+	case "FileReadBytes":
+		return normalized, "Bytes", true, true, nil
+	case "FileReadLines", "DirectoryList":
+		return normalized, "String[]", true, true, nil
+	case "FileWriteText", "FileWriteLines", "FileWriteBytes":
+		return normalized, "Int", true, true, nil
+	case "FileExists":
+		return normalized, "Bool", true, false, nil
+	case "FileDelete", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
+		return normalized, "Int", true, true, nil
+	case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
+		return normalized, "String", true, true, nil
+	case "JsonSave":
+		return normalized, "Int", true, true, nil
+	case "CsvRead", "CsvReadRows":
+		return normalized, "String[][]", true, true, nil
+	case "CsvReadTable":
+		return normalized, "Csv.Table", true, true, nil
+	case "CsvReadMatrix":
+		return normalized, "Float[][]", true, true, nil
+	case "CsvWrite", "CsvWriteRows":
+		return normalized, "Int", true, true, nil
+	case "MakeExecRaw", "MakeExecInRaw":
+		return normalized, "Make.ProcessResult", true, true, nil
+	case "MakeToolRaw", "MakeReadTextRaw", "MakeHashFileRaw":
+		return normalized, "String", true, true, nil
+	case "MakeEnvRaw":
+		return normalized, "Make.EnvValue", true, true, nil
+	case "MakeExistsRaw", "MakeIsFileRaw", "MakeIsDirRaw":
+		return normalized, "Bool", true, false, nil
+	case "MakeMkdirAllRaw", "MakeRemoveRaw", "MakeCopyRaw", "MakeWriteTextRaw", "MakeModifiedTimeRaw":
+		return normalized, "Int", true, true, nil
+	case "MakeGlobRaw":
+		return normalized, "String[]", true, true, nil
+	case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
+		return normalized, "String", true, false, nil
 	default:
-		return "", "", false, false, unsupportedBuiltin(name)
+		return "", "", false, false, unsupportedBuiltin(normalized)
 	}
 }
 
