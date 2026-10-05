@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -22,6 +23,22 @@ func TestDispatchLineWritesPNG(t *testing.T) {
 	}
 	if info, err := os.Stat(out); err != nil || info.Size() == 0 {
 		t.Fatalf("expected non-empty png: info=%#v err=%v", info, err)
+	}
+	// Width and height arrive as two plain integers; the image says which
+	// was read as which. Only the orientation is checked: the renderer
+	// treats the requested pixels as points, so the image is larger than
+	// asked for by the same factor in both directions (FEEDBACK.md).
+	file, err := os.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	config, err := png.DecodeConfig(file)
+	if err != nil {
+		t.Fatalf("decode png: %v", err)
+	}
+	if config.Width <= config.Height {
+		t.Fatalf("image is %dx%d; a 400 by 300 request must be wider than it is tall", config.Width, config.Height)
 	}
 }
 

@@ -4,6 +4,11 @@ Date: 2026-10-04
 Base commit: `785c83a` (the lane-attribute pass reported in
 `language_corpus_lanes_2026_10_03.md`)
 
+> Two things this report leaves open were settled afterwards, in
+> `wrapper_single_definition_2026_10_04.md`: the wrapper rule was implemented
+> as option A below, and `hysteresis` now measures against the committed
+> arm's current score. The text below is the state at this report's commit.
+
 ## Verdict
 
 Four changes were approved. Three are done and one is stopped.

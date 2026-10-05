@@ -724,3 +724,23 @@ Rename them when the corpus is next reorganized; two Go test files name the path
 Status: Open
 
 ---
+
+Observation:
+A plot is larger than the size it is asked for. `Plot.Size { Width: 400px Height: 300px }` writes a PNG of 533 by 400 pixels. `internal/plotrender.PixelLength` turns a pixel count into the same number of points, and the image is rendered at 96 dots per inch, so every length grows by 4/3. Both lanes share the renderer, so both do it. No test checks the dimensions of a plot.
+
+Suggestion:
+Convert pixels to points with the renderer's resolution, so that the image has the pixels the `Int<px>` asked for. Recorded plots, `cmd/oct/analysis_output.png` among them, will change size.
+
+Status: Open
+
+---
+
+Observation:
+In the interpreted lane a record of an imported package does not equal the same record returned by that package. With `record Point { X: Int Y: Int }` and `fn Origin() -> Point` in package `Passer`, `Assert.Equal(Passer.Point { X: 0 Y: 0 }, Passer.Origin(), "...")` in another package fails interpreted and passes compiled. The literal is named `Passer.Point` and the returned value `Point`: `qualifyCrossPackageValue` qualifies the enums in a value that crosses a package boundary and not its records, and `valuesEqual` compares the names. Found while checking how a wrapper function's record should be named; wrapper results go through the same function and so behave as a source function's do.
+
+Suggestion:
+Qualifying records on the way out, as enums are, is not enough: a record of the caller's own package that passes through a library function would come back named for the library. Give a record its package when it is constructed and compare that.
+
+Status: Open
+
+---
