@@ -4,6 +4,20 @@ Date: 2026-10-05
 Base commit: `774056f` (the repeated-elements pass, reported in
 `repeated_elements_2026_10_05.md`)
 
+## Superseded in part
+
+`declared_types_and_array_values_2026_10_05.md` continues this pass. Three
+things below are no longer as this report states them:
+
+- **Item 4 under "Not fixed" was wrong.** `ContinuumComputabilityBoundary/M16`
+  did not assert a verdict its probe could not reach. Its sweep depended on
+  `var next = current` sharing one array, which was true when it was written.
+  It is repaired and passes.
+- **The 12 tests over their cycle time.** Eleven are single-case theories with
+  a cycle time and pass. `PrometheusSgemmAlgorithmLab/M19` is left failing
+  interpreted; the cause is the interpreter's element assignment.
+- **`Experiments/` interpreted** is 960 pass, 1 fail.
+
 ## Verdict
 
 **Meaningful progression.** Every experiment directory loads. In the

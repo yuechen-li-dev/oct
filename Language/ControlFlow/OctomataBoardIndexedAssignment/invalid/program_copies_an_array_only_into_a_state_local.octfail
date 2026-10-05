@@ -1,0 +1,23 @@
+expect runtime error: "assertion failed: the program ran to its last statement"
+
+// The only copy in this program is the array a state local is bound to.
+// The program must build in both lanes and run to its last statement, which
+// is the assertion this file expects.
+
+package Main
+
+flow Hold(xs: Float[]) -> Float {
+    state Run {
+        let held = xs
+        return held[0] + held[1]
+    }
+}
+
+fn Main() -> Void {
+    let run = Hold([1.5, 2.5])
+    Step(run)
+    if Result(run)! != 4.0 {
+        Assert.True(false, "the flow did not compute what it was written to")
+    }
+    Assert.True(false, "the program ran to its last statement")
+}
