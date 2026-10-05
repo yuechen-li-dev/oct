@@ -131,6 +131,21 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 					if err != nil {
 						return fmt.Errorf("%s.%s: %w", pkgName, fn.Name, err)
 					}
+					if len(fn.InlineData) == 0 {
+						// A theory with no rows takes no parameters and is
+						// one case, under the cycle time it declares.
+						tests = append(tests, testCase{
+							pkg:         pkgName,
+							filePath:    fn.SourcePath,
+							name:        fn.Name,
+							displayName: fn.Name,
+							cycleTime:   cycleTime,
+							isFallible:  fn.IsFallible,
+							suites:      append([]string{}, fn.Suites...),
+							lane:        fn.TestLane,
+							laneReason:  fn.TestLaneReason,
+						})
+					}
 					for i, row := range fn.InlineData {
 						args, err := inlineDataArgumentsToValues(row.Values, pkgName)
 						if err != nil {

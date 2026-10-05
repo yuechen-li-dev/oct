@@ -436,13 +436,20 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 				pendingSuites = pendingSuites[:0]
 			}
 			if pendingTheory {
-				if len(function.Parameters) == 0 {
+				// A theory is either rows of [InlineData] for its parameters,
+				// or a single case with no parameters and a [CycleTime] of
+				// its own.
+				single := len(pendingInlineData) == 0 && pendingCycleTime != nil
+				if len(function.Parameters) == 0 && !single {
+					if len(pendingInlineData) == 0 {
+						return ast.File{}, p.errorAtCurrent("[Theory] function must declare parameters with at least one [InlineData] row, or no parameters with a [CycleTime]")
+					}
 					return ast.File{}, p.errorAtCurrent("[Theory] function must declare at least one parameter")
 				}
 				if function.ReturnType.Name != "Void" || function.ReturnType.IsArray || function.ReturnType.VectorOf != nil || function.ReturnType.MatrixOf != nil || function.ReturnType.HasUnit || function.ReturnType.Package != "" {
 					return ast.File{}, p.errorAtCurrent("[Theory] function must return Void")
 				}
-				if len(pendingInlineData) == 0 {
+				if len(pendingInlineData) == 0 && len(function.Parameters) > 0 {
 					return ast.File{}, p.errorAtCurrent("[Theory] function must declare at least one [InlineData] row")
 				}
 				function.IsTheory = true

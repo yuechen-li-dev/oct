@@ -905,7 +905,11 @@ func TestBuildFileParsesTheoryInlineDataInOrder(t *testing.T) {
 
 func TestBuildFileRejectsInvalidTheoryUsage(t *testing.T) {
 	assertParseErrorContains(t, "package Main\n[Theory]\nfn Nope(x: Int) -> Void { return }\n", "[Theory] is only valid in .octest files")
-	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\nfn Bad() -> Void { return }\n", "[Theory] function must declare at least one parameter")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\nfn Bad() -> Void { return }\n", "[Theory] function must declare parameters with at least one [InlineData] row, or no parameters with a [CycleTime]")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\n[InlineData(1)]\nfn Bad() -> Void { return }\n", "[Theory] function must declare at least one parameter")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\n[CycleTime(1.0s)]\nfn Bad(x: Int) -> Void { return }\n", "[Theory] function must declare at least one [InlineData] row")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\n[CycleTime(1.0s)]\n[InlineData(1)]\nfn Bad() -> Void { return }\n", "[Theory] function must declare at least one parameter")
+	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\n[CycleTime(1.0s)]\nfn Bad() -> Int { return 1 }\n", "[Theory] function must return Void")
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Int { return x }\n", "[Theory] function must return Void")
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Theory]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n", "duplicate [Theory] attribute on function")
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Fact]\n[Theory]\n[InlineData(1)]\nfn Bad(x: Int) -> Void { return }\n", "[Fact] and [Theory] cannot both apply to the same function")

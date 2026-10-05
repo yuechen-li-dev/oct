@@ -34,7 +34,7 @@ A passing fact or theory row must execute at least one `Assert.*` call unless it
 ## `[Theory]`
 
 `[Theory]` marks a parameterized test function.
-A theory must have at least one parameter, must return `Void`, and must declare at least one `[InlineData(...)]` row.
+A theory with parameters must return `Void` and must declare at least one `[InlineData(...)]` row.
 Each inline row becomes one test case with a zero-based display suffix such as `Package.Function[0]`.
 
 ```oct
@@ -48,6 +48,21 @@ fn PairIsOrdered(a: Int, b: Int) -> Void {
 
 `[InlineData(...)]` is valid only on `[Theory]` and supports scalar literals and enum values.
 Theory rows default to `30.0s`; `[CycleTime(t)]` may override the row cycle time and requires exactly one positive `Float<s>` argument.
+
+A theory that declares a `[CycleTime(t)]` may take no parameters. It then needs no `[InlineData]` row: it is one test case, run once under that cycle time and reported as `Package.Function` with no suffix. This is how a test that needs longer than a fact's `30.0s` is written.
+
+```oct
+[Theory]
+[CycleTime(180.0s)]
+fn SweepCoversTheWholeGrid() -> Void ! Error {
+    let report = RunSweep()?
+    Assert.Equal(27, Len(report.Cases), "grid")
+}
+```
+
+- A theory with no parameters and no `[CycleTime]` is an error; write a `[Fact]`.
+- A theory with parameters still needs its rows, and one with rows still needs parameters.
+- `[CycleTime]` is not valid on a `[Fact]`.
 
 ## Suites and selection
 

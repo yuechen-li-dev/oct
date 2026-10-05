@@ -327,6 +327,64 @@ fn TheoryOverride(x: Int) -> Void {
 	}
 }
 
+// A theory with a [CycleTime] and no [InlineData] rows is one case with no
+// parameters. It runs under the cycle time it declares, which is the reason
+// to write it, and it is reported under its own name with no row suffix.
+func TestSingleCaseTheoryRunsUnderItsOwnCycleTime(t *testing.T) {
+	originalDefault := defaultTestCycleTime
+	defaultTestCycleTime = time.Millisecond
+	defer func() {
+		defaultTestCycleTime = originalDefault
+	}()
+	root := t.TempDir()
+	writeTestFile(t, root, "single.octest", `package Main
+
+[Fact]
+fn SlowFact() -> Void {
+    var total = 0
+    for i in 0..400000 {
+        total = total + i
+    }
+    Assert.True(total > 0, "the loop ran")
+}
+
+[Theory]
+[CycleTime(120.0s)]
+fn SlowSingleCase() -> Void {
+    var total = 0
+    for i in 0..400000 {
+        total = total + i
+    }
+    Assert.True(total > 0, "the loop ran")
+}
+
+[Theory]
+[CycleTime(0.01s)]
+fn SingleCaseOverItsCycleTime() -> Void {
+    while true {
+    }
+}
+`)
+	var out bytes.Buffer
+	err := executeInterpreted(root, &out)
+	if err == nil {
+		t.Fatalf("expected the fact and the short theory to exceed their cycle times, got pass (%s)", out.String())
+	}
+	log := out.String()
+	if !strings.Contains(log, "FAIL Main.SlowFact (single.octest): exceeded cycle time of 0.0<s>") {
+		t.Fatalf("expected the fact to exceed the default cycle time, got %q", log)
+	}
+	if !strings.Contains(log, "PASS Main.SlowSingleCase (single.octest)") {
+		t.Fatalf("expected the single-case theory to pass under its own cycle time, with no row suffix, got %q", log)
+	}
+	if !strings.Contains(log, "FAIL Main.SingleCaseOverItsCycleTime (single.octest): exceeded cycle time of 0.0<s>") {
+		t.Fatalf("expected the short single-case theory to exceed its cycle time, got %q", log)
+	}
+	if strings.Contains(log, "[0]") {
+		t.Fatalf("a single-case theory has no row index, got %q", log)
+	}
+}
+
 // The zero-assertion rule holds in the compiled lane as well: a fact that
 // asserts nothing fails there, and one that asserts passes.
 func TestZeroAssertFactFailsCompiled(t *testing.T) {
