@@ -426,6 +426,9 @@ type environment struct {
 type binding struct {
 	value   Value
 	mutable bool
+	// declared is the type a `var` was written with, when it was written with
+	// one. A later assignment conforms its value to it.
+	declared *ast.TypeRef
 }
 
 type stmtResult struct {
@@ -710,6 +713,11 @@ func (e *environment) define(name string, value Value, mutable bool) {
 	e.values[name] = binding{value: value, mutable: mutable}
 }
 
+// defineDeclared defines a mutable binding that was written with a type.
+func (e *environment) defineDeclared(name string, value Value, declared *ast.TypeRef) {
+	e.values[name] = binding{value: value, mutable: true, declared: declared}
+}
+
 func (e *environment) lookup(name string) (binding, bool) {
 	for current := e; current != nil; current = current.parent {
 		value, ok := current.values[name]
@@ -837,7 +845,7 @@ func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, 
 	}
 	env := newEnvironment(nil)
 	for index, parameter := range function.Parameters {
-		env.define(parameter.Name, arguments[index], false)
+		env.define(parameter.Name, i.conform(arguments[index], parameter.Type, pkgName), false)
 	}
 
 	result, err := i.executeBlock(env, pkgName, function.Body)
@@ -853,7 +861,7 @@ func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, 
 	if function.IsFallible && result.value.Kind == ValueError {
 		return callResult{hasError: true, errorVal: result.value}, nil
 	}
-	return callResult{value: result.value}, nil
+	return callResult{value: i.conform(result.value, function.ReturnType, pkgName)}, nil
 }
 
 func (i interpreter) executeAnonymousFunction(function *AnonymousFunctionValue, arguments []Value) (callResult, error) {
@@ -862,7 +870,7 @@ func (i interpreter) executeAnonymousFunction(function *AnonymousFunctionValue, 
 		env.define(capture.Name, cloneValue(capture.Value), false)
 	}
 	for index, parameter := range function.Expression.Parameters {
-		env.define(parameter.Name, arguments[index], false)
+		env.define(parameter.Name, i.conform(arguments[index], parameter.Type, function.Package), false)
 	}
 	result, err := i.executeBlock(env, function.Package, function.Expression.Body)
 	if err != nil {
@@ -877,7 +885,7 @@ func (i interpreter) executeAnonymousFunction(function *AnonymousFunctionValue, 
 	if function.Expression.IsFallible && result.value.Kind == ValueError {
 		return callResult{hasError: true, errorVal: result.value}, nil
 	}
-	return callResult{value: result.value}, nil
+	return callResult{value: i.conform(result.value, function.Expression.ReturnType, function.Package)}, nil
 }
 
 func (i interpreter) invokeFunctionValue(function FunctionValue, callerPackage string, arguments []Value) (callResult, error) {
@@ -907,7 +915,7 @@ func (i interpreter) invokeFunctionValue(function FunctionValue, callerPackage s
 func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, arguments []Value) *FlowRuntimeInstance {
 	rootEnv := newEnvironment(nil)
 	for index, parameter := range flow.Parameters {
-		rootEnv.define(parameter.Name, arguments[index], false)
+		rootEnv.define(parameter.Name, i.conform(arguments[index], parameter.Type, pkgName), false)
 	}
 	if len(flow.Board) > 0 {
 		boardFields := make(map[string]Value, len(flow.Board))
@@ -1022,7 +1030,7 @@ func (i interpreter) stepFlow(instance *FlowRuntimeInstance, input *Value) error
 		if input == nil {
 			return fmt.Errorf("runtime invariant violation: input-bearing flow stepped without input")
 		}
-		instance.RootEnv.define(instance.Decl.TurnInput.Name, cloneValue(*input), false)
+		instance.RootEnv.define(instance.Decl.TurnInput.Name, cloneValue(i.conform(*input, instance.Decl.TurnInput.Type, instance.Package)), false)
 		defer delete(instance.RootEnv.values, instance.Decl.TurnInput.Name)
 	}
 	_, exhausted, _, err := i.stepFlowWithTransitionLimit(instance, 0)
@@ -1131,6 +1139,9 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
+		if node.TypeHint != nil {
+			value.value = i.conform(value.value, *node.TypeHint, pkgName)
+		}
 		env.define(node.Name, cloneValue(value.value), false)
 		return stmtResult{}, nil
 	case ast.VarStmt:
@@ -1140,6 +1151,10 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		if node.TypeHint != nil {
+			env.defineDeclared(node.Name, cloneValue(i.conform(value.value, *node.TypeHint, pkgName)), node.TypeHint)
+			return stmtResult{}, nil
 		}
 		env.define(node.Name, cloneValue(value.value), true)
 		return stmtResult{}, nil
@@ -1162,7 +1177,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 				env.define(name, value.value.Tuple[idx], false)
 				continue
 			}
-			if !env.assign(name, value.value.Tuple[idx]) {
+			if !env.assign(name, i.conformAssigned(env, pkgName, name, value.value.Tuple[idx])) {
 				return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", name)
 			}
 		}
@@ -1178,7 +1193,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
-		if !env.assign(node.Name, cloneValue(value.value)) {
+		if !env.assign(node.Name, cloneValue(i.conformAssigned(env, pkgName, node.Name, value.value))) {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Name)
 		}
 		return stmtResult{}, nil
@@ -1229,6 +1244,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 
 		updated := targetBinding.value
+		value.value = i.conformIndexed(value.value, updated, targetBinding.declared, len(indices), pkgName)
 		switch updated.Kind {
 		case ValueArray:
 			var err error
@@ -1302,6 +1318,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
+		value.value = i.conformIndexed(value.value, fieldValue, boardFieldType(env, node.Target, node.Field), len(indices), pkgName)
 		switch fieldValue.Kind {
 		case ValueArray:
 			assigned, err := assignNestedArrayIndex(fieldValue, indices, value.value)
@@ -1341,8 +1358,14 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
 		updated := targetBinding.value
-		if _, exists := updated.Record.Fields[node.Field]; !exists {
+		current, exists := updated.Record.Fields[node.Field]
+		if !exists {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: record type '%s' has no field '%s'", updated.Record.TypeName, node.Field)
+		}
+		if declared := boardFieldType(env, node.Target, node.Field); declared != nil {
+			value.value = i.conform(value.value, *declared, pkgName)
+		} else {
+			value.value = conformLike(value.value, current)
 		}
 		updated.Record.Fields[node.Field] = value.value
 		if !assignBindingValue(env, node.Target, updated) {
@@ -1568,6 +1591,9 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 		if value.hasError {
 			return flowSignal{}, fmt.Errorf("runtime invariant violation: yield expression was fallible")
 		}
+		if instance, flowErr := flowInstanceFromEnv(env); flowErr == nil && instance.Decl.YieldType != nil {
+			value.value = i.conform(value.value, *instance.Decl.YieldType, pkgName)
+		}
 		return flowSignal{kind: flowSignalYield, value: value.value}, nil
 	case ast.RememberStmt:
 		instance, err := flowInstanceFromEnv(env)
@@ -1599,6 +1625,9 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 		}
 		if value.hasError {
 			return flowSignal{kind: flowSignalReturn, value: value.errorVal}, nil
+		}
+		if instance, flowErr := flowInstanceFromEnv(env); flowErr == nil {
+			value.value = i.conform(value.value, instance.Decl.ReturnType, pkgName)
 		}
 		return flowSignal{kind: flowSignalReturn, value: value.value}, nil
 	case ast.IfStmt:
@@ -2576,7 +2605,7 @@ func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.Cal
 		if payload.hasError {
 			return evalResult{hasError: true, errorVal: payload.errorVal}, nil
 		}
-		payloadValue := payload.value
+		payloadValue := i.conform(payload.value, *variant.Payload, packageForTypeName(pkgName, enumTypeName))
 		return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: variantName, Payload: &payloadValue}}}, nil
 	}
 
@@ -5524,13 +5553,9 @@ func (i interpreter) evalArrayLiteralWithExtent(env *environment, pkgName string
 	if err != nil || propagated.hasError {
 		return propagated, err
 	}
-	var firstType string
-	for idx, element := range elements {
-		if idx == 0 {
-			firstType = valueTypeName(element)
-		} else if valueTypeName(element) != firstType {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: array literal has mixed element kinds %s and %s", firstType, valueTypeName(element))
-		}
+	elements, err = sameKindElements(elements)
+	if err != nil {
+		return evalResult{}, err
 	}
 	return evalResult{value: Value{Kind: ValueArray, Array: elements}}, nil
 }
@@ -5743,11 +5768,13 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, exp
 	}
 
 	fieldOrder := make([]string, 0, len(recordDecl.Fields))
+	declaringPackage := packageForTypeName(pkgName, resolvedTypeName)
 	for _, field := range recordDecl.Fields {
 		if _, exists := seen[field.Name]; !exists {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: record '%s' missing field '%s'", expr.TypeName, field.Name)
 		}
 		fieldOrder = append(fieldOrder, field.Name)
+		fieldValues[field.Name] = i.conform(fieldValues[field.Name], storedFieldType(recordDecl, field), declaringPackage)
 	}
 	if recordDecl.IsTable && len(recordDecl.Fields) > 0 {
 		lengths := make([]string, 0, len(recordDecl.Fields))
@@ -5824,7 +5851,7 @@ func (i interpreter) evalRecordUpdateExpr(env *environment, pkgName string, expr
 				return evalResult{}, fmt.Errorf("runtime error [OCT-RTBL004]: record table '%s' replacement column '%s' has extent %d; expected %d", source.value.Record.TypeName, field.Name, len(value.value.Array), wantExtent)
 			}
 		}
-		fields[field.Name] = value.value
+		fields[field.Name] = i.conformField(value.value, fields[field.Name], recordDecl, isRecord, field.Name, packageForTypeName(pkgName, source.value.Record.TypeName))
 	}
 
 	record := RecordValue{TypeName: source.value.Record.TypeName, FieldOrder: append([]string(nil), source.value.Record.FieldOrder...), Fields: fields}

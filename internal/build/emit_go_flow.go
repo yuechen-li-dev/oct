@@ -795,6 +795,10 @@ func emitGoFlowFieldIndexAssign(s MIRFlowFieldIndexAssign, pkg string, advance b
 		target = "f.board." + s.Field
 	}
 	assignment := fmt.Sprintf("%s[%s] = %s", target, strings.Join(indices, "]["), v)
+	if s.Row {
+		// A whole row: checked and copied as a row of a local is.
+		assignment = fmt.Sprintf("__octAssignRow(%s, %s, %s)", target, indices[0], v)
+	}
 	if s.RowFill {
 		// The index is evaluated once, then the row it names gives the
 		// length that the value fills to.

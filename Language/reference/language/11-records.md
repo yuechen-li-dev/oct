@@ -25,7 +25,7 @@ Individual record fields are not assigned in place.
 - Record update form is `value with { Field: value ... }`.
 - Record update requires at least one field and returns a new value of the same record type.
 - Record update field names must exist on the source record type.
-- Record update field values must match declared field types exactly, including dimensions and nominal types.
+- Record update field values must match declared field types exactly, including dimensions and nominal types. A declared `Float` takes an `Int` as that `Float`; see "Declared types and numeric values" in [02 Types](./02-types.md).
 - `with` is immutable: it does not mutate the source value.
 - `with` preserves fields not listed in the update block.
 - `with` evaluates the source expression once.

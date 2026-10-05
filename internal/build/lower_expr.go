@@ -734,6 +734,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			if i < len(expectedArgTypes) {
 				expected = expectedArgTypes[i]
 			}
+			if builtin && callee == "Step" && i == 1 {
+				// `Step(instance, input)`: the flow declares the type of its
+				// turn input, and the input is an argument to that type.
+				if _, input, _, ok := parseFlowInstanceDetails(argTypes[0]); ok {
+					expected = input
+				}
+			}
 			v, at, _, err := c.withExpectedType(expected, func() (string, string, bool, error) { return c.lowerExpr(a) })
 			if err != nil {
 				return "", "", false, err
@@ -1103,7 +1110,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				v = coerceExprToType(v, t, fieldType)
 				t = fieldType
 			}
-			vals[index] = v
+			// Arrays are values: the record holds its own copy, so a later
+			// write to the variable it was built from does not reach it.
+			vals[index] = cloneCompiledValueExpr(v, t)
 			if needsExtent && tableExtent == "" {
 				tableExtent = c.temp("Int")
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tableExtent, Callee: "Len", Args: []MIRValue{lowerMIRValue(v, t)}, ArgTypes: []string{t}, Builtin: true, RetType: "Int"})
@@ -1202,11 +1211,23 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				overrides[field.Name] = coerceExprToType(value, valueType, columnType)
 				continue
 			}
-			value, _, _, err := c.lowerExpr(field.Value)
+			// The field's declared type decides what the replacement is, as
+			// it does in a record literal.
+			fieldType := ""
+			for _, declared := range fieldTypes {
+				if declared.Name == field.Name {
+					fieldType = declared.Type
+				}
+			}
+			value, valueType, _, err := c.withExpectedType(fieldType, func() (string, string, bool, error) { return c.lowerExpr(field.Value) })
 			if err != nil {
 				return "", "", false, err
 			}
-			overrides[field.Name] = value
+			if fieldType != "" {
+				value = coerceExprToType(value, valueType, fieldType)
+				valueType = fieldType
+			}
+			overrides[field.Name] = cloneCompiledValueExpr(value, valueType)
 		}
 		names := make([]string, 0, len(fieldTypes))
 		values := make([]string, 0, len(fieldTypes))
@@ -2438,24 +2459,21 @@ func (c *lowerCtx) resolveCallArgTypes(callee ast.Expr) []string {
 		}
 		return out
 	}
+	for _, flow := range pkg.Flows {
+		if flow.Name != fnName {
+			continue
+		}
+		out := make([]string, 0, len(flow.Parameters))
+		for _, param := range flow.Parameters {
+			out = append(out, typeRefStringForPackage(pkgName, param.Type))
+		}
+		return out
+	}
 	return nil
 }
 
 func goCoerceArg(expr string, actual string, expected string) string {
-	if isIntScalarTypeString(actual) && isFloatLikeType(expected) {
-		return fmt.Sprintf("float64(%s)", expr)
-	}
-	if isIntArrayTypeString(actual) && isFloatArrayTypeString(expected) {
-		return fmt.Sprintf("__octIntArrayToFloat(%s)", expr)
-	}
-	if expected == "Complex" && isNumericTypeString(actual) {
-		return fmt.Sprintf("complex(float64(%s), 0)", expr)
-	}
-	return expr
-}
-
-func isFloatLikeType(t string) bool {
-	return t == "Float" || (strings.HasPrefix(t, "Float<") && strings.HasSuffix(t, ">"))
+	return coerceExprToType(expr, actual, expected)
 }
 
 func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, error) {
@@ -2917,10 +2935,14 @@ func (c *lowerCtx) resolveEnumVariantConstructor(enumType string, variant string
 			if len(args) != 1 {
 				return "", "", true, fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumType, variant)
 			}
-			payload, _, _, err := c.lowerExpr(args[0])
+			// The variant's declared payload type decides what the payload
+			// is, as a parameter's type does for an argument.
+			payloadType := typeRefStringForPackage(enumPkg, *declaredVariant.Payload)
+			payload, actualType, _, err := c.withExpectedType(payloadType, func() (string, string, bool, error) { return c.lowerExpr(args[0]) })
 			if err != nil {
 				return "", "", true, err
 			}
+			payload = cloneCompiledValueExpr(coerceExprToType(payload, actualType, payloadType), payloadType)
 			return fmt.Sprintf("%s_%s{Tag: %s_%s_tag, Payload: %s}", enumPkg, enumName, enumName, variant, payload), enumPkg + "." + enumName, true, nil
 		}
 		return "", "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
@@ -3062,16 +3084,6 @@ func isFloatScalarTypeString(t string) bool {
 
 func isIntScalarTypeString(t string) bool {
 	return t == "Int" || (strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">"))
-}
-
-func isFloatArrayTypeString(t string) bool {
-	elem, ok := parseArrayElemType(t)
-	return ok && isFloatScalarTypeString(elem)
-}
-
-func isIntArrayTypeString(t string) bool {
-	elem, ok := parseArrayElemType(t)
-	return ok && isIntScalarTypeString(elem)
 }
 
 func isNumericTypeString(t string) bool {

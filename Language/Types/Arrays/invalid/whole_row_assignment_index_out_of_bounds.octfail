@@ -1,0 +1,10 @@
+expect runtime error: "runtime error: index 5 out of bounds for array of length 2"
+
+package Main
+
+fn Main() -> Int {
+    var rows = [[0.5, 0.5], [0.5, 0.5]]
+    let k = 5
+    rows[k] = [1.5, 1.5]
+    return Len(rows)
+}

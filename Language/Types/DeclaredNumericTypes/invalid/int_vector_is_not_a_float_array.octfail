@@ -1,0 +1,9 @@
+expect error: "let xs: expected Float[], got Vector<Int>"
+
+package Main
+
+fn Main() -> Int {
+    let v = vector[1, 2]
+    let xs: Float[] = v
+    return Len(xs)
+}

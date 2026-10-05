@@ -15,6 +15,14 @@ func __octIntArrayToFloat(values []int) []float64 {
 	}
 	return out
 }
+
+func __octWidenRows[T any, U any](rows []T, widen func(T) U) []U {
+	out := make([]U, len(rows))
+	for i, row := range rows {
+		out[i] = widen(row)
+	}
+	return out
+}
 `
 
 // The runtime checks of a repeated literal element (`value ... count` and

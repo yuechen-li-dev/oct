@@ -1,0 +1,61 @@
+package DeclaredNumericTypes
+
+concept Share = Float {
+    Require(Self >= 0.0)
+}
+
+fn HalfShare(share: Share) -> Float {
+    return share / 2
+}
+
+fn Twice(z: Complex) -> Complex {
+    return z + z
+}
+
+[Fact]
+fn AVectorDeclaredFloatHoldsFloats() -> Void {
+    let n = vector[1, 2]
+    let literal: Vector<Float> = vector[1, 2]
+    let fromVariable: Vector<Float> = n
+    Assert.Equal(0.5, literal[0] / 2, "a literal")
+    Assert.Equal(0.5, fromVariable[0] / 2, "an Int vector variable")
+    let ns = [vector[1, 2], vector[3, 4]]
+    let vectors: Vector<Float>[] = ns
+    Assert.Equal(1.5, vectors[1][0] / 2, "an array of Int vectors")
+}
+
+[Fact]
+fn AMatrixDeclaredFloatHoldsFloats() -> Void {
+    let n = matrix[[1, 2] [3, 4]]
+    let literal: Matrix<Float> = matrix[[1, 2] [3, 4]]
+    let fromVariable: Matrix<Float> = n
+    Assert.Equal(0.5, literal[0, 0] / 2, "a literal")
+    Assert.Equal(1.5, fromVariable[1, 0] / 2, "an Int matrix variable")
+}
+
+[Fact]
+fn AValueDeclaredComplexIsComplex() -> Void {
+    let fromInt: Complex = 1
+    let fromFloat: Complex = 1.5
+    Assert.Equal(1.0, Real(fromInt), "from an Int")
+    Assert.Equal(0.0, Imag(fromInt), "with no imaginary part")
+    Assert.Equal(1.5, Real(fromFloat), "from a Float")
+    Assert.Equal(2.0, Real(Twice(1)), "an Int argument")
+    var values = [Complex(1.0, 0.0)]
+    values[0] = 2
+    Assert.Equal(2.0, Real(values[0]), "an Int assigned to an element")
+}
+
+[Fact]
+fn ARefinedFloatIsAFloat() -> Void {
+    let share: Share = 1
+    Assert.Equal(0.5, share / 2, "a binding")
+    Assert.Equal(0.5, HalfShare(1), "an argument")
+}
+
+[Fact]
+fn ADimensionedFloatFromADimensionedInt() -> Void {
+    let n = 3m
+    let length: Float<m> = n
+    Assert.Equal(1.5m, length / 2, "the dimension is kept")
+}

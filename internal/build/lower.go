@@ -864,7 +864,11 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			if !ok {
 				return fmt.Errorf("index assignment to unknown local '%s'", s.Target)
 			}
-			var val string
+			// What the indices name has a type of its own, and the value
+			// assigned becomes that type: `rows[i] = [1, 1]` puts Floats in
+			// a row of Floats.
+			elementType := assignedElementType(targetType, len(indexExprs))
+			var val, valType string
 			var err error
 			if literal, fill := ast.EndsInFill(s.Value); fill {
 				// `rows[i] = [value ...]`: the row being replaced fixes the
@@ -874,12 +878,15 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				}
 				extent := c.temp("Int")
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: extent, Callee: repeatRowExtentBuiltin, Args: []MIRValue{lowerMIRValue(c.goLocalName(s.Target), targetType), lowerMIRValue(indexExprs[0], "Int")}, ArgTypes: []string{targetType, "Int"}, Builtin: true, RetType: "Int"})
-				val, _, _, err = c.withExpectedType(strings.TrimSuffix(targetType, "[]"), func() (string, string, bool, error) { return c.lowerRepeatedArrayLiteral(literal, extent) })
+				val, valType, _, err = c.withExpectedType(elementType, func() (string, string, bool, error) { return c.lowerRepeatedArrayLiteral(literal, extent) })
 			} else {
-				val, _, _, err = c.lowerExpr(s.Value)
+				val, valType, _, err = c.withExpectedType(elementType, func() (string, string, bool, error) { return c.lowerExpr(s.Value) })
 			}
 			if err != nil {
 				return err
+			}
+			if elementType != "" {
+				val = coerceExprToType(val, valType, elementType)
 			}
 			switch {
 			case isTwoDimensionalArrayType(targetType):
@@ -1579,6 +1586,12 @@ func (c *lowerCtx) currentExpectedType() (string, bool) {
 	return current, true
 }
 
+// coerceExprToType answers with a Go expression for value, of type from, as
+// the declared type to has it. A declaration decides what a value is: an Int
+// where a Float is declared is that Float, at any depth of array and in a
+// vector or a matrix, and an Int or a Float where a Complex is declared is
+// that Complex. These are the conversions the typechecker admits
+// (isAssignable); any other pair is returned unchanged.
 func coerceExprToType(value, from, to string) string {
 	if from == to {
 		return value
@@ -1586,13 +1599,76 @@ func coerceExprToType(value, from, to string) string {
 	if isIntScalarTypeString(from) && isFloatScalarTypeString(to) {
 		return fmt.Sprintf("float64(%s)", value)
 	}
-	if isIntArrayTypeString(from) && isFloatArrayTypeString(to) {
-		return fmt.Sprintf("__octIntArrayToFloat(%s)", value)
-	}
 	if isComplexScalarTypeString(to) && isNumericTypeString(from) {
 		return fmt.Sprintf("complex(float64(%s), 0)", value)
 	}
+	if depth, ok := intToFloatCollectionDepth(from, to); ok {
+		return widenIntCollection(value, depth)
+	}
 	return value
+}
+
+// intToFloatCollectionDepth reports whether from and to are the same shape of
+// collection with Int elements in the one and Float elements in the other,
+// and how many Go slices deep that shape is. An array is one slice for each
+// `[]`, a vector is one, and a matrix is two.
+func intToFloatCollectionDepth(from, to string) (int, bool) {
+	depth := 0
+	for {
+		fromElem, fromArray := parseArrayElemType(from)
+		toElem, toArray := parseArrayElemType(to)
+		if !fromArray || !toArray {
+			break
+		}
+		from, to = fromElem, toElem
+		depth++
+	}
+	if fromElem, fromVector := parseVectorElemType(from); fromVector {
+		toElem, toVector := parseVectorElemType(to)
+		if !toVector {
+			return 0, false
+		}
+		from, to = fromElem, toElem
+		depth++
+	} else if fromElem, fromMatrix := parseMatrixElemType(from); fromMatrix {
+		toElem, toMatrix := parseMatrixElemType(to)
+		if !toMatrix {
+			return 0, false
+		}
+		from, to = fromElem, toElem
+		depth += 2
+	}
+	return depth, depth > 0 && isIntScalarTypeString(from) && isFloatScalarTypeString(to)
+}
+
+// widenIntCollection answers with a Go expression that converts value, which
+// is depth slices of int, to the same shape of float64.
+func widenIntCollection(value string, depth int) string {
+	if depth == 1 {
+		return fmt.Sprintf("__octIntArrayToFloat(%s)", value)
+	}
+	rows := strings.Repeat("[]", depth-1)
+	return fmt.Sprintf("__octWidenRows(%s, func(rows %sint) %sfloat64 { return %s })", value, rows, rows, widenIntCollection("rows", depth-1))
+}
+
+// assignedElementType is the type of what `target[i, ...]` names, for the
+// given number of indices into a target of targetType. It is empty when the
+// indices do not name an element of that type.
+func assignedElementType(targetType string, indices int) string {
+	if elem, ok := parseMatrixElemType(targetType); ok {
+		if indices == 2 {
+			return elem
+		}
+		return ""
+	}
+	for remaining := indices; remaining > 0; remaining-- {
+		elem, ok := parseArrayElemType(targetType)
+		if !ok {
+			return ""
+		}
+		targetType = elem
+	}
+	return targetType
 }
 
 func coerceNumericBinaryOperands(left, leftType, right, rightType, resultType string) (string, string) {

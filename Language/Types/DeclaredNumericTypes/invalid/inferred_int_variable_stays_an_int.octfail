@@ -1,0 +1,9 @@
+expect error: "assignment to n: expected Int, got Float"
+
+package Main
+
+fn Main() -> Int {
+    var n = 1
+    n = 1.5
+    return n
+}

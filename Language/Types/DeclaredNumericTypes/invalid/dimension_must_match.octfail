@@ -1,0 +1,8 @@
+expect error: "let length: expected Float<m>, got Int"
+
+package Main
+
+fn Main() -> Int {
+    let length: Float<m> = 1
+    return 0
+}

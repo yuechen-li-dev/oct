@@ -1,0 +1,21 @@
+expect runtime error: "runtime error: row length mismatch: expected 2, got 1"
+
+package Main
+
+flow Replace(row: Float[]) -> Int {
+    board {
+        Grid: Float[][]
+    }
+
+    state Start {
+        board.Grid = [[0.5, 0.5], [0.5, 0.5]]
+        board.Grid[1] = row
+        return Len(board.Grid[1])
+    }
+}
+
+fn Main() -> Int {
+    let run = Replace([9.5])
+    Step(run)
+    return Result(run)!
+}

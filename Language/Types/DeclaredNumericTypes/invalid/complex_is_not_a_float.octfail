@@ -1,0 +1,9 @@
+expect error: "let x: expected Float, got Complex"
+
+package Main
+
+fn Main() -> Int {
+    let z = Complex(1.0, 0.0)
+    let x: Float = z
+    return 0
+}

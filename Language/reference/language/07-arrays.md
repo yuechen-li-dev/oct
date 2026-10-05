@@ -10,13 +10,14 @@ Type matching is exact, including dimensions and nominal names.
 
 - Array literal form is `[a, b, c]`.
 - Empty array literal form is `[]`, but only in explicit array-typed context.
-- All array literal elements must have one exact type.
+- All array literal elements must have one exact type. A declared `Float` takes an `Int` as that `Float`; see "Declared types and numeric values" in [02 Types](./02-types.md).
+- Arrays are values. `var ys = xs` gives `ys` its own elements, and a later write to either array does not reach the other. The same holds for an array assigned to a variable, to a board field or to a row, and for an array bound to a state local.
 - `value ... count` in an array literal stands for `count` elements, and `value ...` as the last element fills an array whose length is already fixed. See [Repeated elements](#repeated-elements).
 - Array type forms are `T[]`, `T[][]`, and deeper nested container forms.
 - Indexing form is `xs[i]`.
 - Index expressions must have type `Int`.
 - Indexed assignment requires a mutable array binding (`var`).
-- Indexed assignment values must match the element type exactly.
+- Indexed assignment values must match the element type exactly. A declared `Float` takes an `Int` as that `Float`; see "Declared types and numeric values" in [02 Types](./02-types.md).
 - `array[i] = value` replaces one element of a 1D array.
 - For a nested two-dimensional array, `rows[i, j] = value` replaces one scalar element and `rows[i] = row` replaces a whole row.
 - Whole-row assignment requires an exact row element type and the same runtime length as the destination row. It copies the RHS row value; it does not create mutable aliasing between rows.

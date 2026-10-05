@@ -1,0 +1,86 @@
+package DeclaredNumericTypes
+
+fn Half(x: Float) -> Float {
+    return x / 2
+}
+
+fn FirstHalf(xs: Float[]) -> Float {
+    return xs[0] / 2
+}
+
+fn CornerHalf(grid: Float[][]) -> Float {
+    return grid[1][0] / 2
+}
+
+fn One() -> Float {
+    return 1
+}
+
+fn OneFrom(n: Int) -> Float {
+    return n
+}
+
+fn Ones() -> Float[] {
+    return [1, 1]
+}
+
+fn OnesFrom(ns: Int[]) -> Float[] {
+    return ns
+}
+
+fn OneOrError(fail: Bool) -> Float ! Error {
+    if fail {
+        return error("asked to fail")
+    }
+    return 1
+}
+
+fn Apply(f: fn(Float) -> Float, x: Float) -> Float {
+    return f(x)
+}
+
+[Fact]
+fn AnArgumentIsWhatItsParameterDeclares() -> Void {
+    let n = 1
+    Assert.Equal(0.5, Half(1), "a literal")
+    Assert.Equal(0.5, Half(n), "an Int variable")
+    Assert.Equal(0.5, Apply(Half, n), "through a function passed as a value")
+}
+
+[Fact]
+fn AnArrayArgumentIsWhatItsParameterDeclares() -> Void {
+    let ns = [1, 1]
+    let grid = [[1, 1], [1, 1]]
+    Assert.Equal(0.5, FirstHalf([1, 1]), "an array literal")
+    Assert.Equal(0.5, FirstHalf(ns), "an Int array variable")
+    Assert.Equal(0.5, CornerHalf([[1, 1], [1, 1]]), "a nested literal")
+    Assert.Equal(0.5, CornerHalf(grid), "a nested Int array variable")
+}
+
+[Fact]
+fn AResultIsWhatTheFunctionDeclares() -> Void {
+    Assert.Equal(0.5, One() / 2, "a literal")
+    Assert.Equal(0.5, OneFrom(1) / 2, "an Int variable")
+    Assert.Equal(0.5, Ones()[0] / 2, "an array literal")
+    Assert.Equal(0.5, OnesFrom([1, 1])[1] / 2, "an Int array variable")
+    Assert.Equal(0.5, OneOrError(false)! / 2, "the value of a fallible function")
+}
+
+[Fact]
+fn FunctionValuesDeclareTheirTypesTheSameWay() -> Void {
+    let n = 1
+    let ns = [1, 1]
+    let scale = fn(x: Float) -> Float {
+        return x / 2
+    }
+    let first = fn(xs: Float[]) -> Float {
+        return xs[0] / 2
+    }
+    let unit = fn() -> Float {
+        return 1
+    }
+    Assert.Equal(0.5, scale(1), "a literal argument")
+    Assert.Equal(0.5, scale(n), "a variable argument")
+    Assert.Equal(0.5, first(ns), "an array argument")
+    Assert.Equal(0.5, unit() / 2, "a result")
+}

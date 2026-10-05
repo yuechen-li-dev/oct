@@ -1,0 +1,105 @@
+package DeclaredNumericTypes
+
+record Sample {
+    Level: Float
+    Trace: Float[]
+}
+
+record table Marks {
+    Value: Float
+}
+
+enum Reading {
+    Missing
+    Level(Float)
+}
+
+fn LevelOf(reading: Reading) -> Float {
+    return match reading {
+        case Reading.Missing => 0.0
+        case Reading.Level(value) => value / 2
+    }
+}
+
+[Fact]
+fn AnArrayDeclaredFloatHoldsFloats() -> Void {
+    let ns = [1, 1]
+    let literal: Float[] = [1, 1]
+    let fromVariable: Float[] = ns
+    let repeated: Float[] = [1 ... 3]
+    Assert.Equal(0.5, literal[0] / 2, "a literal")
+    Assert.Equal(0.5, fromVariable[1] / 2, "an Int array variable")
+    Assert.Equal(0.5, repeated[2] / 2, "a repeated element")
+    Assert.Equal(0, ns[0] / 2, "the Int array is unchanged")
+}
+
+[Fact]
+fn AnIntBesideAFloatInADeclaredArray() -> Void {
+    let leading: Float[] = [1, 2.5]
+    let trailing: Float[] = [2.5, 1]
+    Assert.Equal(0.5, leading[0] / 2, "the Int comes first")
+    Assert.Equal(0.5, trailing[1] / 2, "the Int comes last")
+}
+
+[Fact]
+fn NestedArraysDeclaredFloat() -> Void {
+    let ns = [[1, 1], [1, 1]]
+    let deep = [[[1, 1]], [[1, 1]]]
+    let literal: Float[][] = [[1, 1], [1, 1]]
+    let mixedRows: Float[][] = [[1, 1], [1.5, 1.5]]
+    let fromVariable: Float[][] = ns
+    let cube: Float[][][] = deep
+    Assert.Equal(0.5, literal[1][0] / 2, "a literal")
+    Assert.Equal(0.5, mixedRows[0][1] / 2, "a row of Ints beside a row of Floats")
+    Assert.Equal(0.5, fromVariable[1][1] / 2, "an Int[][] variable")
+    Assert.Equal(0.5, cube[1][0][1] / 2, "an Int[][][] variable")
+}
+
+[Fact]
+fn ARecordFieldIsWhatTheRecordDeclares() -> Void {
+    let n = 1
+    let ns = [1, 1]
+    let literal = Sample { Level: 1 Trace: [1, 1] }
+    let fromVariables = Sample { Level: n Trace: ns }
+    Assert.Equal(0.5, literal.Level / 2, "a scalar field, from a literal")
+    Assert.Equal(0.5, literal.Trace[0] / 2, "an array field, from a literal")
+    Assert.Equal(0.5, fromVariables.Level / 2, "a scalar field, from a variable")
+    Assert.Equal(0.5, fromVariables.Trace[1] / 2, "an array field, from a variable")
+    let samples = [Sample { Level: 1 Trace: [1] }, Sample { Level: 3 Trace: [3] }]
+    Assert.Equal(1.5, samples[1].Level / 2, "in an array of records")
+}
+
+[Fact]
+fn AReplacedFieldIsWhatTheRecordDeclares() -> Void {
+    let n = 3
+    let sample = Sample { Level: 1.5 Trace: [] }
+    let literal = sample with { Level: 1 }
+    let fromVariable = sample with { Level: n }
+    let trace = sample with { Trace: [1, 1] }
+    Assert.Equal(0.5, literal.Level / 2, "from a literal")
+    Assert.Equal(1.5, fromVariable.Level / 2, "from a variable")
+    Assert.Equal(0.5, trace.Trace[0] / 2, "an array field that was empty")
+}
+
+[Fact]
+fn ATableColumnIsWhatTheTableDeclares() -> Void {
+    let ns = [1, 1]
+    let literal = Marks { Value: [1, 1] }
+    let fromVariable = Marks { Value: ns }
+    Assert.Equal(0.5, literal.Value[0] / 2, "a literal column")
+    Assert.Equal(0.5, fromVariable.Value[1] / 2, "an Int array variable")
+    let marks = Marks { Value: [1.5, 2.5] }
+    let replaced = marks with { Value: [1, 1] }
+    let replacedFromVariable = marks with { Value: ns }
+    let filled = marks with { Value: [1 ...] }
+    Assert.Equal(0.5, replaced.Value[0] / 2, "a replacement column")
+    Assert.Equal(0.5, replacedFromVariable.Value[1] / 2, "a replacement column from a variable")
+    Assert.Equal(0.5, filled.Value[1] / 2, "a filled replacement column")
+}
+
+[Fact]
+fn AnEnumPayloadIsWhatTheVariantDeclares() -> Void {
+    let n = 1
+    Assert.Equal(0.5, LevelOf(Reading.Level(1)), "a literal")
+    Assert.Equal(0.5, LevelOf(Reading.Level(n)), "a variable")
+}

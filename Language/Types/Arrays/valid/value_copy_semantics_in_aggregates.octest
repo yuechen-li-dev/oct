@@ -1,0 +1,92 @@
+package MainValid
+
+// Arrays are values wherever they are stored. A record field, a `with`
+// replacement and an enum payload hold their own copy of the array they were
+// given, so a later write to the variable it came from does not reach them.
+
+record CopyPack {
+    Values: Float[]
+}
+
+record CopyHolder {
+    Grid: Matrix<Float>
+}
+
+enum CopyCarrier {
+    Empty
+    Full(Float[])
+}
+
+fn CopyFirst(carrier: CopyCarrier) -> Float {
+    return match carrier {
+        case CopyCarrier.Empty => 0.0
+        case CopyCarrier.Full(values) => values[0]
+    }
+}
+
+fn CopyKeep(values: Float[]) -> Float[] {
+    return values
+}
+
+[Fact]
+fn RecordFieldHoldsItsOwnArray() -> Void {
+    var Source = [1.5, 2.5]
+    let Packed = CopyPack { Values: Source }
+    let Returned = CopyPack { Values: CopyKeep(Source) }
+    Source[0] = 9.5
+
+    Assert.Equal(1.5, Packed.Values[0], "a field built from a variable")
+    Assert.Equal(1.5, Returned.Values[0], "a field built from an array a function returned")
+    Assert.Equal(9.5, Source[0], "the variable has the write")
+}
+
+[Fact]
+fn ReplacedFieldHoldsItsOwnArray() -> Void {
+    var Source = [1.5, 2.5]
+    let Empty = CopyPack { Values: [] }
+    let Replaced = Empty with { Values: Source }
+    Source[0] = 9.5
+
+    Assert.Equal(1.5, Replaced.Values[0], "a `with` replacement")
+}
+
+[Fact]
+fn EnumPayloadHoldsItsOwnArray() -> Void {
+    var Source = [1.5, 2.5]
+    let Carried = CopyCarrier.Full(Source)
+    Source[0] = 9.5
+
+    Assert.Equal(1.5, CopyFirst(Carried), "an enum payload")
+}
+
+[Fact]
+fn ArrayOfArraysHoldsItsOwnRows() -> Void {
+    var Source = [1.5, 2.5]
+    let Rows = [Source, Source]
+    Source[0] = 9.5
+
+    Assert.Equal(1.5, Rows[0][0], "an element of an array of arrays")
+}
+
+[Fact]
+fn RecordFieldHoldsItsOwnMatrix() -> Void {
+    var Source = matrix[[1.5, 2.5] [3.5, 4.5]]
+    let Held = CopyHolder { Grid: Source }
+    Source[0, 0] = 9.5
+
+    Assert.Equal(1.5, Held.Grid[0, 0], "a matrix field")
+}
+
+[Fact]
+fn AppendingToAFieldLeavesTheVariableAlone() -> Void {
+    var Source = [1.0]
+    Source = Append(Source, 2.0)
+    Source = Append(Source, 3.0)
+    let Packed = CopyPack { Values: Source }
+    Source = Append(Source, 4.0)
+    let Extended = Append(Packed.Values, 9.0)
+
+    Assert.Equal(4.0, Source[3], "the variable keeps the element it appended")
+    Assert.Equal(9.0, Extended[3], "the array appended to the field has its own")
+    Assert.Equal(3, Len(Packed.Values), "the field is unchanged")
+}
