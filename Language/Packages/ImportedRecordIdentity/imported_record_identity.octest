@@ -1,0 +1,26 @@
+package Main
+import Geometry
+
+// A record of another package is one type, whichever package builds it.
+[Fact]
+fn ARecordReturnedByItsPackageEqualsTheOneBuiltHere() -> Void {
+    let here = Geometry.Point { X: 0 Y: 0 }
+    let there = Geometry.Origin()
+    Assert.Equal(here, there, "the same record built on either side of the package boundary")
+    Assert.True(Geometry.IsOrigin(here), "a record built here goes into its package")
+    Assert.True(Geometry.IsOrigin(there), "a record its package built goes back into it")
+}
+
+[Fact]
+fn RecordsFromBothSidesAreElementsOfOneArray() -> Void {
+    let points = [Geometry.Origin(), Geometry.Point { X: 2 Y: 3 }]
+    Assert.Equal(2, Len(points), "an array literal of a returned record and one built here")
+    Assert.Equal(3, points[1].Y, "the element built here")
+    Assert.Equal(0, points[0].X, "the element its package built")
+}
+
+[Fact]
+fn ANestedRecordKeepsItsIdentityToo() -> Void {
+    let here = Geometry.Segment { From: Geometry.Point { X: 0 Y: 0 } To: Geometry.Point { X: 1 Y: 0 } }
+    Assert.Equal(here, Geometry.Unit(), "records nested in a record of the same package")
+}

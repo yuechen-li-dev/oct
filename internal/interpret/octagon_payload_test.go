@@ -130,3 +130,25 @@ func TestWriteOctagonFixedArrayMatchesConceptGolden(t *testing.T) {
 		}
 	}
 }
+
+// A value that came from another package carries the package in its type
+// name. It is written under its own name, as the compiled writer writes it.
+func TestWriteOctagonWritesImportedTypesByTheirOwnName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.octagon")
+	sample := Value{Kind: ValueRecord, Record: RecordValue{
+		TypeName: "Lib.Sample", FieldOrder: []string{"Mode"},
+		Fields: map[string]Value{
+			"Mode": {Kind: ValueEnum, Enum: EnumValue{TypeName: "Lib.Mode", Variant: "Fast"}},
+		},
+	}}
+	if err := WriteOctagon(path, sample); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "Sample {\n    Mode: Mode.Fast\n}\n"; string(data) != want {
+		t.Fatalf("wrote %q, want %q", data, want)
+	}
+}

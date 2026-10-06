@@ -52,9 +52,6 @@ func serializeOctagonValueAtDepth(value Value, depth int) (string, error) {
 		}
 		return "[" + strings.Join(parts, ", ") + "]", nil
 	case ValueRecord:
-		if strings.Contains(value.Record.TypeName, ".") {
-			return "", fmt.Errorf("record type %q is not representable in .octagon output", value.Record.TypeName)
-		}
 		fieldOrder := recordFieldOrder(value.Record)
 		fields := make([]string, 0, len(fieldOrder))
 		for _, fieldName := range fieldOrder {
@@ -72,12 +69,9 @@ func serializeOctagonValueAtDepth(value Value, depth int) (string, error) {
 			}
 			fields = append(fields, fmt.Sprintf("%s%s: %s", octagonIndent(depth+1), fieldName, fieldRendered))
 		}
-		return fmt.Sprintf("%s {\n%s\n%s}", value.Record.TypeName, strings.Join(fields, "\n"), octagonIndent(depth)), nil
+		return fmt.Sprintf("%s {\n%s\n%s}", octagonTypeName(value.Record.TypeName), strings.Join(fields, "\n"), octagonIndent(depth)), nil
 	case ValueEnum:
-		if strings.Contains(value.Enum.TypeName, ".") {
-			return "", fmt.Errorf("enum type %q is not representable in .octagon output", value.Enum.TypeName)
-		}
-		name := fmt.Sprintf("%s.%s", value.Enum.TypeName, value.Enum.Variant)
+		name := fmt.Sprintf("%s.%s", octagonTypeName(value.Enum.TypeName), value.Enum.Variant)
 		if value.Enum.Payload == nil {
 			return name, nil
 		}
@@ -109,4 +103,15 @@ func recordFieldOrder(record RecordValue) []string {
 	}
 	sort.Strings(order)
 	return order
+}
+
+// octagonTypeName is the name a record or an enum is written under: its own,
+// without the package. A value that came from another package carries that
+// package in its type name; the file is loaded as a declared type, which
+// says which package is meant, and the compiled writer writes the same.
+func octagonTypeName(typeName string) string {
+	if dot := strings.LastIndex(typeName, "."); dot >= 0 {
+		return typeName[dot+1:]
+	}
+	return typeName
 }

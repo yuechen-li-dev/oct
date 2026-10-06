@@ -1,0 +1,23 @@
+package Geometry
+
+record Point {
+    X: Int
+    Y: Int
+}
+
+record Segment {
+    From: Point
+    To: Point
+}
+
+fn Origin() -> Point {
+    return Point { X: 0 Y: 0 }
+}
+
+fn Unit() -> Segment {
+    return Segment { From: Point { X: 0 Y: 0 } To: Point { X: 1 Y: 0 } }
+}
+
+fn IsOrigin(point: Point) -> Bool {
+    return point.X == 0 and point.Y == 0
+}

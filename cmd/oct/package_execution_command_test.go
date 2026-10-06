@@ -219,7 +219,9 @@ func TestM18PackageCoexistenceWithMutableLocalReassignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run failed: %v stderr=%s", err, stderr)
 	}
-	if stdout != "Point{X: 3, Y: 4}\n" {
+	// A record of another package prints with its package, whichever package
+	// built it; `Geometry.Point { X: 3 Y: 4 }` written in Main prints the same.
+	if stdout != "Geometry.Point{X: 3, Y: 4}\n" {
 		t.Fatalf("unexpected stdout: %q", stdout)
 	}
 }

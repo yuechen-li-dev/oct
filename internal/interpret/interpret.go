@@ -3019,6 +3019,9 @@ func valuesEqual(left Value, right Value) bool {
 func qualifyCrossPackageValue(value Value, pkgName string) Value {
 	switch value.Kind {
 	case ValueRecord:
+		if value.Record.TypeName != "" && !strings.Contains(value.Record.TypeName, ".") {
+			value.Record.TypeName = pkgName + "." + value.Record.TypeName
+		}
 		for fieldName, fieldValue := range value.Record.Fields {
 			value.Record.Fields[fieldName] = qualifyCrossPackageValue(fieldValue, pkgName)
 		}
