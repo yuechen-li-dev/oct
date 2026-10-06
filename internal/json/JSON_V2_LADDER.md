@@ -204,7 +204,11 @@ The first is `record table Retry { Event: String  Retries: Int }`, the second
 - Output is UTF-8 with two-space indentation and one final newline. An array
   whose elements are all scalars is written on one line.
 - A `Float` is written in the shortest form that reads back as the same value,
-  and always with a fraction or an exponent: `1.0`, not `1`.
+  and always with a fraction or an exponent: `1.0`, not `1`. Its digits are
+  written out between 1e-6 and 1e21 (`1500000.0`, `0.000001`); outside that
+  range it takes an exponent (`1e+21`, `1e-07`).
+- The layout of an array follows its element type, not its values, so a
+  file's shape does not change with its data.
 - Strings escape `"`, `\` and control characters, and nothing else.
 - **Round trip:** for every JSON-representable `v` of type `T`,
   `Json.Parse<T>(Json.Text(v))` equals `v`.
@@ -222,9 +226,16 @@ One text, produced in one place, identical in both lanes:
 ```
 Json.Load: tickets.json: $[1].assignee (line 9, column 17): expected String or null, found a number
 Json.Load: config.json: $.service.http (line 4, column 13): unknown members "prot", "tls"; HttpConfig has Host, Port, ReadTimeoutMs
-Json.Load: people.json: $.people[2] (line 14, column 5): missing "active"
+Json.Load: people.json: $.people[2] (line 14, column 5): missing "Active"
 Json.Parse: (line 1, column 7): expected a value, found '}'
 ```
+
+A column counts characters, not bytes, and a byte order mark is not a column.
+A missing field is named as the record declares it: the document does not say
+how it would have spelled a key it left out. One object's complaints come in
+this order: a key written twice, or two members for one field; then every
+unknown member; then every missing field; then the fields' own values, in
+declaration order.
 
 A file that cannot be read is an `Error` that names the path and the reason in
 Oct's words. No message contains Go's.
@@ -346,6 +357,8 @@ The whole-tree sweeps run once more when the ladder closes.
   - Exact integers at the 64-bit limits; a duplicate key; member order.
   - I2 as a property over generated values.
 - **Exit:** `go test ./internal/octjson` green. No other package imports it.
+- **Verdict:** SUCCESS, 2026-10-06. See `JSON_V2_M2.md`. Sections 3.6 and 3.8
+  were amended with what the milestone had to decide.
 
 ### M3 — Reading, both lanes
 - **Scope:**
