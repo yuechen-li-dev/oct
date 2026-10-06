@@ -66,5 +66,5 @@ func decode(t *testing.T, text string, schema *Schema) (Data, *Error) {
 	if err != nil {
 		t.Fatalf("Parse(%q): %s", text, err.Text("Json.Parse", ""))
 	}
-	return Decode(doc, schema)
+	return Decode(doc, schema, nil)
 }

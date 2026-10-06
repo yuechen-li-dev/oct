@@ -252,7 +252,7 @@ func TestRoundTripOfGeneratedValues(t *testing.T) {
 		if parseErr != nil {
 			t.Fatalf("round %d: what was written does not parse: %s\n%s", round, parseErr.Text("Json.Parse", ""), text)
 		}
-		back, decodeErr := Decode(doc, schema)
+		back, decodeErr := Decode(doc, schema, nil)
 		if decodeErr != nil {
 			t.Fatalf("round %d: what was written does not load: %s\n%s", round, decodeErr.Text("Json.Parse", ""), text)
 		}

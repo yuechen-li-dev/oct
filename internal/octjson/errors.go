@@ -27,6 +27,7 @@ type Error struct {
 //
 //	Json.Load: tickets.json: $[1].assignee (line 9, column 17): expected String or null, found a number
 //	Json.Parse: (line 1, column 7): expected a value, found '}'
+//	Json.Load: tickets.json: the file does not exist
 func (e *Error) Text(operation string, source string) string {
 	var b strings.Builder
 	b.WriteString(operation)
@@ -48,7 +49,9 @@ func (e *Error) Text(operation string, source string) string {
 		b.WriteString(strconv.Itoa(e.Column))
 		b.WriteByte(')')
 	}
-	b.WriteString(": ")
+	if e.Path != "" || e.Line > 0 {
+		b.WriteString(": ")
+	}
 	b.WriteString(e.Message)
 	return b.String()
 }

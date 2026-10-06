@@ -51,6 +51,10 @@ type Schema struct {
 	Fields []Field
 	// Variants are the variants of an enum, in declaration order.
 	Variants []string
+	// Concept is the refined concept a value of this type is admitted to,
+	// as `Package.Name`, or "" when the type is not refined. The rest of
+	// the Schema describes the concept's base type.
+	Concept string
 }
 
 // Field is a field of a record or a column of a table.

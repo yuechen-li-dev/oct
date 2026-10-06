@@ -101,6 +101,7 @@ func TestErrorTextForms(t *testing.T) {
 		{Error{Line: 1, Column: 7, Message: "m"}, "Json.Load", "a.json", "Json.Load: a.json: (line 1, column 7): m"},
 		{Error{Path: "$.Levels[1]", Message: "m"}, "Json.Save", "out.json", "Json.Save: out.json: $.Levels[1]: m"},
 		{Error{Path: "$", Message: "m"}, "Json.Text", "", "Json.Text: $: m"},
+		{Error{Message: "m"}, "Json.Load", "a.json", "Json.Load: a.json: m"},
 	}
 	for _, c := range cases {
 		if got := c.err.Text(c.operation, c.source); got != c.want {

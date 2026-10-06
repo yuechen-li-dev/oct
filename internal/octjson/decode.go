@@ -7,19 +7,29 @@ import (
 	"unicode/utf8"
 )
 
+// Admit answers whether a value meets the requirements of a refined concept:
+// with "" when it does, and otherwise with what the concept says is wrong.
+// The requirements are Oct expressions, so the lane that runs the program
+// answers. A decode asks as it reads each value of a refined type, which is
+// how the refusal comes with the place of the value in the document.
+type Admit func(concept string, value Data) string
+
 // Decode reads a document as the type a schema describes. The schema decides
 // every reading: nothing here looks at the document to choose between two.
 //
 // There is no conversion between kinds. `"42"` is not an Int, `1` is not a
 // Bool and `1.0` is not an Int. A number with no fraction and no exponent is
 // a Float where a Float is declared.
-func Decode(doc *Document, schema *Schema) (Data, *Error) {
-	d := &decoder{doc: doc}
+//
+// admit may be nil, and then no value of a refined concept is checked.
+func Decode(doc *Document, schema *Schema, admit Admit) (Data, *Error) {
+	d := &decoder{doc: doc, admit: admit}
 	return d.value(doc.Root, schema, rootPath, "")
 }
 
 type decoder struct {
-	doc *Document
+	doc   *Document
+	admit Admit
 }
 
 func (d *decoder) fail(offset int, at *path, format string, arguments ...any) *Error {
@@ -32,9 +42,29 @@ func (d *decoder) mismatch(node *Node, at *path, expects string) *Error {
 	return d.fail(node.Offset, at, "expected %s, found %s", expects, node.Kind.kindName())
 }
 
-// value reads node as s. expects overrides what a mismatch says was wanted;
-// an option passes `String or null` down to the reading of its payload.
+// value reads node as s, and has the value admitted when s is a refined
+// concept. expects overrides what a mismatch says was wanted; an option
+// passes `String or null` down to the reading of its payload.
 func (d *decoder) value(node *Node, s *Schema, at *path, expects string) (Data, *Error) {
+	value, err := d.read(node, s, at, expects)
+	if err != nil {
+		return Data{}, err
+	}
+	return value, d.admitted(value, s, node.Offset, at)
+}
+
+// admitted is the refusal of a value by the refined concept s names, or nil.
+func (d *decoder) admitted(value Data, s *Schema, offset int, at *path) *Error {
+	if s.Concept == "" || d.admit == nil {
+		return nil
+	}
+	if refusal := d.admit(s.Concept, value); refusal != "" {
+		return d.fail(offset, at, "%s", refusal)
+	}
+	return nil
+}
+
+func (d *decoder) read(node *Node, s *Schema, at *path, expects string) (Data, *Error) {
 	if expects == "" {
 		expects = s.expects()
 	}
@@ -275,7 +305,11 @@ func (d *decoder) table(node *Node, s *Schema, at *path, expects string) (Data, 
 			}
 			written[member.Key] = true
 			rowAt := at.member(member.Key)
-			columns[0] = append(columns[0], Data{Kind: DataString, Text: member.Key})
+			key := Data{Kind: DataString, Text: member.Key}
+			if err := d.admitted(key, s.Fields[0].Type, member.KeyOffset, rowAt); err != nil {
+				return Data{}, err
+			}
+			columns[0] = append(columns[0], key)
 			if single && (member.Value.Kind != NodeObject || rest[0].Type.readsFromObject()) {
 				cell, err := d.value(member.Value, rest[0].Type, rowAt, "")
 				if err != nil {
