@@ -1,6 +1,7 @@
 # Json v2 — Milestone Ladder Contract
 
-Status: **PROPOSED 2026-10-05.** Not accepted. No code has changed.
+Status: **ACCEPTED 2026-10-05.** M1 closed 2026-10-06; see
+`internal/json/JSON_V2_M1.md`. M2 is next.
 Base commit: `d44566d` (main).
 
 This document is the source of truth for the `Json` rewrite while the ladder
@@ -8,8 +9,9 @@ runs. It supersedes the "IO.Json import posture (Mx104)" section of
 `Libraries/IO/README.md` and the design conclusions of
 `Experiments/JsonIntentRecoveryLab` M3 and M4.
 
-Four points in section 2 are my reading of a call you made, or a choice you
-did not make. They are marked **review**.
+Four points in section 2 were my reading of a call you made, or a choice you
+did not make. They were marked **review**, and were accepted as written with
+the rest of the document (D12 to D15).
 
 ---
 
@@ -60,10 +62,10 @@ Measured on `d44566d`, linux/amd64, 2 cores.
 | D9 | **One Go implementation**, `internal/octjson`, imported by the interpreter and by generated programs (precedent: `internal/octrandom`). No sidecar. No second copy. |
 | D10 | **Inference is tooling.** `oct json infer` proposes declarations from a document, with `internal/judgment` for the ambiguous cases. It never runs inside a program. |
 | D11 | **Clean break.** No v1 name survives M5. Recorded JSON artifacts change bytes and are regenerated. |
-| D12 | **review — `Option` variants are qualified**, as every Oct enum's are: `Option.Some(x)`, `Option.None`. Bare `Some(x)` and `None` are not accepted. The type argument comes from the declared type at the site, or is written: `Option<Float>.None`. It is not inferred from the payload. See 3.1. |
-| D13 | **review — No prefixed units in this ladder.** A millisecond count is a plain number: `ReadTimeoutMs: Float`, then `config.ReadTimeoutMs * 1e-3s` where seconds are wanted. That expression works today in both lanes. An `<ms>` unit is a language decision about prefixes; when it is made, D6 applies to it unchanged. |
-| D14 | **review — `Json.Save` returns `Void ! Error`**, not the `Int` status the file builtins return. A value JSON cannot hold (`NaN`, an infinity) stops the program with a message that names the place; it is not an `Error`. |
-| D15 | **review — A table is read from an array of objects or from a keyed object, and from nothing else.** The columnar form `{"id": [...], "name": [...]}` loads into an ordinary record with array fields. Reading it as a `record table` would have to guess between "keys are columns" and "keys are rows". |
+| D12 | **`Option` variants are qualified**, as every Oct enum's are: `Option.Some(x)`, `Option.None`. Bare `Some(x)` and `None` are not accepted. The type argument comes from the declared type at the site, or is written: `Option<Float>.None`. It is not inferred from the payload. See 3.1. |
+| D13 | **No prefixed units in this ladder.** A millisecond count is a plain number: `ReadTimeoutMs: Float`, then `config.ReadTimeoutMs * 1e-3s` where seconds are wanted. That expression works today in both lanes. An `<ms>` unit is a language decision about prefixes; when it is made, D6 applies to it unchanged. |
+| D14 | **`Json.Save` returns `Void ! Error`**, not the `Int` status the file builtins return. A value JSON cannot hold (`NaN`, an infinity) stops the program with a message that names the place; it is not an `Error`. |
+| D15 | **A table is read from an array of objects or from a keyed object, and from nothing else.** The columnar form `{"id": [...], "name": [...]}` loads into an ordinary record with array fields. Reading it as a `record table` would have to guess between "keys are columns" and "keys are rows". |
 
 ## 3. Normative specification
 
@@ -91,11 +93,18 @@ let somebody = Option<String>.Some("sam")
   program.
 - `T` is any type a record field may have, except `Void`.
 - It is an enum in every respect: qualified variants, exhaustive `match` and
-  `switch`, `==` and `!=` where `T` has them, use as a field, a table cell, an
-  array element, a board field, a parameter and a result.
+  `switch`, `==` and `!=`, use as a field, a table cell, an array element, a
+  board field, a parameter and a result. *(M1: this read "`==` and `!=` where
+  `T` has them". An enum compares for every payload type, so an option does;
+  the comparison is by value at any depth.)*
 - `Option<A>` and `Option<B>` are different types.
 - The type argument is taken from the type the site declares: a typed binding,
   a parameter, a result, a field, a table cell, an element of a declared array.
+  *(M1: also an assignment, an enum payload, the other operand of `==`, `!=`
+  and `Assert.Equal`, the second argument of `Append`, a flow turn input and
+  `yield`, and a candidate of `when utility Option<T>`; and an `if`, `match` or
+  `switch` expression passes the type to its arms. The full list is in
+  `Language/reference/language/12-enums.md`.)*
   Where the site declares none it is written, `Option<Float>.Some(1.5)`.
   `let x = Option.Some(1.5)` is an error that says to write one or the other.
   This is the rule template applications already follow.
@@ -297,6 +306,7 @@ code it added.
 - **Scope:** Review and accept this document.
 - **Exit:** Document accepted, with the four **review** rows settled. No code
   changes.
+- **Verdict:** SUCCESS. Accepted 2026-10-05 as written.
 
 ### M1 — `Option<T>`
 - **Scope:**

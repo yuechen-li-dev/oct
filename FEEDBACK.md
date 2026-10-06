@@ -914,3 +914,102 @@ Read and write elements through a checked helper, or recover the Go bounds panic
 Status: Open
 
 ---
+
+Observation:
+In the compiled lane an enum value written directly as the payload of another enum value, and bound to a variable, was not the payload. `let full = Crate.Holding(Parcel.Weighed(2.5))` built a `Crate` whose payload was the whole `Crate` again, and the `match` that read it panicked with "interface conversion: interface {} is main.EnumsAssociated_Crate, not main.EnumsAssociated_Parcel". The same expression passed as an argument worked. The adapter that turns lowered Go text into MIR (`lowerGoExprNode`) kept an inner expression it did not understand as Go text, and took the text of the whole expression for it.
+
+Suggestion:
+Take the text of the inner node.
+
+Status: Resolved
+
+Resolution: `goNodeText` in `internal/build/lower_value.go`. Contract: `Language/Types/EnumsAssociated/valid/enum_as_enum_payload.octest`, both lanes. Found while adding `Option<T>` (Json v2 M1), whose nested and enum payloads take this path.
+
+---
+
+Observation:
+In the interpreted lane a record returned by a function of another package kept its unqualified type name, while an enum was given its package. A `Geometry.Point` built in package Main and the same record returned by `Geometry.Origin()` were therefore unequal under `Assert.Equal`, an array literal holding one of each was "mixed element kinds Point and Geometry.Point", and the two printed differently (`Point{X: 0, Y: 0}` and `Geometry.Point{X: 0, Y: 0}`). The compiled lane had one type for both.
+
+Suggestion:
+Name a record that leaves its package as an enum is named.
+
+Status: Resolved
+
+Resolution: `qualifyCrossPackageValue` qualifies the record's own type name. An imported record that its own package built now prints with the package, as it already did when the caller built it; `TestM18PackageCoexistenceWithMutableLocalReassignment` pinned the other form and now expects `Geometry.Point{X: 3, Y: 4}`. The interpreter's Octagon writer wrote a qualified enum name as an error ("is not representable in .octagon output"); it now writes the name without the package, which is what the compiled writer writes and what both loaders accept. Contract: `Language/Packages/ImportedRecordIdentity`, both lanes.
+
+---
+
+Observation:
+The interpreted Octagon loader resolved the field types of a record in the package that called `LoadOctagon`, not in the package that declares the record. `LoadOctagon<Sensors.Sample>(...)` from package Main failed on any field whose type is a record or an enum of `Sensors` ("record field Mode mismatch"). The compiled loader loaded it.
+
+Suggestion:
+Resolve a field's type, and an enum payload's, where it was written.
+
+Status: Resolved
+
+Resolution: `materializeOctagonValueOf` in `internal/interpret/octagon_load.go`. Contract: `AnImportedRecordWithOptionsLoadsFromOctagon` in `Language/Types/Option/packages/option_across_packages.octest`, both lanes. Json v2 M3 loads through these materialisers.
+
+---
+
+Observation:
+`WriteOctagon` followed by `LoadOctagon` does not give the value back when it holds a `Float`.
+(1) Both writers write a `Float` with a whole value without a decimal point: `[1.0m, 2.0m]` is written `[1m, 2m]`, and both loaders then refuse it ("expected Float<m>, got ast.IntegerLiteral"; the Go type name in that message is a second defect).
+(2) The compiled writer writes no dimensions at all: `Dt: 0.5s` is written `Dt: (0.5)`, and loading it as `Float<s>` fails with `expected Float<s> dimension "s", got ""`. The interpreted writer writes `Dt: (0.5s)`.
+Measured with a record `{ Dt: Float<s>, Samples: Float<m>[] }` written and loaded in each lane.
+
+Suggestion:
+Write a `Float` so that it reads as one (`1.0m`), and give the compiled serializer the declared type of each value, as the compiled loader already has (`FieldTypes`, `PayloadNames`), so that it writes the dimension.
+
+Status: Open
+
+---
+
+Observation:
+A `match` case label names its variant, and the enum name written before it is not checked: `case Anything.Some(v) =>` is accepted on any enum that has a variant `Some`. The parser keeps only the variant name (`ast.MatchCase`).
+
+Suggestion:
+Keep the written enum name and check it against the subject's type.
+
+Status: Open
+
+---
+
+Observation:
+Two packages of one program cannot each declare an enum of the same name in the compiled lane. The generated tag constants are named `<Enum>_<Variant>_tag` without the package, so `Lib.Mode { Slow Fast }` and `Main.Mode { Fast Slow }` give "Mode_Fast_tag redeclared in this block". The interpreted lane runs the program.
+
+Suggestion:
+Name the constants with the package, as the enum's Go type is named.
+
+Status: Open
+
+---
+
+Observation:
+In the compiled lane `==` on two values of an enum whose payload holds an array panics: `Held.Items([1, 2]) == Held.Items([1, 2])` stops with "runtime error: comparing uncomparable type []int". The typechecker accepts the comparison and the interpreted lane answers `true`. Enum equality compiles to Go's `==` on a struct with an `any` payload. `Option<T>` does not have the defect: its `==` compiles to a comparison by value (`__octValueEqual`).
+
+Suggestion:
+Compile `==` on any enum that has a payload variant to the same comparison by value.
+
+Status: Open
+
+---
+
+Observation:
+A variable or a parameter may still be named `Option`, but `Option.<name>` after it is always read as a variant of the builtin enum, so a record held in a variable named `Option` cannot have its fields read. Declarations (record, enum, concept, function, flow, package) named `Option` are refused.
+
+Suggestion:
+Refuse `Option` as the name of a binding and a parameter too, or reserve the word in the lexer.
+
+Status: Open
+
+---
+
+Observation:
+In the compiled lane `BoardSnapshot(machine)` does not build when two flows of one package have the same result type: "compiled BoardSnapshot requires unambiguous flow identity for return type Int". The failure is in lowering, so every test of the file fails, not only the one that takes the snapshot. The interpreted lane runs it. Met while writing `Language/Types/Option/valid`, where two flows returned `Int`; one was given another result type.
+
+Suggestion:
+Carry the flow's identity in the type of the instance, which the typechecker already has (`FlowIdentity`), instead of finding the flow by its result type.
+
+Status: Open
+
+---
