@@ -131,7 +131,7 @@ func lowerGoExprNode(node goast.Expr, original, typ string) MIRValue {
 				return MIRIntrinsicValue{Kind: "stringify", Type: "String", Args: []MIRValue{lowerGoExprNode(e.Args[0], original, "")}}
 			}
 		}
-		return MIRBackendValue{Backend: "go", Expression: original, Type: typ, Reason: "legacy-call-expression"}
+		return MIRBackendValue{Backend: "go", Expression: goNodeText(node, original), Type: typ, Reason: "legacy-call-expression"}
 	case *goast.CompositeLit:
 		if id, ok := e.Type.(*goast.Ident); ok && id.Name == "__octRange" {
 			values := map[string]MIRValue{}
@@ -176,10 +176,22 @@ func lowerGoExprNode(node goast.Expr, original, typ string) MIRValue {
 				return MIREnumValue{EnumType: typ, Variant: variant, Payload: payload}
 			}
 		}
-		return MIRBackendValue{Backend: "go", Expression: original, Type: typ, Reason: "legacy-composite-expression"}
+		return MIRBackendValue{Backend: "go", Expression: goNodeText(node, original), Type: typ, Reason: "legacy-composite-expression"}
 	case *goast.FuncLit:
-		return MIRBackendValue{Backend: "go", Expression: original, Type: typ, Reason: "legacy-closure-expression"}
+		return MIRBackendValue{Backend: "go", Expression: goNodeText(node, original), Type: typ, Reason: "legacy-closure-expression"}
 	default:
-		return MIRBackendValue{Backend: "go", Expression: original, Type: typ, Reason: "legacy-expression"}
+		return MIRBackendValue{Backend: "go", Expression: goNodeText(node, original), Type: typ, Reason: "legacy-expression"}
 	}
+}
+
+// goNodeText is the source of one node of an expression that parser.ParseExpr
+// parsed from original. A part of an expression that stays Go text is that
+// part's text and not the whole expression's: an enum constructed as the
+// payload of another is a composite literal inside a composite literal.
+func goNodeText(node goast.Expr, original string) string {
+	start, end := int(node.Pos())-1, int(node.End())-1
+	if start < 0 || end > len(original) || start >= end {
+		return original
+	}
+	return original[start:end]
 }

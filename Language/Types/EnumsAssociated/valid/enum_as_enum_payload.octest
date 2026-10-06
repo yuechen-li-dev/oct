@@ -1,0 +1,48 @@
+package EnumsAssociated
+
+enum Parcel {
+    Empty
+    Weighed(Float)
+}
+
+enum Crate {
+    Open
+    Holding(Parcel)
+}
+
+record Label {
+    Text: String
+}
+
+enum Tagged {
+    Plain
+    Marked(Label)
+}
+
+fn WeightIn(crate: Crate) -> Float {
+    return match crate {
+        case Crate.Open => -1.0
+        case Crate.Holding(parcel) => match parcel {
+            case Parcel.Empty => 0.0
+            case Parcel.Weighed(weight) => weight
+        }
+    }
+}
+
+// An enum value written directly as the payload of another enum value: the
+// inner constructor is the payload, and the outer value holds it.
+[Fact]
+fn AnEnumConstructedAsAPayloadIsThePayload() -> Void {
+    let full = Crate.Holding(Parcel.Weighed(2.5))
+    let typed: Crate = Crate.Holding(Parcel.Weighed(4.5))
+    Assert.Equal(2.5, WeightIn(full), "a payload variant inside a payload variant")
+    Assert.Equal(4.5, WeightIn(typed), "the same in a binding with a declared type")
+    Assert.Equal(1.5, WeightIn(Crate.Holding(Parcel.Weighed(1.5))), "the same as an argument")
+    Assert.Equal(0.0, WeightIn(Crate.Holding(Parcel.Empty)), "a tag variant inside a payload variant")
+    Assert.Equal(-1.0, WeightIn(Crate.Open), "the tag variant of the outer enum")
+    let text = match Tagged.Marked(Label { Text: "fragile" }) {
+        case Tagged.Plain => ""
+        case Tagged.Marked(label) => label.Text
+    }
+    Assert.Equal("fragile", text, "a record written directly as a payload")
+}
