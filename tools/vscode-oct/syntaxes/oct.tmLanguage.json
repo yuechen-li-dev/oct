@@ -57,7 +57,7 @@
       "patterns": [
         {
           "name": "storage.type.oct",
-          "match": "\\b(Int|Float|Bool|String|Void|Error)\\b"
+          "match": "\\b(Int|Float|Bool|String|Void|Error|Option)\\b"
         }
       ]
     },

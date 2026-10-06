@@ -16,6 +16,10 @@ Load and write are explicit through builtins.
   such as `Result.Ok(42)`. Their payload must recursively be an Octagon data
   expression. Tag-only `Enum.Case` remains valid. Ordinary function calls,
   including calls with the same punctuation, remain invalid data.
+- A value of the builtin `Option<T>` is written `Option.None` or
+  `Option.Some(value)`. The data does not write the type argument; the type
+  the file is loaded as says which option it is, and the payload of `Some` is
+  loaded as `T`.
 - Signed `Int` and `Float` scalar literals are data literals (for example `-1`
   and `-0.5`), including inside arrays and record fields.
 - Disallowed surface includes package declarations, function declarations,
@@ -36,6 +40,9 @@ Load and write are explicit through builtins.
 - Load rejects enum type/variant mismatches.
 - Load rejects missing, extra, and mistyped enum payloads. Payload refinement
   admission uses the same constructor checks as an ordinary loaded value.
+- Load does not wrap or unwrap an option: `42` is not loaded as an
+  `Option<Int>`, and `Option.Some(42)` is not loaded as an `Int`. Another enum
+  with variants named `None` and `Some` is not an option.
 - Load rejects array element type mismatches.
 - Load rejects dimension mismatches.
 - Compiled loading checks the same declared dimension for numeric literals,

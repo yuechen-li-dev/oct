@@ -17,6 +17,7 @@ Bounded template applications are monomorphized to ordinary exact types before t
 - `Bytes` is a narrow binary transport/storage boundary type intended for wrapper-backed compatibility APIs (for example file byte I/O).
 - `Bytes` is not a dynamic object container and does not imply `Dynamic` semantics.
 - `Range` is a compiler-owned immutable value produced by range expressions; see `03-expressions.md`.
+- `Option<T>` is the builtin enum `None | Some(T)` for a value that may be absent. `Option<A>` and `Option<B>` are different types when `A` and `B` differ. See [12 Enums](./12-enums.md).
 - Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`). `Complex` is always dimensionless in M0/M0a.
 - Arrays are homogeneous containers (`T[]`, `T[][]`, ...).
 - Record identity is defined by record name.
@@ -59,6 +60,7 @@ The places that declare a type, and so decide the value that reaches them:
 | An element of an array literal that is itself declared | `let xs: Float[] = [1, 2.5]` |
 | A record field, a table column and a `with` replacement | `Sample { Level: 1 }`, `sample with { Level: 1 }` |
 | An enum payload | `Reading.Level(1)` for `Level(Float)` |
+| The payload of an option | `Option.Some(1)` for an `Option<Float>` |
 | A flow parameter, board field, turn input, `yield` and result | `board.Level = 1` for `Level: Float` |
 
 An assignment has the type of what it assigns to, however that came by its
