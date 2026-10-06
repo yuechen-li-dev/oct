@@ -63,9 +63,11 @@ func (p *parser) enterNameScope() int { return len(p.literalNameBindings) }
 func (p *parser) leaveNameScope(mark int) { p.literalNameBindings = p.literalNameBindings[:mark] }
 
 // bindValueName records that name now refers to a value. Only a name that
-// also begins a literal needs recording.
+// also begins a literal needs recording: `vector`, and `Option`, which begins
+// `Option.None` and `Option.Some(value)`. Where a value named `Option` is in
+// scope, `Option.Level` reads a field of it.
 func (p *parser) bindValueName(name string) {
-	if name == "vector" {
+	if name == "vector" || name == ast.OptionTypeName {
 		p.literalNameBindings = append(p.literalNameBindings, name)
 	}
 }
@@ -2321,7 +2323,7 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Callee: expr, Arguments: arguments, Line: callToken.Line, Column: callToken.Column}
-		case isOptionName(expr) && (p.current().Kind == lex.Dot || (p.current().Kind == lex.LeftAngle && p.looksLikeOptionVariant())):
+		case isOptionName(expr) && !p.literalNameIsBound(ast.OptionTypeName) && (p.current().Kind == lex.Dot || (p.current().Kind == lex.LeftAngle && p.looksLikeOptionVariant())):
 			// `Option.Variant`, `Option<T>.Variant`, and either with a
 			// payload. See ast.AsOptionConstruction for the node.
 			callToken := p.current()

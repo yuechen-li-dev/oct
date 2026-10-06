@@ -77,6 +77,10 @@ Rules:
 
 - `Option` is not declared and not imported. A program cannot name a record,
   an enum, a concept, a function, a flow or a package `Option`.
+- `Option` is not a reserved word. A parameter or a local may have the name,
+  and where one is in scope `Option.Level` reads a field of that value, as
+  `vector[i]` indexes a value named `vector`. The type `Option<T>` and a
+  `case Option.None` label are the builtin everywhere.
 - `T` is any type a record field may have, except `Void`. `Option<Float<m>>`,
   `Option<Reading>`, `Option<Int[]>` and `Option<Option<Int>>` are types, and so
   is an array of options, `Option<Int>[]`.

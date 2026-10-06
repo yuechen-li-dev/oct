@@ -305,3 +305,33 @@ fn OptionsOfEachScalarCompareByValue() -> Void {
     let whole: Option<Complex> = Option.Some(2)
     Assert.True(whole == Option.Some(Complex(2.0, 0.0)), "Some(2) in an Option<Complex> holds a Complex")
 }
+
+record Choice {
+    Label: String
+    Weight: Int
+}
+
+fn LabelOf(Option: Choice) -> String {
+    return Option.Label
+}
+
+// `Option` is not a reserved word. Where a parameter or a local has the
+// name, `Option.Label` reads a field of it; the type `Option<T>` is the
+// builtin everywhere, and so is `Option.None` once the value is out of scope.
+[Fact]
+fn AValueNamedOptionIsThatValue() -> Void {
+    Assert.Equal("a", LabelOf(Choice { Label: "a" Weight: 2 }), "a parameter named Option is read as a value")
+    if true {
+        let Option = Choice { Label: "b" Weight: 3 }
+        Assert.Equal(3, Option.Weight, "and so is a local")
+        let held: Option<Int> = Half(8)
+        Assert.Equal(4, OrZero(held), "the type Option<Int> is the builtin while a value has the name")
+        let none = switch held {
+            case Option.None => true
+            else => false
+        }
+        Assert.False(none, "a case label names the variant, never the value")
+    }
+    let after: Option<Int> = Option.None
+    Assert.True(after == Option.None, "after the block the name is the builtin again")
+}

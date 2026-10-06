@@ -1000,7 +1000,9 @@ A variable or a parameter may still be named `Option`, but `Option.<name>` after
 Suggestion:
 Refuse `Option` as the name of a binding and a parameter too, or reserve the word in the lexer.
 
-Status: Open
+Status: Resolved
+
+Resolution: Neither. The parser resolves the name by scope, as it does `vector`: where a parameter or a local named `Option` is in scope, `Option.<name>` reads a field of it. Contract: `AValueNamedOptionIsThatValue` in `Language/Types/Option/valid/option_values.octest`, both lanes.
 
 ---
 

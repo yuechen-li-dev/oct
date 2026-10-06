@@ -298,9 +298,16 @@ loads into, and the `Json.Load<...>` line. Output is deterministic.
 Each milestone has a verdict line, `SUCCESS` / `PARTIAL` / `BLOCKED`, recorded
 in `internal/json/JSON_V2_M<n>.md` when it closes. Milestones run in order. No
 milestone may weaken an existing compiled-lane assertion to pass (see
-AGENTS.md). Each closes with the whole-tree sweeps in both lanes and the four
-Go lanes compared with the commit before it, and with fault injection on the
-code it added.
+AGENTS.md).
+
+Verification, as amended on 2026-10-06. M1 changed the language, and closed
+with the whole-tree sweeps in both lanes, the four Go lanes and fault
+injection. M2 to M6 are local to the Json library, so each closes with
+bounded tests: the tests of the code it adds, the Json library's own
+contracts in both lanes, the Go tests of every package it touches, and fault
+injection on the code it adds. M5 moves 36 Oct files off the v1 surface and
+regenerates recorded artifacts, so it also runs the directories it touches.
+The whole-tree sweeps run once more when the ladder closes.
 
 ### M0 — Contract freeze
 - **Scope:** Review and accept this document.

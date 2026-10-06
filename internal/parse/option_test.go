@@ -87,3 +87,28 @@ func TestBuildFileLeavesComparisonsWithAnOptionNamedOperandAlone(t *testing.T) {
 		t.Fatalf("`Option < limit` parsed as %#v, want a comparison", value)
 	}
 }
+
+// `Option` is resolved by scope, as `vector` is: where a parameter or a local
+// has the name, `Option.Field` reads it.
+func TestBuildFileResolvesOptionByScope(t *testing.T) {
+	cases := []struct {
+		name        string
+		source      string
+		constructed bool
+	}{
+		{"nothing bound", "fn F() -> Option<Int> { return Option.None }", true},
+		{"parameter", "fn F(Option: Holder) -> Int { return Option.None }", false},
+		{"let, after it", "fn F() -> Int { let Option = Make() return Option.None }", false},
+		{"binding ended with its block", "fn F(flag: Bool) -> Option<Int> { if flag { let Option = Make() } return Option.None }", true},
+		{"another function's parameter", "fn A(Option: Holder) -> Int { return 0 }\nfn F() -> Option<Int> { return Option.None }", true},
+		{"written type argument while bound", "fn F(Option: Int) -> Bool { return Option < 3 }", false},
+	}
+	for _, c := range cases {
+		file := parseSource(t, c.source)
+		function := file.Functions[len(file.Functions)-1]
+		last := function.Body.Statements[len(function.Body.Statements)-1].(ast.ReturnStmt).Value
+		if _, constructed := ast.AsOptionConstruction(last); constructed != c.constructed {
+			t.Errorf("%s: `%s` parsed as a construction = %v, want %v", c.name, c.source, constructed, c.constructed)
+		}
+	}
+}

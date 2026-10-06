@@ -2548,6 +2548,11 @@ func (i interpreter) evalMatchExpr(env *environment, pkgName string, expr ast.Ma
 }
 
 func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject Value, matchExpr ast.Expr) (bool, error) {
+	if variant, ok := optionCaseLabel(matchExpr); ok {
+		// A label names a variant. It is not evaluated, so a value named
+		// `Option` in scope does not come into it.
+		return subject.Kind == ValueEnum && subject.Enum.TypeName == ast.OptionTypeName && subject.Enum.Variant == variant, nil
+	}
 	caseValueResult, err := i.evalExpr(env, pkgName, matchExpr)
 	if err != nil {
 		return false, err
@@ -5880,11 +5885,6 @@ func (i interpreter) lookupRecordDecl(currentPackage string, typeName string) (a
 }
 
 func (i interpreter) lookupEnumDecl(currentPackage string, typeName string) (ast.EnumDecl, string, bool) {
-	if typeName == ast.OptionTypeName {
-		// By name alone the payload type of `Some` is not known; a caller
-		// that has the written type uses lookupEnumDeclOf.
-		return optionEnumDecl(ast.TypeRef{Inferred: true}), ast.OptionTypeName, true
-	}
 	if pkgName, localName, ok := splitQualifiedTypeName(typeName); ok {
 		enumDecl, exists := i.enums[pkgName+"."+localName]
 		return enumDecl, pkgName + "." + localName, exists

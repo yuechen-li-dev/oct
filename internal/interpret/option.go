@@ -103,3 +103,16 @@ func octagonDataDescription(expr ast.Expr) string {
 		return fmt.Sprintf("%T", expr)
 	}
 }
+
+// optionCaseLabel reports whether a switch case label is `Option.<variant>`.
+func optionCaseLabel(label ast.Expr) (string, bool) {
+	access, ok := label.(ast.FieldAccessExpr)
+	if !ok {
+		return "", false
+	}
+	target, ok := access.Target.(ast.IdentifierExpr)
+	if !ok || target.Name != ast.OptionTypeName {
+		return "", false
+	}
+	return access.Field, true
+}

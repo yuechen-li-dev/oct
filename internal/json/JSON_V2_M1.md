@@ -13,7 +13,8 @@ editor grammar. The Verilog profile and the WebAssembly target refuse it by
 name. The risk clause did not fire: nothing here is a template enum, and
 `template enum` is still unsupported.
 
-Three things need your eye. They are under "Decisions to confirm".
+Three things needed your eye. They are under "Decisions to confirm", and all
+three were confirmed on 2026-10-06.
 
 ## What a user can now write
 
@@ -180,7 +181,6 @@ Found and not fixed (all in `FEEDBACK.md`, Open):
 - A `match` case label's enum name is not checked: `case Anything.Some(v)`.
 - Compiled `BoardSnapshot` refuses a package with two flows of one result
   type.
-- A variable may still be named `Option`.
 
 ## Where the ladder text was wrong
 
@@ -247,7 +247,8 @@ the tags are compared first and `None` alone has no payload.
    recommend it.
 2. **`Option` is refused as the name of a declaration, and allowed as the
    name of a variable.** After `let Option = ...`, `Option.x` still reads as
-   a variant. Refusing it for bindings too is small; say if you want it.
+   a variant. *(Settled 2026-10-06: the parser resolves the name by scope, as
+   it does `vector`, so `Option.x` reads the value where one is in scope.)*
 3. **The change to printed output in fix 2.** An imported record now prints
    one way where it printed two, and I changed the one Go assertion that
    pinned the other form. The fix is commit `8ce4249`, alone, so it can be
