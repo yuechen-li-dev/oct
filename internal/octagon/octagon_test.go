@@ -63,6 +63,8 @@ func TestLoadInvalidFixtures(t *testing.T) {
 		"multiple_top_level_values.octagon": "expected end of file after top-level value",
 		"malformed_mixed_exec_data.octagon": "expected end of file after top-level value",
 		"repeated_element.octagon":          ".octagon does not allow `...`; write every element",
+		"option_type_argument.octagon":      ".octagon payload enum values cannot have type arguments",
+		"option_computed_payload.octagon":   ".octagon does not allow arithmetic or computed expressions",
 	}
 
 	for _, path := range paths {

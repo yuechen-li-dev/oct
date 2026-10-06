@@ -1,0 +1,11 @@
+Survey {
+    Name: "delta"
+    Depth: Option.Some(2.5)
+    Flow: Option.None
+    Readings: [Option.Some(1), Option.None, Option.Some(3)]
+    Nested: Option.Some(Option.None)
+    Site: Option.Some(Site {
+        Code: "D1"
+        Rank: Option.Some(Rank.High)
+    })
+}

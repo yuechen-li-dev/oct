@@ -91,6 +91,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		if err != nil {
 			return ast.File{}, err
 		}
+		if err := p.rejectBuiltinTypeName(packageName, "package"); err != nil {
+			return ast.File{}, err
+		}
 		file.Package = packageName.Lexeme
 	} else if file.Profile == "Verilog" {
 		file.Package = "Main"
@@ -759,6 +762,9 @@ func (p *parser) parseConceptDecl() (*ast.ConceptDecl, *ast.RecordDecl, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := p.rejectBuiltinTypeName(name, "concept"); err != nil {
+		return nil, nil, err
+	}
 	if p.match(lex.Assign) {
 		target, err := p.parseTypeRef()
 		if err != nil {
@@ -1121,6 +1127,9 @@ func (p *parser) parseRecordDeclWithTemplate(isTemplate bool) (ast.RecordDecl, e
 	if err != nil {
 		return ast.RecordDecl{}, err
 	}
+	if err := p.rejectBuiltinTypeName(name, "record"); err != nil {
+		return ast.RecordDecl{}, err
+	}
 	typeParameters, err := p.parseOptionalTypeParameters(isTemplate, name)
 	if err != nil {
 		return ast.RecordDecl{}, err
@@ -1172,6 +1181,9 @@ func (p *parser) parseEnumDecl() (ast.EnumDecl, error) {
 	if err != nil {
 		return ast.EnumDecl{}, err
 	}
+	if err := p.rejectBuiltinTypeName(name, "enum"); err != nil {
+		return ast.EnumDecl{}, err
+	}
 	if _, err := p.expect(lex.LeftBrace, "expected '{' after enum name"); err != nil {
 		return ast.EnumDecl{}, err
 	}
@@ -1221,6 +1233,9 @@ func (p *parser) parseFunctionDeclWithTemplate(isTemplate bool) (ast.FunctionDec
 
 	name, err := p.expect(lex.Identifier, "expected function name")
 	if err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	if err := p.rejectBuiltinTypeName(name, "function"); err != nil {
 		return ast.FunctionDecl{}, err
 	}
 
@@ -1338,6 +1353,9 @@ func (p *parser) parseFlowDeclWithTemplate(isTemplate bool) (ast.FlowDecl, error
 	}
 	name, err := p.expect(lex.Identifier, "expected flow name")
 	if err != nil {
+		return ast.FlowDecl{}, err
+	}
+	if err := p.rejectBuiltinTypeName(name, "flow"); err != nil {
 		return ast.FlowDecl{}, err
 	}
 	typeParameters, err := p.parseOptionalTypeParameters(isTemplate, name)
@@ -2303,6 +2321,45 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Callee: expr, Arguments: arguments, Line: callToken.Line, Column: callToken.Column}
+		case isOptionName(expr) && (p.current().Kind == lex.Dot || (p.current().Kind == lex.LeftAngle && p.looksLikeOptionVariant())):
+			// `Option.Variant`, `Option<T>.Variant`, and either with a
+			// payload. See ast.AsOptionConstruction for the node.
+			callToken := p.current()
+			typeArguments := []ast.TypeRef{{Inferred: true}}
+			if p.current().Kind == lex.LeftAngle {
+				var err error
+				typeArguments, err = p.parseTypeArguments()
+				if err != nil {
+					return nil, err
+				}
+				if len(typeArguments) != 1 {
+					return nil, p.errorAtToken(callToken, fmt.Sprintf("Option takes one type argument, got %d", len(typeArguments)))
+				}
+			}
+			if _, err := p.expect(lex.Dot, "expected '.' after Option<T>"); err != nil {
+				return nil, err
+			}
+			variant, err := p.expectIdentifierLike("expected `None` or `Some` after `Option.`")
+			if err != nil {
+				return nil, err
+			}
+			var arguments []ast.Expr
+			if p.current().Kind == lex.LeftParen {
+				if variant.Lexeme == ast.OptionNoneVariant {
+					return nil, p.errorAtCurrent("`Option.None` takes no payload; write it without parentheses")
+				}
+				arguments, err = p.parseCallArguments()
+				if err != nil {
+					return nil, err
+				}
+			}
+			expr = ast.CallExpr{
+				Callee:        ast.FieldAccessExpr{Target: expr, Field: variant.Lexeme},
+				TypeArguments: typeArguments,
+				Arguments:     arguments,
+				Line:          callToken.Line,
+				Column:        callToken.Column,
+			}
 		case p.current().Kind == lex.LeftAngle && p.looksLikeGenericRecordLiteral():
 			typeArguments, err := p.parseTypeArguments()
 			if err != nil {
@@ -2404,6 +2461,32 @@ func (p *parser) looksLikeTypeArgumentList() bool {
 	isTypeArgCall := p.current().Kind == lex.LeftParen
 	p.position = start
 	return isTypeArgCall
+}
+
+func isOptionName(expr ast.Expr) bool {
+	identifier, ok := expr.(ast.IdentifierExpr)
+	return ok && identifier.Name == ast.OptionTypeName
+}
+
+// looksLikeOptionVariant reports whether the `<` after `Option` opens a type
+// argument that a variant follows, as in `Option<Float>.None`.
+func (p *parser) looksLikeOptionVariant() bool {
+	start := p.position
+	defer func() { p.position = start }()
+	p.advance()
+	for {
+		if _, err := p.parseTypeRef(); err != nil {
+			return false
+		}
+		if !p.match(lex.Comma) {
+			break
+		}
+	}
+	if p.current().Kind != lex.RightAngle {
+		return false
+	}
+	p.advance()
+	return p.current().Kind == lex.Dot
 }
 
 func (p *parser) looksLikeGenericRecordLiteral() bool {
@@ -3659,4 +3742,13 @@ func literalSuffixContinuesAsDimensionSpec(next lex.Token) bool {
 	default:
 		return false
 	}
+}
+
+// rejectBuiltinTypeName refuses a declaration named after a type the language
+// itself provides and that the lexer does not reserve.
+func (p *parser) rejectBuiltinTypeName(name lex.Token, kind string) error {
+	if name.Lexeme != ast.OptionTypeName {
+		return nil
+	}
+	return p.errorAtToken(name, fmt.Sprintf("`Option` is the builtin type `Option<T>`; a %s cannot be named Option", kind))
 }

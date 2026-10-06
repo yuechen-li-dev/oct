@@ -1,0 +1,11 @@
+expect error: "function 'Take' argument 1 expects Option<Int>, got Option<String>"
+
+package Main
+
+fn Take(value: Option<Int>) -> Int {
+    return 0
+}
+
+fn Main(text: Option<String>) -> Int {
+    return Take(text)
+}

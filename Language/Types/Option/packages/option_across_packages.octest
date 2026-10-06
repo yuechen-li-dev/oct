@@ -1,0 +1,77 @@
+package Main
+import Sensors
+
+fn StationOf(sample: Option<Sensors.Sample>) -> String {
+    return match sample {
+        case Option.Some(s) => s.Station
+        case Option.None => "none"
+    }
+}
+
+[Fact]
+fn AnOptionOfAnImportedRecordCrossesThePackage() -> Void {
+    let found = Sensors.Latest("north")
+    let missing = Sensors.Latest("")
+    Assert.Equal("north", StationOf(found), "the imported function returns Some(Sample)")
+    Assert.Equal("none", StationOf(missing), "the imported function returns None")
+    Assert.Equal(2.5, Sensors.LevelOr(found, -1.0), "the option goes back into its package")
+    Assert.Equal(-1.0, Sensors.LevelOr(missing, -1.0), "None goes back into its package")
+}
+
+[Fact]
+fn AnOptionIsBuiltHereForAnImportedParameter() -> Void {
+    let local = Sensors.Sample { Station: "south" Level: Option.None }
+    Assert.Equal(-2.0, Sensors.LevelOr(Option.Some(local), -2.0), "Option.Some(local) takes the parameter type")
+    Assert.Equal(-3.0, Sensors.LevelOr(Option.None, -3.0), "Option.None takes the parameter type")
+    let typed: Option<Sensors.Sample> = Option.Some(Sensors.Sample { Station: "east" Level: Option.Some(4) })
+    Assert.Equal(4.0, Sensors.LevelOr(typed, 0.0), "a field of an imported record decides its option")
+    Assert.Equal("east", StationOf(typed), "the same value is an Option<Sensors.Sample> here")
+}
+
+[Fact]
+fn OptionsFromTwoPackagesCompare() -> Void {
+    let here: Option<Sensors.Sample> = Option.Some(Sensors.Sample { Station: "north" Level: Option.Some(2.5) })
+    Assert.True(Sensors.Latest("north") == here, "an option built here equals the one built there")
+    Assert.True(Sensors.Latest("") == Option.None, "None from another package is None")
+    Assert.True(Sensors.Latest("west") != here, "a different payload is unequal")
+}
+
+[Fact]
+fn AnOptionOfAnImportedEnumMatches() -> Void {
+    let good = Sensors.QualityOf(Sensors.Sample { Station: "a" Level: Option.Some(1.0) })
+    let suspect = Sensors.QualityOf(Sensors.Sample { Station: "b" Level: Option.None })
+    let goodText = match good {
+        case Option.Some(q) => match q {
+            case Sensors.Quality.Good => "good"
+            case Sensors.Quality.Suspect(why) => why
+        }
+        case Option.None => "unknown"
+    }
+    let suspectText = match suspect {
+        case Option.Some(q) => match q {
+            case Sensors.Quality.Good => "good"
+            case Sensors.Quality.Suspect(why) => why
+        }
+        case Option.None => "unknown"
+    }
+    Assert.Equal("good", goodText, "an imported tag variant inside an option")
+    Assert.Equal("no level", suspectText, "an imported payload variant inside an option")
+    Assert.True(good == Option.Some(Sensors.Quality.Good), "an option of an imported enum compares")
+}
+
+// A record of an imported package is loaded from data as that package
+// declares it: its fields name types of their own package.
+[Fact]
+fn AnImportedRecordWithOptionsLoadsFromOctagon() -> Void ! Error {
+    let sample = LoadOctagon<Sensors.Sample>("Language/Types/Option/packages/sensor_sample.octagon")?
+    Assert.Equal("north", sample.Station, "a field of the imported record")
+    Assert.True(sample.Level == Option.Some(2.5), "an option field of the imported record")
+    Assert.True(Sensors.Latest("north") == Option.Some(sample), "the loaded record equals the one its package builds")
+
+    let survey = LoadOctagon<Sensors.Survey>("Language/Types/Option/packages/sensor_survey.octagon")?
+    Assert.True(survey.Latest == Sensors.Latest("north"), "an option of a record of the same package")
+    Assert.True(survey.Quality == Option.Some(Sensors.Quality.Suspect("drift")), "an option of an enum of the same package")
+    Assert.Equal(2, Len(survey.Earlier), "an array of options of records")
+    Assert.True(survey.Earlier[0] == Option.None, "None in the array")
+    Assert.Equal("south", StationOf(survey.Earlier[1]), "Some in the array")
+}

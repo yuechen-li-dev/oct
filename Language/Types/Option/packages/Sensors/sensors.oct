@@ -1,0 +1,41 @@
+package Sensors
+
+record Sample {
+    Station: String
+    Level: Option<Float>
+}
+
+enum Quality {
+    Good
+    Suspect(String)
+}
+
+record Survey {
+    Latest: Option<Sample>
+    Quality: Option<Quality>
+    Earlier: Option<Sample>[]
+}
+
+fn Latest(station: String) -> Option<Sample> {
+    if station == "" {
+        return Option.None
+    }
+    return Option.Some(Sample { Station: station Level: Option.Some(2.5) })
+}
+
+fn QualityOf(sample: Sample) -> Option<Quality> {
+    return match sample.Level {
+        case Option.Some(level) => Option.Some(Quality.Good)
+        case Option.None => Option.Some(Quality.Suspect("no level"))
+    }
+}
+
+fn LevelOr(sample: Option<Sample>, fallback: Float) -> Float {
+    return match sample {
+        case Option.Some(s) => match s.Level {
+            case Option.Some(level) => level
+            case Option.None => fallback
+        }
+        case Option.None => fallback
+    }
+}

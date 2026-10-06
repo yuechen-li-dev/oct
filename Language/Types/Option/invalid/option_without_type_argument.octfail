@@ -1,0 +1,7 @@
+expect error: "Option needs its type argument: write Option<T>, as in Option<Float>"
+
+package Main
+
+fn Main(value: Option) -> Int {
+    return 0
+}

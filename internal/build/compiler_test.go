@@ -3261,3 +3261,74 @@ fn main() -> Range {
 		t.Fatalf("compile: %v", err)
 	}
 }
+
+// The compiled writer and loader agree with the interpreter's on an Option:
+// the file written here is the golden the interpreter test writes too.
+func TestCompileAndRunOctagonOptionRoundTrip(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	artifactPath := filepath.Join(root, "survey.octagon")
+	mainPath := filepath.Join(root, "main.oct")
+	src := fmt.Sprintf(`package Main
+
+enum Rank {
+    Low
+    High
+}
+
+record Site {
+    Code: String
+    Rank: Option<Rank>
+}
+
+record Survey {
+    Name: String
+    Depth: Option<Float>
+    Flow: Option<Float>
+    Readings: Option<Int>[]
+    Nested: Option<Option<Bool>>
+    Site: Option<Site>
+}
+
+fn main() -> Int ! Error {
+    WriteOctagon(%q, Survey {
+        Name: "delta"
+        Depth: Option.Some(2.5)
+        Flow: Option.None
+        Readings: [Option.Some(1), Option.None, Option.Some(3)]
+        Nested: Option.Some(Option.None)
+        Site: Option.Some(Site { Code: "D1" Rank: Option.Some(Rank.High) })
+    })
+    let loaded = LoadOctagon<Survey>(%q)?
+    return match loaded.Readings[2] {
+        case Option.Some(value) -> value
+        case Option.None -> 0
+    }
+}
+`, artifactPath, artifactPath)
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run artifact: %v (%s)", err, string(out))
+	}
+	if strings.TrimSpace(string(out)) != "3" {
+		t.Fatalf("expected 3, got %q", string(out))
+	}
+	body, err := os.ReadFile(artifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden, err := os.ReadFile(filepath.Join("..", "..", "Language", "Data", "Octagon", "valid", "option_written.octagon"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != string(golden) {
+		t.Fatalf("compiled Option Octagon differs from the golden:\n%s", body)
+	}
+}

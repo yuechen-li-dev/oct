@@ -1,0 +1,4 @@
+Sample {
+    Station: "north"
+    Level: Option.Some(2.5)
+}

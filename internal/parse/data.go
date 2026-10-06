@@ -50,6 +50,16 @@ func validateDataValue(expr ast.Expr) error {
 		}
 		return fmt.Errorf(".octagon enum values must use explicit Enum.Variant form")
 	case ast.CallExpr:
+		if construction, ok := ast.AsOptionConstruction(node); ok && construction.Payload.Inferred {
+			// `Option.None` and `Option.Some(value)`: the type the data is
+			// loaded as says which Option it is.
+			for _, argument := range node.Arguments {
+				if err := validateDataValue(argument); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 		if len(node.TypeArguments) != 0 {
 			return fmt.Errorf(".octagon payload enum values cannot have type arguments")
 		}

@@ -1,0 +1,10 @@
+expect error: "enum 'Option' has no variant 'Maybe'; its variants are `Option.None` and `Option.Some(value)`"
+
+package Main
+
+fn Main(value: Option<Int>) -> Bool {
+    return switch value {
+        case Option.Maybe => true
+        else => false
+    }
+}

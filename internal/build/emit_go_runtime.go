@@ -1071,7 +1071,7 @@ func __octSerialize(v reflect.Value, depth int) (string, error) {
 	if v.Kind() == reflect.Interface {
 		return __octSerialize(v.Elem(), depth)
 	}
-	if meta, ok := __octEnumMetaByGoType[__octTypeKey(v.Type())]; ok {
+	if meta, ok := __octEnumMetaOf(v.Type(), ""); ok {
 		idx := int(v.FieldByName("Tag").Int())
 		if idx < 0 || idx >= len(meta.Variants) {
 			return "", fmt.Errorf("enum %s variant index %d out of range", meta.ShortName, idx)
@@ -1428,7 +1428,7 @@ func (p *__octParser) skipWS() {
 }
 
 func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType string) (reflect.Value, error) {
-	if meta, ok := __octEnumMetaByGoType[__octTypeKey(target)]; ok {
+	if meta, ok := __octEnumMetaOf(target, expectedType); ok {
 		if value.Kind != __octParsedEnum {
 			return reflect.Value{}, fmt.Errorf("expected %s, got non-enum value", expectedType)
 		}

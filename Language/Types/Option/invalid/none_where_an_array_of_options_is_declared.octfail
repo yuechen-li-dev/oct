@@ -1,0 +1,8 @@
+expect error: "let values: expected Option<Int>[], got `Option.None`"
+
+package Main
+
+fn Main() -> Int {
+    let values: Option<Int>[] = Option.None
+    return 0
+}

@@ -1,0 +1,65 @@
+package OctagonLoadInvalid
+
+enum Verdict {
+    None
+    Some(Int)
+}
+
+record SurveyDepthInSeconds {
+    Name: String
+    Depth: Option<Float<s>>
+    Flow: Option<Float<m^3/s>>
+    Readings: Option<Int>[]
+    Nested: Option<Option<Bool>>
+    Site: Option<SurveySite>
+}
+
+enum SurveyRank {
+    Low
+    High
+}
+
+record SurveySite {
+    Code: String
+    Rank: Option<SurveyRank>
+}
+
+record OptionalName {
+    Name: Option<String>
+    Dt: Float<s>
+    Steps: Int
+}
+
+[Fact]
+fn RejectsAPlainValueWhereAnOptionIsDeclared() -> Void {
+    Assert.Error(LoadOctagon<Option<Int>>("Language/Data/Octagon/valid/scalar_literal.octagon"), "42 is not Option.Some(42)")
+    Assert.Error(LoadOctagon<OptionalName>("Language/Data/Octagon/valid/record_literal.octagon"), "a String field is not an Option<String> field")
+}
+
+[Fact]
+fn RejectsAnOptionWhereAPlainValueIsDeclared() -> Void {
+    Assert.Error(LoadOctagon<Int>("Language/Data/Octagon/valid/option_some.octagon"), "Option.Some(42) is not 42")
+}
+
+[Fact]
+fn RejectsAnOptionPayloadOfAnotherType() -> Void {
+    Assert.Error(LoadOctagon<Option<String>>("Language/Data/Octagon/valid/option_some.octagon"), "the payload of Some is loaded as the declared type")
+    Assert.Error(LoadOctagon<SurveyDepthInSeconds>("Language/Data/Octagon/valid/option_record.octagon"), "a payload in metres is not one in seconds")
+}
+
+[Fact]
+fn RejectsAnotherEnumWhereAnOptionIsDeclared() -> Void {
+    Assert.Error(LoadOctagon<Option<Int>>("Language/Data/Octagon/valid/enum_value.octagon"), "SolverMode.Explicit is not an Option")
+}
+
+[Fact]
+fn RejectsAnOptionWhereAnotherEnumIsDeclared() -> Void {
+    Assert.Error(LoadOctagon<Verdict>("Language/Data/Octagon/valid/option_some.octagon"), "an enum with the same variant names is still another enum")
+}
+
+[Fact]
+fn RejectsAMalformedOptionValue() -> Void {
+    Assert.Error(LoadOctagon<Option<Int>>("Language/Data/Octagon/Load/invalid/option_some_two_payloads.octagon"), "Some holds one value")
+    Assert.Error(LoadOctagon<Option<Int>>("Language/Data/Octagon/Load/invalid/option_unknown_variant.octagon"), "an option has the variants None and Some")
+    Assert.Error(LoadOctagon<Option<Int>>("Language/Data/Octagon/invalid/option_type_argument.octagon"), "data does not write the type argument")
+}

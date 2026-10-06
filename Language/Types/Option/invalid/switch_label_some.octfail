@@ -1,0 +1,10 @@
+expect error: "enum 'Option' variant 'Some' requires one payload argument"
+
+package Main
+
+fn Main(value: Option<Int>) -> Bool {
+    return switch value {
+        case Option.Some => true
+        else => false
+    }
+}

@@ -1,0 +1,7 @@
+expect error: "requires matching enum types"
+
+package Main
+
+fn Main(left: Option<Int>, right: Option<Float>) -> Bool {
+    return left == right
+}

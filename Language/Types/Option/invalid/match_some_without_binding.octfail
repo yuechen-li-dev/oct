@@ -1,0 +1,10 @@
+expect error: "enum 'Option<Int>' variant 'Some' requires payload binding syntax"
+
+package Main
+
+fn Main(value: Option<Int>) -> Int {
+    return match value {
+        case Option.Some => 1
+        case Option.None => 0
+    }
+}

@@ -1,0 +1,10 @@
+expect error: "utility enum cases must use qualified variants, e.g. Option.None"
+
+package Main
+
+fn Main(risk: Float, held: Option<Int>) -> Option<Int> {
+    return when utility Option<Int> {
+        case Option.Some(1) when risk > 0.5 score 10
+        else held
+    }
+}

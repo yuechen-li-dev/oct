@@ -1,0 +1,10 @@
+expect error: "utility else for Option<Int> cannot return Option<Float>"
+
+package Main
+
+fn Main(risk: Float) -> Option<Int> {
+    return when utility Option<Int> {
+        case Option.Some(1) when risk > 0.5 score 10
+        else Option<Float>.None
+    }
+}

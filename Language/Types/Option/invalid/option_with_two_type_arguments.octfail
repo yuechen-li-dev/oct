@@ -1,0 +1,7 @@
+expect error: "Option takes one type argument, got 2"
+
+package Main
+
+fn Main(value: Option<Int, Float>) -> Int {
+    return 0
+}

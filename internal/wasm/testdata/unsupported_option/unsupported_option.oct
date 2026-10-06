@@ -1,0 +1,15 @@
+package UnsupportedOption
+
+fn Half(value: Int) -> Option<Int> {
+    if value % 2 == 0 {
+        return Option.Some(value / 2)
+    }
+    return Option.None
+}
+
+fn Main() -> Int {
+    return match Half(4) {
+        case Option.Some(half) => half
+        case Option.None => 0
+    }
+}

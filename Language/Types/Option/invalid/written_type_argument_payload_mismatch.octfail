@@ -1,0 +1,8 @@
+expect error: "enum 'Option<Int>' variant 'Some' payload expects Int, got Float"
+
+package Main
+
+fn Main() -> Int {
+    let value = Option<Int>.Some(1.5)
+    return 0
+}

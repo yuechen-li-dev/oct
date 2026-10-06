@@ -1,0 +1,9 @@
+expect error: "non-exhaustive match over enum 'Option<Int>'"
+
+package Main
+
+fn Main(value: Option<Int>) -> Int {
+    return match value {
+        case Option.Some(v) => v
+    }
+}

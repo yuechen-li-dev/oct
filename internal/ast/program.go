@@ -218,6 +218,10 @@ type TypeRef struct {
 	// erases to the exact ordinary function type fn(R) -> F.
 	SelectorOwner  *TypeRef
 	SelectorResult *TypeRef
+	// Inferred marks a type argument the source did not write, as in
+	// `Option.None`. The parser leaves the rest of the TypeRef empty and the
+	// typechecker fills it in; see AsOptionConstruction.
+	Inferred bool
 }
 
 // TemplateOrigin survives elaboration on each concrete declaration so
@@ -741,6 +745,73 @@ type SelectorExpr struct {
 }
 
 func (SelectorExpr) exprNode() {}
+
+// OptionTypeName is the builtin enum `Option<T>`: `None` or `Some(T)`. It has
+// no declaration. Its variants are written `Option.None` and
+// `Option.Some(value)`, and with the type argument `Option<T>.None` and
+// `Option<T>.Some(value)`.
+const (
+	OptionTypeName    = "Option"
+	OptionNoneVariant = "None"
+	OptionSomeVariant = "Some"
+)
+
+// OptionConstruction describes an expression that constructs an Option.
+type OptionConstruction struct {
+	// Variant is the name written after `Option.`; it need not be a variant.
+	Variant string
+	// Payload is T of the `Option<T>` constructed. Where the source wrote no
+	// type argument it is the slot the typechecker fills in (TypeRef.Inferred),
+	// and Resolved reports whether it has.
+	Payload  TypeRef
+	Resolved bool
+	// Arguments is the argument list after the variant, which the parser
+	// requires `Option.None` to be without.
+	Arguments []Expr
+}
+
+// AsOptionConstruction recognises an Option value. The parser gives all four
+// spellings one shape: a call of `Option.Variant` that carries T as its one
+// type argument. A call is a node every pass that walks expressions already
+// knows, and a type argument is one they already carry along.
+//
+// `Option.None` and `Option.Some(value)` do not say what T is. Their type
+// argument is a slot marked Inferred, and the typechecker, which alone knows
+// the type the site declares, writes T into it (see checkOptionConstruction
+// in internal/typecheck). A pass that runs after the typechecker therefore
+// reads every Option construction as if its type argument had been written.
+func AsOptionConstruction(expr Expr) (OptionConstruction, bool) {
+	node, ok := expr.(CallExpr)
+	if !ok || len(node.TypeArguments) != 1 {
+		return OptionConstruction{}, false
+	}
+	callee, ok := node.Callee.(FieldAccessExpr)
+	if !ok {
+		return OptionConstruction{}, false
+	}
+	target, ok := callee.Target.(IdentifierExpr)
+	if !ok || target.Name != OptionTypeName {
+		return OptionConstruction{}, false
+	}
+	payload := node.TypeArguments[0]
+	return OptionConstruction{
+		Variant:   callee.Field,
+		Payload:   payload,
+		Resolved:  !payload.IsUnresolved(),
+		Arguments: node.Arguments,
+	}, true
+}
+
+// IsUnresolved reports whether an inferred type has yet to be filled in.
+func (t TypeRef) IsUnresolved() bool {
+	return t.Inferred && t.Name == "" && t.Function == nil && t.VectorOf == nil && t.MatrixOf == nil && t.FlowInstanceOf == nil && len(t.TupleOf) == 0
+}
+
+// IsOptionType reports whether a type reference is `Option<T>` itself, not an
+// array of them.
+func IsOptionType(t TypeRef) bool {
+	return t.Package == "" && t.Name == OptionTypeName && len(t.TypeArguments) == 1 && !t.IsArray && t.ArrayDepth == 0
+}
 
 type EnumValueExpr struct {
 	EnumName string

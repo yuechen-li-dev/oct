@@ -558,3 +558,67 @@ fn Main() -> Int { return 0 }
 		})
 	}
 }
+
+// A board field of an Option type survives a checkpoint: the payload is
+// restored as the declared T, which the checkpoint itself does not record.
+func TestFlowCheckpointRoundTripsOptionBoardFields(t *testing.T) {
+	program := checkpointProgram(t, `package Main
+record Leaf { Count: Int }
+flow Durable() -> Int {
+    board {
+        Level: Option<Float>
+        Missing: Option<Leaf>
+        Held: Option<Leaf>
+        Marks: Option<Int>[]
+    }
+    state Run {
+        board.Level = Option.Some(3)
+        board.Missing = Option.None
+        board.Held = Option.Some(Leaf { Count: 4 })
+        board.Marks = [Option.Some(1), Option.None]
+        suspend
+        return match board.Level {
+            case Option.Some(level) => FloorToInt(level / 2 * 10.0)
+            case Option.None => -1
+        }
+    }
+}
+fn Main() -> Int { return 0 }
+`)
+	first, err := RunFlowToSuspensionWithOptions(program, "Main", "Durable", 20, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("run to suspend: %v", err)
+	}
+	checkpoint, err := first.ExportCheckpoint(FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatalf("export checkpoint: %v", err)
+	}
+	restored, err := InstantiateFlowFromCheckpoint(program, "Main", "Durable", checkpoint, FlowRestoreOptions{})
+	if err != nil {
+		t.Fatalf("restore checkpoint: %v", err)
+	}
+	board, ok := restored.RootEnv.lookup("board")
+	if !ok || board.value.Kind != ValueRecord {
+		t.Fatalf("restored board = %#v", board.value)
+	}
+	fields := board.value.Record.Fields
+	if level := fields["Level"].Enum; level.TypeName != "Option" || level.Variant != "Some" || level.Payload == nil || level.Payload.Kind != ValueFloat || level.Payload.Float != 3 {
+		t.Fatalf("Option<Float> did not round trip as Some(3.0): %#v", fields["Level"])
+	}
+	if missing := fields["Missing"].Enum; missing.Variant != "None" || missing.Payload != nil {
+		t.Fatalf("Option.None did not round trip: %#v", fields["Missing"])
+	}
+	if held := fields["Held"].Enum; held.Variant != "Some" || held.Payload == nil || held.Payload.Record.Fields["Count"].Int != 4 {
+		t.Fatalf("Option<Leaf> did not round trip: %#v", fields["Held"])
+	}
+	if marks := fields["Marks"].Array; len(marks) != 2 || marks[0].Enum.Variant != "Some" || marks[1].Enum.Variant != "None" {
+		t.Fatalf("Option<Int>[] did not round trip: %#v", fields["Marks"])
+	}
+	resumed, err := RunFlowToCompletionFromCheckpointWithOptions(program, "Main", "Durable", checkpoint, 20, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("continue restored checkpoint: %v", err)
+	}
+	if !resumed.Completed || resumed.Result.Kind != ValueInt || resumed.Result.Int != 15 {
+		t.Fatalf("restored result = %#v completed=%v, want Int(15): half of Some(3.0), times ten", resumed.Result, resumed.Completed)
+	}
+}

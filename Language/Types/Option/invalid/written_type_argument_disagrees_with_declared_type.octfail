@@ -1,0 +1,8 @@
+expect error: "let value: expected Option<Float>, got Option<Int>"
+
+package Main
+
+fn Main() -> Int {
+    let value: Option<Float> = Option<Int>.Some(1)
+    return 0
+}

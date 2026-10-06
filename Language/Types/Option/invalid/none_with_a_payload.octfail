@@ -1,0 +1,7 @@
+expect error: "`Option.None` takes no payload; write it without parentheses"
+
+package Main
+
+fn Main() -> Option<Int> {
+    return Option.None(1)
+}

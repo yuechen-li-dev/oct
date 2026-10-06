@@ -578,6 +578,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		b.WriteString("type __octParsedValue struct {\n\tKind __octParsedKind\n\tInt int\n\tFloat float64\n\tDimension string\n\tBool bool\n\tText string\n\tArray []__octParsedValue\n\tRecordType string\n\tRecordFields map[string]__octParsedValue\n\tEnumType string\n\tEnumVariant string\n\tEnumPayload []__octParsedValue\n\tEnumHasPayload bool\n}\n\n")
 		b.WriteString("type __octRecordMeta struct {\n\tFullName string\n\tShortName string\n\tFields []string\n\tFieldTypes map[string]string\n}\n\n")
 		b.WriteString("type __octEnumMeta struct {\n\tFullName string\n\tShortName string\n\tVariants []string\n\tPayloadTypes []reflect.Type\n\tPayloadNames []string\n}\n\n")
+		b.WriteString(optionOctagonRuntime)
 		b.WriteString("var __octRecordMetaByGoType = map[string]__octRecordMeta{\n")
 		for _, r := range m.Records {
 			fmt.Fprintf(&b, "\t%q: {FullName: %q, ShortName: %q, Fields: []string{", "main."+r.Package+"_"+r.Name, r.Package+"."+r.Name, r.Name)
@@ -726,7 +727,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	b.WriteString("var __octAssertionCount int\n\n")
 	if !options.includeMain {
-		return pruneGeneratedImports(b.String()), nil
+		return pruneGeneratedImports(appendOptionDeclarations(b.String())), nil
 	}
 	b.WriteString("func __octRunMain(run func()) (diagnostic string) {\n")
 	b.WriteString("\tdefer func() {\n")
@@ -777,7 +778,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	b.WriteString("\t})\n")
 	b.WriteString("\tif diagnostic != \"\" { fmt.Fprintln(os.Stderr, diagnostic); os.Exit(1) }\n")
 	b.WriteString("}\n")
-	return pruneGeneratedImports(b.String()), nil
+	return pruneGeneratedImports(appendOptionDeclarations(b.String())), nil
 }
 
 func pruneGeneratedImports(src string) string {
@@ -2041,6 +2042,9 @@ func goTerminator(t MIRTerminator, labels map[string]int, pcName string) (string
 }
 
 func goType(t string) string {
+	if payloadType, ok := parseOptionType(t); ok {
+		return goOptionType(payloadType)
+	}
 	if signature, ok := parseCompiledFunctionType(t); ok {
 		params := make([]string, 0, len(signature.Parameters))
 		for _, param := range signature.Parameters {

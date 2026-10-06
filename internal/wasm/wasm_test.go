@@ -217,6 +217,19 @@ func TestUnsupportedMIRFailsBeforeEmission(t *testing.T) {
 	}
 }
 
+// The WebAssembly target has no representation for a payload enum, and so
+// none for the builtin Option. It says so by the type's name.
+func TestOptionFailsBeforeEmission(t *testing.T) {
+	module, _, err := build.LoadMIR("testdata/unsupported_option/unsupported_option.oct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Encode(module)
+	if err == nil || !strings.Contains(err.Error(), "type Option<Int> is unsupported in M0") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestEncodeNeedsNoExternalToolchain(t *testing.T) {
 	module, _, err := build.LoadMIR(wasmComputeExample)
 	if err != nil {

@@ -1,0 +1,10 @@
+expect error: "case type Option does not match subject type Int"
+
+package Main
+
+fn Main(value: Int) -> Bool {
+    return switch value {
+        case Option.None => true
+        else => false
+    }
+}

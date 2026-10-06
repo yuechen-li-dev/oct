@@ -1,0 +1,7 @@
+expect error: "Option<Void> is not a type: `Option.Some` holds a value, and Void has none"
+
+package Main
+
+fn Main(value: Option<Void>) -> Int {
+    return 0
+}

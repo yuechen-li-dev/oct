@@ -10,10 +10,12 @@ record Payload {
     Enabled: Bool
     Samples: Float<m/s^2>[]
     Mode: Mode
+    Fallback: Option<Mode>
+    Notes: Option<String>[]
 }
 
-// A record with a string, a boolean, a dimensioned array and an enum is
-// representable as .octagon. `oct artifact` evaluates this entry point and
+// A record with a string, a boolean, a dimensioned array, an enum, an option
+// and an array of options is representable as .octagon. `oct artifact` evaluates this entry point and
 // publishes the file.
 [Artifact]
 fn EmitSupportedShapes() -> Void {
@@ -22,5 +24,7 @@ fn EmitSupportedShapes() -> Void {
         Enabled: true
         Samples: [9.81m/s^2, 1.23m/s^2]
         Mode: Mode.Auto
+        Fallback: Option.Some(Mode.Manual)
+        Notes: [Option.Some("first run"), Option.None]
     })
 }

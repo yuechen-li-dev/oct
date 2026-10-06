@@ -1,0 +1,8 @@
+expect error: "let value: expected Option<Int>, got Int"
+
+package Main
+
+fn Main() -> Int {
+    let value: Option<Int> = 5
+    return 0
+}

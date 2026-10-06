@@ -1,0 +1,57 @@
+package OctagonLoadValid
+
+enum Rank {
+    Low
+    High
+}
+
+record Site {
+    Code: String
+    Rank: Option<Rank>
+}
+
+record Survey {
+    Name: String
+    Depth: Option<Float<m>>
+    Flow: Option<Float<m^3/s>>
+    Readings: Option<Int>[]
+    Nested: Option<Option<Bool>>
+    Site: Option<Site>
+}
+
+fn Count(value: Option<Int>) -> Int {
+    return match value {
+        case Option.Some(v) => v
+        case Option.None => 0
+    }
+}
+
+[Fact]
+fn LoadOptionFields() -> Void ! Error {
+    let survey = LoadOctagon<Survey>("Language/Data/Octagon/valid/option_record.octagon")?
+    Assert.True(survey.Depth == Option.Some(2.5m), "Some keeps a dimensioned payload")
+    Assert.True(survey.Flow == Option.None, "None loads as None of the declared option")
+    Assert.Equal(3, Len(survey.Readings), "an array of options keeps every element")
+    Assert.Equal(4, Count(survey.Readings[0]) + Count(survey.Readings[1]) + Count(survey.Readings[2]), "1 + none + 3")
+    Assert.True(survey.Nested == Option.Some(Option.None), "an option of an option")
+    let code = match survey.Site {
+        case Option.Some(site) => site.Code
+        case Option.None => ""
+    }
+    Assert.Equal("D1", code, "a record payload")
+    let high = match survey.Site {
+        case Option.Some(site) => site.Rank == Option.Some(Rank.High)
+        case Option.None => false
+    }
+    Assert.True(high, "an option of an enum inside a record payload")
+}
+
+[Fact]
+fn LoadOptionAtTheTopLevel() -> Void ! Error {
+    let some = LoadOctagon<Option<Int>>("Language/Data/Octagon/valid/option_some.octagon")?
+    let none = LoadOctagon<Option<Int>>("Language/Data/Octagon/valid/option_none.octagon")?
+    Assert.True(some == Option.Some(42), "Option.Some(42) loads as an Option<Int>")
+    Assert.True(none == Option.None, "Option.None loads as an Option<Int>")
+    let widened = LoadOctagon<Option<String>>("Language/Data/Octagon/valid/option_none.octagon")?
+    Assert.True(widened == Option.None, "Option.None is None of whichever option is declared")
+}

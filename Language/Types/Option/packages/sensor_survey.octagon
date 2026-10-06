@@ -1,0 +1,11 @@
+Survey {
+    Latest: Option.Some(Sample {
+        Station: "north"
+        Level: Option.Some(2.5)
+    })
+    Quality: Option.Some(Quality.Suspect("drift"))
+    Earlier: [Option.None, Option.Some(Sample {
+        Station: "south"
+        Level: Option.None
+    })]
+}

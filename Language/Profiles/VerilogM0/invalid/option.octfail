@@ -1,0 +1,11 @@
+expect error: "Verilog profile does not support Option<Int> values"
+
+profile Verilog
+
+fn Pick(A: Int) -> Int {
+    let held: Option<Int> = Option.Some(A)
+    return match held {
+        case Option.Some(v) => v
+        case Option.None => 0
+    }
+}

@@ -1,0 +1,11 @@
+expect error: "`Option` is the builtin type `Option<T>`; a record cannot be named Option"
+
+package Main
+
+template record Option<T> {
+    Value: T
+}
+
+fn Main() -> Int {
+    return 0
+}

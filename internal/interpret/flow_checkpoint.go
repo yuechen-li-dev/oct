@@ -787,7 +787,7 @@ func (i interpreter) restoreCheckpointValue(checkpoint FlowCheckpointValue, expe
 			}
 			return Value{Kind: ValueRecord, Record: RecordValue{TypeName: checkpoint.RecordType, Fields: fields, FieldOrder: order}}, nil
 		}
-		if enumDecl, resolved, ok := i.lookupEnumDecl(currentPkg, expectedTypeString(expected)); ok {
+		if enumDecl, resolved, ok := i.lookupEnumDeclOf(currentPkg, expected); ok {
 			if checkpoint.Kind != string(ValueEnum) {
 				return Value{}, fmt.Errorf("kind %s is not Enum", checkpoint.Kind)
 			}

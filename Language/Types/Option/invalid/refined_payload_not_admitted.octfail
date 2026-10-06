@@ -1,0 +1,11 @@
+expect error: "enum 'Option<Positive>' variant 'Some' payload: invalid compile-time-known construction of refined concept Positive"
+
+package Main
+
+concept Positive = Float {
+    Require(Self > 0.0, "a positive value must be greater than zero")
+}
+
+fn Main() -> Option<Positive> {
+    return Option.Some(-1.5)
+}

@@ -1,0 +1,7 @@
+expect error: "function Main: enum 'Option' variant 'Some' requires exactly 1 payload argument"
+
+package Main
+
+fn Main() -> Option<Int> {
+    return Option.Some(1, 2)
+}

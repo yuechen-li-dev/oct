@@ -1,0 +1,7 @@
+expect error: "enum 'Option<Int>' variant 'Some' payload expects Int, got String"
+
+package Main
+
+fn Main() -> Option<Int> {
+    return Option.Some("three")
+}

@@ -1,0 +1,215 @@
+package OptionTypes
+
+enum Event {
+    Quiet
+    Reading(Option<Float>)
+}
+
+record Window {
+    Label: String
+    Peak: Option<Float>
+    Marks: Option<Int>[]
+}
+
+template record Holder<T> {
+    Held: T
+}
+
+template fn Keep<T>(value: T) -> T {
+    return value
+}
+
+flow Meter() accepts sample: Option<Float> yields Option<Float> -> Int {
+    board {
+        Count: Int
+    }
+
+    state Run {
+        board.Count = board.Count + 1
+        if board.Count == 3 {
+            return board.Count
+        }
+        yield match sample {
+            case Option.Some(v) => Option.Some(v * 2)
+            case Option.None => Option.None
+        }
+        goto Run
+    }
+}
+
+fn HalfOf(value: Option<Float>) -> Float {
+    return match value {
+        case Option.Some(v) => v / 2
+        case Option.None => -1.0
+    }
+}
+
+fn IntOr(value: Option<Int>, fallback: Int) -> Int {
+    return match value {
+        case Option.Some(v) => v
+        case Option.None => fallback
+    }
+}
+
+[Fact]
+fn AFloatOptionMadeFromIntsHoldsFloats() -> Void {
+    let levels: Option<Float>[] = [Option.Some(1), Option.None, Option.Some(3)]
+    Assert.Equal(0.5, HalfOf(levels[0]), "Some(1) in an Option<Float>[] holds 1.0")
+    Assert.Equal(-1.0, HalfOf(levels[1]), "None stays None")
+    Assert.Equal(1.5, HalfOf(levels[2]), "Some(3) holds 3.0")
+    Assert.Equal(0.5, HalfOf(Option.Some(1)), "an argument is converted the same way")
+
+    let series: Option<Float[]> = Option.Some([1, 2])
+    let first = match series {
+        case Option.Some(values) => values[0] / 2
+        case Option.None => -1.0
+    }
+    Assert.Equal(0.5, first, "an array payload of an Option<Float[]> holds Floats")
+
+    var slots = [Option<Float>.None, Option<Float>.None]
+    slots[1] = Option.Some(1)
+    Assert.Equal(0.5, HalfOf(slots[1]), "an element assigned to an inferred array is the element type")
+}
+
+[Fact]
+fn AnEnumPayloadDecidesItsOption() -> Void {
+    let event = Event.Reading(Option.Some(1))
+    let silent = Event.Reading(Option.None)
+    let half = match event {
+        case Event.Reading(level) => HalfOf(level)
+        case Event.Quiet => -2.0
+    }
+    let none = match silent {
+        case Event.Reading(level) => HalfOf(level)
+        case Event.Quiet => -2.0
+    }
+    Assert.Equal(0.5, half, "the payload of Reading is an Option<Float>")
+    Assert.Equal(-1.0, none, "Option.None as an enum payload")
+    Assert.True(event == Event.Reading(Option.Some(1.0)), "an enum that holds an option compares by value")
+    Assert.True(event != silent, "Some and None payloads differ")
+}
+
+[Fact]
+fn AppendTakesTheElementType() -> Void {
+    var marks: Option<Int>[] = []
+    marks = Append(marks, Option.Some(4))
+    marks = Append(marks, Option.None)
+    Assert.Equal(2, Len(marks), "two options appended")
+    Assert.Equal(4, IntOr(marks[0], 0), "Option.Some(4) took the element type")
+    Assert.Equal(-1, IntOr(marks[1], -1), "Option.None took the element type")
+}
+
+[Fact]
+fn ArraysOfOptionsAreValues() -> Void {
+    let original = Window { Label: "w" Peak: Option.Some(2.5) Marks: [Option.Some(1), Option.None] }
+    var marks = original.Marks
+    marks[1] = Option.Some(9)
+    Assert.True(original.Marks[1] == Option.None, "the record keeps its own array of options")
+    Assert.Equal(9, IntOr(marks[1], 0), "the copy was changed")
+
+    var grid: Option<Int>[][] = [[Option.Some(1), Option.None], [Option.None, Option.Some(4)]]
+    grid[0, 1] = Option.Some(2)
+    Assert.Equal(7, IntOr(grid[0][0], 0) + IntOr(grid[0][1], 0) + IntOr(grid[1][0], 0) + IntOr(grid[1][1], 0), "a nested array of options")
+
+    var held = [1, 2, 3]
+    let wrapped: Option<Int[]> = Option.Some(held)
+    held[0] = 50
+    let firstHeld = match wrapped {
+        case Option.Some(values) => values[0]
+        case Option.None => -1
+    }
+    Assert.Equal(1, firstHeld, "an option holds its own copy of an array payload")
+}
+
+[Fact]
+fn AVariableAndALoopCarryAnOption() -> Void {
+    var best: Option<Int> = Option.None
+    let values = [3, 9, 4]
+    for i in 0..Len(values) {
+        let better = match best {
+            case Option.Some(current) => values[i] > current
+            case Option.None => true
+        }
+        if better {
+            best = Option.Some(values[i])
+        }
+    }
+    Assert.True(best == Option.Some(9), "the loop kept the largest value")
+
+    var remaining = 3
+    var last: Option<String> = Option.None
+    while remaining > 0 {
+        last = if remaining == 1 { Option.Some("done") } else { Option.None }
+        remaining = remaining - 1
+    }
+    Assert.True(last == Option.Some("done"), "an if expression assigned in a loop")
+}
+
+[Fact]
+fn AFunctionValueCapturesAnOption() -> Void {
+    let fallback: Option<Int> = Option.Some(7)
+    let pick = fn(value: Option<Int>) -> Int with { fallback: fallback } {
+        return match value {
+            case Option.Some(v) => v
+            case Option.None => IntOr(fallback, 0)
+        }
+    }
+    Assert.Equal(2, pick(Option.Some(2)), "the argument is used when it is Some")
+    Assert.Equal(7, pick(Option.None), "the captured option is used otherwise")
+}
+
+[Fact]
+fn AnOptionIsATemplateArgument() -> Void {
+    let slot = Holder<Option<Int>> { Held: Option.Some(3) }
+    Assert.Equal(3, IntOr(slot.Held, 0), "Holder<Option<Int>> holds an Option<Int>")
+    Assert.True(Keep<Option<String>>(Option.None) == Option.None, "a template function takes an option type")
+    Assert.True(Keep<Option<Int>[]>([Option.Some(1)])[0] == Option.Some(1), "and an array of options")
+}
+
+[Fact]
+fn AFlowAcceptsAndYieldsOptions() -> Void {
+    let machine = Meter()
+    Step(machine, Option.Some(1))
+    Assert.Equal(1.0, HalfOf(Yielded(machine)!), "Some(1) arrived as 1.0 and 2.0 was yielded")
+    Step(machine, Option.None)
+    Assert.True(Yielded(machine)! == Option.None, "None is yielded for None")
+    Step(machine, Option<Float>.Some(4.5))
+    Assert.Equal(3, Result(machine)!, "the flow counted three turns")
+}
+
+[Fact]
+fn SwitchArmsAndConditionsUseOptions() -> Void {
+    let level: Option<Int> = Option.Some(2)
+    let grade: Option<String> = switch {
+        case level == Option.None => Option.None
+        case level == Option.Some(2) => Option.Some("two")
+        else => Option.Some("other")
+    }
+    Assert.True(grade == Option.Some("two"), "a condition switch yields the declared option")
+    let size: Option<Int> = switch IntOr(level, 0) {
+        case 2 => Option.Some(20)
+        else => Option.None
+    }
+    Assert.Equal(20, IntOr(size, 0), "the arms of a switch over a value take the declared option")
+    let written = switch IntOr(level, 0) {
+        case 2 => Option<Int>.Some(30)
+        else => Option<Int>.None
+    }
+    Assert.Equal(30, IntOr(written, 0), "a written type argument where nothing declares the type")
+}
+
+fn Dose(risk: Float) -> Option<Float> {
+    return when utility Option<Float> {
+        case Option.Some(2) when risk >= 0.6 score 80
+        case Option.Some(0.5) when risk >= 0.3 score 40
+        else Option.None
+    }
+}
+
+[Fact]
+fn UtilitySelectionChoosesAmongOptions() -> Void {
+    Assert.True(Dose(0.7) == Option.Some(2.0), "the highest scoring candidate is selected")
+    Assert.True(Dose(0.4) == Option.Some(0.5), "a lower candidate when the higher does not qualify")
+    Assert.True(Dose(0.1) == Option.None, "the fallback when none qualifies")
+    Assert.Equal(1.0, HalfOf(Dose(0.9)), "Some(2) as a candidate of Option<Float> holds 2.0")
+}

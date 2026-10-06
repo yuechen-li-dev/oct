@@ -1,0 +1,9 @@
+expect error: "let wider: expected Option<Float>, got Option<Int>"
+
+package Main
+
+fn Main() -> Int {
+    let narrow: Option<Int> = Option.Some(1)
+    let wider: Option<Float> = narrow
+    return 0
+}

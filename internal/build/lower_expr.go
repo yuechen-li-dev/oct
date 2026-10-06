@@ -343,6 +343,15 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinarySA:" + e.Operator, Args: lowerMIRValues([]string{l, r}, nil), ArgTypes: []string{lt, rt}, Builtin: true, RetType: "Bool[]"})
 			return tmp, "Bool[]", false, nil
 		}
+		if _, isOption := parseOptionType(lt); isOption && (e.Operator == "==" || e.Operator == "!=") {
+			tmp := c.temp("Bool")
+			equal := fmt.Sprintf("__octOptionEqual(%s, %s)", l, r)
+			if e.Operator == "!=" {
+				equal = "!" + equal
+			}
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRBackendValue{Backend: "go", Expression: equal, Type: "Bool", Reason: "option-equality"}})
+			return tmp, "Bool", false, nil
+		}
 		ret := lt
 		switch e.Operator {
 		case "==", "!=", "<", "<=", ">", ">=", "and", "or":
@@ -413,6 +422,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRUnary{Op: op, Value: lowerMIRValue(v, t), Type: t}})
 		return tmp, t, false, nil
 	case ast.CallExpr:
+		if construction, ok := ast.AsOptionConstruction(e); ok {
+			return c.lowerOptionConstruction(construction)
+		}
 		if calleeField, ok := e.Callee.(ast.FieldAccessExpr); ok {
 			if enumType, variant, ok := c.flattenEnumVariantExpr(calleeField); ok {
 				enumValue, resolvedEnumType, enumFound, err := c.resolveEnumVariantConstructor(enumType, variant, e.Arguments)
@@ -2143,13 +2155,14 @@ func (c *lowerCtx) lowerSwitchExpr(e ast.SwitchExpr) (string, string, bool, erro
 	c.blocks = append(c.blocks, MIRBlock{Label: fmt.Sprintf("b%d", mergeID)})
 
 	var (
-		subject    string
-		out        string
-		resultType string
+		subject     string
+		subjectType string
+		out         string
+		resultType  string
 	)
 	if e.Subject != nil {
 		var err error
-		subject, _, _, err = c.lowerExpr(e.Subject)
+		subject, subjectType, _, err = c.lowerExpr(e.Subject)
 		if err != nil {
 			return "", "", false, err
 		}
@@ -2176,6 +2189,10 @@ func (c *lowerCtx) lowerSwitchExpr(e ast.SwitchExpr) (string, string, bool, erro
 				return "", "", false, err
 			}
 			cond = condValue
+		} else if variant, ok := optionCaseLabel(switchCase.Match); ok {
+			// A label names a variant, so it selects on the tag.
+			cond = c.temp("Bool")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: cond, Value: MIRIntrinsicValue{Kind: "enum-is", Type: "Bool", Args: []MIRValue{lowerMIRValue(subject, subjectType)}, Metadata: []string{subjectType, variant}}})
 		} else {
 			matchValue, _, _, err := c.lowerExpr(switchCase.Match)
 			if err != nil {
@@ -2951,6 +2968,9 @@ func (c *lowerCtx) resolveEnumVariantConstructor(enumType string, variant string
 }
 
 func enumShortName(enumType string) string {
+	if _, ok := parseOptionType(enumType); ok {
+		return ast.OptionTypeName
+	}
 	if dot := strings.Index(enumType, "."); dot >= 0 {
 		return enumType[dot+1:]
 	}
@@ -2962,6 +2982,9 @@ func (c *lowerCtx) lookupEnumVariantPayloadType(enumType string, variant string)
 }
 
 func lookupEnumVariantPayloadTypeForProgram(program project.Program, currentPkg string, enumType string, variant string) (string, bool) {
+	if payloadType, ok := parseOptionType(enumType); ok {
+		return payloadType, variant == ast.OptionSomeVariant
+	}
 	enumPkg := currentPkg
 	enumName := enumType
 	if dot := strings.Index(enumType, "."); dot >= 0 {
@@ -3012,6 +3035,9 @@ func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 		return "(" + strings.Join(parts, ", ") + ")"
 	}
 	base := t.Name
+	if t.Package == "" && t.Name == ast.OptionTypeName && len(t.TypeArguments) == 1 {
+		base = optionTypeString(typeRefStringForPackage(currentPkg, t.TypeArguments[0]))
+	}
 	if t.VectorOf != nil {
 		base = "Vector<" + typeRefStringForPackage(currentPkg, *t.VectorOf) + ">"
 	}

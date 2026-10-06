@@ -976,7 +976,7 @@ func (i interpreter) defaultFlowBoardValue(pkgName string, fieldType ast.TypeRef
 			}
 			return Value{Kind: ValueRecord, Record: RecordValue{TypeName: typeName, Fields: fields, FieldOrder: order}}
 		}
-		if enum, typeName, ok := i.lookupEnumDecl(pkgName, qualifiedTypeRefName(fieldType)); ok && len(enum.Variants) > 0 {
+		if enum, typeName, ok := i.lookupEnumDeclOf(pkgName, fieldType); ok && len(enum.Variants) > 0 {
 			variant := enum.Variants[0]
 			value := EnumValue{TypeName: typeName, Variant: variant.Name}
 			if variant.Payload != nil {
@@ -2580,6 +2580,9 @@ func (i interpreter) switchCaseMatches(env *environment, pkgName string, subject
 }
 
 func (i interpreter) evalCallExpr(env *environment, pkgName string, expr ast.CallExpr) (evalResult, error) {
+	if construction, ok := ast.AsOptionConstruction(expr); ok {
+		return i.evalOptionConstruction(env, pkgName, construction)
+	}
 	if enumName, variantName, ok := enumVariantFromCallee(expr.Callee); ok {
 		enumDecl, enumTypeName, exists := i.lookupEnumDecl(pkgName, enumName)
 		if !exists {
@@ -3026,7 +3029,8 @@ func qualifyCrossPackageValue(value Value, pkgName string) Value {
 			value.Record.Fields[fieldName] = qualifyCrossPackageValue(fieldValue, pkgName)
 		}
 	case ValueEnum:
-		if !strings.Contains(value.Enum.TypeName, ".") {
+		// `Option` is one type for the whole program and belongs to no package.
+		if !strings.Contains(value.Enum.TypeName, ".") && value.Enum.TypeName != ast.OptionTypeName {
 			value.Enum.TypeName = pkgName + "." + value.Enum.TypeName
 		}
 		if value.Enum.Payload != nil {
@@ -5876,6 +5880,11 @@ func (i interpreter) lookupRecordDecl(currentPackage string, typeName string) (a
 }
 
 func (i interpreter) lookupEnumDecl(currentPackage string, typeName string) (ast.EnumDecl, string, bool) {
+	if typeName == ast.OptionTypeName {
+		// By name alone the payload type of `Some` is not known; a caller
+		// that has the written type uses lookupEnumDeclOf.
+		return optionEnumDecl(ast.TypeRef{Inferred: true}), ast.OptionTypeName, true
+	}
 	if pkgName, localName, ok := splitQualifiedTypeName(typeName); ok {
 		enumDecl, exists := i.enums[pkgName+"."+localName]
 		return enumDecl, pkgName + "." + localName, exists

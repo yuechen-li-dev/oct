@@ -148,6 +148,9 @@ func emitGoValue(value MIRValue) (string, error) {
 			pkg = parts[0] + "_"
 		}
 		out := pkg + name + "{Tag: " + name + "_" + v.Variant + "_tag"
+		if payloadType, ok := parseOptionType(v.EnumType); ok {
+			out = goOptionType(payloadType) + "{Tag: Option_" + v.Variant + "_tag"
+		}
 		if v.Payload != nil {
 			payload, err := emitGoValue(v.Payload)
 			if err != nil {

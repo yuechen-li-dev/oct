@@ -1,0 +1,7 @@
+expect error: "not defined for Option<Int> and Int"
+
+package Main
+
+fn Main(left: Option<Int>) -> Bool {
+    return left == 3
+}

@@ -1,0 +1,7 @@
+expect error: "undefined variable: Some; the variants of an Option are written `Option.None` and `Option.Some(value)`"
+
+package Main
+
+fn Main() -> Option<Int> {
+    return Some(1)
+}

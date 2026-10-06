@@ -1,0 +1,9 @@
+expect error: "non-exhaustive switch over enum 'Option<Int>'; missing cases and no else"
+
+package Main
+
+fn Main(value: Option<Int>) -> Bool {
+    return switch value {
+        case Option.None => true
+    }
+}

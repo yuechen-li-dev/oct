@@ -57,6 +57,10 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 		return Value{Kind: ValueArray, Array: elements}, nil
 	}
 
+	if ast.IsOptionType(expectedType) {
+		return i.materializeOctagonOption(currentPkg, expectedType, expr)
+	}
+
 	if refinement, refinementPkg, ok := i.lookupRefinementDecl(currentPkg, expectedTypeName(expectedType)); ok {
 		base, err := i.materializeOctagonValue(refinementPkg, refinement.Target, expr)
 		if err != nil {
@@ -147,7 +151,7 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 				fieldType.ArrayDepth++
 				fieldType.IsArray = true
 			}
-			value, err := i.materializeOctagonValue(currentPkg, fieldType, fieldExpr)
+			value, err := i.materializeOctagonValueOf(currentPkg, resolvedRecordName, fieldType, fieldExpr)
 			if err != nil {
 				if recordDecl.IsTable {
 					return Value{}, fmt.Errorf("record table %s column %s mismatch: %w", expectedTypeString(expectedType), declaredField.Name, err)
@@ -211,7 +215,7 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 					if len(payload) != 1 {
 						return Value{}, fmt.Errorf("enum %s variant %s requires exactly 1 payload argument, got %d", expectedTypeString(expectedType), enumVariant, len(payload))
 					}
-					value, err := i.materializeOctagonValue(currentPkg, *declaredVariant.Payload, payload[0])
+					value, err := i.materializeOctagonValueOf(currentPkg, resolvedEnumName, *declaredVariant.Payload, payload[0])
 					if err != nil {
 						return Value{}, fmt.Errorf("enum %s variant %s payload mismatch: %w", expectedTypeString(expectedType), enumVariant, err)
 					}
@@ -227,6 +231,19 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 	}
 
 	return Value{}, fmt.Errorf("unsupported expected type %s", expectedTypeString(expectedType))
+}
+
+// materializeOctagonValueOf loads a field of a record, or the payload of an
+// enum variant, whose declaring type is ownerType. The field's type was
+// written in the owner's package, so it is resolved there, and a value of a
+// type from that package is named as any value that leaves its package is.
+func (i interpreter) materializeOctagonValueOf(currentPkg string, ownerType string, expectedType ast.TypeRef, expr ast.Expr) (Value, error) {
+	ownerPkg := packageForTypeName(currentPkg, ownerType)
+	value, err := i.materializeOctagonValue(ownerPkg, expectedType, expr)
+	if err != nil || ownerPkg == currentPkg {
+		return value, err
+	}
+	return qualifyCrossPackageValue(value, ownerPkg), nil
 }
 
 func (i interpreter) lookupRefinementDecl(currentPackage string, typeName string) (ast.ConceptDecl, string, bool) {
@@ -260,6 +277,9 @@ func expectedTypeString(typeRef ast.TypeRef) string {
 		typeRef.ArrayDepth = 1
 	}
 	name := expectedTypeName(typeRef)
+	if typeRef.Package == "" && typeRef.Name == ast.OptionTypeName && len(typeRef.TypeArguments) == 1 {
+		name += "<" + expectedTypeString(typeRef.TypeArguments[0]) + ">"
+	}
 	if (name == "Int" || name == "Float") && !typeRef.Dimension.IsDimensionless() {
 		name += "<" + typeRef.Dimension.String() + ">"
 	}

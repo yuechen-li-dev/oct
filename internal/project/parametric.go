@@ -341,6 +341,13 @@ func (e *parametricElaborator) rewriteType(pkgName string, t ast.TypeRef, subst 
 		}
 		return ast.TypeRef{Function: &ast.FunctionTypeRef{Parameters: []ast.TypeRef{owner}, ReturnType: result}, SelectorOwner: &owner, SelectorResult: &result}, nil
 	}
+	if t.Package == "" && t.Name == ast.OptionTypeName && len(t.TypeArguments) > 0 {
+		// `Option<T>` is a builtin enum, not a template: it is one type for
+		// the whole program, so it is not copied into the package that
+		// names it. Its argument has been rewritten above, and the
+		// typechecker checks that there is one.
+		return t, nil
+	}
 	if len(t.TypeArguments) > 0 {
 		originPkg := t.Package
 		if originPkg == "" {

@@ -1,0 +1,14 @@
+expect error: "fallible expression must be handled explicitly"
+
+package Main
+
+fn Parse(text: String) -> Int ! Error {
+    if text == "" {
+        return error("empty input")
+    }
+    return 1
+}
+
+fn Main() -> Option<Int> {
+    return Option.Some(Parse("x"))
+}

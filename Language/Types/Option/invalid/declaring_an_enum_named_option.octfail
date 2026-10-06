@@ -1,0 +1,12 @@
+expect error: "`Option` is the builtin type `Option<T>`; a enum cannot be named Option"
+
+package Main
+
+enum Option {
+    None
+    Some(Int)
+}
+
+fn Main() -> Int {
+    return 0
+}

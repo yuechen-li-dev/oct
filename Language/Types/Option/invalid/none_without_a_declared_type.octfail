@@ -1,0 +1,8 @@
+expect error: "`Option.None` does not say which Option it is, and nothing here declares it; declare the type where the value goes (`let x: Option<T> = Option.None`), or write `Option<T>.None`"
+
+package Main
+
+fn Main() -> Int {
+    let level = Option.None
+    return 0
+}

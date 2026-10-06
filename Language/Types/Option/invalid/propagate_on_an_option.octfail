@@ -1,0 +1,12 @@
+expect error: "operator '?' requires fallible expression"
+
+package Main
+
+fn Half(value: Int) -> Option<Int> {
+    return Option.Some(value / 2)
+}
+
+fn Main() -> Int ! Error {
+    let half = Half(4)?
+    return 0
+}

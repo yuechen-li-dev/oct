@@ -1,0 +1,11 @@
+expect error: "enum 'Option<Int>' variant 'Some' payload expects Int, got Void"
+
+package Main
+
+fn Nothing() -> Void {
+    return
+}
+
+fn Main() -> Option<Int> {
+    return Option.Some(Nothing())
+}

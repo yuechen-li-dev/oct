@@ -1,0 +1,191 @@
+package OptionTypes
+
+concept Positive = Float {
+    Require(Self > 0.0, "a positive value must be greater than zero")
+}
+
+record table Readings {
+    Station: String
+    Level: Option<Float>
+}
+
+template record Slot<T> {
+    Held: Option<T>
+}
+
+template fn Wrap<T>(value: T) -> Option<T> {
+    return Option.Some(value)
+}
+
+template fn Nothing<T>() -> Option<T> {
+    return Option.None
+}
+
+template fn OrElse<T>(value: Option<T>, fallback: T) -> T {
+    return match value {
+        case Option.Some(v) => v
+        case Option.None => fallback
+    }
+}
+
+fn Parse(text: String) -> Option<Int> ! Error {
+    if text == "" {
+        return error("empty input")
+    }
+    if text == "none" {
+        return Option.None
+    }
+    return Option.Some(Len(text))
+}
+
+fn ParsedOrMinusOne(text: String) -> Int ! Error {
+    let parsed = Parse(text)?
+    return match parsed {
+        case Option.Some(v) => v
+        case Option.None => -1
+    }
+}
+
+flow Sampler(first: Option<Float>) -> Float {
+    board {
+        Last: Option<Float>
+        Seen: Option<Float>[]
+    }
+
+    state Run {
+        board.Last = first
+        board.Seen = [first, Option.None]
+        suspend
+        board.Last = Option.Some(8)
+        board.Seen[1] = Option.Some(3)
+        suspend
+        board.Last = Option.None
+        return match board.Seen[1] {
+            case Option.Some(v) => v / 2
+            case Option.None => -1.0
+        }
+    }
+}
+
+fn LevelOr(value: Option<Float>, fallback: Float) -> Float {
+    return match value {
+        case Option.Some(v) => v
+        case Option.None => fallback
+    }
+}
+
+[Fact]
+fn ATemplateFunctionMakesTheOptionOfItsArgument() -> Void {
+    Assert.Equal(7, OrElse<Int>(Wrap<Int>(7), 0), "Wrap<Int>(7) is Some(7)")
+    Assert.Equal("x", OrElse<String>(Wrap<String>("x"), ""), "Wrap<String> is a different option")
+    Assert.Equal(-1, OrElse<Int>(Nothing<Int>(), -1), "Nothing<Int>() is None")
+    Assert.Equal(1.5, OrElse<Float>(Nothing<Float>(), 1.5), "Nothing<Float>() is None of another option")
+    Assert.True(Wrap<Int>(2) == Option.Some(2), "an option from a template compares with one written here")
+}
+
+[Fact]
+fn ATemplateRecordHoldsAnOptionOfItsArgument() -> Void {
+    let full = Slot<Int> { Held: Option.Some(5) }
+    let empty = Slot<Int> { Held: Option.None }
+    Assert.Equal(5, OrElse<Int>(full.Held, 0), "the field of Slot<Int> is an Option<Int>")
+    Assert.Equal(0, OrElse<Int>(empty.Held, 0), "and may be None")
+}
+
+[Fact]
+fn ATableColumnHoldsOneOptionForEachRow() -> Void {
+    let readings = Readings {
+        Station: ["a", "b", "c"]
+        Level: [Option.Some(1), Option.None, Option.Some(2.5)]
+    }
+    Assert.Equal(1.0, LevelOr(readings.Level[0], -1.0), "the first cell is Some(1.0)")
+    Assert.Equal(-1.0, LevelOr(readings.Level[1], -1.0), "the second cell is None")
+    Assert.Equal(2.5, LevelOr(readings.Level[2], -1.0), "the third cell is Some(2.5)")
+    Assert.True(readings.Level[1] == Option.None, "a cell compares with None")
+}
+
+[Fact]
+fn AFallibleFunctionMayReturnAnOption() -> Void {
+    Assert.Equal(3, ParsedOrMinusOne("abc")!, "a parsed value")
+    Assert.Equal(-1, ParsedOrMinusOne("none")!, "a parsed None")
+    Assert.Error(Parse(""), "an error is not None")
+    let direct = Parse("ab")!
+    Assert.True(direct == Option.Some(2), "the result of `!` is the option")
+}
+
+flow Idle() -> String {
+    board {
+        Last: Option<Float>
+        Count: Int
+    }
+
+    state Run {
+        board.Count = 1
+        suspend
+        return "done"
+    }
+}
+
+[Fact]
+fn ABoardFieldOfAnOptionTypeStartsAsNone() -> Void {
+    let machine = Idle()
+    Step(machine)
+    let board = BoardSnapshot(machine)!
+    Assert.True(board.Last == Option.None, "a board field no state has assigned is None")
+    Assert.Equal(-1.0, LevelOr(board.Last, -1.0), "and matches as None")
+}
+
+[Fact]
+fn AFlowKeepsOptionsOnItsBoard() -> Void {
+    let machine = Sampler(Option.Some(2))
+    Step(machine)
+    let first = BoardSnapshot(machine)!
+    Assert.Equal(2.0, LevelOr(first.Last, -1.0), "the parameter reached the board as Some(2.0)")
+    Assert.True(first.Seen[1] == Option.None, "an array of options on the board")
+    Step(machine)
+    let second = BoardSnapshot(machine)!
+    Assert.Equal(8.0, LevelOr(second.Last, -1.0), "a board field assignment takes the field type")
+    Assert.Equal(3.0, LevelOr(second.Seen[1], -1.0), "a board element assignment takes the element type")
+    Assert.True(first.Seen[1] == Option.None, "the earlier snapshot is unchanged")
+    Step(machine)
+    Assert.Equal(1.5, Result(machine)!, "the flow returns half of Some(3.0)")
+}
+
+[Fact]
+fn ARefinedPayloadIsCheckedLikeAnyRefinedValue() -> Void {
+    let gap: Option<Positive> = Option.Some(2.5)
+    let width = match gap {
+        case Option.Some(v) => v * 2.0
+        case Option.None => 0.0
+    }
+    Assert.Equal(5.0, width, "a refined payload is used as the Float it refines")
+    let whole: Option<Positive> = Option.Some(3)
+    let half = match whole {
+        case Option.Some(v) => v / 2
+        case Option.None => 0.0
+    }
+    Assert.Equal(1.5, half, "Some(3) in an option of a refined Float holds 3.0")
+}
+
+[Fact]
+fn AFunctionValueMayTakeAndReturnOptions() -> Void {
+    let bump: fn(Option<Int>) -> Option<Int> = fn(value: Option<Int>) -> Option<Int> {
+        return match value {
+            case Option.Some(v) => Option.Some(v + 1)
+            case Option.None => Option.None
+        }
+    }
+    Assert.True(bump(Option.Some(1)) == Option.Some(2), "a function value maps Some")
+    Assert.True(bump(Option.None) == Option.None, "a function value maps None")
+}
+
+[Fact]
+fn AssertEqualComparesOptions() -> Void {
+    let level: Option<Float> = Option.Some(1)
+    Assert.Equal(Option.Some(1.0), level, "the expected value takes the type of the actual one")
+    Assert.Equal(level, Option.Some(1), "and the other way round")
+    Assert.Equal(Option<Float>.None, LevelNone(), "None equals None")
+}
+
+fn LevelNone() -> Option<Float> {
+    return Option.None
+}

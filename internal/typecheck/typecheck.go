@@ -190,6 +190,7 @@ func Check(file ast.File) error {
 		flows:            make(map[string]flowSignature),
 		refinements:      make(map[string]refinementInfo),
 		typeNames:        make(map[string]struct{}),
+		options:          make(map[string]Type),
 	}
 	return checker.checkFile(file)
 }
@@ -208,6 +209,7 @@ func CheckProgram(program project.Program) error {
 			flows:                        make(map[string]flowSignature),
 			refinements:                  make(map[string]refinementInfo),
 			typeNames:                    make(map[string]struct{}),
+			options:                      make(map[string]Type),
 			allowUnresolvedImportedTypes: true,
 		}
 		if err := chk.registerPackageDeclarations(file); err != nil {
@@ -230,6 +232,7 @@ func CheckProgram(program project.Program) error {
 				enums:            imported.enums,
 				flows:            imported.flows,
 				refinements:      imported.refinements,
+				options:          imported.options,
 			}
 		}
 		chk.importedPackages = imports
@@ -356,6 +359,7 @@ type checker struct {
 	flows                        map[string]flowSignature
 	refinements                  map[string]refinementInfo
 	typeNames                    map[string]struct{}
+	options                      map[string]Type // every option type this checker has formed, by name; see option.go
 	importedPackages             map[string]packageSymbols
 	allowUnresolvedImportedTypes bool
 }
@@ -367,6 +371,7 @@ type packageSymbols struct {
 	enums            map[string]enumInfo
 	flows            map[string]flowSignature
 	refinements      map[string]refinementInfo
+	options          map[string]Type
 }
 
 type recordInfo struct {
@@ -1324,7 +1329,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 				return false, fmt.Errorf("function %s: type '%s' has no field '%s'", ctx.name, target.valueType.Name, node.Field)
 			}
 		}
-		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, c.optionExpected(&fieldType))
 		if err != nil {
 			return false, fmt.Errorf("function %s: assignment to %s.%s: %w", ctx.name, node.Target, node.Field, err)
 		}
@@ -1350,7 +1355,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if ctx.returnType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: Void function cannot return a value", ctx.name)
 		}
-		valueType, err := c.checkExpr(scope, node.Value, ctx)
+		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, c.optionExpected(&ctx.returnType))
 		if err != nil {
 			return false, fmt.Errorf("function %s: %w", ctx.name, err)
 		}
@@ -1681,7 +1686,7 @@ func checkIndexAssignmentTarget(c checker, scope *scope, indices []ast.Expr, val
 		filledType, err = c.checkArrayLiteral(scope, literal, ctx, &elementType, true)
 		valueType = ExprType{ValueType: filledType}
 	} else {
-		valueType, err = c.checkExpr(scope, value, ctx)
+		valueType, err = c.checkExprWithExpected(scope, value, ctx, c.optionExpected(&elementType))
 	}
 	if err != nil {
 		return fmt.Errorf("function %s: %s: %w", ctx.name, label, err)
@@ -1781,6 +1786,9 @@ func (c checker) checkExpr(scope *scope, expr ast.Expr, ctx functionContext) (Ex
 }
 
 func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx functionContext, expected *Type) (ExprType, error) {
+	if construction, ok := ast.AsOptionConstruction(expr); ok {
+		return c.checkOptionConstruction(scope, expr.(ast.CallExpr), construction, ctx, expected)
+	}
 	switch node := expr.(type) {
 	case ast.IntegerLiteral:
 		return ExprType{ValueType: Type{Base: BaseTypeInt, Dimension: node.Dimension}}, nil
@@ -1826,6 +1834,9 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			if _, exists := ctx.outerLocalScope.lookup(node.Name); exists {
 				return ExprType{}, fmt.Errorf("outer local '%s' is not captured; add it to 'with { ... }'", node.Name)
 			}
+		}
+		if node.Name == ast.OptionNoneVariant || node.Name == ast.OptionSomeVariant {
+			return ExprType{}, fmt.Errorf("undefined variable: %s; the variants of an Option are written `Option.None` and `Option.Some(value)`", node.Name)
 		}
 		return ExprType{}, fmt.Errorf("undefined variable: %s", node.Name)
 	case ast.FunctionExpr:
@@ -2041,7 +2052,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 		}
 		return ExprType{}, err
 	case ast.ParenExpr:
-		return c.checkExpr(scope, node.Inner, ctx)
+		return c.checkExprWithExpected(scope, node.Inner, ctx, c.optionExpected(expected))
 	case ast.BinaryExpr:
 		if isComparisonOperator(node.Operator) {
 			if leftBinary, ok := node.Left.(ast.BinaryExpr); ok && isComparisonOperator(leftBinary.Operator) {
@@ -2051,18 +2062,11 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 				return ExprType{}, fmt.Errorf("chained comparisons are not supported")
 			}
 		}
-		leftType, err := c.checkExpr(scope, node.Left, ctx)
+		leftType, rightType, err := c.checkBinaryOperands(scope, node, ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
-		if leftType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
-		}
-		rightType, err := c.checkExpr(scope, node.Right, ctx)
-		if err != nil {
-			return ExprType{}, err
-		}
-		if rightType.Fallible {
+		if leftType.Fallible || rightType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if leftType.EinTerm != nil || rightType.EinTerm != nil {
@@ -2173,11 +2177,11 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 		}
 		return ExprType{ValueType: innerType.ValueType}, nil
 	case ast.SwitchExpr:
-		return c.checkSwitchExpr(scope, node, ctx)
+		return c.checkSwitchExpr(scope, node, ctx, c.optionExpected(expected))
 	case ast.MatchExpr:
-		return c.checkEnumMatchExpr(scope, node, ctx)
+		return c.checkEnumMatchExpr(scope, node, ctx, c.optionExpected(expected))
 	case ast.IfExpr:
-		return c.checkIfExpr(scope, node, ctx)
+		return c.checkIfExpr(scope, node, ctx, c.optionExpected(expected))
 	case ast.BatchExpr:
 		return c.checkBatchExpr(scope, node, ctx)
 	case ast.UtilityWhenExpr:
@@ -2441,6 +2445,9 @@ func (c checker) checkEnumTargetedUtilityWhenExpr(scope *scope, expr ast.Utility
 }
 
 func (c checker) checkEnumUtilityVariantCandidate(scope *scope, ctx functionContext, targetEnum string, enumDecl enumInfo, expr ast.Expr, arm string) error {
+	if isOptionTypeName(targetEnum) {
+		return c.checkOptionUtilityCandidate(scope, ctx, Type{Name: targetEnum}, expr, arm)
+	}
 	candidateExpr := expr
 	var payloadArgs []ast.Expr
 	isConstruction := false
@@ -2857,7 +2864,47 @@ func formatRequirementExpr(expr ast.Expr) string {
 	}
 }
 
-func (c checker) checkIfExpr(scope *scope, expr ast.IfExpr, ctx functionContext) (ExprType, error) {
+// checkBinaryOperands types the two operands of a binary operator. The
+// operands of a comparison are checked as a pair, so that ordering an option
+// against `Option.None` is reported as what it is, an ordering of options.
+func (c checker) checkBinaryOperands(scope *scope, node ast.BinaryExpr, ctx functionContext) (ExprType, ExprType, error) {
+	if isComparisonOperator(node.Operator) {
+		return c.checkComparedPair(scope, node.Left, node.Right, ctx)
+	}
+	leftType, err := c.checkExpr(scope, node.Left, ctx)
+	if err != nil {
+		return ExprType{}, ExprType{}, err
+	}
+	rightType, err := c.checkExpr(scope, node.Right, ctx)
+	return leftType, rightType, err
+}
+
+// checkComparedPair types two expressions that are compared with each other,
+// by a comparison operator or Assert.Equal. The two are values of one type, so an
+// `Option.None` or `Option.Some(value)` on one side is the option type of the
+// other side.
+func (c checker) checkComparedPair(scope *scope, left ast.Expr, right ast.Expr, ctx functionContext) (ExprType, ExprType, error) {
+	if isUntypedOptionConstruction(left) && !isUntypedOptionConstruction(right) {
+		rightType, err := c.checkExpr(scope, right, ctx)
+		if err != nil {
+			return ExprType{}, ExprType{}, err
+		}
+		leftType, err := c.checkExprWithExpected(scope, left, ctx, c.optionExpected(&rightType.ValueType))
+		return leftType, rightType, err
+	}
+	leftType, err := c.checkExpr(scope, left, ctx)
+	if err != nil {
+		return ExprType{}, ExprType{}, err
+	}
+	var rightExpected *Type
+	if isUntypedOptionConstruction(right) {
+		rightExpected = c.optionExpected(&leftType.ValueType)
+	}
+	rightType, err := c.checkExprWithExpected(scope, right, ctx, rightExpected)
+	return leftType, rightType, err
+}
+
+func (c checker) checkIfExpr(scope *scope, expr ast.IfExpr, ctx functionContext, expected *Type) (ExprType, error) {
 	conditionType, err := c.checkExpr(scope, expr.Condition, ctx)
 	if err != nil {
 		return ExprType{}, fmt.Errorf("if expression condition: %w", err)
@@ -2869,11 +2916,11 @@ func (c checker) checkIfExpr(scope *scope, expr ast.IfExpr, ctx functionContext)
 		return ExprType{}, fmt.Errorf("if expression condition must be Bool, got %s", conditionType.ValueType)
 	}
 
-	thenType, err := c.checkExpr(scope, expr.ThenExpr, ctx)
+	thenType, err := c.checkExprWithExpected(scope, expr.ThenExpr, ctx, expected)
 	if err != nil {
 		return ExprType{}, fmt.Errorf("if expression then branch: %w", err)
 	}
-	elseType, err := c.checkExpr(scope, expr.ElseExpr, ctx)
+	elseType, err := c.checkExprWithExpected(scope, expr.ElseExpr, ctx, expected)
 	if err != nil {
 		return ExprType{}, fmt.Errorf("if expression else branch: %w", err)
 	}
@@ -2897,9 +2944,9 @@ func fallibilitySuffix(fallible bool) string {
 	return ""
 }
 
-func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext) (ExprType, error) {
+func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext, expected *Type) (ExprType, error) {
 	if expr.Subject == nil {
-		return c.checkConditionSwitchExpr(scope, expr, ctx)
+		return c.checkConditionSwitchExpr(scope, expr, ctx, expected)
 	}
 
 	subjectType, err := c.checkExpr(scope, expr.Subject, ctx)
@@ -2926,7 +2973,7 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 			return ExprType{}, fmt.Errorf("mixing enum and non-enum case labels is not allowed")
 		}
 
-		caseLabelType, err := c.checkSwitchCaseLabelType(scope, switchCase.Match, ctx)
+		caseLabelType, err := c.checkSwitchCaseLabelType(scope, switchCase.Match, ctx, subjectType.ValueType)
 		if err != nil {
 			return ExprType{}, fmt.Errorf("switch case %d: %w", index+1, err)
 		}
@@ -2955,7 +3002,7 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 			nonEnumCaseCount++
 		}
 
-		caseValueType, err := c.checkExpr(scope, switchCase.Value, ctx)
+		caseValueType, err := c.checkExprWithExpected(scope, switchCase.Value, ctx, expected)
 		if err != nil {
 			return ExprType{}, fmt.Errorf("switch case %d: %w", index+1, err)
 		}
@@ -2972,7 +3019,7 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 
 	hasElse := expr.Else != nil
 	if hasElse {
-		elseType, err := c.checkExpr(scope, expr.Else, ctx)
+		elseType, err := c.checkExprWithExpected(scope, expr.Else, ctx, expected)
 		if err != nil {
 			return ExprType{}, fmt.Errorf("switch else: %w", err)
 		}
@@ -3003,7 +3050,7 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 	return ExprType{ValueType: resultType}, nil
 }
 
-func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functionContext) (ExprType, error) {
+func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functionContext, expected *Type) (ExprType, error) {
 	subjectType, err := c.checkExpr(scope, expr.Subject, ctx)
 	if err != nil {
 		return ExprType{}, fmt.Errorf("match subject: %w", err)
@@ -3045,7 +3092,7 @@ func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functi
 		if matchCase.Binding != "" {
 			caseScope.define(matchCase.Binding, *variantInfo.payload, false)
 		}
-		caseValueType, err := c.checkExpr(caseScope, matchCase.Value, ctx)
+		caseValueType, err := c.checkExprWithExpected(caseScope, matchCase.Value, ctx, expected)
 		if err != nil {
 			return ExprType{}, fmt.Errorf("match case %d: %w", index+1, err)
 		}
@@ -3068,7 +3115,7 @@ func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functi
 	return ExprType{ValueType: resultType}, nil
 }
 
-func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext) (ExprType, error) {
+func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx functionContext, expected *Type) (ExprType, error) {
 	var resultType Type
 	hasResultType := false
 
@@ -3084,7 +3131,7 @@ func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx
 			return ExprType{}, fmt.Errorf("condition switch case must be Bool")
 		}
 
-		caseValueType, err := c.checkExpr(scope, switchCase.Value, ctx)
+		caseValueType, err := c.checkExprWithExpected(scope, switchCase.Value, ctx, expected)
 		if err != nil {
 			return ExprType{}, fmt.Errorf("condition switch case %d: %w", index+1, err)
 		}
@@ -3108,7 +3155,7 @@ func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx
 		return ExprType{}, fmt.Errorf("condition switch requires else arm")
 	}
 
-	elseType, err := c.checkExpr(scope, expr.Else, ctx)
+	elseType, err := c.checkExprWithExpected(scope, expr.Else, ctx, expected)
 	if err != nil {
 		return ExprType{}, fmt.Errorf("condition switch else: %w", err)
 	}
@@ -3138,7 +3185,14 @@ func hasMatchingShapeDifferentDimensions(left Type, right Type) bool {
 		left.Dimension != right.Dimension
 }
 
-func (c checker) checkSwitchCaseLabelType(scope *scope, expr ast.Expr, ctx functionContext) (Type, error) {
+func (c checker) checkSwitchCaseLabelType(scope *scope, expr ast.Expr, ctx functionContext, subjectType Type) (Type, error) {
+	if label, ok := expr.(ast.FieldAccessExpr); ok {
+		if target, ok := label.Target.(ast.IdentifierExpr); ok && target.Name == ast.OptionTypeName {
+			// A case label names a variant; it is not a value, and so it
+			// takes its Option type from the subject.
+			return c.checkOptionCaseLabel(label.Field, subjectType)
+		}
+	}
 	exprType, err := c.checkExpr(scope, expr, ctx)
 	if err != nil {
 		return Type{}, err
@@ -3277,7 +3331,7 @@ func (c checker) checkCallExpr(scope *scope, expr ast.CallExpr, ctx functionCont
 		if len(expr.Arguments) != 1 {
 			return ExprType{}, fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumName, variantName)
 		}
-		payloadType, err := c.checkExpr(scope, expr.Arguments[0], ctx)
+		payloadType, err := c.checkExprWithExpected(scope, expr.Arguments[0], ctx, c.optionExpected(variant.payload))
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -3681,11 +3735,7 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 		if len(arguments) != 3 {
 			return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
 		}
-		expectedType, err := c.checkExpr(scope, arguments[0], ctx)
-		if err != nil {
-			return ExprType{}, err
-		}
-		actualType, err := c.checkExpr(scope, arguments[1], ctx)
+		expectedType, actualType, err := c.checkComparedPair(scope, arguments[0], arguments[1], ctx)
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -3823,6 +3873,9 @@ func (c checker) qualifyImportedSignature(pkgName string, signature functionSign
 func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
 	if valueType.Name == "" {
 		return valueType
+	}
+	if isOptionTypeName(valueType.Name) {
+		return c.qualifyImportedOptionType(pkgName, valueType)
 	}
 	if strings.Contains(valueType.Name, ".") {
 		return valueType
@@ -6773,7 +6826,9 @@ func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, argumen
 		return ExprType{}, fmt.Errorf("Append requires array as first argument")
 	}
 
-	elementType, err := c.checkExpr(scope, arguments[1], ctx)
+	expectedElementType := arrayType.ValueType
+	expectedElementType = peelArrayType(expectedElementType)
+	elementType, err := c.checkExprWithExpected(scope, arguments[1], ctx, c.optionExpected(&expectedElementType))
 	if err != nil {
 		return ExprType{}, err
 	}
@@ -6781,8 +6836,6 @@ func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, argumen
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 
-	expectedElementType := arrayType.ValueType
-	expectedElementType = peelArrayType(expectedElementType)
 	if elementType.ValueType != expectedElementType {
 		return ExprType{}, fmt.Errorf("Append element type must match array element type: expected %s, got %s", expectedElementType, elementType.ValueType)
 	}
@@ -7418,6 +7471,12 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 		copy := result
 		return Type{IsFlowInstance: true, FlowIdentity: typeRef.FlowIdentity, FlowResultType: result.String(), FlowResult: &copy}, nil
 	}
+	if typeRef.Package == "" && typeRef.Name == ast.OptionTypeName {
+		if len(typeRef.TypeArguments) == 0 {
+			return Type{}, fmt.Errorf("Option needs its type argument: write Option<T>, as in Option<Float>")
+		}
+		return c.resolveOptionType(typeRef)
+	}
 	if len(typeRef.TypeArguments) > 0 {
 		return Type{}, fmt.Errorf("unelaborated parametric type %s reached ordinary type checking", typeRef.Name)
 	}
@@ -7988,6 +8047,9 @@ func (c checker) lookupRecord(typeName string) (recordInfo, bool) {
 }
 
 func (c checker) lookupEnum(typeName string) (enumInfo, bool) {
+	if isOptionTypeName(typeName) {
+		return c.optionEnumInfo(typeName)
+	}
 	if pkgName, localName, ok := splitQualifiedTypeName(typeName); ok {
 		imported, exists := c.importedPackages[pkgName]
 		if !exists {
@@ -8086,6 +8148,10 @@ func missingTypeFieldError(typeName string, field string, chain string, includeC
 }
 
 func splitQualifiedTypeName(typeName string) (string, string, bool) {
+	if isOptionTypeName(typeName) {
+		// The dots in an option type's name belong to its payload type.
+		return "", "", false
+	}
 	dot := strings.Index(typeName, ".")
 	if dot <= 0 || dot == len(typeName)-1 {
 		return "", "", false
