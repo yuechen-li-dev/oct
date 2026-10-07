@@ -1,8 +1,8 @@
-expect artifact error: "artifact evaluation rejected ambient operation Json.Load"
+expect artifact error: "artifact evaluation rejected ambient filesystem read"
 
 package Main
 
-// Artifact evaluation reads no file the program names.
+// Artifact evaluation reads the outputs of its own phase and no other file.
 [Artifact]
 fn ReadsAFile() -> Void ! Error {
     let levels = Json.Load<Float[]>("Language/Builtins/Json/data/tickets.json")?

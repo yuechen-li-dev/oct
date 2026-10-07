@@ -37,4 +37,10 @@ fn PublishSummary() -> Void ! Error {
     StaticAssert.Equal(Json.Text(summary), Json.Text(Json.Parse<Summary>(Json.Text(summary))?), "the summary reads back as itself")
     Artifact.WriteJson("json/summary.json", summary)
     Artifact.WriteJson("json/cases.json", cases)
+
+    // An output of this phase can be read back, as `IO.ReadText` reads one.
+    let published = Json.Load<Summary>("json/summary.json")?
+    Assert.Equal(2, published.TotalCases, "the published summary loads")
+    Assert.Equal(Json.Text(summary), Json.Text(published), "and is the summary")
+    Assert.Equal(2, Len(Json.Load<Case>("json/cases.json")?), "the published table loads")
 }

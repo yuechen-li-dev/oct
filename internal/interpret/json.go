@@ -27,10 +27,7 @@ func (i *interpreter) evalJsonCall(env *environment, pkgName string, json builti
 		if i.requestDiscovery {
 			return evalResult{}, fmt.Errorf("capability request is not statically discoverable: provider attempted effectful operation %s", name)
 		}
-		if i.artifactCapability != nil {
-			if json.Action == builtin.JsonReadFile {
-				return evalResult{}, fmt.Errorf("artifact evaluation rejected ambient operation %s", name)
-			}
+		if i.artifactCapability != nil && json.Action == builtin.JsonWriteFile {
 			return evalResult{}, fmt.Errorf("artifact evaluation rejected %s outside Artifact.Write*; use the compiler-owned Artifact capability", name)
 		}
 	}
@@ -60,7 +57,14 @@ func (i *interpreter) evalJsonCall(env *environment, pkgName string, json builti
 	var data octjson.Data
 	var refusal error
 	if json.Action == builtin.JsonReadFile {
-		data, refusal = octjson.LoadAs(arguments[0].Text, schema, i.admitJsonValue)
+		// Artifact evaluation reads an output of the phase where it is staged,
+		// and no other file, as it does for IO.ReadText.
+		path := arguments[0].Text
+		file, err := i.prepareArtifactRead(path)
+		if err != nil {
+			return evalResult{}, err
+		}
+		data, refusal = octjson.LoadFileAs(file, path, schema, i.admitJsonValue)
 	} else {
 		data, refusal = octjson.ParseAs(arguments[0].Text, schema, i.admitJsonValue)
 	}

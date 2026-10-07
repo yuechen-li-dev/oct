@@ -139,6 +139,24 @@ func TestLoadAs(t *testing.T) {
 			t.Errorf("%s\n got  %v\n want %s", path, err, want)
 		}
 	}
+
+	// A file kept somewhere other than the path the program wrote is read
+	// where it is kept, and named as the program named it.
+	got, err = LoadFileAs(good, "out/levels.json", levels, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := list(f(1), f(2.5)); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	for file, want := range map[string]string{
+		wrong:   "Json.Load: out/levels.json: $[1] (line 2, column 2): expected Float, found a boolean",
+		missing: "Json.Load: out/levels.json: the file does not exist",
+	} {
+		if _, err := LoadFileAs(file, "out/levels.json", levels, nil); err == nil || err.Error() != want {
+			t.Errorf("%s\n got  %v\n want %s", file, err, want)
+		}
+	}
 }
 
 // Why a file cannot be read is said in words of this package's own.

@@ -15,7 +15,14 @@ const (
 // LoadAs is Json.Load: it reads the file at path as the type schema
 // describes. The error is the whole message, the same in both lanes.
 func LoadAs(path string, schema *Schema, admit Admit) (Data, error) {
-	text, err := readFile(path)
+	return LoadFileAs(path, path, schema, admit)
+}
+
+// LoadFileAs is LoadAs for a file that is kept somewhere other than the path
+// the program wrote: it reads file, and every message names path. Artifact
+// evaluation keeps the outputs of a phase in a staging directory.
+func LoadFileAs(file string, path string, schema *Schema, admit Admit) (Data, error) {
+	text, err := readFile(file)
 	if err != nil {
 		return Data{}, errors.New(err.Text(OperationLoad, path))
 	}
