@@ -43,3 +43,20 @@ witness SHA-256 is
 The selection is deliberately small: it proves the structural transform with
 real values, but does not claim a full-width AdaLN projection or a storage
 policy comparison.
+
+## Json migration (2026-10-07)
+
+`WriteO0StructuralWitness` published a JSON text literal through
+`Json.Object`. It publishes a `StructuralWitness` record, whose fields are
+spelled as the schema `oct.prometheus.evt2.o0.structural-witness.v1` spells
+its keys (`token_0`, `rope_axes`). The published JSON has the same keys in the
+same order with the same values.
+
+The bytes are not the same: `Json` writes an indented layout, and the
+recorded witness is compact. `o0_structural_witness.json` is **not**
+regenerated, because `Evt2OctOracle/experiment_ledger.json` records its
+SHA-256 (`6292c9e2...`) as evidence of the completed O0 experiment. The
+recorded file is still the one the ledger names. Running
+`oct artifact Experiments/ZImageTurboNoiseRefiner0/M0` now rewrites it in the
+new layout with a different SHA-256; whether to do that and re-pin the ledger
+is a decision for the owner of the campaign record.

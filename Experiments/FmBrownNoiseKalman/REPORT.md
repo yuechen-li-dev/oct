@@ -92,3 +92,32 @@ Artifact entry points:
 - M2 has the same read-backs and a second fault: `M2bArtifactsWrite` writes
   `m2b_sweep_progress.json` more than once, which `oct artifact` rejects as a
   duplicate output path. M2 is left as it was.
+
+## Json migration (2026-10-07)
+
+Every JSON summary of M1 to M6 was text built with `+` or `String.Concat`
+and handed to `Json.Object`. Each is a record now, published with
+`Artifact.WriteJson(path, value)`; `Json.Object` no longer exists. The M1 and
+M2 tests load the summary with `Json.Load<T>` and check its fields.
+
+Recorded outputs:
+
+- **`metrics.json` of M1, M3, M4 and `sweep_summary.json` of M4b, M5, M6:
+  regenerated.** The values are the same. The keys are the record's field
+  names (`TotalCases`, was `totalCases`), and the text is in the layout `Json`
+  writes: indented, a `Float` always with a fraction. Every other published
+  file is byte-identical.
+- **`M2/metrics.json`: regenerated in a scratch copy** with the faults of M2's
+  entry points set aside, since they still do not run under `oct artifact`
+  (below). Same values.
+- M2b's `.octagon` report held a JSON text in a String and its Markdown
+  report printed the JSON text of the summary. The first is a record and the
+  second a key-value table. Neither file is recorded.
+
+M2's entry points still do not run, for three reasons that are not JSON:
+`M2ArtifactFilesWrite` reads `metrics.csv` back with `IO.Read`, which the
+phase refuses; `M2Artifacts` publishes the same files a second time; and
+`M2bArtifactWriteAll` publishes `m2b_sweep_progress.json` more than once.
+With those set aside, `M2/metrics.csv` and `M2/m2a_report.md` come out with
+other numbers than the recorded files, which still describe the Random v1
+noise. They are left as recorded.

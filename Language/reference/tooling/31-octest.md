@@ -306,6 +306,7 @@ directly from ordinary Oct code. Normal backend lowering excludes them.
 Artifact functions write files explicitly from user code.
 Prefer `Artifact.Write*` helpers (`WriteText`, `WriteLines`, `WriteMarkdown`, `WriteCsv`, `WriteJson`, `WriteOctagon`) when authoring `[Artifact]` functions.
 `Artifact.WriteJson(path, value)` publishes the JSON text of a typed value, as `Json.Save` writes it; see [17 standard libraries](../language/17-standard-libraries.md).
+An `[Artifact]` function may read back an output it has already written in the same phase, with `IO.ReadText`, `IO.ReadLines`, `IO.ReadBytes`, `IO.Exists` or `Json.Load<T>`, to assert on it. Any other path is refused: `artifact evaluation rejected ambient filesystem read "<path>"; only outputs already declared in this phase may be read`.
 `StaticAssert.True`, `StaticAssert.False`, `StaticAssert.Equal`,
 `StaticAssert.Near`, and `StaticAssert.Error` validate publication invariants in
 this phase without requiring `[Fact]` and without entering the runtime backend.

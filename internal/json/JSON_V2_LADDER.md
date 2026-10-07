@@ -1,7 +1,7 @@
 # Json v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-05.** M1 to M4 are closed; see
-`internal/json/JSON_V2_M1.md` to `JSON_V2_M4.md`. M5 is next.
+Status: **ACCEPTED 2026-10-05.** M1 to M5 are closed; see
+`internal/json/JSON_V2_M1.md` to `JSON_V2_M5.md`. M6 is next.
 Base commit: `d44566d` (main).
 
 This document is the source of truth for the `Json` rewrite while the ladder
@@ -142,6 +142,15 @@ String of JSON text are still the first library's functions, so a String is
 not saved with `Json.Save` yet. `Json.Text` has no such form and writes a
 String as a JSON string.)*
 
+*(M5: the first library is removed, and the two notes above no longer
+apply. `Json.Load(path)` with no type argument is a compile error that asks
+for the type. A String is a value like any other: `Json.Save(path, "a")`
+writes the JSON string `"a"`. Package `Json` cannot declare a function named
+after one of its builtins. Inside package `Json` the builtins are written
+qualified, as everywhere: they are not also bare names there, which is how
+`Array` and `Artifact` are and not how `Random` and `Entropy` are. Nothing
+is written inside package `Json` but its marker.)*
+
 *(M4: `Json.Save(path, value)?` is a statement. The language refused a
 propagated call as a statement while it accepted an unwrapped one, which
 left a `Void ! Error` call with no way to propagate; D14 needs one. The rule
@@ -244,6 +253,14 @@ The first is `record table Retry { Event: String  Retries: Int }`, the second
 - *(M4.)* Artifact evaluation and capability discovery refuse `Json.Load` and
   `Json.Save`, which touch a file the program names, as they refuse the first
   library's; artifact evaluation writes through `Artifact.WriteJson`.
+- *(M5.)* During artifact evaluation `Json.Load<T>(path)` reads an output
+  the phase has already published, where it is staged, and refuses any other
+  path. That is the rule `IO.ReadText` already had; M4 had refused every
+  load. An `[Artifact]` function can now check the JSON it wrote, which seven
+  recorded experiments do.
+- *(M5.)* The written key is the field name exactly. A record published
+  under a schema that spells its keys another way declares its fields in
+  that spelling (`token_0`, `rope_axes`); there is no renaming.
 
 ### 3.7 Documents
 
@@ -316,6 +333,9 @@ reaches further.)*
 - The typechecker's special case for a type named `JsonRawGraph`.
 
 `String.EscapeJson` and `String.QuoteJson` stay; they are string functions.
+
+*(M5: removed, all of it. There was no registry entry for the sidecar; its
+entries were the sidecar build list and the reference.)*
 
 ### 3.11 `oct json infer`
 
@@ -454,6 +474,14 @@ The whole-tree sweeps run once more when the ladder closes.
 - **Exit:** `grep` finds no name from 3.10 outside this document and the
   milestone reports. No experiment builds JSON from strings. Sweeps show no
   test going from passing to failing.
+- **Verdict:** SUCCESS, 2026-10-07. See `JSON_V2_M5.md`. Three things are
+  not as written above. The exit `grep` also finds the names in the dated
+  records under `docs/` and `internal/libraries`, in the lab's reports, in
+  the CHANGELOG, and in the contract that `Json.Object` does not exist; those
+  stay. The recorded outputs were regenerated in the commit that changed the
+  code that writes them, one per experiment, not in one commit. One recorded
+  output, `Evt2OctOracle/o0_structural_witness.json`, was not regenerated:
+  its SHA-256 is recorded in a campaign ledger.
 
 ### M6 — `oct json infer`
 - **Scope:** 3.11.
@@ -485,4 +513,4 @@ The whole-tree sweeps run once more when the ladder closes.
 | `Option<T>` is larger than it looks | M1 is first and alone. Nothing else starts until it closes |
 | The compiled lane's Octagon materialiser is a second implementation, kept as a Go string in `emit_go_runtime.go` | D2 feeds both materialisers one decoded value, so a JSON rule cannot differ between them. A difference that already exists between the two for Octagon will show up in M3 and is reported, not patched around. *(M3: three showed up, in vectors and matrices, ragged matrices and refined arrays. Json needs all three, so each was fixed in the materialiser itself, with Octagon contracts in both lanes; see `JSON_V2_M3.md`.)* |
 | Strict unknown-member checking makes third-party payloads tedious | That is D4's cost. `oct json infer` writes the full declaration, which is the intended answer |
-| Recorded artifacts change | D11. One regeneration commit in M5, with the reason in each experiment's report |
+| Recorded artifacts change | D11. One regeneration commit in M5, with the reason in each experiment's report. *(M5: fifteen files, the same values in each; one commit per experiment, with the code. A file whose bytes are pinned by a hash elsewhere was not foreseen here: see the M5 verdict.)* |

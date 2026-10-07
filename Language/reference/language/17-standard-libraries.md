@@ -16,7 +16,6 @@ Common modules in the standard-library path include:
 - `IO.File`
 - `IO.Path`
 - `IO.Directory`
-- `IO.Json`
 - `IO.Csv`
 - `IO.Xlsx`
 - `Archive.Zip`
@@ -101,14 +100,13 @@ The primary user-facing story is the module layer (`IO.*`, `Archive.*`, `Compres
 A standard library is ordinary Oct source that calls these builtins. Each of its functions has one definition, its source body, and both execution lanes run that body. The lanes differ only in how they carry out a builtin:
 
 - The interpreted lane implements the builtin inside `oct`. It needs no sidecar.
-- The compiled lane sends the builtin to one of the first-party Octxiliary sidecars (`octxiliary-archive`, `-compression`, `-csv`, `-hash`, `-image`, `-io`, `-json`, `-pdf`, `-plot`, `-text`, `-time`, `-xlsx`). A compiled program finds a sidecar beside its executable or through `OCT_WRAPPER_PATH`, and reports the sidecar's name when it is missing.
+- The compiled lane sends the builtin to one of the first-party Octxiliary sidecars (`octxiliary-archive`, `-compression`, `-csv`, `-hash`, `-image`, `-io`, `-pdf`, `-plot`, `-text`, `-time`, `-xlsx`). A compiled program finds a sidecar beside its executable or through `OCT_WRAPPER_PATH`, and reports the sidecar's name when it is missing.
 
 The sidecar is how the compiled lane implements a builtin; it is not a package wrapper. The standard libraries declare no `Wrappers` in their manifests, and a call to one of their functions is not a native operation during artifact evaluation. A direct call to one of these builtins compiles for the same reason the library's call does.
 
-Eight builtins of this group have no compiled implementation yet, and a program that reaches one is refused by the compiled lane with the builtin's name:
+Six builtins of this group have no compiled implementation yet, and a program that reaches one is refused by the compiled lane with the builtin's name:
 
 - `PdfDrawImage` and `PdfDrawImageSized` take a page and an image, each a handle of a different sidecar. `Pdf.DrawImageBytes` with `Image.EncodePng` is the form both lanes run.
-- `JsonLower` and `JsonLoadStructured`, the structured JSON helpers.
 - `CsvWriteTable` and `CsvWriteMatrix`.
 - `PlotLine` and `PlotScatter`, the short forms without size and labels. `Plot.Line` and `Plot.Scatter` run in both lanes.
 
@@ -243,11 +241,10 @@ Rules:
 
 ### Compiler-owned namespaces
 
-`Array`, `Artifact` and `Entropy` are namespaces whose functions are builtins.
-Calling them needs no `import`. A call to a name the namespace does not have is
-reported as `package '<Namespace>' has no function '<Name>'`.
-`Json.Load<T>`, `Json.Parse<T>`, `Json.Save` and `Json.Text` are builtins of
-the same kind and need no `import`; the rest of `Json` is still a library.
+`Array`, `Artifact`, `Entropy` and `Json` are namespaces whose functions are
+builtins. Calling them needs no `import`. A call to a name the namespace does
+not have is reported as `package '<Namespace>' has no function '<Name>'`.
+`Json` is implemented in Go for both lanes and uses no sidecar.
 
 ## Json
 
@@ -345,7 +342,9 @@ Writing:
   `import`. They take no type argument: `T` is the type of the value, and it
   must have a JSON form as for reading.
 - A record is an object whose keys are the field names as declared, in
-  declaration order. A `record table` is an array of row objects, and one row
+  declaration order. The key is the field name exactly, so a record written
+  for a schema that spells its keys `snake_case` declares its fields in that
+  spelling. A `record table` is an array of row objects, and one row
   (`tickets[0]`) is one object. `Option.None` is `null`; its member is
   written. An enum is the name of its variant as declared. A value of a
   refined concept is a value of its base type, and a number with a dimension
@@ -373,15 +372,17 @@ Writing:
 Both:
 
 - Capability discovery rejects `Json.Load` and `Json.Save`, which touch a
-  file. Artifact evaluation rejects them too: it reads no file the program
-  names, and writes through `Artifact.WriteJson`.
-- The first Json library is still present. `Json.Load(path)` with no type
-  argument, `Json.Save(path, text)` and `Artifact.WriteJson(path, text)` given
-  a String of JSON text, `Json.Object` and the `IO` JSON functions are its,
-  and need `import Json` or `import IO`. Until it is removed, a String is
-  therefore saved with `Json.Text` and a file writer, not with `Json.Save`.
-  See `internal/json/JSON_V2_LADDER.md`, which is also the full
-  specification.
+  file.
+- Artifact evaluation writes through `Artifact.WriteJson` and rejects
+  `Json.Save`. `Json.Load<T>(path)` reads an output the phase has already
+  published, so an `[Artifact]` function can check what it wrote; any other
+  path is rejected, as it is for `IO.ReadText`.
+- `import Json` is allowed and adds nothing. Package `Json` cannot declare a
+  function named `Load`, `Parse`, `Save` or `Text`.
+- A String is a value like any other: `Json.Save(path, "a")` writes the JSON
+  string `"a"`. There is no function that takes JSON text and no untyped
+  value; a JSON object is a `record`.
+- The full specification is `internal/json/JSON_V2_LADDER.md`.
 
 Contracts: `Language/Builtins/Json`.
 

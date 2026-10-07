@@ -713,6 +713,9 @@ Add the four data builtins and the two short plot forms to the sidecar table; th
 
 Status: Open
 
+Resolution:
+Partly, 2026-10-07. `JsonLower` and `JsonLoadStructured` were removed with the first Json library, and `Libraries/IO/IO.Json.octest` with them (`internal/json/JSON_V2_M5.md`). The other six remain.
+
 ---
 
 Observation:
@@ -1149,5 +1152,57 @@ Read the dimension of the concept's base.
 Status: Resolved
 
 Resolution: `__octCheckNumericDimension` resolves a refined concept to its base. Contract: `Language/Data/Octagon/Load/valid/load_octagon_refined_dimension.octest`, both lanes.
+
+---
+
+Observation:
+During `oct artifact` evaluation, `IO.ReadText`, `IO.ReadLines`, `IO.ReadBytes` and `IO.Exists` read an output the phase has already published, where it is staged, and refuse any other path. `Json.Load<T>` refused every path, as the first library's `JsonLoad` did, so an `[Artifact]` function could check its text outputs and not its JSON. Seven recorded experiments read their JSON summary back and could not be evaluated at all (`Experiments/PrometheusShadowAuthorityRakeLab` M1 to M5, `Experiments/PrometheusNumericalHeterogeneityLab` M0 and M1). The rule for reading an output back was also not in the reference.
+
+Suggestion:
+Give `Json.Load<T>` the rule the text readers have, and document it.
+
+Status: Resolved
+
+Resolution: `Json.Load<T>` goes through `prepareArtifactRead`. Contracts: `Language/Builtins/Json/artifact/json_artifact.octest` and `Language/Builtins/Json/invalid/artifact_evaluation_refuses_load.octfail`. Documented in `Language/reference/tooling/31-octest.md`.
+
+---
+
+Observation:
+The CSV readers are still refused outright during `oct artifact` evaluation: `IO.Read`, `Csv.Read`, `Csv.ReadRows`, `Csv.ReadTable` and `Csv.ReadMatrix` of an output the phase has just published give "artifact evaluation rejected ambient operation CsvRead", while `IO.ReadLines` of the same file is allowed. `Experiments/FmBrownNoiseKalman/M2` reads its `metrics.csv` back this way and cannot be evaluated.
+
+Suggestion:
+Route the CSV readers through the same staged read as the text readers and `Json.Load<T>`, so one rule covers every reader: an output of the phase may be read back, nothing else.
+
+Status: Open
+
+---
+
+Observation:
+An `.octfail` expectation cannot contain a double quote. `expect artifact error: "... read \"data/tickets.json\"; only ..."` is matched with the backslashes in it, so it never matches a message that quotes a path. The expectation for `Language/Builtins/Json/invalid/artifact_evaluation_refuses_load.octfail` had to stop before the quoted path. `31-octest.md` does not say how the substring is read.
+
+Suggestion:
+Read the substring as an Oct string literal, with `\"` and `\\`, or say in the reference that it is taken verbatim up to the last quote.
+
+Status: Open
+
+---
+
+Observation:
+`Experiments/FmBrownNoiseKalman/M2` cannot be evaluated by `oct artifact`, for three reasons: `M2ArtifactFilesWrite` reads a CSV back (entry above); `M2Artifacts` is a second `[Artifact]` function that publishes the same files, a duplicate output path; and `M2bArtifactWriteAll` publishes `m2b_sweep_progress.json` once per sweep case, also a duplicate output path. Its recorded `metrics.csv` and `m2a_report.md` still hold the numbers of the Random v1 noise. Found while regenerating its JSON, which was done in a scratch copy with the three set aside.
+
+Suggestion:
+Remove `M2Artifacts`, report sweep progress with `Artifact.Progress` instead of a file, and regenerate the recorded outputs.
+
+Status: Open
+
+---
+
+Observation:
+A recorded artifact can be pinned by its SHA-256 somewhere else, and nothing connects the two. `internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle/experiment_ledger.json` records the hash of `o0_structural_witness.json`, which `Experiments/ZImageTurboNoiseRefiner0/M0` publishes. The Json rewrite changes the layout of every JSON file it writes, so evaluating that artifact now produces other bytes than the ledger names. It was found by searching for the file's name; a hash recorded without the name would not have been found.
+
+Suggestion:
+Decide whether the witness is regenerated and the ledger re-pinned, or kept as the bytes of the completed campaign. Longer term, let a ledger name the artifact it pins in a form `oct artifact` can check, so a change of bytes is reported where it happens.
+
+Status: Open
 
 ---

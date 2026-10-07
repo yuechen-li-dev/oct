@@ -239,7 +239,7 @@ The Text sidecar follows Go standard-library `regexp` syntax and behavior, match
 M11 migrated the remaining standard-library wrappers whose public APIs fit the M6 generic typed transport set without adding new compiler concepts:
 
 - `Libraries/Archive` now declares wrapper metadata for `ListEntries`, `ExtractAll`, and `CreateFromFiles`, served by `octxiliary-archive`.
-- `Libraries/Json` now declares wrapper metadata for `Save` and `Load`, served by `octxiliary-json`; `Object` remains a direct pure Oct string identity helper.
+- `Libraries/Json` declared wrapper metadata for `Save` and `Load`, served by a JSON sidecar. Both were removed on 2026-10-07: `Json` is a compiler-owned namespace implemented in `internal/octjson` for both lanes, with no sidecar (`internal/json/JSON_V2_LADDER.md`).
 
 The sweep intentionally deferred candidates that require transports outside M6: CSV row matrices (`String[][]`), Markdown record/nested block helpers, PDF/Image handles and records, and Plot `Float[]`/record arguments. See `docs/internal/octxiliary_m11_wrapper_sweep.md` for the full blocker table.
 

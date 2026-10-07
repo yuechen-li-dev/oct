@@ -41,33 +41,6 @@
 - `MakeAll(path) -> Int ! Error`
 - `RemoveAll(path) -> Int ! Error`
 
-### IO.Json
-
-- `NormalizeJson(text) -> String ! Error`
-- `Parse(text) -> String ! Error`
-- `Stringify(value) -> String ! Error`
-- `Load(path) -> String ! Error`
-- `Save(path, value) -> Int ! Error`
-- `ImportRawJson(path) -> String ! Error` (lower-level compatibility/debug surface)
-- `ImportRawJsonGraph(path) -> JsonRawGraph ! Error` (structured raw compatibility graph)
-- `LowerJsonToRawGraph(text) -> JsonRawGraph ! Error`
-- `ImportJson(path) -> JsonRecovered ! Error` (intended default deterministic intent recovery path)
-
-#### IO.Json import posture (Mx104)
-
-- `ImportJson(...)` is the intended production JSON import path.
-- `ImportRawJson(...)`/`ImportRawJsonGraph(...)` remain available for compatibility debugging, custom recovery, and ambiguous shapes.
-- Recovery policy is deterministic and inspectable in Oct code (`IO.Json.oct`) using bounded `when utility` arbitration.
-- Canonical recovery policy:
-  - default table-shaped recovery: `table.columnar`
-  - mapping objects with simple payloads: `mapping.table`
-  - exception for true rectangular numeric grids: `grid.nested_array`
-  - nested compositional JSON: `config.nested_record`
-  - stable tagged arrays: `tagged.decomposed`
-- Ambiguous overlaps are conservative (`record.raw.ambiguous`) and direct users to raw compatibility imports.
-- JSON `null` remains compatibility-scoped in `JsonRawGraphNode` (`Kind == "null"`, `IsNull == true`) and does not introduce general native null semantics.
-- `.octagon` remains the native structured format.
-
 ### IO.Csv
 
 - `Read(path) -> String[][] ! Error`
@@ -98,7 +71,6 @@
 ## Common failure cases
 
 - missing path
-- invalid json
 - invalid csv
 - invalid wrapper argument shape
 
@@ -109,7 +81,10 @@ All wrapper errors use standardized wrapper error kinds via the Mx103a substrate
 `Bytes` is available as a narrow binary boundary type for wrapper compatibility surfaces (file payloads now, additional transport wrappers later). It is intentionally not a dynamic catch-all and does not introduce `Dynamic`.
 
 
-## Enum/domain modeling note (M6)
+## JSON
 
-`JsonRawGraphNode.Kind` remains a `String` in M6 to preserve compatibility at the JSON interchange boundary.
-A future pass may introduce an internal `JsonNodeKind` enum adapter layer while keeping boundary parse/serialize string semantics stable.
+`IO` has no JSON functions. JSON is read and written as declared types by
+the `Json` builtins (`Json.Load<T>`, `Json.Parse<T>`, `Json.Save`,
+`Json.Text`): see [`Libraries/Json`](../Json/README.md). The JSON files under
+`testdata/` are sample documents. No test reads them now; they are kept for
+`oct json infer`, the last milestone of `internal/json/JSON_V2_LADDER.md`.
