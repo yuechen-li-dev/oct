@@ -1,7 +1,8 @@
 # Json v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-05.** M1 closed 2026-10-06; see
-`internal/json/JSON_V2_M1.md`. M2 is next.
+Status: **ACCEPTED 2026-10-05.** M1, M2 and M3 are closed; see
+`internal/json/JSON_V2_M1.md`, `JSON_V2_M2.md` and `JSON_V2_M3.md`. M4 is
+next.
 Base commit: `d44566d` (main).
 
 This document is the source of truth for the `Json` rewrite while the ladder
@@ -132,6 +133,10 @@ that governs `Random` and `Entropy`.
 `T` must be JSON-representable (3.3). A `T` that is not is a compile error
 that names the part that is not.
 
+*(M3: until M5 removes the first library, `Json.Load(path)` with no type
+argument is still that library's function and needs `import Json`. With a
+type argument it is this one.)*
+
 ### 3.3 JSON-representable types
 
 | Oct type | JSON |
@@ -150,8 +155,15 @@ that names the part that is not.
 | A refined concept | Its base type, admitted through the concept's requirements |
 
 Not representable: `Complex`, `Bytes`, `Range`, `UI`, `Error`, function
-values, flow instances, a payload enum other than `Option`, and
+values, tuples, flow instances, a payload enum other than `Option`, and
 `Option<Option<T>>`.
+
+A value of a refined concept is admitted as it is read, so a refusal has the
+value's path and position. A refined array is admitted whole. The key of a
+keyed table is admitted when its column is a refined `String`. *(M3.)*
+
+`T` is followed into every package it reaches, whether or not the file that
+makes the call imports that package. *(M3.)*
 
 There is no conversion between kinds. `"42"` is not an `Int`, `1` is not a
 `Bool`, and `1.0` is not an `Int`. An `Int` literal is a `Float` where a
@@ -228,6 +240,8 @@ Json.Load: tickets.json: $[1].assignee (line 9, column 17): expected String or n
 Json.Load: config.json: $.service.http (line 4, column 13): unknown members "prot", "tls"; HttpConfig has Host, Port, ReadTimeoutMs
 Json.Load: people.json: $.people[2] (line 14, column 5): missing "Active"
 Json.Parse: (line 1, column 7): expected a value, found '}'
+Json.Load: service.json: $.http.port (line 6, column 13): refined concept Port: a port is below 65536
+Json.Load: missing.json: the file does not exist
 ```
 
 A column counts characters, not bytes, and a byte order mark is not a column.
@@ -238,21 +252,34 @@ unknown member; then every missing field; then the fields' own values, in
 declaration order.
 
 A file that cannot be read is an `Error` that names the path and the reason in
-Oct's words. No message contains Go's.
+Oct's words. No message contains Go's. *(M3: the reasons are "the file does
+not exist", "this is a directory, not a file", "the file cannot be read:
+permission denied" and "the file cannot be read".)*
+
+A refusal by a refined concept is the text of the concept's checked
+constructor, at the place of the value. *(M3.)*
 
 ### 3.9 Native core (Go, `internal/octjson`)
 
 | Part | Does |
 |---|---|
 | Parser | Text to a tree that keeps member order, number text and the position of every value. Written here, not `encoding/json`: positions, duplicate keys and exact integers need it |
-| Schema | A lane-neutral description of `T`: kind, field names and order, cell types, variants |
-| Decode | Tree and schema to an Octagon data value, applying 3.3 to 3.5 |
+| Schema | A lane-neutral description of `T`: kind, field names and order, cell types, variants, and the refined concept a value is admitted to |
+| Decode | Tree and schema to an Octagon data value, applying 3.3 to 3.5. It asks the lane, through `Admit`, whether a value of a refined concept is admitted |
 | Encode | Octagon data value and schema to text, applying 3.6 |
 | Infer | Tree to proposed declarations (3.11) |
 
-Each lane builds the schema from its own type information and hands the
-decoded value to the materialiser it already uses for `LoadOctagon`. Neither
-lane contains a rule from 3.3 to 3.6.
+Each lane hands the decoded value to the materialiser it already uses for
+`LoadOctagon`. Neither lane contains a rule from 3.3 to 3.6.
+
+*(M3: this read "each lane builds the schema from its own type information".
+The schema is built in one place instead, `internal/jsontype`, from the
+program's declarations, and the typechecker, the interpreter and the compiled
+lane call it. Three builders would have had to agree on field order, on the
+names a message gives, and on which package a name is resolved in; one cannot
+disagree with itself. The typechecker's own type information would not have
+been enough in any case: it knows the packages a file imports, and a type
+reaches further.)*
 
 ### 3.10 Removed
 
@@ -371,15 +398,17 @@ The whole-tree sweeps run once more when the ladder closes.
     table shapes, `Option` in fields and cells, key matching, refined
     concepts, dimensioned fields.
   - `Language/Builtins/Json/invalid/*.octfail`: compile-time contracts for a
-    type that is not representable, argument count and types, fallibility and
-    redeclaration; runtime contracts, each stating one error text of 3.8 for
-    both lanes.
+    type that is not representable, argument count and types, and
+    fallibility; runtime contracts, each stating one error text of 3.8 for
+    both lanes. *(M3: the redeclaration contract moves to M5. `Libraries/Json`
+    declares `Load` until then, so there is nothing to refuse yet.)*
   - **Acceptance corpus.** `Experiments/JsonIntentRecoveryLab` corpus files 01
     to 05 load into `record` and `record table` declarations and equal values
     written out in the test. Files 06 and 07 are tagged arrays; the test
     records that they are refused and why (D8).
 - **Exit:** Both lanes green with equal results. `grep` finds no rule of 3.3
   to 3.5 outside `internal/octjson`.
+- **Verdict:** SUCCESS, 2026-10-06. See `JSON_V2_M3.md`.
 
 ### M4 — Writing, both lanes
 - **Scope:** `Json.Save`, `Json.Text`, and `Artifact.WriteJson` taking a
@@ -433,6 +462,6 @@ The whole-tree sweeps run once more when the ladder closes.
 | Risk | Handling |
 |---|---|
 | `Option<T>` is larger than it looks | M1 is first and alone. Nothing else starts until it closes |
-| The compiled lane's Octagon materialiser is a second implementation, kept as a Go string in `emit_go_runtime.go` | D2 feeds both materialisers one decoded value, so a JSON rule cannot differ between them. A difference that already exists between the two for Octagon will show up in M3 and is reported, not patched around |
+| The compiled lane's Octagon materialiser is a second implementation, kept as a Go string in `emit_go_runtime.go` | D2 feeds both materialisers one decoded value, so a JSON rule cannot differ between them. A difference that already exists between the two for Octagon will show up in M3 and is reported, not patched around. *(M3: three showed up, in vectors and matrices, ragged matrices and refined arrays. Json needs all three, so each was fixed in the materialiser itself, with Octagon contracts in both lanes; see `JSON_V2_M3.md`.)* |
 | Strict unknown-member checking makes third-party payloads tedious | That is D4's cost. `oct json infer` writes the full declaration, which is the intended answer |
 | Recorded artifacts change | D11. One regeneration commit in M5, with the reason in each experiment's report |

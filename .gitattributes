@@ -13,3 +13,5 @@ Language/Data/Octagon/Load/valid/concept_catalog.octagon text eol=lf
 *.c text eol=lf
 *.h text eol=lf
 *.sdslv* text eol=lf
+# JSONTestSuite is test data, kept byte for byte.
+internal/octjson/testdata/JSONTestSuite/test_parsing/* -text

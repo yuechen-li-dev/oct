@@ -246,6 +246,93 @@ Rules:
 `Array`, `Artifact` and `Entropy` are namespaces whose functions are builtins.
 Calling them needs no `import`. A call to a name the namespace does not have is
 reported as `package '<Namespace>' has no function '<Name>'`.
+`Json.Load<T>` and `Json.Parse<T>` are builtins of the same kind and need no
+`import`; the rest of `Json` is still a library.
+
+## Json (typed reading)
+
+`Json.Load<T>(path)` reads a file as a `T`, and `Json.Parse<T>(text)` reads
+text as a `T`. The declared type says how the document is read: nothing is
+guessed from the document.
+
+```oct
+record table Ticket {
+    Id:       String
+    Assignee: Option<String>
+    Points:   Int
+}
+
+fn OpenPoints(path: String) -> Int ! Error {
+    let tickets = Json.Load<Ticket>(path)?
+    var points = 0
+    for row in 0..Len(tickets) {
+        points = points + tickets[row].Points
+    }
+    return points
+}
+```
+
+Rules:
+
+- `Json.Load<T>(path: String) -> T ! Error` and
+  `Json.Parse<T>(text: String) -> T ! Error`. Both are builtins and need no
+  `import`. The type argument is required.
+- `T` must have a JSON form, in every part. A `T` that does not is a compile
+  error that names the part: `Reading.Phase: Complex has no JSON form`.
+
+| Oct type | JSON |
+|---|---|
+| `Bool` | `true`, `false` |
+| `Int`, `Int<D>` | A number with no fraction and no exponent, in the 64-bit range |
+| `Float`, `Float<D>` | Any number that is finite as a 64-bit float. The number is in the unit the type declares |
+| `String` | A string |
+| An enum whose variants carry no payload | A string that names a variant, matched as keys are |
+| `Option<T>` | `null` is `None`; anything else is `Some` of a `T`. As a record field or a table cell, an absent member is `None` too |
+| `record` | An object |
+| `T[]` | An array |
+| `Vector<T>` | An array of numbers |
+| `Matrix<T>` | An array of arrays of numbers, all one length |
+| `record table` | An array of objects; or, when its first column is a `String`, an object whose keys are that column |
+| A refined concept | Its base type, admitted by the concept's requirements |
+
+- No JSON form: `Complex`, `Bytes`, `Range`, `UI`, `Error`, function values,
+  tuples, flow instances, an enum with a payload other than `Option`, and
+  `Option<Option<T>>`.
+- There is no conversion between kinds. `"42"` is not an `Int`, `1` is not a
+  `Bool`, and `1.0` is not an `Int`.
+- A key and a field are one name when they are equal with `_`, `-`, `.`,
+  spaces and case ignored: `read_timeout_ms` is `ReadTimeoutMs`. Two fields of
+  one record that are one name by that rule are a compile error at the call.
+- Every field needs a member, except an `Option`. A member that names no
+  field is an error, and so are a key written twice and two members for one
+  field.
+- A keyed object reads as a table whose first cell is the key. With one other
+  column the member's value is that cell (`{"invoice.failed": 5}`); with
+  several, or when the value is an object and that column is not itself read
+  from one, the value is an object holding the other cells.
+- The text is strict JSON (RFC 8259): no comments, no trailing commas, nothing
+  after the value. A leading byte order mark is skipped. Nesting deeper than
+  512 is an error.
+- An `Error` says where: the file, the path into the document, the line and
+  the column. The text is the same in the interpreted and the compiled lane.
+
+  ```
+  Json.Load: tickets.json: $[1].assignee (line 9, column 17): expected String or null, found a number
+  Json.Load: config.json: $.http (line 4, column 11): unknown members "prot", "tls"; Http has Host, Port, ReadTimeoutMs, WriteTimeoutMs
+  Json.Parse: (line 1, column 7): expected a value, found '}'
+  Json.Load: missing.json: the file does not exist
+  ```
+
+- The type is followed into every package it reaches, whether or not the file
+  that makes the call imports it.
+- Capability discovery rejects `Json.Load`, which reads a file.
+- The first Json library is still present: `Json.Load(path)` with no type
+  argument, `Json.Save`, `Json.Object` and the `IO` JSON functions are its, and
+  need `import Json` or `import IO`. It is being replaced; see
+  `internal/json/JSON_V2_LADDER.md`, which is also the full specification.
+  Writing JSON from a typed value is not yet available.
+
+Contracts: `Language/Builtins/Json`.
 
 ## Document (OctCument M1)
 

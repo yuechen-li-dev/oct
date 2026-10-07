@@ -1015,3 +1015,95 @@ Carry the flow's identity in the type of the instance, which the typechecker alr
 Status: Open
 
 ---
+
+Observation:
+The two `LoadOctagon` materialisers differed in three ways, met while wiring `Json.Load<T>` to them. A field declared `Vector<T>` or `Matrix<T>`: the compiled lane loaded an array into it and the interpreter refused the type ("unsupported expected type Vector<...>"); the compiled lane also read a dimensioned element as the vector's own type and refused it. A matrix whose rows differ in length: the compiled lane loaded it. A field declared as a refined array concept (`concept Weights = Float[] { ... }`): the interpreter admitted the array by its concept; the compiled lane did not admit it, and checked each element against the array's concept, which panicked on the first element ("interface {} is string, not []string").
+
+Suggestion:
+One rule in both lanes: an array loads as what the declared type says it is.
+
+Status: Resolved
+
+Resolution: Both materialisers load an array as the declared vector, matrix (rows of one length) or refined array (admitted whole). Contracts: `Language/Data/Octagon/Load/valid/load_octagon_arrays_as_declared.octest` and `Language/Data/Octagon/Load/invalid/load_octagon_refined_array_refused.octfail`, both lanes. Reference: `34-octagon.md`.
+
+---
+
+Observation:
+`LoadOctagon<Vector<Int>>(path)` is refused by the typechecker ("type argument expects .octagon-representable type"), while `LoadOctagon<R>(path)` for a record `R` with a `Vector<Int>` field is accepted and loads. The check (`isOctagonRepresentableType`) looks at the type argument itself and accepts any named type without looking inside it, so a record with a `Complex` field passes it too and fails at run time ("record field Phase mismatch: unsupported expected type Complex").
+
+Suggestion:
+Check the whole type, as the Json builtins do (`internal/jsontype` with `octjson.Check`), and accept a vector or a matrix wherever a field of one is accepted.
+
+Status: Open
+
+---
+
+Observation:
+`WriteOctagon` treats a vector differently by lane. For a record with a `Vector<Float>` field the interpreter stops with "WriteOctagon cannot serialize value: value kind Vector is not representable in .octagon output". The compiled lane writes the vector as an array, with whole Floats as integers (`Levels: [1, 2]`), which neither lane then loads as a `Vector<Float>`.
+
+Suggestion:
+Write a vector as an array and a matrix as an array of rows in both lanes, once a `Float` is written so that it reads as one (the entry above on the Octagon writer).
+
+Status: Open
+
+---
+
+Observation:
+Indexing a value of a refined array concept gives the concept's type and not the element's. With `concept Tags = String[] { Require(Len(Self) > 0, "...") }` and `tags: Tags`, `let t: Int = tags[1]` reports "expected Int, got Tags", and `Assert.Equal("a", tags[1], "...")` reports that the arguments differ in type. `tags[1] == "a"` typechecks, and then the compiled lane does not build: "cannot use ...[1] (variable of type string) as Main_Tags value". `Len(tags)` works in both lanes.
+
+Suggestion:
+Type an index of a refined array as an element of its base array, as the reference's "Refined scalar to underlying representation is permitted" reads for scalars.
+
+Status: Open
+
+---
+
+Observation:
+In the compiled lane `v + v` and `v - v` on two `Vector<Float>` values do not build unless the program also uses another linear-algebra operation: "undefined: __octVecAddVV". The helpers are emitted when `usesLinearAlgebraHelpers` finds one of a list of builtins, and `VecBinaryVV:+` and `VecBinaryVV:-` are not on it. A function `fn Twice(v: Vector<Float>) -> Vector<Float> { return v + v }` called from a fact is enough to see it. The interpreted lane runs it.
+
+Suggestion:
+Add the two names to the list, or have the emitter record a helper as needed where it emits the call to it.
+
+Status: Open
+
+---
+
+Observation:
+Float literal arithmetic differs by lane. `0.1 + 0.2 != 0.3` is true in the interpreted lane and false in the compiled lane: the generated Go adds two untyped constants exactly and rounds once, so `0.1 + 0.2` is `0.3` there and `0.30000000000000004` in the interpreter. Met while stating that `Json.Parse<Float>("0.30000000000000004")` keeps every digit.
+
+Suggestion:
+Emit Float literals as typed values (`float64(0.1)`), so that the compiled lane rounds each literal before it adds, as the interpreter does.
+
+Status: Open
+
+---
+
+Observation:
+The compiled lane does not build a program that loads Octagon or JSON data and has two refined concepts of one name in two packages (`Main.Port` and `Net.Port`): "duplicate case \"Port\" in expression switch". The generated `__octValidateRefinement` matches each concept by `Package.Name` and by its bare name, and the bare names collide. The table of refinement bases added for refined arrays has the same two keys and the same limit. The interpreted lane runs the program. This is the collision the entry on enum tag constants describes, in another generated table.
+
+Suggestion:
+Name a refined type by `Package.Name` everywhere in the generated metadata, and drop the bare name.
+
+Status: Open
+
+---
+
+Observation:
+A file can hold a value whose type is declared in a package the file does not import, and then cannot read its fields: with `Config.Service { Listen: Net.Address }` and only `import Config`, `service.Listen.Host` reports "type 'Net.Address' has no field 'Host' ... 'service.Listen' has type Net.Address, which has no fields". The typechecker of a package knows the declarations of the packages it imports and no others. The message does not say that an import is what is missing. Relatedly, a transparent alias (`concept Count = Int`) cannot be named from another package at all ("package 'Net' has no type 'Count'"), which the reference does not say.
+
+Suggestion:
+Say "import Net to read the fields of Net.Address" in the diagnostic; and state in `18-concepts.md` that a transparent alias is local to its package, or let it be named.
+
+Status: Open
+
+---
+
+Observation:
+`oct run` prints `<invalid>` after a program whose `Main` is `fn Main() -> Void ! Error` and returns normally. A program whose `Main` returns `Int ! Error` prints its value. The binary that `oct build` makes of the same program prints nothing extra.
+
+Suggestion:
+Print nothing for a `Void` result, fallible or not.
+
+Status: Open
+
+---
