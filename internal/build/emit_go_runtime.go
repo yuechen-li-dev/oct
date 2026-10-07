@@ -1495,7 +1495,7 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 			return reflect.Value{}, fmt.Errorf("expected %s, got non-array value", expectedType)
 		}
 		out := reflect.MakeSlice(target, 0, len(value.Array))
-		elementExpectedType := strings.TrimSuffix(expectedType, "[]")
+		elementExpectedType := __octElementType(expectedType)
 		for i, item := range value.Array {
 			element, err := __octMaterialize(item, target.Elem(), elementExpectedType)
 			if err != nil {
@@ -1503,6 +1503,14 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 			}
 			out = reflect.Append(out, element)
 		}
+		if strings.HasPrefix(expectedType, "Matrix<") {
+			for i := 1; i < out.Len(); i++ {
+				if out.Index(i).Len() != out.Index(0).Len() {
+					return reflect.Value{}, fmt.Errorf("matrix row %d has %d elements, and row 0 has %d", i, out.Index(i).Len(), out.Index(0).Len())
+				}
+			}
+		}
+		if err := __octValidateRefinement(expectedType, out); err != nil { return reflect.Value{}, err }
 		return out, nil
 	case reflect.Struct:
 		meta, ok := __octRecordMetaByGoType[__octTypeKey(target)]
@@ -1549,6 +1557,25 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 	default:
 		return reflect.Value{}, fmt.Errorf("unsupported expected type %s", expectedType)
 	}
+}
+
+// __octElementType is the type of an element of an array, and of a vector or
+// a matrix, which Octagon data holds as an array and an array of rows.
+func __octElementType(expectedType string) string {
+	// An array that is a refined concept has the elements of its base.
+	if base, refined := __octRefinementBase[expectedType]; refined {
+		expectedType = base
+	}
+	if element, ok := strings.CutSuffix(expectedType, "[]"); ok {
+		return element
+	}
+	if element, ok := strings.CutPrefix(expectedType, "Vector<"); ok {
+		return strings.TrimSuffix(element, ">")
+	}
+	if strings.HasPrefix(expectedType, "Matrix<") {
+		return "Vector<" + strings.TrimPrefix(expectedType, "Matrix<")
+	}
+	return expectedType
 }
 
 func __octCheckNumericDimension(expectedType string, scalar string, received string) error {

@@ -645,6 +645,13 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 				b.WriteString("\t\tif checked.IsErr { return errors.New(checked.Err) }\n")
 			}
 			b.WriteString("\t}\n\treturn nil\n}\n\n")
+			// A refined concept is loaded as its base type and then
+			// admitted, so the materialiser needs the base of each.
+			b.WriteString("var __octRefinementBase = map[string]string{\n")
+			for _, refinement := range m.Refinements {
+				fmt.Fprintf(&b, "\t%q: %q,\n\t%q: %q,\n", refinement.Package+"."+refinement.Name, refinement.Base, refinement.Name, refinement.Base)
+			}
+			b.WriteString("}\n\n")
 			b.WriteString(__octLoadHelpers)
 			loadTypeNames := make([]string, 0, len(loadTypes))
 			for t := range loadTypes {

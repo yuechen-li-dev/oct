@@ -1,0 +1,7 @@
+SensorGrid {
+    Name: "north"
+    Levels: []
+    Depths: []
+    Readings: [[21.5, 21.8], [21.7]]
+    Weights: [1.0]
+}

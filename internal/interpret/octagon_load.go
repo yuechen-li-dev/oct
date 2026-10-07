@@ -35,8 +35,14 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 	if expectedType.IsArray && expectedType.ArrayDepth == 0 {
 		expectedType.ArrayDepth = 1
 	}
-	if expectedType.Function != nil || expectedType.VectorOf != nil || expectedType.MatrixOf != nil {
+	if expectedType.Function != nil {
 		return Value{}, fmt.Errorf("unsupported expected type %s", expectedTypeString(expectedType))
+	}
+	if expectedType.VectorOf != nil && !expectedType.IsArray {
+		return i.materializeOctagonVector(currentPkg, expectedType, expr)
+	}
+	if expectedType.MatrixOf != nil && !expectedType.IsArray {
+		return i.materializeOctagonMatrix(currentPkg, expectedType, expr)
 	}
 	if expectedType.IsArray {
 		arrayExpr, ok := expr.(ast.ArrayLiteralExpr)
@@ -231,6 +237,55 @@ func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast
 	}
 
 	return Value{}, fmt.Errorf("unsupported expected type %s", expectedTypeString(expectedType))
+}
+
+// materializeOctagonVector loads an array of numbers as the declared
+// `Vector<T>`. Octagon data has no vector of its own: an array is one where
+// the declared type says so.
+func (i interpreter) materializeOctagonVector(currentPkg string, expectedType ast.TypeRef, expr ast.Expr) (Value, error) {
+	arrayExpr, ok := expr.(ast.ArrayLiteralExpr)
+	if !ok {
+		return Value{}, fmt.Errorf("expected %s, got %s", expectedTypeString(expectedType), octagonDataDescription(expr))
+	}
+	elements := make([]Value, 0, len(arrayExpr.Elements))
+	for idx, elementExpr := range arrayExpr.Elements {
+		element, err := i.materializeOctagonValue(currentPkg, *expectedType.VectorOf, elementExpr)
+		if err != nil {
+			return Value{}, fmt.Errorf("vector element %d mismatch: %w", idx, err)
+		}
+		elements = append(elements, element)
+	}
+	return Value{Kind: ValueVector, Vector: elements}, nil
+}
+
+// materializeOctagonMatrix loads an array of rows of numbers, all one
+// length, as the declared `Matrix<T>`.
+func (i interpreter) materializeOctagonMatrix(currentPkg string, expectedType ast.TypeRef, expr ast.Expr) (Value, error) {
+	rowsExpr, ok := expr.(ast.ArrayLiteralExpr)
+	if !ok {
+		return Value{}, fmt.Errorf("expected %s, got %s", expectedTypeString(expectedType), octagonDataDescription(expr))
+	}
+	matrix := MatrixValue{Rows: len(rowsExpr.Elements)}
+	for rowIndex, rowExpr := range rowsExpr.Elements {
+		row, ok := rowExpr.(ast.ArrayLiteralExpr)
+		if !ok {
+			return Value{}, fmt.Errorf("matrix row %d mismatch: expected an array, got %s", rowIndex, octagonDataDescription(rowExpr))
+		}
+		if rowIndex == 0 {
+			matrix.Cols = len(row.Elements)
+		}
+		if len(row.Elements) != matrix.Cols {
+			return Value{}, fmt.Errorf("matrix row %d has %d elements, and row 0 has %d", rowIndex, len(row.Elements), matrix.Cols)
+		}
+		for columnIndex, elementExpr := range row.Elements {
+			element, err := i.materializeOctagonValue(currentPkg, *expectedType.MatrixOf, elementExpr)
+			if err != nil {
+				return Value{}, fmt.Errorf("matrix element %d, %d mismatch: %w", rowIndex, columnIndex, err)
+			}
+			matrix.Elements = append(matrix.Elements, element)
+		}
+	}
+	return Value{Kind: ValueMatrix, Matrix: matrix}, nil
 }
 
 // materializeOctagonValueOf loads a field of a record, or the payload of an

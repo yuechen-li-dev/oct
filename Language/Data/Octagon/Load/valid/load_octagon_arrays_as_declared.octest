@@ -1,0 +1,39 @@
+package OctagonLoadValid
+
+// Octagon data has arrays. An array loads as what the declared type says it
+// is: an array, a `Vector<T>`, a `Matrix<T>` of rows of one length, or a
+// refined array concept, which is admitted whole.
+
+concept Weighting = Float[] {
+    Require(Len(Self) > 0, "there is at least one weight")
+}
+
+record SensorGrid {
+    Name: String
+    Levels: Vector<Float>
+    Depths: Vector<Float<m>>
+    Readings: Matrix<Float>
+    Weights: Weighting
+}
+
+[Fact]
+fn LoadArraysAsVectorsAndMatrices() -> Void ! Error {
+    let grid = LoadOctagon<SensorGrid>("Language/Data/Octagon/Load/valid/sensor_grid.octagon")?
+    Assert.Equal(3, Len(grid.Levels), "an array loads as the declared vector")
+    Assert.Equal(1.5, grid.Levels[2], "its elements")
+    Assert.Equal(4.5m, grid.Depths[1], "elements keep their dimension")
+    Assert.Equal(21.5, grid.Readings[0, 0], "an array of rows loads as the declared matrix")
+    Assert.Equal(22.1, grid.Readings[1, 2], "to the last element")
+}
+
+[Fact]
+fn LoadARefinedArray() -> Void ! Error {
+    let grid = LoadOctagon<SensorGrid>("Language/Data/Octagon/Load/valid/sensor_grid.octagon")?
+    Assert.Equal(2, Len(grid.Weights), "a refined array is admitted by its concept")
+    Assert.Error(LoadOctagon<SensorGrid>("Language/Data/Octagon/Load/valid/sensor_grid_no_weights.octagon"), "and refused by it")
+}
+
+[Fact]
+fn AMatrixHasRowsOfOneLength() -> Void {
+    Assert.Error(LoadOctagon<SensorGrid>("Language/Data/Octagon/Load/valid/sensor_grid_ragged.octagon"), "rows of two lengths")
+}

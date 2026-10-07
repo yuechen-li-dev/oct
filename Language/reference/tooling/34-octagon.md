@@ -44,6 +44,14 @@ Load and write are explicit through builtins.
   `Option<Int>`, and `Option.Some(42)` is not loaded as an `Int`. Another enum
   with variants named `None` and `Some` is not an option.
 - Load rejects array element type mismatches.
+- Octagon data has arrays and no separate vector or matrix. An array loads as
+  what the declared type says it is: a field declared `Vector<T>` takes an
+  array of numbers, and a field declared `Matrix<T>` takes an array of rows of
+  numbers, all one length. `Vector<T>` and `Matrix<T>` are not accepted as the
+  type argument of `LoadOctagon` itself, and `WriteOctagon` does not yet write
+  either the same way in both lanes.
+- An array declared as a refined array concept is loaded as its base array and
+  then admitted whole by the concept, in both lanes.
 - Load rejects dimension mismatches.
 - Compiled loading checks the same declared dimension for numeric literals,
   including literals nested in arrays and records. Parenthesized data values

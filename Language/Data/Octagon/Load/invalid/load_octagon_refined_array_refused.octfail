@@ -1,0 +1,20 @@
+expect runtime error: "record field Weights mismatch: refined concept Weighting: there is at least one weight"
+
+package Main
+
+// A refined array is admitted whole by its concept, in both lanes.
+concept Weighting = Float[] {
+    Require(Len(Self) > 0, "there is at least one weight")
+}
+
+record SensorGrid {
+    Name: String
+    Levels: Vector<Float>
+    Depths: Vector<Float<m>>
+    Readings: Matrix<Float>
+    Weights: Weighting
+}
+
+fn Main() -> Void ! Error {
+    let grid = LoadOctagon<SensorGrid>("Language/Data/Octagon/Load/valid/sensor_grid_no_weights.octagon")?
+}
