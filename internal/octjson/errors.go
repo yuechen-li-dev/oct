@@ -74,16 +74,31 @@ func (p *path) element(index int) *path { return &path{parent: p, index: index} 
 func (p *path) isRoot() bool            { return p.parent == nil }
 func (p *path) String() string {
 	if p.isRoot() {
-		return "$"
+		return RootPath
 	}
-	prefix := p.parent.String()
 	if p.index >= 0 {
-		return prefix + "[" + strconv.Itoa(p.index) + "]"
+		return ElementPath(p.parent.String(), p.index)
 	}
-	if isPlainKey(p.key) {
-		return prefix + "." + p.key
+	return MemberPath(p.parent.String(), p.key)
+}
+
+// RootPath is the place of a document's value. MemberPath and ElementPath
+// spell the places under it, so every tool that names a place in a document
+// names it as a Json error does.
+const RootPath = "$"
+
+// MemberPath is the place of the member key of the object at path:
+// `$.http`, and `$["invoice.failed"]` for a key that does not read unquoted.
+func MemberPath(path string, key string) string {
+	if isPlainKey(key) {
+		return path + "." + key
 	}
-	return prefix + "[" + quoteString(p.key) + "]"
+	return path + "[" + quoteString(key) + "]"
+}
+
+// ElementPath is the place of the element at index of the array at path.
+func ElementPath(path string, index int) string {
+	return path + "[" + strconv.Itoa(index) + "]"
 }
 
 // isPlainKey reports whether a key reads unquoted after a dot.
