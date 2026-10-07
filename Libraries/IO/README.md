@@ -86,5 +86,5 @@ All wrapper errors use standardized wrapper error kinds via the Mx103a substrate
 `IO` has no JSON functions. JSON is read and written as declared types by
 the `Json` builtins (`Json.Load<T>`, `Json.Parse<T>`, `Json.Save`,
 `Json.Text`): see [`Libraries/Json`](../Json/README.md). The JSON files under
-`testdata/` are sample documents. No test reads them now; they are kept for
-`oct json infer`, the last milestone of `internal/json/JSON_V2_LADDER.md`.
+`testdata/` are sample documents. `Language/Tooling/JsonInfer/io_testdata`
+loads each with the declarations `oct json infer` prints for it.

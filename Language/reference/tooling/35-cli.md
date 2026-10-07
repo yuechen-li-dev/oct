@@ -48,6 +48,7 @@
 - Lane roles are intentionally partitioned: `test` = correctness contracts, `bench` = performance measurement, `artifact` = generated evidence outputs.
 - Mixed `.octest` files are allowed; each command still executes only its matching lane attributes.
 - `oct fmt <path> [--mode en-llm|en-llm-compact] [--arrows keep|thin|fat] [--check]` formats one file or a directory tree in place (or checks formatting with `--check`).
+- `oct json infer <file.json> [--name <Name>] [--explain]` prints the declarations a JSON document loads into; see [`oct json infer`](#oct-json-infer).
 - `oct new <experiment|library|wrapper-library> <Name>` creates a deterministic package scaffold in the current working directory.
 - `oct init <experiment|library|wrapper-library>` creates `manifest.oct` in the current existing directory and refuses to overwrite an existing manifest.
 - `oct new` and `oct init` use strict PascalCase package names; `oct new` rejects an existing target directory, and `oct init` derives the name from the current directory basename.
@@ -124,6 +125,73 @@ oct init wrapper-library
 
 See also [31 octest](./31-octest.md), [32 ocfmt](./32-ocfmt.md), and [33 oct pkg](./33-oct-pkg.md).
 
+## `oct json infer`
+
+```text
+oct json infer tickets.json [--name Ticket] [--explain]
+```
+
+A program does not infer the shape of JSON: it declares a type, and
+`Json.Load<T>` reads the document as that type (see
+[17 standard libraries](../language/17-standard-libraries.md)). This command
+reads a document the other way round, once, and prints the declarations to
+start from.
+
+```oct
+record table Tickets {
+    Id: String
+    Assignee: Option<String>
+    Points: Int
+}
+
+// Json.Load<Tickets>("tickets.json")?
+```
+
+Every line of the output is Oct source or a comment, so it can be pasted as
+it is. The last line is the call that loads the document.
+
+- An object is a `record`. Its fields are its keys as Oct fields are
+  written: `read_timeout_ms` is `ReadTimeoutMs`, which Json matches back to
+  the key.
+- An array of objects is a `record table`. Where a table cannot be declared,
+  in the cell of a table or the element of an array, it is an array of a
+  record.
+- A member that is `null` or absent in some objects is an `Option<T>`.
+- An object whose keys are data, not field names, is a keyed
+  `record table` with the columns `Key` and `Value`, or `Key` and the members
+  of its values when those are objects.
+- A number is an `Int` when it has no fraction and no exponent, and a place
+  that holds both is a `Float`. Rows of numbers, all one length, are a
+  `Matrix<Float>`; other arrays of arrays stay arrays.
+- A `String` that takes few values has the enum it could be in a comment.
+  No enum is declared.
+- Where no value says what a type is, an `Option<String>` or a `String[]` is
+  printed with a comment that says `String` is a placeholder: a member that
+  is `null` everywhere, an array that is empty everywhere.
+- The root declaration is named by `--name`, or after the file. The others
+  are named after their keys.
+
+Two choices have several signals and no rule: whether an object is a record
+or a keyed table, and whether an array of objects is a table or a tagged
+array. Each is scored, and `--explain` prints the scores as comments after
+the declarations. A record wins a tie, and so does a table. Keys that read
+as field names weigh most: an object of nine names with a count each is
+printed as a record of nine fields.
+
+A value with no declaration is listed with its place, the declarations
+around it are still printed, and the command fails:
+
+- a tagged array, where a member such as `type` says which other members an
+  object has. Json reads no enum that carries a payload;
+- an array or a column whose values are of different kinds;
+- an object that can be neither a record nor a table: a key no field name
+  can match (`$schema`), two keys that are one field name, a key written
+  twice.
+
+The output is the same for the same document. Contracts:
+`Language/Tooling/JsonInfer`, where the output for each of 26 documents is
+pasted and the document is loaded with it in both lanes.
+
 ## Examples
 
 ```text
@@ -142,6 +210,7 @@ oct bench Language --filter HotPath
 oct bench Language --filter Main.Fast --profile
 oct bench Language --profile --profile-format pprof
 oct fmt Language/reference
+oct json infer tickets.json --name Ticket --explain
 oct new library SignalTools
 oct new experiment BrownNoiseKalman
 oct new wrapper-library OpenCV

@@ -382,6 +382,12 @@ Both:
 - A String is a value like any other: `Json.Save(path, "a")` writes the JSON
   string `"a"`. There is no function that takes JSON text and no untyped
   value; a JSON object is a `record`.
+- `oct json infer <file.json>` prints the declarations a document loads
+  into, to start from; see [35 CLI](../tooling/35-cli.md). A program never
+  infers.
+- A key that no field name can match, such as `$schema` or `@type`, cannot
+  be read into a record. An object with such a key loads only as a keyed
+  table.
 - The full specification is `internal/json/JSON_V2_LADDER.md`.
 
 Contracts: `Language/Builtins/Json`.

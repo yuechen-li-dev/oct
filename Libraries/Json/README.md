@@ -50,6 +50,9 @@ allowed. No package may declare a function named `Load`, `Parse`, `Save` or
 - The two lanes read equal values, write equal bytes and give equal error
   text.
 
+`oct json infer <file.json>` prints the declarations a document loads into,
+to start from.
+
 The full rules, with the table of types, are in
 `Language/reference/language/17-standard-libraries.md` under "Json". The
 contracts are in `Language/Builtins/Json`. The specification is

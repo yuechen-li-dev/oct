@@ -59,6 +59,7 @@ func TestJSONInfer(t *testing.T) {
 		want string
 	}{
 		{[]string{"infer"}, "missing file"},
+		{[]string{"infer", ""}, "missing file"},
 		{[]string{"infer", "tickets.json", "tagged.json"}, "one file at a time"},
 		{[]string{"infer", "tickets.json", "--names"}, "unknown option --names"},
 		{[]string{"infer", "tickets.json", "--name"}, "--name needs a name"},

@@ -155,6 +155,20 @@ oct init <experiment|library|wrapper-library|application|app>
 
 `oct init` writes the same `Authors: ["Unknown"]` and ISO `Date` metadata as `oct new`, but it always initializes the current directory and never moves into `Experiments/` or `Libraries/`. `oct init` refuses to overwrite an existing `manifest.oct`. Use `oct init experiment` for existing experiment folders, `oct init library` for reusable libraries, `oct init application` (or shorthand `oct init app`) for runnable programs/services/UIs/CLIs, and `oct init wrapper-library` for wrapper-library manifests.
 
+## `oct json infer`
+
+```sh
+oct json infer tickets.json
+oct json infer tickets.json --name Ticket --explain
+```
+
+Prints the `record` and `record table` declarations a JSON document loads
+into, and the `Json.Load<T>` call that loads it. The output is Oct source and
+comments and can be pasted as it is. `--explain` adds the score of each
+choice that had two readings. A value with no declaration is listed with its
+place and the command fails. The rules are in
+`Language/reference/tooling/35-cli.md`.
+
 ## `oct templates` discovery
 
 ```sh

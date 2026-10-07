@@ -1206,3 +1206,45 @@ Decide whether the witness is regenerated and the ledger re-pinned, or kept as t
 Status: Open
 
 ---
+
+Observation:
+The compiled lane could not load a record with a field whose name does not begin with a capital letter. `record Doc { name: Int }` and `Json.Parse<Doc>("{\"name\": 2}")`, or the same through `LoadOctagon`, stopped with "panic: reflect: reflect.Value.Set using value obtained using unexported field". An Oct field is a Go field of the same name in the generated program, and reflection sets only an exported one. The interpreter loaded it. Declaring, constructing, reading and writing such a record all worked compiled; only the materialiser failed. `token_0`, `名前` and `ß` failed the same way.
+
+Suggestion:
+Set the field through its address.
+
+Status: Resolved
+
+Resolution: `__octMaterialize` sets a field it cannot set directly through `reflect.NewAt`. Contracts, both lanes: `Language/Builtins/Json/valid/json_field_names.octest`, `Language/Data/Octagon/Load/valid/load_octagon_lower_case_fields.octest`.
+
+---
+
+Observation:
+A JSON key that no field name can match cannot be read into a record. Json matches a key to a field with `_`, `-`, `.`, spaces and case ignored, and a field name is letters and digits, so `$schema`, `@type`, `$ref`, `x/y` and `3d` match no field. Unknown members are an error, so a document with such a key cannot be loaded as a record at all: `Json.Parse<Doc>("{\"$schema\": \"x\", \"name\": \"y\"}")` gives `unknown member "$schema"; Doc has Schema, Name`. It loads only as a keyed table, which needs every value to have one type. JSON Schema, JSON-LD and OpenAPI documents all have such keys. `oct json infer` reports the object as having no declaration.
+
+Suggestion:
+Decide how a record names such a key. The smallest answer is to let the match ignore any character that cannot be in an identifier, so `$schema` matches `Schema`; that keeps "the declared type is the intent" and needs no new syntax, but writing would give `Schema`, not `$schema`. A field attribute that states the key (`[Key("$schema")]`) covers writing too.
+
+Status: Open
+
+---
+
+Observation:
+`record Range { ... }` is accepted, and the name still means the builtin `Range`: a field declared `Held: Range` has the builtin type, and `value.Held.X` is refused with "'r.Held' has type Range, which has no fields". Every other builtin type name is refused at the declaration ("duplicate type: String"), or by the parser (`Option`, `Vector`, `Matrix`).
+
+Suggestion:
+Add `Range` to the builtin type names a declaration cannot take.
+
+Status: Open
+
+---
+
+Observation:
+`oct json infer` cannot tell an object of names from a record. `{"alice": 3, "bob": 5, "carol": 2}` has keys that read as field names and values of one type, as `{"width": 3, "height": 5, "depth": 2}` has, and both are printed as records. Nine names with a count each are still a record of nine fields. Keys that are visibly data (`user.created`, `u-100`, `2024`) do make a keyed table.
+
+Suggestion:
+None for the inference: no signal in the document separates the two, and a record is the reading that loses nothing. A `--table <path>` option that says "this object is a keyed table" would let a person state it without editing the output.
+
+Status: Open
+
+---
