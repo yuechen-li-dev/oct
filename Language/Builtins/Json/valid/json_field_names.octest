@@ -1,0 +1,60 @@
+package Main
+
+// A record is written with its field names as declared, so a record for a
+// document whose keys are spelled another way declares its fields in that
+// spelling: `schema`, `token_0`, `größe`. Such a record reads and writes in
+// both lanes, in every place a field can be: a record, a table, a record in
+// a cell.
+
+enum WitnessMode {
+    fast
+    slow
+}
+
+record WitnessPart {
+    offset: Int
+    tags: String[]
+}
+
+record table WitnessRow {
+    name: String
+    count: Option<Int>
+    part: WitnessPart
+}
+
+record Witness {
+    schema: String
+    token_0: Int[]
+    größe: Option<Float>
+    名前: WitnessPart
+    rows: WitnessRow
+    how: WitnessMode
+    grid: Matrix<Float>
+}
+
+fn WitnessText() -> String {
+    return "{\"schema\": \"oct.example.witness.v1\", \"token_0\": [33, 0, 0], \"größe\": null, \"名前\": {\"offset\": 1, \"tags\": [\"t\"]}, \"rows\": [{\"name\": \"r\", \"part\": {\"offset\": 2, \"tags\": []}}], \"how\": \"slow\", \"grid\": [[1, 2]]}"
+}
+
+[Fact]
+fn FieldsAreReadWhateverTheirFirstLetter() -> Void ! Error {
+    let witness = Json.Parse<Witness>(WitnessText())?
+    Assert.Equal("oct.example.witness.v1", witness.schema, "a lower-case field")
+    Assert.Equal(33, witness.token_0[0], "a field with an underscore and a digit")
+    Assert.Equal(Option<Float>.None, witness.größe, "a field with a letter outside ASCII")
+    Assert.Equal(1, witness.名前.offset, "a field in a script without case")
+    Assert.Equal("t", witness.名前.tags[0], "an array in it")
+    Assert.Equal("r", witness.rows[0].name, "a cell")
+    Assert.Equal(Option<Int>.None, witness.rows[0].count, "a cell the row lacks")
+    Assert.Equal(2, witness.rows[0].part.offset, "a record in a cell")
+    Assert.Equal(WitnessMode.slow, witness.how, "a variant")
+    Assert.Equal(2.0, witness.grid[0, 1], "a matrix")
+}
+
+[Fact]
+fn KeysAreWrittenAsTheFieldsAreDeclared() -> Void ! Error {
+    let witness = Json.Parse<Witness>(WitnessText())?
+    let expected = "{\n  \"schema\": \"oct.example.witness.v1\",\n  \"token_0\": [33, 0, 0],\n  \"größe\": null,\n  \"名前\": {\n    \"offset\": 1,\n    \"tags\": [\"t\"]\n  },\n  \"rows\": [\n    {\n      \"name\": \"r\",\n      \"count\": null,\n      \"part\": {\n        \"offset\": 2,\n        \"tags\": []\n      }\n    }\n  ],\n  \"how\": \"slow\",\n  \"grid\": [\n    [1.0, 2.0]\n  ]\n}\n"
+    Assert.Equal(expected, Json.Text(witness), "every key is the field as declared")
+    Assert.Equal(expected, Json.Text(Json.Parse<Witness>(Json.Text(witness))?), "and the text reads back as itself")
+}

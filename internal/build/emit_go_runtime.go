@@ -1530,11 +1530,19 @@ func __octMaterialize(value __octParsedValue, target reflect.Type, expectedType 
 				return reflect.Value{}, fmt.Errorf("record %s missing field %s", expectedType, field)
 			}
 			fieldExpectedType := meta.FieldTypes[field]
-			materialized, err := __octMaterialize(fieldValue, out.FieldByName(field).Type(), fieldExpectedType)
+			held := out.FieldByName(field)
+			materialized, err := __octMaterialize(fieldValue, held.Type(), fieldExpectedType)
 			if err != nil {
 				return reflect.Value{}, fmt.Errorf("record field %s mismatch: %w", field, err)
 			}
-			out.FieldByName(field).Set(materialized)
+			if !held.CanSet() {
+				// An Oct field is a Go field of the same name, and Go lets
+				// reflection set only a field whose name begins with a
+				// capital. The record is this program's own, so a field
+				// named "name" or "token_0" is set through its address.
+				held = reflect.NewAt(held.Type(), unsafe.Pointer(held.UnsafeAddr())).Elem()
+			}
+			held.Set(materialized)
 		}
 		keys := make([]string, 0, len(value.RecordFields))
 		for k := range value.RecordFields {

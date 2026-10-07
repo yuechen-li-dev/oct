@@ -1,0 +1,10 @@
+Witness {
+    schema: "oct.example.witness.v1"
+    frame: 33
+    token_0: [33, 0, 0]
+    größe: 2.5
+    part: WitnessPart {
+        offset: 1024
+        position: "[token+1,0,0]"
+    }
+}

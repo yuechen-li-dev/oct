@@ -1,0 +1,29 @@
+package OctagonLoadValid
+
+// A field is named as its record declares it, whatever its first letter:
+// `schema`, `token_0`, `größe`. Both lanes load a record with such fields.
+// The compiled lane used to stop on the first one that does not begin with a
+// capital letter.
+
+record WitnessPart {
+    offset: Int
+    position: String
+}
+
+record Witness {
+    schema: String
+    frame: Int
+    token_0: Int[]
+    größe: Float
+    part: WitnessPart
+}
+
+[Fact]
+fn LoadARecordWithLowerCaseFields() -> Void ! Error {
+    let witness = LoadOctagon<Witness>("Language/Data/Octagon/Load/valid/witness.octagon")?
+    Assert.Equal("oct.example.witness.v1", witness.schema, "a lower-case field")
+    Assert.Equal(33, witness.frame, "another")
+    Assert.Equal(0, witness.token_0[2], "a field with an underscore and a digit")
+    Assert.Equal(2.5, witness.größe, "a field with a letter outside ASCII")
+    Assert.Equal(1024, witness.part.offset, "a field of a record in a field")
+}

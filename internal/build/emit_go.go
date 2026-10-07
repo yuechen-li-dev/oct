@@ -344,7 +344,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		}
 	}
 	if needsOctagonLoad {
-		for _, pkg := range []string{"errors", "os", "reflect", "sort", "strconv", "strings", "unicode", "unicode/utf8", "github.com/yuechen-li-dev/oct/internal/dimension"} {
+		for _, pkg := range []string{"errors", "os", "reflect", "sort", "strconv", "strings", "unicode", "unicode/utf8", "unsafe", "github.com/yuechen-li-dev/oct/internal/dimension"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
