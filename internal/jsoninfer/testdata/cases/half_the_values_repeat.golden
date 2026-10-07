@@ -1,0 +1,4 @@
+// Json.Load<String[]>("half_the_values_repeat.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways
