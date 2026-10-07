@@ -1579,9 +1579,14 @@ func __octElementType(expectedType string) string {
 }
 
 func __octCheckNumericDimension(expectedType string, scalar string, received string) error {
+	// A refined concept has the dimension of its base.
+	declared := expectedType
+	if base, refined := __octRefinementBase[expectedType]; refined {
+		declared = base
+	}
 	expected := ""
-	if strings.HasPrefix(expectedType, scalar+"<") && strings.HasSuffix(expectedType, ">") {
-		expected = strings.TrimSuffix(strings.TrimPrefix(expectedType, scalar+"<"), ">")
+	if strings.HasPrefix(declared, scalar+"<") && strings.HasSuffix(declared, ">") {
+		expected = strings.TrimSuffix(strings.TrimPrefix(declared, scalar+"<"), ">")
 	}
 	if expected != received {
 		return fmt.Errorf("expected %s dimension %q, got %q", expectedType, expected, received)

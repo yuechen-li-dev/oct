@@ -1,0 +1,19 @@
+package OctagonLoadValid
+
+// A refined concept over a dimensioned base loads a number of that
+// dimension, in both lanes.
+
+concept DiveDepth = Float<m> {
+    Require(Self >= 0.0m, "a depth is not negative")
+}
+
+record Dive {
+    Site: String
+    Depth: DiveDepth
+}
+
+[Fact]
+fn LoadARefinedDimensionedField() -> Void ! Error {
+    let dive = LoadOctagon<Dive>("Language/Data/Octagon/Load/valid/dive.octagon")?
+    Assert.True(dive.Depth == 12.5m, "the value keeps its dimension and is admitted by its concept")
+}
