@@ -9,7 +9,7 @@ record table EventHandlers {
     Value: String
 }
 
-record SmokeDispatch {
+concept SmokeDispatch {
     EventHandlers: EventHandlers
     Version: Int
 }

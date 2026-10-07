@@ -1,9 +1,9 @@
-record Items {
+concept Items {
     Sku: String
     Price: Float
 }
 
-record Labels {
+concept Labels {
     Env: String
     Team: Option<String>
 }

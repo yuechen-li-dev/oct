@@ -296,7 +296,7 @@ Reading:
 | `String` | A string |
 | An enum whose variants carry no payload | A string that names a variant, matched as keys are |
 | `Option<T>` | `null` is `None`; anything else is `Some` of a `T`. As a record field or a table cell, an absent member is `None` too |
-| `record` | An object |
+| `record`, or a `concept` with fields | An object |
 | `T[]` | An array |
 | `Vector<T>` | An array of numbers |
 | `Matrix<T>` | An array of arrays of numbers, all one length |
@@ -381,7 +381,11 @@ Both:
   function named `Load`, `Parse`, `Save` or `Text`.
 - A String is a value like any other: `Json.Save(path, "a")` writes the JSON
   string `"a"`. There is no function that takes JSON text and no untyped
-  value; a JSON object is a `record`.
+  value; a JSON object is a `record` or a record-shaped `concept`.
+- A record-shaped `concept` reads and writes as a `record` does. It is the
+  form [18 Concepts](./18-concepts.md) prefers for the declaration of a
+  document, and the one `oct json infer` prints. A `record table` stays a
+  `record table`.
 - `oct json infer <file.json>` prints the declarations a document loads
   into, to start from; see [35 CLI](../tooling/35-cli.md). A program never
   infers.

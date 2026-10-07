@@ -1,4 +1,4 @@
-record OnlyDataKeysMixed {
+concept OnlyDataKeysMixed {
     U100: Int
     U101: String
 }

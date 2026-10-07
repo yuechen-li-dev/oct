@@ -2,7 +2,7 @@ record table Items {
     Sku: String
 }
 
-record Grid {
+concept Grid {
     Columns: Int
     Items: Items
 }

@@ -1,4 +1,4 @@
-record MixedShapes {
+concept MixedShapes {
     // A: no declaration; see below
 }
 

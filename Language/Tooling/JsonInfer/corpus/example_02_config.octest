@@ -4,25 +4,25 @@ package JsonInferCorpus
 // prints, pasted as it is, and the document loaded with it. The tests of
 // internal/jsoninfer hold the command to the lines between here and the fact.
 
-record Http {
+concept Http {
     Host: String
     Port: Int
     ReadTimeoutMs: Int
     WriteTimeoutMs: Int
 }
 
-record Features {
+concept Features {
     EnableAuditLog: Bool
     EnableRetryQueue: Bool
     EnableDebugRoutes: Bool
 }
 
-record Limits {
+concept Limits {
     MaxConnections: Int
     MaxPayloadKb: Int
 }
 
-record Service {
+concept Service {
     Name: String
     Environment: String
     Http: Http
@@ -30,7 +30,7 @@ record Service {
     Limits: Limits
 }
 
-record Example02Config {
+concept Example02Config {
     Service: Service
 }
 

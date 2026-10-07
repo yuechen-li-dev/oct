@@ -2,7 +2,7 @@ record table People2 {
     Name: String
 }
 
-record People {
+concept People {
     People: People2
 }
 

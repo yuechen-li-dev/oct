@@ -1,4 +1,4 @@
-record Document {
+concept Document {
     X: Int
 }
 

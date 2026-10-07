@@ -9,7 +9,7 @@ record table Tickets {
     DueDate: Option<String>
 }
 
-record SmokeOptional {
+concept SmokeOptional {
     Tickets: Tickets
 }
 

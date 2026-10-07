@@ -2,8 +2,8 @@
 
 Date: 2026-10-07
 Ladder: `internal/json/JSON_V2_LADDER.md`, closed
-Branch: `claude/json-v2`, on `d44566d` (`main`, which has not moved). Not
-merged. No pull request is open and nothing is tagged.
+Branch: `claude/json-v2`. **Merged:** `main` was fast-forwarded from
+`d44566d` on 2026-10-07, at your request. Nothing is tagged.
 
 This is what is left after the ladder: what needs a decision from you, what
 is still wrong, what I did not check, and what I would do next. Each fault
@@ -25,7 +25,10 @@ Artifact.WriteJson(path, value)            oct json infer <file.json>
 - The first library is gone: seven builtins, the `IO` JSON functions and the
   raw graph, `Json.Object`, `cmd/octxiliary-json`.
 - `Option<T>` exists (M1), and `F()?` is a statement (M4).
-- Contracts: 59 facts and 62 `.octfail` under `Language/Builtins/Json`, and
+- The declaration of a document is a `concept`: a concept with fields reads
+  and writes as a record does, and it is what `oct json infer` prints
+  (changed after the ladder closed; see the note in `JSON_V2_M6.md`).
+- Contracts: 62 facts and 62 `.octfail` under `Language/Builtins/Json`, and
   26 documents loaded with their inferred declarations under
   `Language/Tooling/JsonInfer`, all in both lanes. `octjson`, `jsontype` and
   `jsoninfer` are at 100% of statements.
@@ -44,8 +47,7 @@ a qualifier, in the order I would weigh them:
 
 ## Decisions that are yours
 
-**1. Merge.** 44 commits, fast-forward onto `main`. I can open the pull
-request; I have not, because you did not ask for one.
+**1. Merge.** Decided and done: fast-forwarded onto `main`, no pull request.
 
 **2. The witness the ledger pins.**
 `Evt2OctOracle/o0_structural_witness.json` is recorded in
@@ -120,6 +122,9 @@ what such a declaration needs. This is a design of its own, not a patch.
 - A `match` case label names its variant and the enum name before it is not
   checked: `case Anything.Some(v)` is accepted.
 - `record Range { ... }` is accepted and the name still means the builtin.
+- A record-shaped concept cannot state a requirement over its fields
+  (`Require(Low <= High, ...)` is a parse error), so a concept that declares
+  a document bounds each field but cannot say that two fields agree.
 
 ### Tooling and experiments
 
@@ -205,7 +210,7 @@ integration lane of `cmd/oct` as well; it takes two minutes.
 
 ## What I would do next
 
-1. **Merge**, after decisions 1 and 2.
+1. ~~Merge~~: done. Decision 2 is still open.
 2. **`$schema`** (decision 3, first option): small, and it removes the one
    case where a real document cannot be loaded at all.
 3. **Faults 2 and 3**, together: qualify the generated names with the

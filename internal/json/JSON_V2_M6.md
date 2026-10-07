@@ -40,6 +40,16 @@ Four things are not in the ladder's M6:
 `internal/jsoninfer` holds no rule about what a declaration reads. Those are
 `octjson`'s, and the output is checked against them.
 
+**After the ladder closed (2026-10-07):** an object is printed as a
+record-shaped `concept`, not a `record`. M6 printed `record`, which
+`Language/reference/language/18-concepts.md` does not prefer for a named
+value shape; the reference is the authority and the tool now follows it.
+Where this report says "record" of the output, read "record-shaped concept".
+A table is still a `record table`. The goldens and the 26 contracts were
+regenerated from the command, and
+`Language/Builtins/Json/valid/json_concepts.octest` is the contract that a
+concept with fields reads and writes as a record does.
+
 ## How it reads a document
 
 1. **Shapes.** The document is read into shapes: what the values seen at one

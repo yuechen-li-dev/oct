@@ -1,4 +1,4 @@
-record KeysOutsideAsciiItem {
+concept KeysOutsideAsciiItem {
     X: Int
 }
 
@@ -6,11 +6,11 @@ record table KeysOutsideAsciiItem2 {
     É: Int
 }
 
-record État {
+concept État {
     Ouvert: Int
 }
 
-record KeysOutsideAscii {
+concept KeysOutsideAscii {
     Größe: Float
     NaïveWert: Bool
     名前: KeysOutsideAsciiItem

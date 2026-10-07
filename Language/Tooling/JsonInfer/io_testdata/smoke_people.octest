@@ -9,7 +9,7 @@ record table People {
     Name: String
 }
 
-record SmokePeople {
+concept SmokePeople {
     People: People
 }
 

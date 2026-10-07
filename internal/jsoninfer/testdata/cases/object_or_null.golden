@@ -1,8 +1,8 @@
-record A {
+concept A {
     X: Int
 }
 
-record ObjectOrNull {
+concept ObjectOrNull {
     A: A
     B: Option<String> // null everywhere in this document; String is a placeholder
 }

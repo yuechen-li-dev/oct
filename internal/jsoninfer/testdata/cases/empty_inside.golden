@@ -1,4 +1,4 @@
-record EmptyInside {
+concept EmptyInside {
     Tags: String[] // empty everywhere in this document; String is a placeholder
     Rows: String[][] // empty everywhere in this document; String is a placeholder
 }

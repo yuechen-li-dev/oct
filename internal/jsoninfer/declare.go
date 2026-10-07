@@ -51,7 +51,7 @@ type Result struct {
 	note string
 }
 
-// declaration is one `record` or `record table`.
+// declaration is one record-shaped `concept` or one `record table`.
 type declaration struct {
 	name   string
 	table  bool

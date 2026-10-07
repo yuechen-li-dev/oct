@@ -1,10 +1,10 @@
-record Page {
+concept Page {
     Id: String
     Title: String
     // Sections: no declaration; see below
 }
 
-record Example06UiLike {
+concept Example06UiLike {
     Page: Page
 }
 

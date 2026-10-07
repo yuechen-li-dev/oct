@@ -1,7 +1,7 @@
-record Meta {
+concept Meta {
 }
 
-record EmptyObject {
+concept EmptyObject {
     Meta: Meta
     Name: String
 }

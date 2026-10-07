@@ -9,11 +9,11 @@ record table Records {
     Amount: Int
 }
 
-record Meta {
+concept Meta {
     Source: String
 }
 
-record AmbiguousOverlap {
+concept AmbiguousOverlap {
     Records: Records
     Meta: Meta
 }

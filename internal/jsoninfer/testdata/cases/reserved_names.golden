@@ -1,8 +1,8 @@
-record ReservedNamesString {
+concept ReservedNamesString {
     A: Int
 }
 
-record ReservedNamesOption {
+concept ReservedNamesOption {
     B: Int
 }
 
@@ -10,7 +10,7 @@ record table ReservedNamesMatrix {
     C: Int
 }
 
-record ReservedNames {
+concept ReservedNames {
     String: ReservedNamesString
     Option: ReservedNamesOption
     Matrix: ReservedNamesMatrix

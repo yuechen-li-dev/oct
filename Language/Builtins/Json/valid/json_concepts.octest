@@ -1,0 +1,50 @@
+package Main
+
+// A record-shaped concept is the declaration of a document. It reads from
+// an object and is written as one, by the rules of a record: the same
+// matching of keys, the same strictness, the same text. `concept` is the
+// form the reference prefers for a named value shape (18 Concepts), and it
+// is what `oct json infer` prints.
+
+concept Endpoint {
+    Host: String
+    Port: Port
+}
+
+record table Routes {
+    Path: String
+    Target: Endpoint
+}
+
+concept Gateway {
+    Name: String
+    Listen: Endpoint
+    Fallback: Option<Endpoint>
+    Mirrors: Endpoint[]
+    Routes: Routes
+}
+
+[Fact]
+fn AConceptReadsFromAnObject() -> Void ! Error {
+    let gateway = Json.Parse<Gateway>("{\"name\": \"edge\", \"listen\": {\"host\": \"0.0.0.0\", \"port\": 443}, \"mirrors\": [{\"host\": \"m\", \"port\": 8443}], \"routes\": [{\"path\": \"/\", \"target\": {\"host\": \"app\", \"port\": 8080}}]}")?
+    Assert.Equal("edge", gateway.Name, "a field")
+    Assert.Equal("0.0.0.0", gateway.Listen.Host, "a concept in a field")
+    Assert.Equal(Option<Endpoint>.None, gateway.Fallback, "an absent Option of a concept")
+    Assert.True(gateway.Mirrors[0].Port == 8443, "an array of concepts, with a refined field")
+    Assert.Equal("app", gateway.Routes[0].Target.Host, "a concept in the cell of a table")
+}
+
+[Fact]
+fn AConceptIsStrictAboutItsMembers() -> Void {
+    Assert.Error(Json.Parse<Endpoint>("{\"host\": \"h\"}"), "a field with no member")
+    Assert.Error(Json.Parse<Endpoint>("{\"host\": \"h\", \"port\": 1, \"tls\": true}"), "a member that names no field")
+    Assert.Error(Json.Parse<Endpoint>("{\"host\": \"h\", \"port\": 0}"), "a refined field is admitted by its concept")
+    Assert.Error(Json.Parse<Endpoint>("[\"h\", 1]"), "an array is not a concept with fields")
+}
+
+[Fact]
+fn AConceptIsWrittenAsAnObject() -> Void ! Error {
+    let endpoint = Json.Parse<Endpoint>("{\"port\": 443, \"host\": \"h\"}")?
+    Assert.Equal("{\n  \"Host\": \"h\",\n  \"Port\": 443\n}\n", Json.Text(endpoint), "the fields as declared, in the order declared")
+    Assert.Equal(endpoint, Json.Parse<Endpoint>(Json.Text(endpoint))?, "the text reads back as the same value")
+}

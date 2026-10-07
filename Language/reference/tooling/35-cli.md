@@ -150,12 +150,14 @@ record table Tickets {
 Every line of the output is Oct source or a comment, so it can be pasted as
 it is. The last line is the call that loads the document.
 
-- An object is a `record`. Its fields are its keys as Oct fields are
-  written: `read_timeout_ms` is `ReadTimeoutMs`, which Json matches back to
-  the key.
-- An array of objects is a `record table`. Where a table cannot be declared,
-  in the cell of a table or the element of an array, it is an array of a
-  record.
+- An object is a record-shaped `concept`, the form
+  [18 Concepts](../language/18-concepts.md) prefers for a named value shape.
+  Its fields are its keys as Oct fields are written: `read_timeout_ms` is
+  `ReadTimeoutMs`, which Json matches back to the key. Below, "record" means
+  that shape.
+- An array of objects is a `record table`, which `concept` does not replace.
+  Where a table cannot be declared, in the cell of a table or the element of
+  an array, it is an array of a concept.
 - A member that is `null` or absent in some objects is an `Option<T>`.
 - An object whose keys are data, not field names, is a keyed
   `record table` with the columns `Key` and `Value`, or `Key` and the members

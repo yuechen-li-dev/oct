@@ -39,7 +39,8 @@ allowed. No package may declare a function named `Load`, `Parse`, `Save` or
 
 - The declared type says how a document is read and how a value is written.
   Nothing is guessed from the document, and there is no untyped value: a
-  JSON object is a `record`, an array of objects is a `record table`.
+  JSON object is a record-shaped `concept` (or a `record`), an array of
+  objects is a `record table`.
 - A type must have a JSON form in every part, or the call is a compile error
   that names the part.
 - Reading is strict: a member that names no field, a missing member that is

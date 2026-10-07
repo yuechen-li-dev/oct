@@ -1,8 +1,8 @@
-record Profile {
+concept Profile {
     Name: String
 }
 
-record KeyedOneFieldValue {
+concept KeyedOneFieldValue {
     Profile: Profile
 }
 

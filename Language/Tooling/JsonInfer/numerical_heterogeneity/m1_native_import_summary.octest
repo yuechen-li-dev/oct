@@ -4,7 +4,7 @@ package JsonInferNumericalHeterogeneity
 // prints, pasted as it is, and the document loaded with it. The tests of
 // internal/jsoninfer hold the command to the lines between here and the fact.
 
-record M1Summary {
+concept M1Summary {
     Schema: String
     EvidenceAuthority: String
     SyntheticAuthority: String

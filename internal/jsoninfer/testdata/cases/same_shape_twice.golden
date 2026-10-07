@@ -1,16 +1,16 @@
-record Point {
+concept Point {
     X: Int
 }
 
-record Left {
+concept Left {
     Point: Point
 }
 
-record Right {
+concept Right {
     Point: Point
 }
 
-record SameShapeTwice {
+concept SameShapeTwice {
     Left: Left
     Right: Right
 }

@@ -13,7 +13,7 @@ record table Tickets {
     Sprint: Option<String>
 }
 
-record Example05Optional {
+concept Example05Optional {
     Tickets: Tickets
 }
 

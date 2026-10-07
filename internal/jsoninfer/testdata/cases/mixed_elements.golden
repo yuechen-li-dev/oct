@@ -1,4 +1,4 @@
-record MixedElements {
+concept MixedElements {
     // Values: no declaration; see below
 }
 

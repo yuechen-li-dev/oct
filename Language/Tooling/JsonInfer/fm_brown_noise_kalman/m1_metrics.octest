@@ -4,7 +4,7 @@ package JsonInferFmBrownNoiseKalman
 // prints, pasted as it is, and the document loaded with it. The tests of
 // internal/jsoninfer hold the command to the lines between here and the fact.
 
-record Settings {
+concept Settings {
     SampleRate: Float
     Duration: Float
     MessageHz: Float
@@ -14,12 +14,12 @@ record Settings {
     Seed: Int
 }
 
-record LabelTolerance {
+concept LabelTolerance {
     SnrEpsilonDb: Float
     WhitenessRelativeEpsilon: Float
 }
 
-record M1Metrics {
+concept M1Metrics {
     RowCount: Int
     Settings: Settings
     LabelTolerance: LabelTolerance

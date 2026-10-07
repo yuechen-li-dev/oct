@@ -1,8 +1,8 @@
-record People {
+concept People {
     Name: String
 }
 
-record NullRows {
+concept NullRows {
     People: Option<People>[]
 }
 

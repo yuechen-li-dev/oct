@@ -12,7 +12,7 @@ record table People {
     Skills: String[]
 }
 
-record Example01People {
+concept Example01People {
     People: People
 }
 

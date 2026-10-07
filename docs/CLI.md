@@ -162,7 +162,7 @@ oct json infer tickets.json
 oct json infer tickets.json --name Ticket --explain
 ```
 
-Prints the `record` and `record table` declarations a JSON document loads
+Prints the `concept` and `record table` declarations a JSON document loads
 into, and the `Json.Load<T>` call that loads it. The output is Oct source and
 comments and can be pasted as it is. `--explain` adds the score of each
 choice that had two readings. A value with no declaration is listed with its

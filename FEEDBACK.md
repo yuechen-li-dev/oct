@@ -1258,3 +1258,26 @@ Say that the directory has no tests, and name it.
 Status: Open
 
 ---
+Observation:
+`oct json infer` printed `record` for an object, the Json section of `Language/reference/language/17-standard-libraries.md` said "a JSON object is a `record`", and every Json contract declared records, while `Language/reference/language/18-concepts.md` says `concept` is preferred when a declaration names a valid domain value shape. A record-shaped concept already read and wrote as a record in both lanes, with no contract that said so. The tree has about 1860 `record` declarations and 30 record-shaped concepts, so the habit and the reference disagree well beyond Json.
+
+Suggestion:
+Print `concept`, state in the Json section that a concept with fields is the declaration of a document, and hold it with a contract.
+
+Status: Resolved
+
+Resolution:
+`oct json infer` prints a record-shaped `concept` for an object and still a `record table` for a table. `Language/Builtins/Json/valid/json_concepts.octest` is the contract, in both lanes. The reference says it in 17 (Json) and 35 (CLI). The `record` declarations already in the tree, including those written when the experiments were migrated to Json v2, were not rewritten: they are valid, and rewriting them was not asked for.
+
+---
+
+Observation:
+A record-shaped concept cannot state a requirement over its fields. `concept Window { Low: Int  High: Int  Require(Low <= High, "...") }` is a parse error ("expected ':' after concept field name"), and 18 Concepts lists record-field inspection as outside the requirement boundary and nominal records as unsupported refinement bases. A concept that is the declaration of a JSON document can therefore bound each field through a refined field type, but cannot say that two fields agree, which a JSON Schema says with `dependentRequired` or `if`/`then`.
+
+Suggestion:
+A Concepts milestone, not a Json change: requirements in a record-shaped concept. The open question is construction, since a record-shaped concept has no unrefined base to pass to a checked constructor: a literal whose requirements are not proved would have to be fallible. Json needs nothing new for it; a refusal would be reported at the object's place, as a refined field's is at its own.
+
+Status: Open
+
+---
+

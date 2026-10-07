@@ -1,4 +1,4 @@
-record ManyMembersThatAreNames {
+concept ManyMembersThatAreNames {
     Alice: Int
     Bob: Int
     Carol: Int

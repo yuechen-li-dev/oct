@@ -1,4 +1,4 @@
-record Example07Tagged {
+concept Example07Tagged {
     // Operations: no declaration; see below
 }
 

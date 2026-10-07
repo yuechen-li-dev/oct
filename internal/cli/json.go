@@ -13,7 +13,7 @@ import (
 const jsonInferUsage = "usage: oct json infer <file.json> [--name <Name>] [--explain]"
 
 func writeJSONHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, jsonInferUsage+"\n\nPrint the record and record table declarations a JSON document loads into,\nand the Json.Load call that loads it. A program does not infer: it declares\na type, and Json.Load<T> reads the document as that type. This command writes\nthe declarations to start from.\n\n  --name <Name>   Name the declaration the whole document loads into.\n                  The default is the file's name.\n  --explain       Also print each choice that had more than one reading:\n                  record or keyed table, table or tagged array.\n\nThe output is Oct source and comments. A value with no declaration is listed\nwith its place, and the command fails.")
+	_, err := fmt.Fprintln(out, jsonInferUsage+"\n\nPrint the concept and record table declarations a JSON document loads into,\nand the Json.Load call that loads it. A program does not infer: it declares\na type, and Json.Load<T> reads the document as that type. This command writes\nthe declarations to start from.\n\n  --name <Name>   Name the declaration the whole document loads into.\n                  The default is the file's name.\n  --explain       Also print each choice that had more than one reading:\n                  record or keyed table, table or tagged array.\n\nThe output is Oct source and comments. A value with no declaration is listed\nwith its place, and the command fails.")
 	return err
 }
 

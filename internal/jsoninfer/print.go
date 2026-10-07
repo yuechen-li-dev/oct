@@ -16,7 +16,7 @@ func (r Result) Loads() bool { return len(r.Refusals) == 0 }
 func (r Result) Text() string {
 	var out strings.Builder
 	for _, d := range r.declarations {
-		keyword := "record"
+		keyword := "concept"
 		if d.table {
 			keyword = "record table"
 		}

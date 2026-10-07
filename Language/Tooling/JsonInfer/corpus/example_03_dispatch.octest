@@ -14,7 +14,7 @@ record table RetryPolicy {
     Value: Int
 }
 
-record Example03Dispatch {
+concept Example03Dispatch {
     EventHandlers: EventHandlers
     RetryPolicy: RetryPolicy
 }

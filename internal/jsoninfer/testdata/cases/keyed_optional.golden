@@ -1,4 +1,4 @@
-record KeyedOptionalValue {
+concept KeyedOptionalValue {
     Zones: Int
     Primary: Bool
 }

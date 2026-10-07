@@ -1,8 +1,8 @@
-record F {
+concept F {
     G: Int
 }
 
-record WideRecord {
+concept WideRecord {
     A: Int
     B: String
     C: Bool

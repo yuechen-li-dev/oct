@@ -1,20 +1,20 @@
-record Point {
+concept Point {
     X: Int
 }
 
-record Left {
+concept Left {
     Point: Point
 }
 
-record RightPoint {
+concept RightPoint {
     Label: String
 }
 
-record Right {
+concept Right {
     Point: RightPoint
 }
 
-record NameClash {
+concept NameClash {
     Left: Left
     Right: Right
 }

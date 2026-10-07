@@ -94,7 +94,7 @@ func mustLoad(t *testing.T, text string, result Result) {
 	}
 }
 
-var declarationLine = regexp.MustCompile(`^record (table )?(\p{Lu}[\p{L}\p{Nd}]*) \{$`)
+var declarationLine = regexp.MustCompile(`^(concept|record table) (\p{Lu}[\p{L}\p{Nd}]*) \{$`)
 var fieldLine = regexp.MustCompile(`^    (\p{L}[\p{L}\p{Nd}]*): ([^ ]+)( // .*)?$`)
 
 // schemaOf reads printed declarations back, as octjson describes types. It
@@ -114,7 +114,7 @@ func schemaOf(output string, root string) (*octjson.Schema, error) {
 		case declarationLine.MatchString(line):
 			match := declarationLine.FindStringSubmatch(line)
 			kind := octjson.KindRecord
-			if match[1] != "" {
+			if match[1] == "record table" {
 				kind = octjson.KindTable
 			}
 			if _, twice := declared[match[2]]; twice || reserved[match[2]] {

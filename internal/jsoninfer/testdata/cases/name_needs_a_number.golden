@@ -1,24 +1,24 @@
-record Point {
+concept Point {
     X: Int
 }
 
-record BPoint {
+concept BPoint {
     Z: Int
 }
 
-record Point2 {
+concept Point2 {
     W: Int
 }
 
-record Point3 {
+concept Point3 {
     Y: Int
 }
 
-record B {
+concept B {
     Point: Point3
 }
 
-record NameNeedsANumber {
+concept NameNeedsANumber {
     Point: Point
     BPoint: BPoint
     Point2: Point2

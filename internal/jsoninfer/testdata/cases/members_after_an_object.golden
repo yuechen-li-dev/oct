@@ -1,4 +1,4 @@
-record Meta {
+concept Meta {
     X: Int
 }
 
