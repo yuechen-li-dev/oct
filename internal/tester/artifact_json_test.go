@@ -4,7 +4,12 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/yuechen-li-dev/oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/project"
+	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
 // `Artifact.WriteJson(path, value)` publishes the JSON text of a typed value.
@@ -50,5 +55,26 @@ func TestArtifactWriteJsonPublishesTheTextOfAValue(t *testing.T) {
 		if artifact.Status != "unchanged" {
 			t.Errorf("%s was %s on the second evaluation, want unchanged", artifact.Path, artifact.Status)
 		}
+	}
+}
+
+// The interpreted lane stops an ordinary program when it reaches
+// Artifact.WriteJson with a value, as it does for Artifact.WriteText. The
+// compiled lane refuses to build the same program, which is the contract in
+// Language/Builtins/Json/invalid/artifact_write_outside_the_phase.octfail.
+func TestArtifactWriteJsonOutsideThePhaseStopsAnInterpretedProgram(t *testing.T) {
+	program, err := project.Load(filepath.Join("..", "..", "testdata", "artifact_phase_json", "write_json_outside_phase.oct"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := interpret.ExecuteMain(program, nil); err == nil || !strings.Contains(err.Error(), "only during `oct artifact` evaluation") {
+		t.Fatalf("expected phase capability diagnostic, got %v", err)
+	}
+	if _, err := os.Stat("outside.json"); err == nil {
+		t.Errorf("outside.json was written")
+		os.Remove("outside.json")
 	}
 }

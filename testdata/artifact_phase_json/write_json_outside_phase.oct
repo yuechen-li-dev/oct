@@ -1,0 +1,12 @@
+// Synthetic input for internal/tester/artifact_json_test.go.
+package Main
+
+record Reading {
+    Name: String
+    Levels: Float[]
+}
+
+fn Main() -> Int {
+    Artifact.WriteJson("outside.json", Reading { Name: "a" Levels: [1.0] })
+    return 0
+}
