@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yuechen-li-dev/oct/internal/ocfmt"
 	"github.com/yuechen-li-dev/oct/internal/octjson"
 )
 
@@ -62,6 +63,12 @@ func TestCases(t *testing.T) {
 			if got != string(want) {
 				t.Errorf("output differs from %s\n--- got\n%s--- want\n%s", golden, got, want)
 			}
+			// The output is laid out as `oct fmt` lays Oct out, so pasting it
+			// into a formatted file leaves the file formatted.
+			pasted := "package Main\n\n" + result.Text()
+			if formatted, err := ocfmt.FormatSource(pasted); err != nil || formatted != pasted {
+				t.Errorf("`oct fmt` would change the output (%v):\n%s", err, formatted)
+			}
 			if result.Loads() {
 				mustLoad(t, string(text), result)
 			} else if len(result.Refusals) == 0 || result.Refusals[0].Line < 1 || result.Refusals[0].Column < 1 {
@@ -88,7 +95,7 @@ func mustLoad(t *testing.T, text string, result Result) {
 }
 
 var declarationLine = regexp.MustCompile(`^record (table )?(\p{Lu}[\p{L}\p{Nd}]*) \{$`)
-var fieldLine = regexp.MustCompile(`^    (\p{L}[\p{L}\p{Nd}]*): ([^ ]+)(  // .*)?$`)
+var fieldLine = regexp.MustCompile(`^    (\p{L}[\p{L}\p{Nd}]*): ([^ ]+)( // .*)?$`)
 
 // schemaOf reads printed declarations back, as octjson describes types. It
 // reads the text the command prints, so it checks what a person pastes.

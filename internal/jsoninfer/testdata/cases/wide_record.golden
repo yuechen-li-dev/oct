@@ -9,7 +9,7 @@ record WideRecord {
     D: Float
     E: Int[]
     F: F
-    H: Option<String>  // null everywhere in this document; String is a placeholder
+    H: Option<String> // null everywhere in this document; String is a placeholder
     I: String
     J: Int
 }

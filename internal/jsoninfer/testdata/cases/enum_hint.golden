@@ -1,5 +1,5 @@
 record table EnumHint {
-    Status: String  // could be an enum: Open, Closed
+    Status: String // could be an enum: Open, Closed
     Owner: String
 }
 

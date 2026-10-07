@@ -7,7 +7,7 @@ package JsonInferCorpus
 record table People {
     Id: String
     Name: String
-    Role: String  // could be an enum: Analyst, Designer
+    Role: String // could be an enum: Analyst, Designer
     Active: Bool
     Skills: String[]
 }

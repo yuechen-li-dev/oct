@@ -1,5 +1,5 @@
 record table TagNoExclusive {
-    Type: String  // could be an enum: A, B
+    Type: String // could be an enum: A, B
     X: Int
     Y: Option<Int>
 }

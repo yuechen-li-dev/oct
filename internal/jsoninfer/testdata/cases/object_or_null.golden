@@ -4,7 +4,7 @@ record A {
 
 record ObjectOrNull {
     A: A
-    B: Option<String>  // null everywhere in this document; String is a placeholder
+    B: Option<String> // null everywhere in this document; String is a placeholder
 }
 
 // Json.Load<ObjectOrNull>("object_or_null.json")?

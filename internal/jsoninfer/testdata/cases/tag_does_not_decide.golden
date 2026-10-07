@@ -1,5 +1,5 @@
 record table TagDoesNotDecide {
-    Type: String  // could be an enum: A
+    Type: String // could be an enum: A
     X: Option<Int>
     Y: Option<Int>
 }

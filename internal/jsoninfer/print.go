@@ -26,7 +26,7 @@ func (r Result) Text() string {
 			case f.expr == "":
 				fmt.Fprintf(&out, "    // %s: no declaration; see below\n", f.name)
 			case f.note != "":
-				fmt.Fprintf(&out, "    %s: %s  // %s\n", f.name, f.expr, f.note)
+				fmt.Fprintf(&out, "    %s: %s // %s\n", f.name, f.expr, f.note)
 			default:
 				fmt.Fprintf(&out, "    %s: %s\n", f.name, f.expr)
 			}

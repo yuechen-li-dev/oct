@@ -1,5 +1,5 @@
 record table TagFailsOnALaterRow {
-    Kind: String  // could be an enum: A
+    Kind: String // could be an enum: A
     X: Option<Int>
     Y: Option<Int>
 }

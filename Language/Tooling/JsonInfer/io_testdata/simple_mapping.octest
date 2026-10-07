@@ -7,7 +7,7 @@ package JsonInferIoTestdata
 record SimpleMapping {
     A: Int
     B: Int
-    C: Option<String>  // null everywhere in this document; String is a placeholder
+    C: Option<String> // null everywhere in this document; String is a placeholder
 }
 
 // Json.Load<SimpleMapping>("Libraries/IO/testdata/simple_mapping.json")?

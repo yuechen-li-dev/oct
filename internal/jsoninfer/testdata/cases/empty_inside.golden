@@ -1,6 +1,6 @@
 record EmptyInside {
-    Tags: String[]  // empty everywhere in this document; String is a placeholder
-    Rows: String[][]  // empty everywhere in this document; String is a placeholder
+    Tags: String[] // empty everywhere in this document; String is a placeholder
+    Rows: String[][] // empty everywhere in this document; String is a placeholder
 }
 
 // Json.Load<EmptyInside>("empty_inside.json")?
