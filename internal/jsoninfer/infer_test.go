@@ -453,3 +453,25 @@ func TestLadderDocuments(t *testing.T) {
 		t.Errorf("the ladder names 28 documents; %d were found and %d are covered", len(documents), len(covered))
 	}
 }
+
+// A declaration is never given the name of a builtin type, which Oct
+// refuses or, for some, quietly reads as the builtin.
+func TestBuiltinTypeNamesAreNotDeclared(t *testing.T) {
+	builtins := []string{"Int", "Float", "Complex", "Bool", "String", "Bytes", "Error", "Void", "UI", "Index", "Range", "Option", "Vector", "Matrix"}
+	if len(builtins) != len(reserved) {
+		t.Errorf("%d builtin types are listed here and %d are reserved", len(builtins), len(reserved))
+	}
+	for _, name := range builtins {
+		text := `{"` + name + `": {"a": 1}, "rows": {"` + name + `": [{"b": 2}]}}`
+		result := inferText(t, text, Options{Source: "x.json"})
+		mustLoad(t, text, result)
+		for _, declared := range result.declarations {
+			if declared.name == name {
+				t.Errorf("a declaration is named %s:\n%s", name, result.Text())
+			}
+		}
+		if !strings.Contains(result.Text(), "    "+name+": X"+name+"\n") || !strings.Contains(result.Text(), "    "+name+": Rows"+name+"\n") {
+			t.Errorf("the declarations for a key %s are not named after their parents:\n%s", name, result.Text())
+		}
+	}
+}

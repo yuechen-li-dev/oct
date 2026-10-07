@@ -91,7 +91,7 @@ func Infer(document *octjson.Document, options Options) (Result, error) {
 	// kept for the root, whatever is declared on the way there.
 	b := &builder{document: document, root: name, names: map[string]string{name: heldForRoot}}
 	root := observe(document.Root, octjson.RootPath)
-	expr, note, _ := b.typeOf(root, place{name: name, tableAllowed: true}, false)
+	expr, note := b.typeOf(root, place{name: name, tableAllowed: true}, false)
 	return Result{Type: expr, Refusals: b.refusals, Decisions: b.decisions, source: options.Source, declarations: b.declarations, note: note}, nil
 }
 
@@ -143,18 +143,17 @@ const (
 	noteEmpty      = "empty everywhere in this document; String is a placeholder"
 )
 
-// typeOf gives a shape its type, declaring what it needs. absent says the
-// value is a member some objects lack. ok is false when the value has no
-// declaration; the refusal is recorded.
-func (b *builder) typeOf(s *shape, at place, absent bool) (expr string, note string, ok bool) {
-	optional := s.optional || absent
+// typeOf gives a shape its type, declaring what it needs, with a note for
+// the line the type is printed on. absent says the value is a member some
+// objects lack. The type is "" when the value has no declaration; the
+// refusal is recorded.
+func (b *builder) typeOf(s *shape, at place, absent bool) (expr string, note string) {
 	switch s.kind {
 	case kindRefused:
 		b.refuse(s.refusal)
-		return "", "", false
 	case kindUnknown:
 		// Only null was seen: an empty array's element is handled below.
-		return "Option<String>", noteAlwaysNull, true
+		return "Option<String>", noteAlwaysNull
 	case kindBool:
 		expr = "Bool"
 	case kindInt:
@@ -164,38 +163,32 @@ func (b *builder) typeOf(s *shape, at place, absent bool) (expr string, note str
 	case kindString:
 		expr, note = "String", enumNote(s.text)
 	case kindArray:
-		expr, note, ok = b.arrayType(s, at)
-		if !ok {
-			return "", "", false
-		}
+		expr, note = b.arrayType(s, at)
 	case kindObject:
-		expr, ok = b.objectType(s, at)
-		if !ok {
-			return "", "", false
-		}
+		expr = b.objectType(s, at)
 	}
-	if optional {
+	if expr != "" && (s.optional || absent) {
 		expr = "Option<" + expr + ">"
 	}
-	return expr, note, true
+	return expr, note
 }
 
 // arrayType gives an array its type: a matrix, a table, or an array of its
 // element's type.
-func (b *builder) arrayType(s *shape, at place) (expr string, note string, ok bool) {
+func (b *builder) arrayType(s *shape, at place) (expr string, note string) {
 	element := s.elem
 	switch {
 	case s.rectangular:
 		// Rows of numbers, all one length (3.11).
-		return "Matrix<Float>", "", true
+		return "Matrix<Float>", ""
 	case element.kind == kindUnknown && !element.optional:
-		return "String[]", noteEmpty, true
+		return "String[]", noteEmpty
 	case element.kind != kindObject:
-		inner, innerNote, ok := b.typeOf(element, place{key: at.key, parent: at.parent}, false)
-		if !ok {
-			return "", "", false
+		expr, note = b.typeOf(element, place{key: at.key, parent: at.parent}, false)
+		if expr != "" {
+			expr += "[]"
 		}
-		return inner + "[]", innerNote, true
+		return expr, note
 	}
 
 	if len(s.rows) >= 2 {
@@ -203,34 +196,33 @@ func (b *builder) arrayType(s *shape, at place) (expr string, note string, ok bo
 		b.decisions = append(b.decisions, Decision{Path: s.path, Trace: choice.trace})
 		if choice.trace.Winner == asTagged {
 			b.refuse(&Refusal{Path: s.path, node: s.node, Reason: fmt.Sprintf("a tagged array: %s says which members an object has (%s), and Json reads no enum that carries a payload", strconv.Quote(choice.tag), strings.Join(choice.values, ", "))})
-			return "", "", false
+			return "", ""
 		}
 	}
 	if at.tableAllowed && !element.optional {
 		// An array of objects is a table (3.11).
-		name, ok := b.declare(element.object, at, true, element)
-		return name, "", ok
+		return b.declare(element.object, at, true, element), ""
 	}
-	name, ok := b.declare(element.object, at, false, element)
-	if !ok {
-		return "", "", false
-	}
-	if element.optional {
+	name := b.declare(element.object, at, false, element)
+	switch {
+	case name == "":
+		return "", ""
+	case element.optional:
 		name = "Option<" + name + ">"
 	}
-	return name + "[]", "", true
+	return name + "[]", ""
 }
 
 // objectType gives an object its type: a record, or a keyed table where one
 // may be declared and the judgment chooses it.
-func (b *builder) objectType(s *shape, at place) (expr string, ok bool) {
+func (b *builder) objectType(s *shape, at place) string {
 	if !at.tableAllowed {
 		return b.declare(s.object, at, false, s)
 	}
 	choice, decided, reason := decideObject(s.object)
 	if !decided {
 		b.refuse(&Refusal{Path: s.path, node: s.node, Reason: reason})
-		return "", false
+		return ""
 	}
 	b.decisions = append(b.decisions, Decision{Path: s.path, Trace: choice.trace})
 	if choice.trace.Winner == asKeyedTable {
@@ -240,30 +232,30 @@ func (b *builder) objectType(s *shape, at place) (expr string, ok bool) {
 }
 
 // declare declares a record, or a table whose rows are the record, and
-// returns its name.
-func (b *builder) declare(object *objectShape, at place, table bool, s *shape) (name string, ok bool) {
+// returns its name, or "" when the object has no declaration.
+func (b *builder) declare(object *objectShape, at place, table bool, s *shape) string {
 	names, problem := fieldNames(object)
 	if problem != "" {
 		b.refuse(&Refusal{Path: s.path, node: s.node, Reason: "an object that cannot be a record: " + problem})
-		return "", false
+		return ""
 	}
 	if table && len(object.members) == 0 {
 		b.refuse(&Refusal{Path: s.path, node: s.node, Reason: "objects with no members: a table needs a column"})
-		return "", false
+		return ""
 	}
 	candidate := b.candidateName(at)
 	d := &declaration{table: table}
 	for index, existing := range object.members {
-		expr, note, _ := b.typeOf(existing.shape, place{key: existing.key, parent: candidate, tableAllowed: !table}, existing.count < object.instances)
+		expr, note := b.typeOf(existing.shape, place{key: existing.key, parent: candidate, tableAllowed: !table}, existing.count < object.instances)
 		d.fields = append(d.fields, field{name: names[index], expr: expr, note: note})
 	}
-	return b.add(d, candidate, at), true
+	return b.add(d, candidate, at)
 }
 
 // declareKeyed declares the table an object reads into when its keys are
 // data: the key is the first cell, and the member's value supplies the rest
 // (section 3.5 of the ladder).
-func (b *builder) declareKeyed(value *shape, at place) (name string, ok bool) {
+func (b *builder) declareKeyed(value *shape, at place) string {
 	candidate := b.candidateName(at)
 	d := &declaration{table: true}
 	spread := false
@@ -282,15 +274,15 @@ func (b *builder) declareKeyed(value *shape, at place) (name string, ok bool) {
 		}
 		d.fields = append(d.fields, field{name: key, expr: "String"})
 		for index, existing := range value.object.members {
-			expr, note, _ := b.typeOf(existing.shape, place{key: existing.key, parent: candidate}, existing.count < value.object.instances)
+			expr, note := b.typeOf(existing.shape, place{key: existing.key, parent: candidate}, existing.count < value.object.instances)
 			d.fields = append(d.fields, field{name: names[index], expr: expr, note: note})
 		}
 	} else {
 		// The value is the one other cell.
-		expr, note, _ := b.typeOf(value, place{name: candidate + "Value", parent: candidate}, false)
+		expr, note := b.typeOf(value, place{name: candidate + "Value", parent: candidate}, false)
 		d.fields = append(d.fields, field{name: "Key", expr: "String"}, field{name: "Value", expr: expr, note: note})
 	}
-	return b.add(d, candidate, at), true
+	return b.add(d, candidate, at)
 }
 
 // candidateName is the name a declaration at a place asks for: the name it

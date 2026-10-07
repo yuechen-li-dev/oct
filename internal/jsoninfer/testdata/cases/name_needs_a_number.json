@@ -1,1 +1,1 @@
-{"point": {"x": 1}, "b_point": {"z": 1}, "b": {"point": {"y": 1}}}
+{"point": {"x": 1}, "b_point": {"z": 1}, "point2": {"w": 1}, "b": {"point": {"y": 1}}}
