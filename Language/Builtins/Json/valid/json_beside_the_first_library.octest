@@ -1,0 +1,21 @@
+package Main
+import Json
+
+// Until the first Json library is removed, three calls are still its:
+// `Json.Load(path)` with no type argument, and `Json.Save(path, text)` and
+// `Artifact.WriteJson(path, text)` given a String of JSON text. This file
+// goes when that library does.
+
+[Interpreted("the first library's Json.Save and Json.Load need a sidecar in the compiled lane")]
+[Fact]
+fn AStringGivenToSaveIsJsonTextForTheFirstLibrary() -> Void {
+    let status = Json.Save("Language/Builtins/Json/written/first_library.json", "{ \"ok\": true, \"n\": 2 }")!
+    Assert.Equal(0, status, "the first library's Save gives a status")
+    let text = Json.Load("Language/Builtins/Json/written/first_library.json")!
+    Assert.Equal("{\"ok\":true,\"n\":2}", text, "and its Load gives the text back, compact")
+}
+
+[Fact]
+fn AStringGivenToTextIsAJsonString() -> Void {
+    Assert.Equal("\"{ \\\"ok\\\": true }\"\n", Json.Text("{ \"ok\": true }"), "Json.Text has no first-library form")
+}
