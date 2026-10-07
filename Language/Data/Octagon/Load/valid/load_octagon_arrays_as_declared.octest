@@ -13,6 +13,7 @@ record SensorGrid {
     Levels: Vector<Float>
     Depths: Vector<Float<m>>
     Readings: Matrix<Float>
+    Spans: Matrix<Float<m>>
     Weights: Weighting
 }
 
@@ -24,6 +25,8 @@ fn LoadArraysAsVectorsAndMatrices() -> Void ! Error {
     Assert.Equal(4.5m, grid.Depths[1], "elements keep their dimension")
     Assert.Equal(21.5, grid.Readings[0, 0], "an array of rows loads as the declared matrix")
     Assert.Equal(22.1, grid.Readings[1, 2], "to the last element")
+    Assert.Equal(4.5m, grid.Spans[1, 1], "and its elements keep their dimension")
+    Assert.Equal(3.5, grid.Levels @ grid.Levels, "a loaded vector is a vector")
 }
 
 [Fact]

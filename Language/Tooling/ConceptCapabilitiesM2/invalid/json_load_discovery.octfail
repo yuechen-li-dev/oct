@@ -1,0 +1,18 @@
+expect artifact error: "not statically discoverable: provider attempted effectful operation Json.Load"
+
+package Main
+
+concept NativeComputeRequest { Package: String Wrapper: String Operation: String }
+concept ArtifactCapabilityRequest { Native: NativeComputeRequest[] }
+
+// Capability discovery must be static. A provider that reads a file is
+// rejected before the read happens. `Json.Parse` reads no file and is not
+// rejected.
+fn Capabilities() -> ArtifactCapabilityRequest {
+    let parsed = Json.Parse<Int>("7")!
+    let wrappers = Json.Load<String[]>("wrappers.json")!
+    return ArtifactCapabilityRequest { Native: [] }
+}
+
+[Artifact(Capabilities)]
+fn Emit() -> Void { return }

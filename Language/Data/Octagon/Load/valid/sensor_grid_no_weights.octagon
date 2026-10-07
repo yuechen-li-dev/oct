@@ -3,5 +3,6 @@ SensorGrid {
     Levels: []
     Depths: []
     Readings: []
+    Spans: []
     Weights: []
 }

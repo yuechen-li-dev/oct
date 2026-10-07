@@ -12,6 +12,7 @@ record SensorGrid {
     Levels: Vector<Float>
     Depths: Vector<Float<m>>
     Readings: Matrix<Float>
+    Spans: Matrix<Float<m>>
     Weights: Weighting
 }
 
