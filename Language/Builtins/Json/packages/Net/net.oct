@@ -1,0 +1,27 @@
+package Net
+
+concept Port = Int {
+    Require(Self > 0, "a port is positive")
+    Require(Self < 65536, "a port is below 65536")
+}
+
+record Address {
+    Host: String
+    Port: Port
+    Backup: Option<Port>
+}
+
+fn Number(port: Port) -> Int {
+    return port
+}
+
+fn PortNumber(address: Address) -> Int {
+    return Number(address.Port)
+}
+
+fn BackupOr(address: Address, fallback: Int) -> Int {
+    return match address.Backup {
+        case Option.Some(port) => Number(port)
+        case Option.None => fallback
+    }
+}

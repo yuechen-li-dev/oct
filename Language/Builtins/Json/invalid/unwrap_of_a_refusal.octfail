@@ -1,0 +1,8 @@
+expect runtime error: "Json.Parse: $ (line 1, column 1): expected Int, found a string"
+
+package Main
+
+// `!` on a refusal stops the program with the refusal's text.
+fn Main() -> Int {
+    return Json.Parse<Int>("\"7\"")!
+}

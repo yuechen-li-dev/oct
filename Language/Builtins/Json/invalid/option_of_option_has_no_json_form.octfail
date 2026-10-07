@@ -1,0 +1,7 @@
+expect error: "function 'Json.Parse' cannot read Option<Option<Int>>: an Option of an Option has no JSON form: `null` could be either None"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let value = Json.Parse<Option<Option<Int>>>("null")?
+}

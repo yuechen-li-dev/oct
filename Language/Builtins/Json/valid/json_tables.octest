@@ -1,0 +1,114 @@
+package Main
+
+// A `record table` reads from an array of row objects, or from a keyed
+// object when its first column is a String.
+
+record table Ticket {
+    Id: String
+    Assignee: Option<String>
+    Points: Int
+}
+
+record table Retry {
+    Event: String
+    Retries: Int
+}
+
+record table Person {
+    Id: String
+    Name: String
+    Active: Bool
+}
+
+record table Limit {
+    Lane: String
+    Max: Port
+}
+
+record table Corner {
+    Name: String
+    At: Point
+}
+
+record Board {
+    Name: String
+    Tickets: Ticket
+    Limits: Limit
+}
+
+[Fact]
+fn ATableReadsFromAnArrayOfObjects() -> Void ! Error {
+    let tickets = Json.Load<Ticket>("Language/Builtins/Json/data/tickets.json")?
+    Assert.Equal(3, Len(tickets), "one row for each object")
+    Assert.Equal("T-1", tickets[0].Id, "rows are in document order")
+    Assert.Equal("T-3", tickets[2].Id, "to the last")
+    Assert.Equal(5, tickets[1].Points, "an Int cell")
+    Assert.Equal("sam", TextOr(tickets[0].Assignee, "-"), "a cell that is Some")
+    Assert.Equal("-", TextOr(tickets[1].Assignee, "-"), "a null cell is None")
+    Assert.Equal("-", TextOr(tickets[2].Assignee, "-"), "an absent cell is None")
+}
+
+[Fact]
+fn AnEmptyArrayIsATableWithNoRows() -> Void ! Error {
+    let tickets = Json.Parse<Ticket>("[]")?
+    Assert.Equal(0, Len(tickets), "no rows")
+}
+
+[Fact]
+fn AKeyedObjectWithOneOtherColumn() -> Void ! Error {
+    let retries = Json.Load<Retry>("Language/Builtins/Json/data/retries.json")?
+    Assert.Equal(2, Len(retries), "one row for each member")
+    Assert.Equal("invoice.failed", retries[0].Event, "the key is the first cell")
+    Assert.Equal(5, retries[0].Retries, "the value is the other cell")
+    Assert.Equal("user.deleted", retries[1].Event, "rows are in document order")
+    Assert.Equal(1, retries[1].Retries, "to the last")
+}
+
+[Fact]
+fn AKeyedObjectWithSeveralOtherColumns() -> Void ! Error {
+    let people = Json.Load<Person>("Language/Builtins/Json/data/people_by_id.json")?
+    Assert.Equal(2, Len(people), "one row for each member")
+    Assert.Equal("u-100", people[0].Id, "the key is the first cell")
+    Assert.Equal("Avery", people[0].Name, "the value's members are the other cells")
+    Assert.Equal(false, people[1].Active, "to the last")
+}
+
+[Fact]
+fn BothShapesGiveTheSameTable() -> Void ! Error {
+    let keyed = Json.Parse<Retry>("{\"a\": 1, \"b\": 2}")?
+    let rows = Json.Parse<Retry>("[{\"event\": \"a\", \"retries\": 1}, {\"event\": \"b\", \"retries\": 2}]")?
+    Assert.Equal(Len(rows), Len(keyed), "as many rows")
+    Assert.Equal(rows[1].Event, keyed[1].Event, "the same key")
+    Assert.Equal(rows[1].Retries, keyed[1].Retries, "the same cell")
+}
+
+[Fact]
+fn AKeyedObjectWhoseOneOtherColumnIsARecord() -> Void ! Error {
+    // The value is an object, and the column is read from one: the object
+    // is the cell.
+    let corners = Json.Parse<Corner>("{\"origin\": {\"x\": 0, \"y\": 0}, \"far\": {\"x\": 3, \"y\": 4}}")?
+    Assert.Equal("far", corners[1].Name, "the key")
+    Assert.Equal(Point { X: 3.0 Y: 4.0 }, corners[1].At, "the object is the cell")
+}
+
+[Fact]
+fn TablesAreFieldsOfRecords() -> Void ! Error {
+    let board = Json.Load<Board>("Language/Builtins/Json/data/board.json")?
+    Assert.Equal("sprint 24", board.Name, "a field beside the tables")
+    Assert.Equal(2, Len(board.Tickets), "a table from an array of objects")
+    Assert.Equal("nora", TextOr(board.Tickets[1].Assignee, "-"), "its cells")
+    Assert.Equal(2, Len(board.Limits), "a table from a keyed object")
+    Assert.Equal("doing", board.Limits[1].Lane, "its keys")
+    Assert.True(board.Limits[0].Max == 8, "its refined cells, admitted")
+}
+
+[Fact]
+fn ATableIsStrictAboutItsRows() -> Void {
+    Assert.Error(Json.Parse<Ticket>("[{\"id\": \"T-1\"}]"), "a cell with no member, where the column is not an Option")
+    Assert.Error(Json.Parse<Ticket>("[{\"id\": \"T-1\", \"points\": 1, \"owner\": \"x\"}]"), "a member that names no column")
+    Assert.Error(Json.Parse<Ticket>("[[\"T-1\", 1]]"), "a row that is not an object")
+    Assert.Error(Json.Parse<Retry>("{\"a\": 1, \"a\": 2}"), "a key written twice")
+    Assert.Error(Json.Parse<Retry>("{\"a\": \"one\"}"), "a cell of the wrong kind")
+    Assert.Error(Json.Parse<Limit>("{\"todo\": 0}"), "a cell its concept refuses")
+    Assert.Error(Json.Parse<Ticket>("7"), "a number is not a table")
+}

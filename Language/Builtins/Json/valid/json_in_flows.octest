@@ -1,0 +1,26 @@
+package Main
+
+// A Json call is an ordinary fallible call, in a flow state as anywhere.
+
+flow CountLevels(text: String) -> Int {
+    board {
+        Count: Int
+    }
+    state Start {
+        match Json.Parse<Float[]>(text) {
+            ok(levels) => { board.Count = Len(levels) }
+            err(_) => { board.Count = -1 }
+        }
+        return board.Count
+    }
+}
+
+[Fact]
+fn AFlowStateParses() -> Void {
+    let counted = CountLevels("[0.5, 1, 1.5]")
+    Step(counted)
+    Assert.Equal(3, Result(counted)!, "three levels")
+    let refused = CountLevels("[0.5, 1,")
+    Step(refused)
+    Assert.Equal(-1, Result(refused)!, "text that is not JSON is the err arm")
+}

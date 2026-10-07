@@ -1,0 +1,7 @@
+expect error: "function 'Json.Load' argument 1 expects String, got Int"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let levels = Json.Load<Float[]>(7)?
+}

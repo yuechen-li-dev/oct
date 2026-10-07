@@ -1,0 +1,7 @@
+expect error: "function 'Json.Load' expects 1 type argument, the type to read, got 2"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let levels = Json.Load<Float, Int>("levels.json")?
+}

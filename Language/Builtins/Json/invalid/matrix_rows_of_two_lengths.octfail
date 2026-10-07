@@ -1,0 +1,7 @@
+expect runtime error: "Json.Parse: $[1] (line 1, column 10): this row has 1 numbers and the first row has 2; the rows of a matrix are one length"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let readings = Json.Parse<Matrix<Float>>("[[1, 2], [3]]")?
+}

@@ -1,0 +1,7 @@
+expect runtime error: "Json.Load: Language/Builtins/Json/data: this is a directory, not a file"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let levels = Json.Load<Float[]>("Language/Builtins/Json/data")?
+}

@@ -1,0 +1,13 @@
+expect runtime error: "Json.Parse: $.x (line 1, column 7): expected Float, found a string"
+
+package Main
+
+// `"42"` is not a number.
+record Point {
+    X: Float
+    Y: Float
+}
+
+fn Main() -> Void ! Error {
+    let point = Json.Parse<Point>("{\"x\": \"42\", \"y\": 2}")?
+}

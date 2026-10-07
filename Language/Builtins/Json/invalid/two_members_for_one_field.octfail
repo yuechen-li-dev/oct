@@ -1,0 +1,11 @@
+expect runtime error: "Json.Parse: $ (line 1, column 21): "read_timeout" and "readTimeout" both name the field ReadTimeout"
+
+package Main
+
+record Limits {
+    ReadTimeout: Int
+}
+
+fn Main() -> Void ! Error {
+    let limits = Json.Parse<Limits>("{\"read_timeout\": 1, \"readTimeout\": 2}")?
+}

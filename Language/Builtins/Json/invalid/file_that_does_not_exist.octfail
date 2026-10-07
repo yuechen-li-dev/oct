@@ -1,0 +1,8 @@
+expect runtime error: "Json.Load: Language/Builtins/Json/data/no_such_file.json: the file does not exist"
+
+package Main
+
+// Why a file cannot be read is said in Oct's words, the same in both lanes.
+fn Main() -> Void ! Error {
+    let levels = Json.Load<Float[]>("Language/Builtins/Json/data/no_such_file.json")?
+}

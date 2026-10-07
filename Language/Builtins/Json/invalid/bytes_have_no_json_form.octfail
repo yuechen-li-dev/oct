@@ -1,0 +1,7 @@
+expect error: "function 'Json.Parse' cannot read Bytes: Bytes has no JSON form"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let value = Json.Parse<Bytes>("[1, 2]")?
+}

@@ -1,0 +1,12 @@
+expect error: "function 'Json.Parse' cannot read Task: Task.Run: a function value has no JSON form"
+
+package Main
+
+record Task {
+    Name: String
+    Run: fn(Int) -> Int
+}
+
+fn Main() -> Void ! Error {
+    let task = Json.Parse<Task>("{}")?
+}

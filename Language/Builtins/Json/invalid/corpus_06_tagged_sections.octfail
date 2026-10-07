@@ -1,0 +1,55 @@
+expect error: "function 'Json.Load' cannot read Site: Section.Content: the enum Content, whose variant Hero carries a payload, has no JSON form"
+
+package Main
+
+// Corpus document 06 is a tagged array: `"kind": "hero"` says what `content`
+// holds. As for document 07, the declaration that says so is a payload enum,
+// which Json does not read (D8).
+
+record Hero {
+    Headline: String
+    CtaText: String
+    CtaHref: String
+}
+
+record Item {
+    Sku: String
+    Label: String
+    Price: Float
+}
+
+record ProductGrid {
+    Columns: Int
+    Items: Item[]
+}
+
+record Banner {
+    Text: String
+    Theme: String
+}
+
+enum Content {
+    Hero(Hero)
+    ProductGrid(ProductGrid)
+    Banner(Banner)
+}
+
+record Section {
+    Kind: String
+    Slot: String
+    Content: Content
+}
+
+record Page {
+    Id: String
+    Title: String
+    Sections: Section[]
+}
+
+record Site {
+    Page: Page
+}
+
+fn Main() -> Void ! Error {
+    let site = Json.Load<Site>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_06_ui_like.json")?
+}

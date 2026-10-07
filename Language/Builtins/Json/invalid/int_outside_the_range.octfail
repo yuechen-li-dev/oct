@@ -1,0 +1,7 @@
+expect runtime error: "Json.Parse: $ (line 1, column 1): expected Int, found 9223372036854775808, which is outside the 64-bit range"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let count = Json.Parse<Int>("9223372036854775808")?
+}

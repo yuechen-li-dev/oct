@@ -1,0 +1,144 @@
+package Main
+
+// `Json.Parse<T>(text)` reads text as a T, and `Json.Load<T>(path)` reads a
+// file. Json is a compiler-owned namespace: the two need no import. The type
+// decides every reading, and there is no conversion between kinds.
+
+enum Priority {
+    Low
+    Medium
+    VeryHigh
+}
+
+fn Last(values: Vector<Float>) -> Float {
+    return values[Len(values) - 1]
+}
+
+[Fact]
+fn ABoolIsTrueOrFalse() -> Void ! Error {
+    Assert.Equal(true, Json.Parse<Bool>("true")?, "true")
+    Assert.Equal(false, Json.Parse<Bool>(" false ")?, "false, with space around it")
+    Assert.Error(Json.Parse<Bool>("1"), "a number is not a Bool")
+    Assert.Error(Json.Parse<Bool>("\"true\""), "a string is not a Bool")
+}
+
+[Fact]
+fn AnIntIsANumberWithNoFractionAndNoExponent() -> Void ! Error {
+    Assert.Equal(42, Json.Parse<Int>("42")?, "an Int")
+    Assert.Equal(-7, Json.Parse<Int>("-7")?, "a negative Int")
+    Assert.Equal(9007199254740993, Json.Parse<Int>("9007199254740993")?, "an Int above 2^53 is exact")
+    Assert.Equal(9223372036854775807, Json.Parse<Int>("9223372036854775807")?, "the largest Int")
+    Assert.Error(Json.Parse<Int>("1.0"), "1.0 is not an Int")
+    Assert.Error(Json.Parse<Int>("1e3"), "1e3 is not an Int")
+    Assert.Error(Json.Parse<Int>("9223372036854775808"), "past the 64-bit range")
+    Assert.Error(Json.Parse<Int>("\"42\""), "a string is not an Int")
+}
+
+[Fact]
+fn AFloatIsAnyFiniteNumber() -> Void ! Error {
+    Assert.Equal(2.5, Json.Parse<Float>("2.5")?, "a Float")
+    Assert.Equal(3.0, Json.Parse<Float>("3")?, "an integer is a Float where one is declared")
+    Assert.Equal(-300.0, Json.Parse<Float>("-3e2")?, "an exponent")
+    Assert.Equal(0.1, Json.Parse<Float>("0.1")?, "the nearest Float to 0.1")
+    Assert.Error(Json.Parse<Float>("1e999"), "not finite as a 64-bit float")
+    Assert.Error(Json.Parse<Float>("\"2.5\""), "a string is not a Float")
+}
+
+[Fact]
+fn ANumberTakesTheDimensionItsTypeDeclares() -> Void ! Error {
+    let timeout = Json.Parse<Float<s>>("1.5")?
+    Assert.Equal(1.5s, timeout, "1.5 is 1.5 seconds")
+    Assert.Equal(3.0s, timeout + timeout, "and adds as seconds")
+    let length = Json.Parse<Int<m>>("12")?
+    Assert.Equal(12m, length, "12 is 12 metres")
+}
+
+[Fact]
+fn AStringIsAString() -> Void ! Error {
+    Assert.Equal("billing-api", Json.Parse<String>("\"billing-api\"")?, "a String")
+    Assert.Equal("a\"b\\c", Json.Parse<String>("\"a\\\"b\\\\c\"")?, "escapes")
+    Assert.Equal("line\nnext", Json.Parse<String>("\"line\\nnext\"")?, "a newline escape")
+    Assert.Equal("A", Json.Parse<String>("\"\\u0041\"")?, "a \\u escape")
+    Assert.Equal("", Json.Parse<String>("\"\"")?, "the empty String")
+    Assert.Error(Json.Parse<String>("42"), "a number is not a String")
+    Assert.Error(Json.Parse<String>("null"), "null is not a String")
+}
+
+[Fact]
+fn AnEnumIsAStringThatNamesAVariant() -> Void ! Error {
+    Assert.Equal(Priority.Low, Json.Parse<Priority>("\"Low\"")?, "as declared")
+    Assert.Equal(Priority.Medium, Json.Parse<Priority>("\"medium\"")?, "case is ignored")
+    Assert.Equal(Priority.VeryHigh, Json.Parse<Priority>("\"very_high\"")?, "separators are ignored")
+    Assert.Equal(Priority.VeryHigh, Json.Parse<Priority>("\"very-high\"")?, "whichever separator")
+    Assert.Error(Json.Parse<Priority>("\"urgent\""), "no such variant")
+    Assert.Error(Json.Parse<Priority>("0"), "a number is not a variant")
+}
+
+[Fact]
+fn AnOptionIsNullOrItsPayload() -> Void ! Error {
+    Assert.Equal(7, IntOr(Json.Parse<Option<Int>>("7")?, -1), "a number is Some")
+    Assert.Equal(-1, IntOr(Json.Parse<Option<Int>>("null")?, -1), "null is None")
+    Assert.Equal("sam", TextOr(Json.Parse<Option<String>>("\"sam\"")?, "-"), "a string is Some")
+    Assert.Error(Json.Parse<Option<Int>>("\"7\""), "the payload is read as its type")
+    let none: Option<Int> = Option.None
+    Assert.Equal(none, Json.Parse<Option<Int>>("null")?, "None equals None")
+    Assert.Equal(Option<Int>.Some(7), Json.Parse<Option<Int>>("7")?, "Some equals Some")
+}
+
+[Fact]
+fn AnArrayIsAnArray() -> Void ! Error {
+    let levels = Json.Parse<Float[]>("[1, 2.5, -3e2]")?
+    Assert.Equal(3, Len(levels), "three elements")
+    Assert.Equal(1.0, levels[0], "in document order")
+    Assert.Equal(-300.0, levels[2], "each read as a Float")
+    let none = Json.Parse<Int[]>("[]")?
+    Assert.Equal(0, Len(none), "the empty array")
+    let names = Json.Parse<String[]>("[\"a\", \"b\"]")?
+    Assert.Equal("b", names[1], "an array of strings")
+    Assert.Error(Json.Parse<Int[]>("[1, 2.5]"), "every element is read as the element type")
+    Assert.Error(Json.Parse<Int[]>("7"), "a number is not an array")
+}
+
+[Fact]
+fn ArraysNest() -> Void ! Error {
+    let rows = Json.Parse<Int[][]>("[[1, 2], [], [3]]")?
+    Assert.Equal(3, Len(rows), "three rows")
+    Assert.Equal(2, rows[0][1], "an element")
+    Assert.Equal(0, Len(rows[1]), "rows need not be one length")
+    let assignees = Json.Parse<Option<String>[]>("[\"sam\", null]")?
+    Assert.Equal("sam", TextOr(assignees[0], "-"), "Some in an array")
+    Assert.Equal("-", TextOr(assignees[1], "-"), "None in an array")
+    let priorities = Json.Parse<Priority[]>("[\"low\", \"VeryHigh\"]")?
+    Assert.Equal(Priority.VeryHigh, priorities[1], "an array of enums")
+}
+
+[Fact]
+fn AVectorIsAnArrayOfNumbers() -> Void ! Error {
+    let levels = Json.Parse<Vector<Float>>("[0.5, 1, 1.5]")?
+    Assert.Equal(3, Len(levels), "three numbers")
+    Assert.Equal(1.0, levels[1], "an integer is a Float in a Vector<Float>")
+    Assert.Equal(1.5, Last(levels), "and it is a vector")
+    let counts = Json.Parse<Vector<Int>>("[10, -20]")?
+    Assert.Equal(-20, counts[1], "a Vector<Int>")
+    Assert.Error(Json.Parse<Vector<Float>>("[1, \"2\"]"), "every element is a number")
+    Assert.Error(Json.Parse<Vector<Int>>("[1.5]"), "and an Int where Int is declared")
+}
+
+[Fact]
+fn AMatrixIsAnArrayOfRowsOfOneLength() -> Void ! Error {
+    let readings = Json.Parse<Matrix<Float>>("[[21.5, 21.8, 22], [21.7, 21.9, 22.1]]")?
+    Assert.Equal(21.5, readings[0, 0], "the first row")
+    Assert.Equal(22.1, readings[1, 2], "the last element")
+    Assert.Equal(22.0, readings[0, 2], "an integer is a Float in a Matrix<Float>")
+    Assert.Error(Json.Parse<Matrix<Float>>("[[1, 2], [3]]"), "the rows are one length")
+    Assert.Error(Json.Parse<Matrix<Float>>("[1, 2]"), "a row is an array")
+}
+
+[Fact]
+fn TextThatIsNotJsonIsAnError() -> Void {
+    Assert.Error(Json.Parse<Int>(""), "no value")
+    Assert.Error(Json.Parse<Int[]>("[1, 2,]"), "a trailing comma")
+    Assert.Error(Json.Parse<Int[]>("[1, 2] // two"), "a comment")
+    Assert.Error(Json.Parse<Int>("1 2"), "two values")
+    Assert.Error(Json.Parse<String>("'a'"), "single quotes")
+}

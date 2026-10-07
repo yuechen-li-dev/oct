@@ -1,0 +1,35 @@
+expect runtime error: "Json.Load: Language/Builtins/Json/data/service_unknown_members.json: $.http (line 4, column 11): unknown members "prot", "tls"; Http has Host, Port, ReadTimeoutMs, WriteTimeoutMs"
+
+package Main
+
+// A member that names no field is an error. The message lists every such
+// member of the object, and the fields the record has.
+enum Environment {
+    Staging
+    Production
+}
+
+concept Port = Int {
+    Require(Self > 0, "a port is positive")
+    Require(Self < 65536, "a port is below 65536")
+}
+
+record Http {
+    Host: String
+    Port: Port
+    ReadTimeoutMs: Float
+    WriteTimeoutMs: Float
+}
+
+record Service {
+    Name: String
+    Environment: Environment
+    Http: Http
+    StartupGrace: Float<s>
+    Tags: String[]
+    Owner: Option<String>
+}
+
+fn Main() -> Void ! Error {
+    let service = Json.Load<Service>("Language/Builtins/Json/data/service_unknown_members.json")?
+}

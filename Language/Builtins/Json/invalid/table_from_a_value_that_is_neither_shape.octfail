@@ -1,0 +1,12 @@
+expect runtime error: "Json.Parse: $ (line 1, column 1): expected an array of objects or a keyed object, found a number"
+
+package Main
+
+record table Retry {
+    Event: String
+    Retries: Int
+}
+
+fn Main() -> Void ! Error {
+    let retries = Json.Parse<Retry>("7")?
+}

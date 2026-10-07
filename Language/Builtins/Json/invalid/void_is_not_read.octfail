@@ -1,0 +1,7 @@
+expect error: "let nothing: Void is only allowed as a function return type"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let nothing = Json.Parse<Void>("null")?
+}

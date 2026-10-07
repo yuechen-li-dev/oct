@@ -1,0 +1,7 @@
+expect error: "function 'Json.Parse' expects 1 argument, got 2"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let levels = Json.Parse<Float[]>("[1]", "[2]")?
+}

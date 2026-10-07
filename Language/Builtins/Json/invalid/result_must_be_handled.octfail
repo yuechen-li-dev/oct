@@ -1,0 +1,10 @@
+expect error: "let levels: fallible expression must be handled explicitly"
+
+package Main
+
+// A Json call is fallible: the text may not be JSON, or not a value of the
+// type, so the result cannot be used as a plain value.
+fn Main() -> Int {
+    let levels: Float[] = Json.Parse<Float[]>("[1, 2]")
+    return Len(levels)
+}

@@ -1,0 +1,154 @@
+package Main
+
+// A record reads from an object. A key and a field are one name when they
+// are equal with `_`, `-`, `.`, spaces and case ignored. Every field needs a
+// member, except an Option, and a member that names no field is an error.
+
+enum Environment {
+    Staging
+    Production
+}
+
+concept Tags = String[] {
+    Require(Len(Self) > 0, "there is at least one tag")
+}
+
+record Http {
+    Host: String
+    Port: Port
+    ReadTimeoutMs: Float
+    WriteTimeoutMs: Float
+}
+
+record Service {
+    Name: String
+    Environment: Environment
+    Http: Http
+    StartupGrace: Float<s>
+    Tags: Tags
+    Owner: Option<String>
+    Region: Option<String>
+}
+
+record Grid {
+    Rows: Int
+    Cols: Int
+    Levels: Vector<Float>
+    Offsets: Vector<Int>
+    Readings: Matrix<Float>
+}
+
+record Segment {
+    From: Point
+    To: Option<Point>
+    Via: Point[]
+}
+
+record Tree {
+    Label: String
+    Children: Tree[]
+}
+
+record Columns {
+    Id: String[]
+    Score: Float[]
+}
+
+[Fact]
+fn ARecordReadsFromAnObject() -> Void ! Error {
+    let service = Json.Load<Service>("Language/Builtins/Json/data/service.json")?
+    Assert.Equal("billing-api", service.Name, "a String field")
+    Assert.Equal(Environment.Staging, service.Environment, "an enum field")
+    Assert.Equal("0.0.0.0", service.Http.Host, "a field of a nested record")
+    Assert.True(service.Http.Port == 8080, "a refined field, admitted by its concept")
+    Assert.Equal(1500.0, service.Http.ReadTimeoutMs, "read_timeout_ms is ReadTimeoutMs")
+    Assert.Equal(1500.5, service.Http.WriteTimeoutMs, "write-timeout-ms is WriteTimeoutMs")
+    Assert.Equal(2.5s, service.StartupGrace, "a number is in the unit the field declares")
+    Assert.Equal(1.5s, service.Http.ReadTimeoutMs * 1e-3s, "a millisecond count becomes seconds in the program")
+    Assert.Equal(2, Len(service.Tags), "a refined array field")
+    Assert.Equal("nobody", TextOr(service.Owner, "nobody"), "a null member is None")
+    Assert.Equal("anywhere", TextOr(service.Region, "anywhere"), "an absent member is None")
+}
+
+[Fact]
+fn MembersMayComeInAnyOrder() -> Void ! Error {
+    let point = Json.Parse<Point>("{\"y\": 2, \"x\": 1.5}")?
+    Assert.Equal(1.5, point.X, "X")
+    Assert.Equal(2.0, point.Y, "Y")
+    Assert.Equal(Point { X: 1.5 Y: 2.0 }, point, "the record equals one written in the program")
+}
+
+[Fact]
+fn KeysMatchFieldsWithCaseAndSeparatorsIgnored() -> Void ! Error {
+    let expected = Http { Host: "h" Port: Port(80)? ReadTimeoutMs: 1.0 WriteTimeoutMs: 2.0 }
+    let snake = Json.Parse<Http>("{\"host\": \"h\", \"port\": 80, \"read_timeout_ms\": 1, \"write_timeout_ms\": 2}")?
+    let camel = Json.Parse<Http>("{\"host\": \"h\", \"port\": 80, \"readTimeoutMs\": 1, \"writeTimeoutMs\": 2}")?
+    let kebab = Json.Parse<Http>("{\"HOST\": \"h\", \"Port\": 80, \"read-timeout-ms\": 1, \"write.timeout ms\": 2}")?
+    Assert.Equal(expected, snake, "snake_case")
+    Assert.Equal(expected, camel, "camelCase")
+    Assert.Equal(expected, kebab, "any separator and any case")
+}
+
+[Fact]
+fn ARecordIsStrictAboutItsMembers() -> Void {
+    Assert.Error(Json.Parse<Point>("{\"x\": 1}"), "a field with no member")
+    Assert.Error(Json.Parse<Point>("{\"x\": 1, \"y\": 2, \"z\": 3}"), "a member that names no field")
+    Assert.Error(Json.Parse<Point>("{\"x\": 1, \"y\": 2, \"x\": 3}"), "a key written twice")
+    Assert.Error(Json.Parse<Point>("{\"x\": 1, \"y\": 2, \"X\": 3}"), "two members for one field")
+    Assert.Error(Json.Parse<Point>("{\"x\": 1, \"y\": null}"), "null where the field is not an Option")
+    Assert.Error(Json.Parse<Point>("[1, 2]"), "an array is not a record")
+}
+
+[Fact]
+fn RecordsNestInFieldsOptionsAndArrays() -> Void ! Error {
+    let segment = Json.Parse<Segment>("{\"from\": {\"x\": 0, \"y\": 0}, \"to\": {\"x\": 3, \"y\": 4}, \"via\": [{\"x\": 1, \"y\": 1}]}")?
+    Assert.Equal(Point { X: 0.0 Y: 0.0 }, segment.From, "a record field")
+    Assert.Equal(Option<Point>.Some(Point { X: 3.0 Y: 4.0 }), segment.To, "Some of a record")
+    Assert.Equal(1, Len(segment.Via), "an array of records")
+    Assert.Equal(1.0, segment.Via[0].Y, "a field of an element")
+    let open = Json.Parse<Segment>("{\"from\": {\"x\": 0, \"y\": 0}, \"via\": []}")?
+    let nowhere: Option<Point> = Option.None
+    Assert.Equal(nowhere, open.To, "an absent record is None")
+}
+
+[Fact]
+fn ARecordMayHoldItself() -> Void ! Error {
+    let tree = Json.Parse<Tree>("{\"label\": \"root\", \"children\": [{\"label\": \"a\", \"children\": []}, {\"label\": \"b\", \"children\": [{\"label\": \"c\", \"children\": []}]}]}")?
+    Assert.Equal("root", tree.Label, "the root")
+    Assert.Equal(2, Len(tree.Children), "its children")
+    Assert.Equal("c", tree.Children[1].Children[0].Label, "a grandchild")
+}
+
+[Fact]
+fn VectorsAndMatricesAreFields() -> Void ! Error {
+    let grid = Json.Load<Grid>("Language/Builtins/Json/data/grid.json")?
+    Assert.Equal(2, grid.Rows, "rows")
+    Assert.Equal(3, Len(grid.Levels), "a vector field")
+    Assert.Equal(1.0, grid.Levels[1], "an integer is a Float in a Vector<Float>")
+    Assert.Equal(-20, grid.Offsets[1], "a Vector<Int> field")
+    Assert.Equal(22.1, grid.Readings[1, 2], "a matrix field")
+}
+
+[Fact]
+fn ARefinedFieldIsAdmittedByItsConcept() -> Void {
+    Assert.Error(Json.Parse<Http>("{\"host\": \"h\", \"port\": 0, \"read_timeout_ms\": 1, \"write_timeout_ms\": 2}"), "port 0 is refused")
+    Assert.Error(Json.Parse<Http>("{\"host\": \"h\", \"port\": 70000, \"read_timeout_ms\": 1, \"write_timeout_ms\": 2}"), "port 70000 is refused")
+    Assert.Error(Json.Parse<Tags>("[]"), "an empty array is refused by an array concept")
+    Assert.Error(Json.Parse<Port[]>("[80, 0]"), "each element is admitted")
+    Assert.Error(Json.Parse<Option<Port>>("0"), "the payload of Some is admitted")
+}
+
+[Fact]
+fn AColumnarObjectIsARecordOfArrays() -> Void ! Error {
+    // `{"id": [...], "score": [...]}` is not read as a table: keys could be
+    // columns or rows. It is the record it looks like.
+    let columns = Json.Parse<Columns>("{\"id\": [\"a\", \"b\"], \"score\": [1, 2.5]}")?
+    Assert.Equal(2, Len(columns.Id), "ids")
+    Assert.Equal(2.5, columns.Score[1], "scores")
+}
+
+[Fact]
+fn AFileThatIsMissingIsAnError() -> Void {
+    Assert.Error(Json.Load<Point>("Language/Builtins/Json/data/no_such_file.json"), "no such file")
+    Assert.Error(Json.Load<Point>("Language/Builtins/Json/data"), "a directory")
+}

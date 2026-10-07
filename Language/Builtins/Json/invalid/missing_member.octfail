@@ -1,0 +1,19 @@
+expect runtime error: "Json.Load: Language/Builtins/Json/data/people_missing_member.json: $.people[2] (line 5, column 5): missing "Name", "Active""
+
+package Main
+
+// Every field needs a member, except an Option. The message names the
+// fields as the record declares them.
+record table Person {
+    Id: String
+    Name: String
+    Active: Bool
+}
+
+record Directory {
+    People: Person
+}
+
+fn Main() -> Void ! Error {
+    let directory = Json.Load<Directory>("Language/Builtins/Json/data/people_missing_member.json")?
+}

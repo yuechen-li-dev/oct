@@ -2,6 +2,7 @@ package build
 
 import (
 	"github.com/yuechen-li-dev/oct/internal/layoutcontract"
+	"github.com/yuechen-li-dev/oct/internal/octjson"
 	"github.com/yuechen-li-dev/oct/internal/project"
 )
 
@@ -144,6 +145,8 @@ type MIRCall struct {
 	Builtin       bool
 	RetType       string
 	FunctionValue bool
+	// JSON is the schema of RetType, on a call to a Json builtin.
+	JSON *octjson.Schema
 }
 
 func (MIRCall) mirStmt() {}

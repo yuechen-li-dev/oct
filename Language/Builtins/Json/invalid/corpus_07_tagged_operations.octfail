@@ -1,0 +1,44 @@
+expect error: "function 'Json.Load' cannot read Ledger: Ledger.Operations: the enum Operation, whose variant Credit carries a payload, has no JSON form"
+
+package Main
+
+// Corpus document 07 is a tagged array: `"type": "credit"` says which members
+// the rest of the object has. The declaration that says so is a payload enum,
+// and Json does not read one: which member holds the tag, and how its value
+// names a variant, is a decision the Json ladder deferred (D8).
+// corpus/json_acceptance_corpus.octest loads the same document with every
+// member that some operations lack as an Option.
+
+record Credit {
+    AccountId: String
+    Amount: Float
+    Currency: String
+}
+
+record Debit {
+    AccountId: String
+    Amount: Float
+    Currency: String
+    Merchant: String
+}
+
+record Transfer {
+    FromAccount: String
+    ToAccount: String
+    Amount: Float
+    Currency: String
+}
+
+enum Operation {
+    Credit(Credit)
+    Debit(Debit)
+    Transfer(Transfer)
+}
+
+record Ledger {
+    Operations: Operation[]
+}
+
+fn Main() -> Void ! Error {
+    let ledger = Json.Load<Ledger>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_07_tagged.json")?
+}

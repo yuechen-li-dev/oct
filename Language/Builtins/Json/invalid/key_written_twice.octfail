@@ -1,0 +1,12 @@
+expect runtime error: "Json.Parse: $ (line 1, column 18): the key "x" is written twice"
+
+package Main
+
+record Point {
+    X: Float
+    Y: Float
+}
+
+fn Main() -> Void ! Error {
+    let point = Json.Parse<Point>("{\"x\": 1, \"y\": 2, \"x\": 3}")?
+}

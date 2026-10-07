@@ -459,6 +459,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "WriteOctagon", Args: lowerMIRValues(args, nil), Builtin: true, RetType: "Int"})
 			return tmp, "Int", false, nil
 		}
+		if access, ok := e.Callee.(ast.FieldAccessExpr); ok {
+			if namespace, ok := access.Target.(ast.IdentifierExpr); ok {
+				if json, ok := builtin.ResolveJsonCall(namespace.Name+"."+access.Field, len(e.TypeArguments)); ok {
+					return c.lowerJsonCall(json, e)
+				}
+			}
+		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "LoadOctagon" {
 			args := make([]string, 0, len(e.Arguments))
 			for _, a := range e.Arguments {

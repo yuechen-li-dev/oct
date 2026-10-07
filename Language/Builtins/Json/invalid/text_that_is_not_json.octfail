@@ -1,0 +1,12 @@
+expect runtime error: "Json.Parse: (line 1, column 7): expected a value, found '}'"
+
+package Main
+
+// A syntax error has a position and no path. Text has no file to name.
+record Named {
+    A: Int
+}
+
+fn Main() -> Void ! Error {
+    let named = Json.Parse<Named>("{\"a\": }")?
+}

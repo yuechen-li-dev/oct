@@ -1,0 +1,13 @@
+expect error: "function 'Json.Parse' cannot read Priority: the variants VeryHigh and Very_High of Priority are one name in JSON, where case and separators are ignored"
+
+package Main
+
+enum Priority {
+    Low
+    VeryHigh
+    Very_High
+}
+
+fn Main() -> Void ! Error {
+    let priority = Json.Parse<Priority>("\"low\"")?
+}

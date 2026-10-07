@@ -1,0 +1,289 @@
+package Main
+
+// The acceptance corpus of the Json rewrite: the seven documents of
+// Experiments/JsonIntentRecoveryLab. Each of the first five loads into the
+// records and record tables a program would declare for it, and the value is
+// the one written out here. The last two are tagged arrays; see the end.
+
+// 01: a list of people is a table.
+
+record table Person {
+    Id: String
+    Name: String
+    Role: String
+    Active: Bool
+    Skills: String[]
+}
+
+record People {
+    People: Person
+}
+
+fn ExpectPerson(people: Person, row: Int, id: String, name: String, role: String, active: Bool, skills: String) -> Void {
+    Assert.Equal(id, people[row].Id, "id")
+    Assert.Equal(name, people[row].Name, "name")
+    Assert.Equal(role, people[row].Role, "role")
+    Assert.Equal(active, people[row].Active, "active")
+    Assert.Equal(skills, Join(people[row].Skills, " "), "skills, a cell that is an array")
+}
+
+[Fact]
+fn Corpus01PeopleIsATable() -> Void ! Error {
+    let loaded = Json.Load<People>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_01_people.json")?
+    Assert.Equal(3, Len(loaded.People), "three people, in document order")
+    ExpectPerson(loaded.People, 0, "u-100", "Avery Chen", "analyst", true, "sql python")
+    ExpectPerson(loaded.People, 1, "u-101", "Mina Patel", "designer", false, "figma ux")
+    ExpectPerson(loaded.People, 2, "u-102", "Jon Rivera", "analyst", true, "sql dbt")
+}
+
+// 02: a configuration is nested records. Keys are snake_case; fields are not.
+
+record Http {
+    Host: String
+    Port: Int
+    ReadTimeoutMs: Float
+    WriteTimeoutMs: Float
+}
+
+record Features {
+    EnableAuditLog: Bool
+    EnableRetryQueue: Bool
+    EnableDebugRoutes: Bool
+}
+
+record Limits {
+    MaxConnections: Int
+    MaxPayloadKb: Int
+}
+
+record Service {
+    Name: String
+    Environment: String
+    Http: Http
+    Features: Features
+    Limits: Limits
+}
+
+record Config {
+    Service: Service
+}
+
+[Fact]
+fn Corpus02ConfigIsNestedRecords() -> Void ! Error {
+    let loaded = Json.Load<Config>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_02_config.json")?
+    let expected = Config {
+        Service: Service {
+            Name: "billing-api"
+            Environment: "staging"
+            Http: Http { Host: "0.0.0.0" Port: 8080 ReadTimeoutMs: 1500.0 WriteTimeoutMs: 1500.0 }
+            Features: Features { EnableAuditLog: true EnableRetryQueue: true EnableDebugRoutes: false }
+            Limits: Limits { MaxConnections: 200 MaxPayloadKb: 512 }
+        }
+    }
+    Assert.Equal(expected, loaded, "the whole configuration")
+    Assert.Equal(1.5s, loaded.Service.Http.ReadTimeoutMs * 1e-3s, "a millisecond count, as seconds")
+}
+
+// 03: an object whose keys are data is a keyed table.
+
+record table Handler {
+    Event: String
+    Handler: String
+}
+
+record table Retry {
+    Event: String
+    Retries: Int
+}
+
+record Dispatch {
+    EventHandlers: Handler
+    RetryPolicy: Retry
+}
+
+fn ExpectHandler(handlers: Handler, row: Int, event: String, handler: String) -> Void {
+    Assert.Equal(event, handlers[row].Event, "the key is the event")
+    Assert.Equal(handler, handlers[row].Handler, "the value is the handler")
+}
+
+fn ExpectRetry(retries: Retry, row: Int, event: String, count: Int) -> Void {
+    Assert.Equal(event, retries[row].Event, "the key is the event")
+    Assert.Equal(count, retries[row].Retries, "the value is the count")
+}
+
+[Fact]
+fn Corpus03DispatchIsTwoKeyedTables() -> Void ! Error {
+    let loaded = Json.Load<Dispatch>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_03_dispatch.json")?
+    Assert.Equal(4, Len(loaded.EventHandlers), "four handlers, in document order")
+    ExpectHandler(loaded.EventHandlers, 0, "user.created", "handle_user_created")
+    ExpectHandler(loaded.EventHandlers, 1, "user.deleted", "handle_user_deleted")
+    ExpectHandler(loaded.EventHandlers, 2, "invoice.paid", "handle_invoice_paid")
+    ExpectHandler(loaded.EventHandlers, 3, "invoice.failed", "handle_invoice_failed")
+    Assert.Equal(2, Len(loaded.RetryPolicy), "two retry policies")
+    ExpectRetry(loaded.RetryPolicy, 0, "invoice.failed", 5)
+    ExpectRetry(loaded.RetryPolicy, 1, "user.deleted", 1)
+}
+
+// 04: equal rows of numbers are a matrix.
+
+record SensorGrid {
+    Rows: Int
+    Cols: Int
+    Readings: Matrix<Float>
+}
+
+record Sensors {
+    SensorGrid: SensorGrid
+}
+
+[Fact]
+fn Corpus04ReadingsAreAMatrix() -> Void ! Error {
+    let loaded = Json.Load<Sensors>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_04_matrix.json")?
+    let grid = loaded.SensorGrid
+    Assert.Equal(3, grid.Rows, "rows")
+    Assert.Equal(4, grid.Cols, "cols")
+    let expected: Float[][] = [[21.5, 21.8, 22.0, 21.9], [21.7, 21.9, 22.1, 22.0], [21.6, 21.7, 21.9, 21.8]]
+    for row in 0..grid.Rows {
+        for col in 0..grid.Cols {
+            Assert.Equal(expected[row][col], grid.Readings[row, col], "a reading")
+        }
+    }
+}
+
+// 05: a member that is null in one row and absent in another is an Option.
+
+enum Priority {
+    Low
+    Medium
+    High
+}
+
+record table Ticket {
+    Id: String
+    Title: String
+    Assignee: Option<String>
+    DueDate: Option<String>
+    Priority: Priority
+    Sprint: Option<String>
+}
+
+record Backlog {
+    Tickets: Ticket
+}
+
+fn ExpectTicket(tickets: Ticket, row: Int, id: String, title: String, priority: Priority, assignee: Option<String>, dueDate: Option<String>, sprint: Option<String>) -> Void {
+    Assert.Equal(id, tickets[row].Id, "id")
+    Assert.Equal(title, tickets[row].Title, "title")
+    Assert.Equal(priority, tickets[row].Priority, "priority")
+    Assert.Equal(assignee, tickets[row].Assignee, "assignee")
+    Assert.Equal(dueDate, tickets[row].DueDate, "due date")
+    Assert.Equal(sprint, tickets[row].Sprint, "sprint")
+}
+
+[Fact]
+fn Corpus05TicketsAreATableWithOptions() -> Void ! Error {
+    let loaded = Json.Load<Backlog>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_05_optional.json")?
+    Assert.Equal(3, Len(loaded.Tickets), "three tickets")
+    // assignee: a string, null, a string. due_date: null, absent, a string.
+    // sprint: a string, absent, null.
+    ExpectTicket(loaded.Tickets, 0, "T-9001", "Login page timeout", Priority.High, Option.Some("sam"), Option.None, Option.Some("S24"))
+    ExpectTicket(loaded.Tickets, 1, "T-9002", "Update FAQ links", Priority.Low, Option.None, Option.None, Option.None)
+    ExpectTicket(loaded.Tickets, 2, "T-9003", "Billing alert copy", Priority.Medium, Option.Some("nora"), Option.Some("2026-05-10"), Option.None)
+}
+
+// 06 and 07 are tagged arrays: a `kind` or a `type` member says which members
+// the rest of the object has. The declaration that says so is an enum whose
+// variants carry payloads, and Json does not read one (ladder decision D8).
+// That refusal is stated by invalid/corpus_06_tagged_sections.octfail and
+// invalid/corpus_07_tagged_operations.octfail.
+//
+// What does load is the reading without the tag: every member that some
+// objects lack is an Option.
+
+record table Operation {
+    Type: String
+    Amount: Float
+    Currency: String
+    AccountId: Option<String>
+    Merchant: Option<String>
+    FromAccount: Option<String>
+    ToAccount: Option<String>
+}
+
+record Ledger {
+    Operations: Operation
+}
+
+fn ExpectOperation(operations: Operation, row: Int, tag: String, amount: Float, account: Option<String>, merchant: Option<String>, from: Option<String>, to: Option<String>) -> Void {
+    Assert.Equal(tag, operations[row].Type, "the tag is a String")
+    Assert.Equal(amount, operations[row].Amount, "amount")
+    Assert.Equal("USD", operations[row].Currency, "currency")
+    Assert.Equal(account, operations[row].AccountId, "account")
+    Assert.Equal(merchant, operations[row].Merchant, "merchant, which only a debit has")
+    Assert.Equal(from, operations[row].FromAccount, "from, which only a transfer has")
+    Assert.Equal(to, operations[row].ToAccount, "to, which only a transfer has")
+}
+
+[Fact]
+fn Corpus07OperationsLoadAsASparseTable() -> Void ! Error {
+    let loaded = Json.Load<Ledger>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_07_tagged.json")?
+    Assert.Equal(3, Len(loaded.Operations), "three operations")
+    ExpectOperation(loaded.Operations, 0, "credit", 250.0, Option.Some("A-100"), Option.None, Option.None, Option.None)
+    ExpectOperation(loaded.Operations, 1, "debit", 49.5, Option.Some("A-100"), Option.Some("Metro Cafe"), Option.None, Option.None)
+    ExpectOperation(loaded.Operations, 2, "transfer", 30.0, Option.None, Option.None, Option.Some("A-100"), Option.Some("A-210"))
+}
+
+record Item {
+    Sku: String
+    Label: String
+    Price: Float
+}
+
+record Content {
+    Headline: Option<String>
+    CtaText: Option<String>
+    CtaHref: Option<String>
+    Columns: Option<Int>
+    Items: Option<Item[]>
+    Text: Option<String>
+    Theme: Option<String>
+}
+
+record table Section {
+    Kind: String
+    Slot: String
+    Content: Content
+}
+
+record Page {
+    Id: String
+    Title: String
+    Sections: Section
+}
+
+record Site {
+    Page: Page
+}
+
+fn ItemCount(items: Option<Item[]>) -> Int {
+    return match items {
+        case Option.Some(list) => Len(list)
+        case Option.None => 0
+    }
+}
+
+[Fact]
+fn Corpus06SectionsLoadWithOptionalContent() -> Void ! Error {
+    let loaded = Json.Load<Site>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_06_ui_like.json")?
+    let sections = loaded.Page.Sections
+    Assert.Equal("Storefront Home", loaded.Page.Title, "the page")
+    Assert.Equal(3, Len(sections), "three sections")
+    Assert.Equal("hero", sections[0].Kind, "the tag is a String")
+    Assert.Equal("product_grid", sections[1].Kind, "the second")
+    Assert.Equal("banner", sections[2].Kind, "the third")
+    Assert.Equal(Option<String>.Some("Spring Collection"), sections[0].Content.Headline, "a member only a hero has")
+    Assert.Equal(Option<Int>.Some(3), sections[1].Content.Columns, "a member only a grid has")
+    Assert.Equal(3, ItemCount(sections[1].Content.Items), "its items")
+    Assert.Equal(0, ItemCount(sections[2].Content.Items), "a banner has none")
+    Assert.Equal(Option<String>.Some("accent"), sections[2].Content.Theme, "a member only a banner has")
+}

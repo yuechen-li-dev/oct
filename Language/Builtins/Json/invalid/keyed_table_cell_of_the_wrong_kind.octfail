@@ -1,0 +1,13 @@
+expect runtime error: "Json.Parse: $["invoice.failed"] (line 1, column 20): expected Int, found a string"
+
+package Main
+
+// A key that is not a plain name is quoted in the path.
+record table Retry {
+    Event: String
+    Retries: Int
+}
+
+fn Main() -> Void ! Error {
+    let retries = Json.Parse<Retry>("{\"invoice.failed\": \"five\"}")?
+}

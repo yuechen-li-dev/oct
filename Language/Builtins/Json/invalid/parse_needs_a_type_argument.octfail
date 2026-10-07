@@ -1,0 +1,9 @@
+expect error: "function 'Json.Parse' expects 1 type argument, the type to read, got 0"
+
+package Main
+
+// The type argument is what the text is read as. Nothing is inferred from
+// the text or from where the value goes.
+fn Main() -> Void ! Error {
+    let levels: Float[] = Json.Parse("[1, 2]")?
+}

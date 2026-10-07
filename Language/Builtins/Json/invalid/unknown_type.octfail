@@ -1,0 +1,7 @@
+expect error: "unknown type: Reading"
+
+package Main
+
+fn Main() -> Void ! Error {
+    let reading = Json.Parse<Reading>("{}")?
+}

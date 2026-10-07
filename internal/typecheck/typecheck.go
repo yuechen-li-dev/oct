@@ -191,6 +191,9 @@ func Check(file ast.File) error {
 		refinements:      make(map[string]refinementInfo),
 		typeNames:        make(map[string]struct{}),
 		options:          make(map[string]Type),
+		program: project.Program{Packages: map[string]project.Package{
+			file.Package: {Name: file.Package, Concepts: file.Concepts, Records: file.Records, Enums: file.Enums},
+		}},
 	}
 	return checker.checkFile(file)
 }
@@ -210,6 +213,7 @@ func CheckProgram(program project.Program) error {
 			refinements:                  make(map[string]refinementInfo),
 			typeNames:                    make(map[string]struct{}),
 			options:                      make(map[string]Type),
+			program:                      program,
 			allowUnresolvedImportedTypes: true,
 		}
 		if err := chk.registerPackageDeclarations(file); err != nil {
@@ -350,16 +354,20 @@ func (c checker) rebindRecordTypes(file ast.File) error {
 type checker struct {
 	// packageName is the package whose declarations and bodies this checker
 	// checks.
-	packageName                  string
-	functions                    map[string]functionSignature
-	wrapperFunctions             map[string]functionSignature
-	functionTypes                map[string]functionSignature
-	records                      map[string]recordInfo
-	enums                        map[string]enumInfo
-	flows                        map[string]flowSignature
-	refinements                  map[string]refinementInfo
-	typeNames                    map[string]struct{}
-	options                      map[string]Type // every option type this checker has formed, by name; see option.go
+	packageName      string
+	functions        map[string]functionSignature
+	wrapperFunctions map[string]functionSignature
+	functionTypes    map[string]functionSignature
+	records          map[string]recordInfo
+	enums            map[string]enumInfo
+	flows            map[string]flowSignature
+	refinements      map[string]refinementInfo
+	typeNames        map[string]struct{}
+	options          map[string]Type // every option type this checker has formed, by name; see option.go
+	// program is every package of the program, imported by the checked
+	// package or not. Only the check of a Json call uses it: the type it
+	// reads is followed into every package it reaches.
+	program                      project.Program
 	importedPackages             map[string]packageSymbols
 	allowUnresolvedImportedTypes bool
 }
@@ -3394,6 +3402,9 @@ regularCall:
 				return ExprType{}, fmt.Errorf("function %s is marked [Pure] but calls Make.%s, which requires host authority; move the call to a [RequiresAuthority] helper or pass read data into the pure planner", ctx.name, primitive)
 			}
 			return ExprType{}, fmt.Errorf("function %s calls Make.%s and must be marked [RequiresAuthority]", ctx.name, primitive)
+		}
+		if json, ok := builtin.ResolveJsonCall(calleeName, len(expr.TypeArguments)); ok {
+			return c.checkJsonCall(scope, json, expr.TypeArguments, expr.Arguments, ctx)
 		}
 		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
 			if builtinName, mapped := builtin.ResolveNamespacedAlias(namespace, symbol); mapped {

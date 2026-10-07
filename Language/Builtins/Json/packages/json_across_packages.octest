@@ -1,0 +1,37 @@
+package Main
+import Depot
+
+// The type a Json call reads is followed into every package it reaches.
+// `Depot.Site` holds `Net.Address` values, and `Net.Address` holds a refined
+// `Net.Port`; this file imports Depot only.
+
+[Fact]
+fn ARecordOfAnImportedPackageIsRead() -> Void ! Error {
+    let site = Json.Load<Depot.Site>("Language/Builtins/Json/data/depot.json")?
+    Assert.Equal("north", site.Name, "a field of the imported record")
+    Assert.Equal("gate.north", Depot.GateHost(site), "a record of a package this file does not import")
+    Assert.Equal(7000, Depot.GatePort(site), "its refined field")
+    Assert.Equal(2, Depot.DockCount(site), "an array of such records")
+    Assert.Equal(7101, Depot.DockBackupOr(site, 0, -1), "Some of a refined value")
+    Assert.Equal(-1, Depot.DockBackupOr(site, 1, -1), "an absent member is None")
+}
+
+[Fact]
+fn TheValueIsTheOneItsOwnPackageReads() -> Void ! Error {
+    let here = Json.Load<Depot.Site>("Language/Builtins/Json/data/depot.json")?
+    let there = Depot.Load("Language/Builtins/Json/data/depot.json")?
+    Assert.Equal(there, here, "read here and read in Depot")
+}
+
+[Fact]
+fn AnArrayOfImportedRecordsIsRead() -> Void ! Error {
+    let sites = Json.Parse<Depot.Site[]>("[{\"name\": \"a\", \"gate\": {\"host\": \"g\", \"port\": 1}, \"docks\": []}]")?
+    Assert.Equal(1, Len(sites), "one site")
+    Assert.Equal(1, Depot.GatePort(sites[0]), "its gate")
+}
+
+[Fact]
+fn AConceptOfAnotherPackageRefuses() -> Void {
+    Assert.Error(Json.Parse<Depot.Site>("{\"name\": \"a\", \"gate\": {\"host\": \"g\", \"port\": 0}, \"docks\": []}"), "port 0 is refused by Net.Port")
+    Assert.Error(Json.Parse<Depot.Site>("{\"name\": \"a\", \"gate\": {\"host\": \"g\", \"port\": 1, \"backup\": 70000}, \"docks\": []}"), "and so is a backup of 70000")
+}

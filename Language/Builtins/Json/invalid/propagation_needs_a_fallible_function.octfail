@@ -1,0 +1,8 @@
+expect error: "let levels: cannot use '?' in infallible function"
+
+package Main
+
+fn Main() -> Int {
+    let levels = Json.Parse<Float[]>("[1, 2]")?
+    return Len(levels)
+}

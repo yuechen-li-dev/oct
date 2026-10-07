@@ -1,0 +1,14 @@
+expect runtime error: "Json.Load: Language/Builtins/Json/data/tickets_wrong_kind.json: $[1].assignee (line 3, column 29): expected String or null, found a number"
+
+package Main
+
+// A value of the wrong kind is refused with its path and its position.
+record table Ticket {
+    Id: String
+    Assignee: Option<String>
+    Points: Int
+}
+
+fn Main() -> Void ! Error {
+    let tickets = Json.Load<Ticket>("Language/Builtins/Json/data/tickets_wrong_kind.json")?
+}

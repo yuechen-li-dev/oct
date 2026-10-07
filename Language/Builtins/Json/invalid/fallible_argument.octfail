@@ -1,0 +1,11 @@
+expect error: "let levels: fallible expression must be handled explicitly"
+
+package Main
+
+fn Path() -> String ! Error {
+    return "levels.json"
+}
+
+fn Main() -> Void ! Error {
+    let levels = Json.Load<Float[]>(Path())?
+}

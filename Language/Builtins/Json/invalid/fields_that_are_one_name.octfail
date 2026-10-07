@@ -1,0 +1,14 @@
+expect error: "function 'Json.Parse' cannot read Limits: the fields ReadTimeout and Read_Timeout of Limits are one name in JSON, where case and separators are ignored"
+
+package Main
+
+// A key matches a field with case and separators ignored, so two fields that
+// differ only in those could not be told apart.
+record Limits {
+    ReadTimeout: Int
+    Read_Timeout: Int
+}
+
+fn Main() -> Void ! Error {
+    let limits = Json.Parse<Limits>("{}")?
+}

@@ -1,0 +1,12 @@
+expect runtime error: "Json.Load: Language/Builtins/Json/data/broken.json: (line 3, column 23): expected a value, found ']'"
+
+package Main
+
+record Named {
+    Name: String
+    Tags: String[]
+}
+
+fn Main() -> Void ! Error {
+    let named = Json.Load<Named>("Language/Builtins/Json/data/broken.json")?
+}

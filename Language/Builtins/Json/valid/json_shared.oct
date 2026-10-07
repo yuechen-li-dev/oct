@@ -1,0 +1,27 @@
+package Main
+
+// Declarations the Json contracts in this directory share.
+
+concept Port = Int {
+    Require(Self > 0, "a port is positive")
+    Require(Self < 65536, "a port is below 65536")
+}
+
+record Point {
+    X: Float
+    Y: Float
+}
+
+fn IntOr(value: Option<Int>, fallback: Int) -> Int {
+    return match value {
+        case Option.Some(number) => number
+        case Option.None => fallback
+    }
+}
+
+fn TextOr(value: Option<String>, fallback: String) -> String {
+    return match value {
+        case Option.Some(text) => text
+        case Option.None => fallback
+    }
+}

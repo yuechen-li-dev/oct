@@ -1,0 +1,13 @@
+expect runtime error: "Json.Parse: $[1] (line 1, column 9): expected one of "Low", "Medium", "VeryHigh", found "urgent""
+
+package Main
+
+enum Priority {
+    Low
+    Medium
+    VeryHigh
+}
+
+fn Main() -> Void ! Error {
+    let priorities = Json.Parse<Priority[]>("[\"low\", \"urgent\"]")?
+}

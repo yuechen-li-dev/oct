@@ -1,0 +1,18 @@
+expect error: "function 'Json.Parse' cannot read Drawing: Drawing.Shapes: the enum Shape, whose variant Circle carries a payload, has no JSON form"
+
+package Main
+
+// An enum reads from a string that names a variant, so its variants carry
+// no payload. `Option` is the one payload enum with a JSON form.
+enum Shape {
+    Dot
+    Circle(Float)
+}
+
+record Drawing {
+    Shapes: Shape[]
+}
+
+fn Main() -> Void ! Error {
+    let drawing = Json.Parse<Drawing>("{}")?
+}

@@ -1,0 +1,14 @@
+expect error: "function 'Json.Load' cannot read Reading: Reading.Phase: Complex has no JSON form"
+
+package Main
+
+// Every part of the type must have a JSON form. The error names the part
+// that has none.
+record Reading {
+    Name: String
+    Phase: Complex
+}
+
+fn Main() -> Void ! Error {
+    let reading = Json.Load<Reading>("reading.json")?
+}

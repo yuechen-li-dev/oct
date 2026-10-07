@@ -1,0 +1,35 @@
+expect runtime error: "Json.Load: Language/Builtins/Json/data/service_refused_port.json: $.http.port (line 6, column 13): refined concept Port: a port is below 65536"
+
+package Main
+
+// A value of a refined concept is admitted by the concept, and a refusal
+// has the place of the value in the document.
+enum Environment {
+    Staging
+    Production
+}
+
+concept Port = Int {
+    Require(Self > 0, "a port is positive")
+    Require(Self < 65536, "a port is below 65536")
+}
+
+record Http {
+    Host: String
+    Port: Port
+    ReadTimeoutMs: Float
+    WriteTimeoutMs: Float
+}
+
+record Service {
+    Name: String
+    Environment: Environment
+    Http: Http
+    StartupGrace: Float<s>
+    Tags: String[]
+    Owner: Option<String>
+}
+
+fn Main() -> Void ! Error {
+    let service = Json.Load<Service>("Language/Builtins/Json/data/service_refused_port.json")?
+}

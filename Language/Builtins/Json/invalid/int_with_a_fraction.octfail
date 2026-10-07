@@ -1,0 +1,8 @@
+expect runtime error: "Json.Parse: $[1] (line 1, column 5): expected Int, found 2.0, which has a fraction"
+
+package Main
+
+// There is no conversion between kinds: `2.0` is not an Int.
+fn Main() -> Void ! Error {
+    let counts = Json.Parse<Int[]>("[1, 2.0]")?
+}

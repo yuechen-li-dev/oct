@@ -1,0 +1,30 @@
+package Depot
+
+import Net
+
+record Site {
+    Name: String
+    Gate: Net.Address
+    Docks: Net.Address[]
+}
+
+// A Json call in a package reads the types of that package.
+fn Load(path: String) -> Site ! Error {
+    return Json.Load<Site>(path)?
+}
+
+fn GateHost(site: Site) -> String {
+    return site.Gate.Host
+}
+
+fn GatePort(site: Site) -> Int {
+    return Net.PortNumber(site.Gate)
+}
+
+fn DockCount(site: Site) -> Int {
+    return Len(site.Docks)
+}
+
+fn DockBackupOr(site: Site, dock: Int, fallback: Int) -> Int {
+    return Net.BackupOr(site.Docks[dock], fallback)
+}

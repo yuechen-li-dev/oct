@@ -347,6 +347,9 @@ func (v Value) String() string {
 }
 
 type interpreter struct {
+	// program is what the maps below index. A Json call describes its type
+	// from it.
+	program                  project.Program
 	functions                map[string]ast.FunctionDecl
 	records                  map[string]ast.RecordDecl
 	enums                    map[string]ast.EnumDecl
@@ -648,6 +651,7 @@ func newInterpreter(program project.Program, stdout io.Writer) (interpreter, err
 		return interpreter{}, fmt.Errorf("profile Verilog is compile-only; use oct build to emit SystemVerilog")
 	}
 	interp := interpreter{
+		program:        program,
 		functions:      make(map[string]ast.FunctionDecl),
 		records:        make(map[string]ast.RecordDecl),
 		enums:          make(map[string]ast.EnumDecl),
@@ -2640,6 +2644,11 @@ regularCall:
 	}
 	if hasDirectName && calleeName == "Int" && len(expr.Arguments) == 1 {
 		return evalResult{}, fmt.Errorf("runtime error: Int(...) is not a conversion in Oct because float-to-int conversion must choose a rounding policy explicitly. Use FloorToInt(x), CeilToInt(x), or RoundToInt(x). For sample counts, FloorToInt(sampleRate * duration) is usually intended.")
+	}
+	if hasDirectName {
+		if json, ok := builtin.ResolveJsonCall(calleeName, len(expr.TypeArguments)); ok {
+			return i.evalJsonCall(env, pkgName, json, expr.TypeArguments, expr.Arguments)
+		}
 	}
 	if hasDirectName && (builtin.IsName(calleeName) || isUnreservedRandomBuiltinCall(calleeName, pkgName)) {
 		return i.evalBuiltinCallExpr(env, pkgName, calleeName, expr.TypeArguments, expr.Arguments)

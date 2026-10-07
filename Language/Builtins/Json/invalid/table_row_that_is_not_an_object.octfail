@@ -1,0 +1,13 @@
+expect runtime error: "Json.Parse: $[0] (line 1, column 2): expected an object, a row of Ticket, found an array"
+
+package Main
+
+record table Ticket {
+    Id: String
+    Assignee: Option<String>
+    Points: Int
+}
+
+fn Main() -> Void ! Error {
+    let tickets = Json.Parse<Ticket>("[[\"T-1\", 1]]")?
+}

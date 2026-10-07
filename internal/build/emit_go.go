@@ -222,6 +222,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	usedBuiltins := map[string]bool{}
 	emittedRecordTypes := map[string]struct{}{}
 	loadTypes := map[string]struct{}{}
+	jsonReads := map[string]MIRCall{}
 	resultTypes := map[string]struct{}{}
 	flowResultTypes := map[string]struct{}{}
 	needsUtilityHelpers := false
@@ -230,6 +231,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		flowResultTypes[flow.Return] = struct{}{}
 		collectFlowBuiltins(flow, usedBuiltins)
 		walkFlowSharedStatements(flow, func(statement MIRStmt) {
+			noteJsonRead(statement, jsonReads)
 			switch node := statement.(type) {
 			case MIRCall:
 				if node.Builtin && node.Callee == "LoadOctagon" {
@@ -251,6 +253,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		}
 		for _, bb := range fn.Blocks {
 			for _, st := range bb.Statements {
+				noteJsonRead(st, jsonReads)
 				if call, ok := st.(MIRCall); ok && call.Builtin {
 					usedBuiltins[call.Callee] = true
 					if call.Callee == "LoadOctagon" {
@@ -291,6 +294,12 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		features := analyzeFlowFeatures(flow, usedBuiltins)
 		needsUtilityHelpers = needsUtilityHelpers || len(features.UtilitySites) > 0
 	}
+	for _, read := range jsonReads {
+		resultTypes[read.RetType] = struct{}{}
+	}
+	// A Json call hands its data to the Octagon materialiser, so it needs
+	// what LoadOctagon needs.
+	needsOctagonLoad := usedBuiltins["LoadOctagon"] || len(jsonReads) > 0
 	supportFeatures := analyzeGoSupportFeatures(m, usedBuiltins)
 	importSet := map[string]struct{}{"fmt": {}, "os": {}, "reflect": {}}
 	if options.includeMain {
@@ -337,10 +346,13 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["LoadOctagon"] {
+	if needsOctagonLoad {
 		for _, pkg := range []string{"errors", "os", "reflect", "sort", "strconv", "strings", "unicode", "unicode/utf8", "github.com/yuechen-li-dev/oct/internal/dimension"} {
 			importSet[pkg] = struct{}{}
 		}
+	}
+	if len(jsonReads) > 0 {
+		importSet[octjsonImportPath] = struct{}{}
 	}
 	for builtinName := range usedBuiltins {
 		for _, pkg := range builtinImportDeps(builtinName) {
@@ -571,7 +583,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if needsMarkdownHelpers {
 		b.WriteString(__octMarkdownHelpers)
 	}
-	if usedBuiltins["WriteOctagon"] || usedBuiltins["LoadOctagon"] {
+	if usedBuiltins["WriteOctagon"] || needsOctagonLoad {
 		b.WriteString("type __octParsedKind int\n\n")
 		b.WriteString("const (\n")
 		b.WriteString("\t__octParsedInt __octParsedKind = iota\n\t__octParsedFloat\n\t__octParsedBool\n\t__octParsedString\n\t__octParsedArray\n\t__octParsedRecord\n\t__octParsedEnum\n)\n\n")
@@ -637,7 +649,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 				importSet[pkg] = struct{}{}
 			}
 		}
-		if usedBuiltins["LoadOctagon"] {
+		if needsOctagonLoad {
 			b.WriteString("func __octValidateRefinement(expectedType string, value reflect.Value) error {\n\tswitch expectedType {\n")
 			for _, refinement := range m.Refinements {
 				fmt.Fprintf(&b, "\tcase %q, %q:\n", refinement.Package+"."+refinement.Name, refinement.Name)
@@ -666,6 +678,11 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 				b.WriteString("\t}\n")
 				fmt.Fprintf(&b, "\treturn %s{Value: v.(%s)}\n", goResultTypeName(t), goType(t))
 				b.WriteString("}\n\n")
+			}
+		}
+		if len(jsonReads) > 0 {
+			if err := emitJsonSupport(&b, m, jsonReads); err != nil {
+				return "", err
 			}
 		}
 	}
@@ -1458,6 +1475,9 @@ func goStmt(s MIRStmt) (string, error) {
 		args, err := emitGoValues(st.Args)
 		if err != nil {
 			return "", err
+		}
+		if call, isJsonCall, err := emitJsonCall(st, args); isJsonCall {
+			return call, err
 		}
 		if st.Builtin {
 			switch canonicalCompiledBuiltinName(st.Callee) {
