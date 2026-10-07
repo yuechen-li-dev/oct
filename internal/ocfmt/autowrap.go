@@ -112,7 +112,7 @@ func detectCallContext(tokens []string, code string, baseIndent int, comment str
 	return callLayoutContext{callee: callee, renderedWidth: width, maxWidth: 100, nestingDepth: maxNest, argCount: args, hasNestedArray: hasArr, hasNestedRecord: hasRec, hasNestedCall: hasCall, hasCommentRisk: comment != "", isHeavy: isHeavyCallee(callee), mode: ModeReadable}, true
 }
 func isTargetCallee(c string) bool {
-	targets := []string{"Markdown.Report", "Markdown.Section", "Markdown.Subsection", "Markdown.Callout", "Markdown.Table", "Markdown.KeyValueTable", "Artifact.WriteMarkdown", "Artifact.WriteOctagon", "Artifact.WriteCsv", "Artifact.WriteJson", "Json.Object", "String.Join", "Markdown.H1"}
+	targets := []string{"Markdown.Report", "Markdown.Section", "Markdown.Subsection", "Markdown.Callout", "Markdown.Table", "Markdown.KeyValueTable", "Artifact.WriteMarkdown", "Artifact.WriteOctagon", "Artifact.WriteCsv", "Artifact.WriteJson", "String.Join", "Markdown.H1"}
 	return slices.Contains(targets, c)
 }
 func isCallToken(tok string) bool {

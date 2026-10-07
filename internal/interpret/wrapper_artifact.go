@@ -17,7 +17,6 @@ func artifactWrapperBuiltins() map[string]wrapperBuiltinHandler {
 		"ArtifactWriteLines":       (*interpreter).evalArtifactWriteLinesBuiltin,
 		"ArtifactWriteMarkdown":    (*interpreter).evalArtifactWriteMarkdownBuiltin,
 		"ArtifactWriteCsv":         (*interpreter).evalArtifactWriteCsvBuiltin,
-		"ArtifactWriteJson":        (*interpreter).evalArtifactWriteJsonBuiltin,
 		"ArtifactWriteOctagon":     (*interpreter).evalArtifactWriteOctagonBuiltin,
 		"ArtifactDocumentMarkdown": (*interpreter).evalArtifactDocumentMarkdownBuiltin,
 		"ArtifactDocumentDocx":     (*interpreter).evalArtifactDocumentDocxBuiltin,
@@ -231,10 +230,6 @@ func (i *interpreter) evalArtifactWriteMarkdownBuiltin(env *environment, pkgName
 
 func (i *interpreter) evalArtifactWriteCsvBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
 	return i.evalArtifactWriteBuiltin(env, pkgName, callee, "CsvWrite", argumentExprs)
-}
-
-func (i *interpreter) evalArtifactWriteJsonBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
-	return i.evalArtifactWriteBuiltin(env, pkgName, callee, "JsonSave", argumentExprs)
 }
 
 func (i *interpreter) evalArtifactWriteOctagonBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {

@@ -60,20 +60,21 @@ func (b JsonBuiltin) Writes() bool {
 	return b.Action == JsonWriteFile || b.Action == JsonWriteText || b.Action == JsonWriteArtifact
 }
 
-// HasFirstLibraryForm reports whether the first Json library has a function
-// of this name, which a call may still mean until that library leaves in
-// milestone M5 of the ladder: `Json.Load(path)` with no type argument, and
-// `Json.Save(path, text)` and `Artifact.WriteJson(path, text)` given a String
-// of JSON text. The typechecker decides which a call is, and a call of the
-// first library's form carries no type.
-func (b JsonBuiltin) HasFirstLibraryForm() bool {
-	_, has := ResolveNamespacedAlias(b.Namespace, b.Symbol)
-	return has
-}
-
 // JsonBuiltins returns the table in declaration order.
 func JsonBuiltins() []JsonBuiltin {
 	return append([]JsonBuiltin(nil), jsonBuiltins...)
+}
+
+// LookupJsonIn resolves the unqualified name of a builtin inside the package
+// that is its namespace: `Load` in package Json. No package may declare a
+// function of that name, as no package may declare one named `Print`.
+func LookupJsonIn(pkg string, name string) (JsonBuiltin, bool) {
+	for _, entry := range jsonBuiltins {
+		if entry.Namespace == pkg && entry.Symbol == name {
+			return entry, true
+		}
+	}
+	return JsonBuiltin{}, false
 }
 
 // LookupJson resolves a qualified name, such as "Json.Load". The Json

@@ -18,9 +18,9 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Json"
         Version: "0.1.0"
-        Authors: ["Codex"]
-        Date: "2026-06-15"
-        Description: "Thin JSON file wrappers with string payloads"
+        Authors: ["Codex", "Claude"]
+        Date: "2026-10-07"
+        Description: "Reads JSON as a declared type and writes a typed value as JSON; the functions are compiler builtins"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

@@ -1,0 +1,10 @@
+expect error: "function 'Json.Load' expects 1 type argument, the type to read, got 0"
+
+package Main
+
+// A file is read as the type the call names. There is no `Json.Load(path)`
+// that gives the text of the file; `IO.ReadText(path)` does that.
+fn Main() -> Int ! Error {
+    let text = Json.Load("Language/Builtins/Json/data/tickets.json")?
+    return 0
+}

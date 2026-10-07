@@ -61,24 +61,6 @@ fn DirectoryListMissingFails() -> Void {
 }
 
 [Fact]
-fn JsonParseStringifyAndSaveLoadRoundTrip() -> Void {
-    let parsed = Parse("[3, 2, 1]")!
-    let stringified = Stringify(parsed)!
-    Assert.Equal("[3,2,1]", stringified, "json wrappers should produce compact output")
-
-    let path = "io_mx103b_data.json"
-    let _save = Save(path, "[1,2,3]")!
-    let loaded = Load(path)!
-    Assert.Equal("[1,2,3]", loaded, "json load should return compact valid json")
-    let _delete = Delete(path)!
-}
-
-[Fact]
-fn JsonParseRejectsInvalidDocument() -> Void {
-    Assert.Error(Parse("{"), "invalid json should fail")
-}
-
-[Fact]
 fn CsvReadWriteRoundTrip() -> Void {
     let path = "io_mx103b_table.csv"
     let rows = [["name", "score"], ["ada", "42"], ["lin", "7"]]

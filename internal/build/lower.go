@@ -1004,14 +1004,20 @@ func unsupported(feature string) error {
 // them this is not a feature the compiled lane is still missing.
 func unsupportedBuiltin(name string) error {
 	if spelling, ok := builtin.ArtifactPhaseSpelling(name); ok {
-		return fmt.Errorf("%s is available only during `oct artifact` evaluation; a compiled program cannot call it", spelling)
+		return artifactPhaseOnly(spelling)
 	}
 	return unsupported("builtin " + name)
 }
 
+// artifactPhaseOnly refuses a builtin that exists only during `oct artifact`
+// evaluation, by the name the program wrote.
+func artifactPhaseOnly(spelling string) error {
+	return fmt.Errorf("%s is available only during `oct artifact` evaluation; a compiled program cannot call it", spelling)
+}
+
 func isOctxiliaryBuiltin(name string) bool {
 	switch canonicalCompiledBuiltinName(name) {
-	case "FileReadText", "FileReadLines", "FileReadBytes", "FileWriteText", "FileWriteLines", "FileWriteBytes", "FileDelete", "DirectoryList", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll", "CsvRead", "CsvReadRows", "CsvReadTable", "CsvReadMatrix", "CsvWrite", "CsvWriteRows", "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad", "JsonSave":
+	case "FileReadText", "FileReadLines", "FileReadBytes", "FileWriteText", "FileWriteLines", "FileWriteBytes", "FileDelete", "DirectoryList", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll", "CsvRead", "CsvReadRows", "CsvReadTable", "CsvReadMatrix", "CsvWrite", "CsvWriteRows":
 		return true
 	default:
 		return false

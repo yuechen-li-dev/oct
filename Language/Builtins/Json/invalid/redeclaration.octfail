@@ -1,0 +1,13 @@
+expect error: "function Load: cannot redeclare built-in function"
+
+package Json
+
+// Package Json cannot declare a function with the name of one of its
+// builtins, so `Json.Load` has one meaning in every program.
+fn Load(path: String) -> String {
+    return path
+}
+
+fn Main() -> Int {
+    return 0
+}

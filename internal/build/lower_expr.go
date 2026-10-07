@@ -462,12 +462,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if access, ok := e.Callee.(ast.FieldAccessExpr); ok {
 			if namespace, ok := access.Target.(ast.IdentifierExpr); ok {
 				if json, ok := builtin.LookupJson(namespace.Name + "." + access.Field); ok {
-					if callType, typed := ast.CallType(e); typed {
-						return c.lowerJsonCall(json, e, callType)
+					callType, typed := ast.CallType(e)
+					if !typed {
+						return "", "", false, fmt.Errorf("compiler invariant violation: %s reached lowering with no type", json.Name())
 					}
-					// The first library's function of this name, which
-					// takes no type argument.
-					e.TypeArguments = ast.WithoutInferredTypeArguments(e.TypeArguments)
+					return c.lowerJsonCall(json, e, callType)
 				}
 			}
 		}
@@ -2722,10 +2721,6 @@ func (c *lowerCtx) resolveCompiledBuiltinByName(normalized string) (string, stri
 		return normalized, "Bool", true, false, nil
 	case "FileDelete", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
 		return normalized, "Int", true, true, nil
-	case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
-		return normalized, "String", true, true, nil
-	case "JsonSave":
-		return normalized, "Int", true, true, nil
 	case "CsvRead", "CsvReadRows":
 		return normalized, "String[][]", true, true, nil
 	case "CsvReadTable":
@@ -3439,22 +3434,6 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "Matrix<" + elemType + ">", nil
 		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin SymGrad for type %s", argTypes[0])
-	case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
-		if len(argTypes) != 1 {
-			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
-		}
-		if argTypes[0] != "String" {
-			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
-		}
-		return "String", nil
-	case "JsonSave":
-		if len(argTypes) != 2 {
-			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
-		}
-		if argTypes[0] != "String" || argTypes[1] != "String" {
-			return "", fmt.Errorf("compiled mode does not yet support builtin %s for argument types (%s, %s)", name, argTypes[0], argTypes[1])
-		}
-		return "Int", nil
 	case "CsvRead", "CsvReadRows":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))

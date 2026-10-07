@@ -1,15 +1,8 @@
 package Json
 
-import IO
-
-fn Save(path: String, value: String) -> Int ! Error {
-    return IO.Save(path, value)?
-}
-
-fn Load(path: String) -> String ! Error {
-    return IO.Load(path)?
-}
-
-fn Object(value: String) -> String {
-    return value
+// Json is a compiler-owned namespace: Load, Parse, Save and Text are
+// builtins, implemented in Go for both execution lanes, and need no import.
+// This file gives the namespace a package so that `import Json` resolves.
+fn _JsonNamespaceMarker() -> Int {
+    return 0
 }

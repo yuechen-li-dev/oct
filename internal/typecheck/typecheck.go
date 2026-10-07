@@ -577,10 +577,11 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 
 	for _, function := range file.Functions {
 		// No builtin may be declared: a reserved name in any package, or the
-		// unqualified name of a Random or Entropy builtin inside its own
-		// package.
-		_, ownsBuiltin := builtin.LookupRandomIn(file.Package, function.Name)
-		if builtin.IsName(function.Name) || ownsBuiltin {
+		// unqualified name of a Random, Entropy or Json builtin inside its
+		// own package.
+		_, ownsRandom := builtin.LookupRandomIn(file.Package, function.Name)
+		_, ownsJson := builtin.LookupJsonIn(file.Package, function.Name)
+		if builtin.IsName(function.Name) || ownsRandom || ownsJson {
 			return fmt.Errorf("function %s: cannot redeclare built-in function", function.Name)
 		}
 		if _, exists := c.functions[function.Name]; exists {
@@ -3408,12 +3409,7 @@ regularCall:
 			return ExprType{}, fmt.Errorf("function %s calls Make.%s and must be marked [RequiresAuthority]", ctx.name, primitive)
 		}
 		if json, ok := builtin.LookupJson(calleeName); ok {
-			if result, handled, err := c.checkJsonCall(scope, json, expr, ctx); handled {
-				return result, err
-			}
-			// The first library's function of this name, which takes no
-			// type argument.
-			expr.TypeArguments = ast.WithoutInferredTypeArguments(expr.TypeArguments)
+			return c.checkJsonCall(scope, json, expr, ctx)
 		}
 		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
 			if builtinName, mapped := builtin.ResolveNamespacedAlias(namespace, symbol); mapped {
@@ -4016,7 +4012,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkWriteOctagonBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
-	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteJson" || callee == "ArtifactWriteOctagon" || callee == "ArtifactDocumentMarkdown" || callee == "ArtifactDocumentDocx" || callee == "ArtifactDocumentLatex" || callee == "ArtifactDocumentPdf" || callee == "ArtifactCompileData" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
+	if callee == "ArtifactWriteText" || callee == "ArtifactWriteLines" || callee == "ArtifactWriteMarkdown" || callee == "ArtifactWriteCsv" || callee == "ArtifactWriteOctagon" || callee == "ArtifactDocumentMarkdown" || callee == "ArtifactDocumentDocx" || callee == "ArtifactDocumentLatex" || callee == "ArtifactDocumentPdf" || callee == "ArtifactCompileData" || callee == "ArtifactProgress" || callee == "ArtifactCheckpoint" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
@@ -4042,21 +4038,6 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
 		}
 		return c.checkPdfBuiltinCallExpr(scope, callee, arguments, ctx)
-	}
-	if callee == "JsonNormalize" {
-		if len(typeArguments) > 0 {
-			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
-		}
-		return c.checkJSONBuiltinCallExpr(scope, callee, arguments, ctx)
-	}
-	if callee == "JsonLower" || callee == "JsonLoadStructured" {
-		return c.checkJSONStructuredBuiltinCallExpr(scope, callee, typeArguments, arguments, ctx)
-	}
-	if callee == "JsonParse" || callee == "JsonStringify" || callee == "JsonLoad" || callee == "JsonSave" {
-		if len(typeArguments) > 0 {
-			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
-		}
-		return c.checkJSONBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
 	if callee == "FileReadText" || callee == "FileWriteText" || callee == "FileReadBytes" || callee == "FileWriteBytes" || callee == "FileReadLines" || callee == "FileWriteLines" || callee == "FileExists" || callee == "FileDelete" {
 		if len(typeArguments) > 0 {
@@ -5922,46 +5903,6 @@ func (c checker) checkXlsxBuiltinCallExpr(scope *scope, callee string, arguments
 	}
 }
 
-func (c checker) checkJSONBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
-	stringType := Type{Base: BaseTypeString}
-	switch callee {
-	case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
-		if len(arguments) != 1 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
-		}
-		textType, err := c.checkExpr(scope, arguments[0], ctx)
-		if err != nil {
-			return ExprType{}, err
-		}
-		if textType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
-		}
-		if textType.ValueType != stringType {
-			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, textType.ValueType)
-		}
-		return ExprType{ValueType: stringType, Fallible: true}, nil
-	case "JsonSave":
-		if len(arguments) != 2 {
-			return ExprType{}, fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
-		}
-		for idx := 0; idx < 2; idx++ {
-			currentType, err := c.checkExpr(scope, arguments[idx], ctx)
-			if err != nil {
-				return ExprType{}, err
-			}
-			if currentType.Fallible {
-				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
-			}
-			if currentType.ValueType != stringType {
-				return ExprType{}, fmt.Errorf("function '%s' argument %d expects String, got %s", callee, idx+1, currentType.ValueType)
-			}
-		}
-		return ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true}, nil
-	default:
-		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
-	}
-}
-
 func (c checker) checkImageBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	intType := Type{Base: BaseTypeInt}
 	pixelIntType := Type{Base: BaseTypeInt, Dimension: uiPixelDimension}
@@ -6194,34 +6135,6 @@ func (c checker) checkPdfBuiltinCallExpr(scope *scope, callee string, arguments 
 	default:
 		return ExprType{}, fmt.Errorf("unsupported built-in function '%s'", callee)
 	}
-}
-
-func (c checker) checkJSONStructuredBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
-	stringType := Type{Base: BaseTypeString}
-	if len(typeArguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 type argument, got %d", callee, len(typeArguments))
-	}
-	targetValueType, err := c.resolveNonReturnType(typeArguments[0])
-	if err != nil {
-		return ExprType{}, fmt.Errorf("function '%s' type argument is invalid: %w", callee, err)
-	}
-	if targetValueType != (Type{Name: "JsonRawGraph"}) && targetValueType != (Type{Name: "IO.JsonRawGraph"}) {
-		return ExprType{}, fmt.Errorf("function '%s' type argument expects JsonRawGraph, got %s", callee, targetValueType)
-	}
-	if len(arguments) != 1 {
-		return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
-	}
-	inputType, err := c.checkExpr(scope, arguments[0], ctx)
-	if err != nil {
-		return ExprType{}, err
-	}
-	if inputType.Fallible {
-		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
-	}
-	if inputType.ValueType != stringType {
-		return ExprType{}, fmt.Errorf("function '%s' argument 1 expects String, got %s", callee, inputType.ValueType)
-	}
-	return ExprType{ValueType: targetValueType, Fallible: true}, nil
 }
 
 func (c checker) checkFileBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
@@ -6740,8 +6653,6 @@ func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, argum
 		delegate = "FileWriteLines"
 	case "ArtifactWriteCsv":
 		delegate = "CsvWrite"
-	case "ArtifactWriteJson":
-		delegate = "JsonSave"
 	case "ArtifactWriteOctagon":
 		delegate = "WriteOctagon"
 	case "ArtifactProgress":

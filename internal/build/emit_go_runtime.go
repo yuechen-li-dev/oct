@@ -1809,18 +1809,6 @@ func __octGenericFallible(sidecarCommand string, family string, function string,
 	return __octOctxiliaryGenericCall(sidecarCommand, family, function, args, expected)
 }
 
-func __octJsonString(function string, input string) octResult_String {
-	value, err := __octGenericFallible("octxiliary-json", "Json", function, []octxiliary.Value{{Kind: octxiliary.ValueString, String: input}}, octxiliary.ValueString)
-	if err != nil { return octResult_String{Err: err.Error(), IsErr: true} }
-	return octResult_String{Value: value.String}
-}
-
-func __octJsonSave(path string, input string) octResult_Int {
-	value, err := __octGenericFallible("octxiliary-json", "Json", "JsonSave", []octxiliary.Value{{Kind: octxiliary.ValueString, String: path}, {Kind: octxiliary.ValueString, String: input}}, octxiliary.ValueInt)
-	if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
-	return octResult_Int{Value: value.Int}
-}
-
 func __octCsvReadRows(path string) octResult_StringSliceSlice {
 	value, err := __octGenericFallible("octxiliary-csv", "Csv", "CsvReadRows", []octxiliary.Value{{Kind: octxiliary.ValueString, String: path}}, octxiliary.ValueStringMatrix)
 	if err != nil { return octResult_StringSliceSlice{Err: err.Error(), IsErr: true} }

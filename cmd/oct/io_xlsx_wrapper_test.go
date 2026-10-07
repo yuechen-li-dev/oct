@@ -17,7 +17,7 @@ func TestIOXlsxWrapper(t *testing.T) {
 	copyFixtureDir(t, repoPath(t, "Libraries", "IO", "testdata"), filepath.Join(workDir, "Libraries", "IO", "testdata"))
 	outputPath := filepath.Join(workDir, "io_xlsx_m0.xlsx")
 	root := repoPath(t, "Libraries", "IO")
-	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-json", "octxiliary-xlsx")
+	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-xlsx")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}

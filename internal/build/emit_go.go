@@ -1709,12 +1709,6 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", args[0], args[1], st.Target), nil
 			case "LoadOctagon":
 				return fmt.Sprintf("%s = __octLoadOctagon_%s(%s)", st.Target, goSafeName(st.RetType), args[0]), nil
-			case "JsonNormalize", "JsonParse", "JsonStringify":
-				return fmt.Sprintf("%s = __octJsonString(%q, %s)", st.Target, canonicalCompiledBuiltinName(st.Callee), args[0]), nil
-			case "JsonLoad":
-				return fmt.Sprintf("%s = __octJsonString(%q, %s)", st.Target, "JsonLoad", args[0]), nil
-			case "JsonSave":
-				return fmt.Sprintf("%s = __octJsonSave(%s, %s)", st.Target, args[0], args[1]), nil
 			case "CsvRead", "CsvReadRows":
 				return fmt.Sprintf("%s = __octCsvReadRows(%s)", st.Target, args[0]), nil
 			case "CsvWrite", "CsvWriteRows":

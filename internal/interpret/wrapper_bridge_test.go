@@ -59,7 +59,7 @@ func TestWrapperResultHelpers(t *testing.T) {
 }
 
 func TestWrapperCallExpectArity(t *testing.T) {
-	call := wrapperCall{callee: "JsonNormalize", args: nil}
+	call := wrapperCall{callee: "CsvRead", args: nil}
 	if err := call.expectArity(0); err != nil {
 		t.Fatalf("expected arity check to pass: %v", err)
 	}
@@ -69,12 +69,12 @@ func TestWrapperCallExpectArity(t *testing.T) {
 }
 
 func TestWrapperErrorResultMapsKindsIntoStableMessage(t *testing.T) {
-	result := wrapperErrorResult("JsonNormalize", wrapperErrorf(wrapperErrorInvalidData, "bad input"))
+	result := wrapperErrorResult("CsvRead", wrapperErrorf(wrapperErrorInvalidData, "bad input"))
 	if !result.hasError {
 		t.Fatalf("expected wrapper error result")
 	}
 	got := result.errorVal.Error.Message
-	if got != "JsonNormalize: InvalidData: bad input" {
+	if got != "CsvRead: InvalidData: bad input" {
 		t.Fatalf("unexpected error shape: %q", got)
 	}
 }

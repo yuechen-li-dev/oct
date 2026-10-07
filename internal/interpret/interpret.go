@@ -665,7 +665,7 @@ func newInterpreter(program project.Program, stdout io.Writer) (interpreter, err
 		images:         newWrapperHandleStore[*wrapperImage]("image"),
 		pdfPages:       newWrapperHandleStore[*wrapperPDFPage]("pdf page"),
 		uiMounts:       newWrapperHandleStore[*uiMount]("ui mount"),
-		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), plotWrapperBuiltins(), pdfWrapperBuiltins(), jsonWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), artifactWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
+		wrappers:       newWrapperBuiltinRegistry(xlsxWrapperBuiltins(), imageWrapperBuiltins(), plotWrapperBuiltins(), pdfWrapperBuiltins(), fileWrapperBuiltins(), pathWrapperBuiltins(), directoryWrapperBuiltins(), csvWrapperBuiltins(), artifactWrapperBuiltins(), archiveWrapperBuiltins(), compressionWrapperBuiltins(), hashWrapperBuiltins(), regexWrapperBuiltins(), timeWrapperBuiltins()),
 		wrapperClients: newInterpretedWrapperClientCache(),
 		staticProofs:   newStaticProofState(),
 	}
@@ -2647,12 +2647,11 @@ regularCall:
 	}
 	if hasDirectName {
 		if json, ok := builtin.LookupJson(calleeName); ok {
-			if callType, typed := ast.CallType(expr); typed {
-				return i.evalJsonCall(env, pkgName, json, callType, expr.Arguments)
+			callType, typed := ast.CallType(expr)
+			if !typed {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: %s was called with no type", json.Name())
 			}
-			// The first library's function of this name, which takes no
-			// type argument.
-			expr.TypeArguments = ast.WithoutInferredTypeArguments(expr.TypeArguments)
+			return i.evalJsonCall(env, pkgName, json, callType, expr.Arguments)
 		}
 	}
 	if hasDirectName && (builtin.IsName(calleeName) || isUnreservedRandomBuiltinCall(calleeName, pkgName)) {
@@ -3133,7 +3132,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 	if err := builtin.ValidateCallShape(callee, len(argumentExprs), len(typeArguments)); err != nil {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: %w", err)
 	}
-	if i.requestDiscovery && (callee == "Print" || isEntropyRandomBuiltin(callee, pkgName) || callee == "WriteOctagon" || callee == "LoadOctagon" || callee == "JsonLoadStructured") {
+	if i.requestDiscovery && (callee == "Print" || isEntropyRandomBuiltin(callee, pkgName) || callee == "WriteOctagon" || callee == "LoadOctagon") {
 		return evalResult{}, fmt.Errorf("capability request is not statically discoverable: provider attempted effectful operation %s", callee)
 	}
 	if callee == "PlotLine" || callee == "PlotScatter" {
@@ -3154,12 +3153,6 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 	}
 	if callee == "LoadOctagon" {
 		return i.evalLoadOctagonBuiltinCallExpr(env, pkgName, typeArguments, argumentExprs)
-	}
-	if callee == "JsonLower" {
-		return i.evalJSONLowerBuiltinCallExpr(env, pkgName, typeArguments, argumentExprs)
-	}
-	if callee == "JsonLoadStructured" {
-		return i.evalJSONLoadStructuredBuiltinCallExpr(env, pkgName, typeArguments, argumentExprs)
 	}
 	if callee == "TupleProbe" || callee == "BoolIntProbe" {
 		if len(typeArguments) != 0 {

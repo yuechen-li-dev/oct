@@ -1,0 +1,10 @@
+expect error: "package 'Json' has no function 'Object'"
+
+package Main
+
+// `Json` has the four functions of the reference and no others. A record is
+// the JSON object; nothing marks a String as one.
+fn Main() -> Int {
+    let text = Json.Object("{}")
+    return 0
+}

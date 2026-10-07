@@ -15,7 +15,7 @@ func TestIOCoreWrappers(t *testing.T) {
 	workDir := newWrapperTempProject(t)
 	copyFixtureDir(t, repoPath(t, "Libraries", "IO", "testdata"), filepath.Join(workDir, "Libraries", "IO", "testdata"))
 	root := repoPath(t, "Libraries", "IO")
-	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-json", "octxiliary-xlsx")
+	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-xlsx")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
@@ -28,8 +28,6 @@ func TestIOCoreWrappers(t *testing.T) {
 		"PASS IO.PathWrappersCoverJoinAndSegments",
 		"PASS IO.DirectoryMakeListAndRemoveAllRoundTrip",
 		"PASS IO.DirectoryListMissingFails",
-		"PASS IO.JsonParseStringifyAndSaveLoadRoundTrip",
-		"PASS IO.JsonParseRejectsInvalidDocument",
 		"PASS IO.CsvReadWriteRoundTrip",
 		"PASS IO.CsvReadPreservesRaggedRows",
 		"PASS IO.CsvReadRowsRoundTripQuotedCommaQuoteAndEmpty",
@@ -48,7 +46,7 @@ func TestIOCoreWrappers(t *testing.T) {
 		}
 	}
 
-	unsupportedBuiltins := []string{"CsvReadMatrix", "CsvReadRows", "CsvReadTable", "JsonParse", "JsonLoad"}
+	unsupportedBuiltins := []string{"CsvReadMatrix", "CsvReadRows", "CsvReadTable"}
 	combined := stdout + stderr
 	for _, name := range unsupportedBuiltins {
 		if unsupportedBuiltinMessagePresent(combined, name) {
@@ -57,13 +55,13 @@ func TestIOCoreWrappers(t *testing.T) {
 	}
 }
 
-func TestCsvReadMatrixCsvReadRowsCsvReadTableJsonParseJsonLoadAutoCompiledWithoutFallback(t *testing.T) {
+func TestCsvReadMatrixCsvReadRowsCsvReadTableAutoCompiledWithoutFallback(t *testing.T) {
 	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	copyFixtureDir(t, repoPath(t, "Libraries", "IO", "testdata"), filepath.Join(workDir, "Libraries", "IO", "testdata"))
 	target := repoPath(t, "Libraries", "IO", "IO.CoreWrappers.octest")
-	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", target, "octxiliary-io", "octxiliary-csv", "octxiliary-json")
+	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", target, "octxiliary-io", "octxiliary-csv")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
@@ -71,14 +69,13 @@ func TestCsvReadMatrixCsvReadRowsCsvReadTableJsonParseJsonLoadAutoCompiledWithou
 	assertNoCompiledFallback(t, stdout, stderr)
 	assertCompiledCountAtLeast(t, stdout, 1)
 	assertOutputContains(t, stdout,
-		"PASS IO.JsonParseStringifyAndSaveLoadRoundTrip",
 		"PASS IO.CsvReadRowsRoundTripQuotedCommaQuoteAndEmpty",
 		"PASS IO.CsvReadTableImportsHeaderIntoColumnarRecord",
 		"PASS IO.CsvReadMatrixImportsNumericGridAndRejectsNonNumeric",
-		"Execution summary: compiled: 18 interpreted fallback: 0",
+		"Execution summary: compiled: 16 interpreted fallback: 0",
 	)
 	combined := stdout + stderr
-	unsupportedBuiltins := []string{"CsvReadMatrix", "CsvReadRows", "CsvReadTable", "JsonParse", "JsonLoad"}
+	unsupportedBuiltins := []string{"CsvReadMatrix", "CsvReadRows", "CsvReadTable"}
 	for _, name := range unsupportedBuiltins {
 		if unsupportedBuiltinMessagePresent(combined, name) {
 			t.Fatalf("expected %s to compile without unsupported fallback, got output:\nstdout:\n%s\nstderr:\n%s", name, stdout, stderr)

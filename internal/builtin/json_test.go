@@ -7,16 +7,15 @@ import (
 
 func TestJsonBuiltins(t *testing.T) {
 	cases := []struct {
-		name             string
-		action           JsonAction
-		writes           bool
-		firstLibraryForm bool
+		name   string
+		action JsonAction
+		writes bool
 	}{
-		{"Json.Load", JsonReadFile, false, true},
-		{"Json.Parse", JsonReadText, false, false},
-		{"Json.Save", JsonWriteFile, true, true},
-		{"Json.Text", JsonWriteText, true, false},
-		{"Artifact.WriteJson", JsonWriteArtifact, true, true},
+		{"Json.Load", JsonReadFile, false},
+		{"Json.Parse", JsonReadText, false},
+		{"Json.Save", JsonWriteFile, true},
+		{"Json.Text", JsonWriteText, true},
+		{"Artifact.WriteJson", JsonWriteArtifact, true},
 	}
 	if len(JsonBuiltins()) != len(cases) {
 		t.Errorf("the table has %d builtins, and %d are described here", len(JsonBuiltins()), len(cases))
@@ -27,12 +26,19 @@ func TestJsonBuiltins(t *testing.T) {
 			t.Errorf("LookupJson(%q) finds nothing", c.name)
 			continue
 		}
-		if json.Name() != c.name || json.Action != c.action || json.Writes() != c.writes || json.HasFirstLibraryForm() != c.firstLibraryForm {
-			t.Errorf("%s: action %q, writes %v, first library form %v; want %q, %v, %v",
-				json.Name(), json.Action, json.Writes(), json.HasFirstLibraryForm(), c.action, c.writes, c.firstLibraryForm)
+		if json.Name() != c.name || json.Action != c.action || json.Writes() != c.writes {
+			t.Errorf("%s: action %q, writes %v; want %q, %v", json.Name(), json.Action, json.Writes(), c.action, c.writes)
+		}
+		// Inside its own package a builtin is found by its bare name, which
+		// is how a declaration of that name is refused.
+		if in, ok := LookupJsonIn(json.Namespace, json.Symbol); !ok || in != json {
+			t.Errorf("LookupJsonIn(%q, %q) = %+v, %v", json.Namespace, json.Symbol, in, ok)
+		}
+		if _, ok := LookupJsonIn("Main", json.Symbol); ok {
+			t.Errorf("LookupJsonIn finds %s in package Main", json.Symbol)
 		}
 	}
-	for _, name := range []string{"Json.Object", "Json.Decode", "IO.Load", "Load", "Artifact.WriteText", "WriteJson", ""} {
+	for _, name := range []string{"Json.Decode", "Json.load", "Load", "Artifact.WriteText", "WriteJson", ""} {
 		if json, ok := LookupJson(name); ok {
 			t.Errorf("LookupJson(%q) = %+v, want nothing", name, json)
 		}

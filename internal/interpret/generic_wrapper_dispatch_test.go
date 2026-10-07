@@ -24,12 +24,12 @@ func TestResolveSidecarInDirWindowsExeSuffix(t *testing.T) {
 
 func TestResolveSidecarFromWrapperPathWindowsExplicitExe(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "octxiliary-json.exe")
+	path := filepath.Join(dir, "octxiliary-csv.exe")
 	if err := os.WriteFile(path, []byte("sidecar"), 0o755); err != nil {
 		t.Fatalf("write sidecar: %v", err)
 	}
 
-	got, ok := resolveSidecarFromWrapperPath(path, "octxiliary-json", "windows")
+	got, ok := resolveSidecarFromWrapperPath(path, "octxiliary-csv", "windows")
 	if !ok {
 		t.Fatal("expected Windows resolver to accept explicit .exe wrapper path")
 	}
@@ -57,7 +57,7 @@ func TestResolveSidecarFromWrapperPathRejectsMismatchedExplicitPath(t *testing.T
 		t.Fatalf("write sidecar: %v", err)
 	}
 
-	if got, ok := resolveSidecarFromWrapperPath(path, "octxiliary-json", "windows"); ok {
+	if got, ok := resolveSidecarFromWrapperPath(path, "octxiliary-csv", "windows"); ok {
 		t.Fatalf("expected mismatched explicit wrapper path to be rejected, got %q", got)
 	}
 }

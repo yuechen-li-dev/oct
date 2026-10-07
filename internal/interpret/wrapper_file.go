@@ -289,13 +289,6 @@ func mapPathError(path string, err error) error {
 	return wrapperErrorf(wrapperErrorBackendFailure, "%s: %v", path, err)
 }
 
-func mapJSONError(err error) error {
-	if err == nil {
-		return nil
-	}
-	return wrapperErrorf(wrapperErrorInvalidData, "%v", err)
-}
-
 func mapCSVError(err error) error {
 	if err == nil {
 		return nil

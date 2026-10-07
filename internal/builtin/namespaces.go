@@ -38,16 +38,11 @@ var namespaceAliases = map[string]map[string]string{
 		"WriteTable":  "CsvWriteTable",
 		"WriteMatrix": "CsvWriteMatrix",
 	},
-	"Json": {
-		"Load": "JsonLoad",
-		"Save": "JsonSave",
-	},
 	"Artifact": {
 		"WriteText":         "ArtifactWriteText",
 		"WriteLines":        "ArtifactWriteLines",
 		"WriteMarkdown":     "ArtifactWriteMarkdown",
 		"WriteCsv":          "ArtifactWriteCsv",
-		"WriteJson":         "ArtifactWriteJson",
 		"WriteOctagon":      "ArtifactWriteOctagon",
 		"Markdown":          "ArtifactDocumentMarkdown",
 		"Docx":              "ArtifactDocumentDocx",
@@ -94,7 +89,7 @@ func ResolveNamespacedAlias(namespace string, symbol string) (string, bool) {
 
 func IsCompilerOwnedNamespace(namespace string) bool {
 	switch namespace {
-	case "Array", "Artifact", EntropyNamespace:
+	case "Array", "Artifact", EntropyNamespace, JsonNamespace:
 		return true
 	default:
 		return false

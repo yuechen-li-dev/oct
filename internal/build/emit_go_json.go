@@ -20,7 +20,7 @@ const octjsonImportPath = "github.com/yuechen-li-dev/oct/internal/octjson"
 // builtin call that carries the schema of that type.
 func (c *lowerCtx) lowerJsonCall(json builtin.JsonBuiltin, call ast.CallExpr, callType ast.TypeRef) (string, string, bool, error) {
 	if json.Action == builtin.JsonWriteArtifact {
-		return "", "", false, unsupportedBuiltin("ArtifactWriteJson")
+		return "", "", false, artifactPhaseOnly(json.Name())
 	}
 	arguments := make([]string, 0, len(call.Arguments))
 	for _, argument := range call.Arguments {

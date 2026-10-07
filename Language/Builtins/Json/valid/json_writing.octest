@@ -170,6 +170,13 @@ fn SaveWritesTheTextToAFile() -> Void ! Error {
 }
 
 [Fact]
+fn AStringIsSavedAsAJsonString() -> Void ! Error {
+    Json.Save("Language/Builtins/Json/written/note.json", "{ \"ok\": true }")?
+    Assert.Equal("{ \"ok\": true }", Json.Load<String>("Language/Builtins/Json/written/note.json")?, "a String is a value like any other, not JSON text")
+    Assert.Equal("\"{ \\\"ok\\\": true }\"\n", Json.Text("{ \"ok\": true }"), "and its text is a JSON string")
+}
+
+[Fact]
 fn SaveReplacesTheFile() -> Void ! Error {
     Json.Save("Language/Builtins/Json/written/levels.json", [1.0, 2.0, 3.0])?
     Json.Save("Language/Builtins/Json/written/levels.json", [4.5])?

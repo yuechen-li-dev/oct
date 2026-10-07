@@ -13,7 +13,6 @@ import (
 var sidecars = []string{
 	"octxiliary-io",
 	"octxiliary-csv",
-	"octxiliary-json",
 	"octxiliary-image",
 	"octxiliary-pdf",
 	"octxiliary-plot",

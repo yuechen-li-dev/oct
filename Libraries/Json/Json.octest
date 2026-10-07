@@ -1,23 +1,29 @@
 package Json
 
-[Fact]
-fn JsonSaveLoadRoundTrip() -> Void {
-    let path = "m11_json_roundtrip.json"
-    let _saved = Save(path, "{ \"ok\": true, \"n\": 2 }")!
-    let loaded = Load(path)!
-    Assert.Equal("{\"ok\":true,\"n\":2}", loaded, "Json.Load should return compact JSON")
-    Assert.Equal(loaded, Object(loaded), "Json.Object preserves raw string payloads")
-    let _deleted = FileDelete(path)!
-    return
+// The contracts for the Json builtins are in Language/Builtins/Json. This
+// file covers what the package is for: it gives the namespace a package, and
+// inside it the builtins are the functions they are everywhere else.
+
+record Reading {
+    Name: String
+    Levels: Float[]
 }
 
 [Fact]
-fn JsonInvalidSaveFails() -> Void {
-    var failed = false
-    match Save("m11_json_invalid.json", "{") {
-        ok(value) => { failed = value < 0 }
-        err(reason) => { failed = true }
-    }
-    Assert.True(failed, "invalid JSON should fail before write")
-    return
+fn AValueIsWrittenAndReadBack() -> Void ! Error {
+    let text = Json.Text(Reading { Name: "north" Levels: [1.5, 2.0] })
+    Assert.Equal("{\n  \"Name\": \"north\",\n  \"Levels\": [1.5, 2.0]\n}\n", text, "a record is an object with its fields as declared")
+    let back = Json.Parse<Reading>(text)?
+    Assert.Equal("north", back.Name, "the text reads back as the value")
+    Assert.Equal(2.0, back.Levels[1], "with its array")
+}
+
+[Fact]
+fn AFileThatDoesNotExistIsAnError() -> Void {
+    Assert.Error(Json.Load<Reading>("Libraries/Json/no_such_file.json"), "the file does not exist")
+}
+
+[Fact]
+fn NamespaceMarkerGivesThePackageADeclaration() -> Void {
+    Assert.Equal(0, _JsonNamespaceMarker(), "import Json resolves to this package")
 }

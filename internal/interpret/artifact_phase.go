@@ -87,11 +87,11 @@ func (i *interpreter) prepareArtifactRead(path string) (string, error) {
 func artifactEffectDiagnostic(callee string) string {
 	switch callee {
 	case "FileDelete", "DirectoryList", "DirectoryRemoveAll", "CsvRead", "CsvReadRows", "CsvReadTable", "CsvReadMatrix",
-		"JsonLoad", "HashSha256File", "ZipListEntries", "ZipExtractAll", "ZipCreateFromFiles",
+		"HashSha256File", "ZipListEntries", "ZipExtractAll", "ZipCreateFromFiles",
 		"GzipCompressFile", "GzipDecompressFile", "ImageLoad", "ImageSave", "PdfSave",
 		"PlotRenderLine", "PlotRenderScatter", "PlotRenderHistogram", "TimeNowIso8601", "TimeUnixSecondsNow":
 		return fmt.Sprintf("artifact evaluation rejected ambient operation %s", callee)
-	case "FileWriteText", "FileWriteBytes", "FileWriteLines", "CsvWrite", "CsvWriteRows", "CsvWriteTable", "CsvWriteMatrix", "JsonSave":
+	case "FileWriteText", "FileWriteBytes", "FileWriteLines", "CsvWrite", "CsvWriteRows", "CsvWriteTable", "CsvWriteMatrix":
 		return fmt.Sprintf("artifact evaluation rejected %s outside Artifact.Write*; use the compiler-owned Artifact capability", callee)
 	}
 	return ""

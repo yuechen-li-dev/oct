@@ -818,15 +818,6 @@ func CallType(call CallExpr) (TypeRef, bool) {
 	return call.TypeArguments[0], true
 }
 
-// WithoutInferredTypeArguments is a call's type arguments as the source wrote
-// them: none, when the only one is a slot the parser made.
-func WithoutInferredTypeArguments(typeArguments []TypeRef) []TypeRef {
-	if len(typeArguments) == 1 && typeArguments[0].IsUnresolved() {
-		return nil
-	}
-	return typeArguments
-}
-
 // IsOptionType reports whether a type reference is `Option<T>` itself, not an
 // array of them.
 func IsOptionType(t TypeRef) bool {
