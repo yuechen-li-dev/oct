@@ -70,8 +70,10 @@ func decideObject(object *objectShape) (choice objectChoice, ok bool, reason str
 	if len(object.members) > 0 {
 		fieldLike = keys / float64(len(object.members))
 	}
+	// The values share a type when they fold into one: numbers with and
+	// without a fraction do, and so does a value with a null.
 	oneType := 0.0
-	if tableProblem == "" && sameKind(object) {
+	if tableProblem == "" {
 		oneType = 1.0
 	}
 	// Eight members and more count fully as many.
@@ -123,23 +125,6 @@ func keyedValue(object *objectShape) (value *shape, problem string) {
 		return nil, "its values do not share a type: " + value.refusal.Reason
 	}
 	return value, ""
-}
-
-// sameKind reports whether every member of an object holds one kind of
-// value, nulls aside.
-func sameKind(object *objectShape) bool {
-	found := kindUnknown
-	for _, existing := range object.members {
-		current := existing.shape.kind
-		if current == kindUnknown {
-			continue
-		}
-		if found != kindUnknown && found != current {
-			return false
-		}
-		found = current
-	}
-	return true
 }
 
 // fieldNames gives each member of an object the field it is read into, in
@@ -201,7 +186,7 @@ func readsAsFieldName(key string) bool {
 			return false
 		}
 	}
-	return len(key) > 0 && !startOfWord
+	return !startOfWord
 }
 
 // isPlainWord reports whether a string is one word of letters, digits and

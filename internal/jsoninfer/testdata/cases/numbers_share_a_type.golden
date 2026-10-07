@@ -1,0 +1,11 @@
+record table NumbersShareAType {
+    Key: String
+    Value: Option<Float>
+}
+
+// Json.Load<NumbersShareAType>("numbers_share_a_type.json")?
+//
+// Choices:
+//   $: keyed table
+//     record: 0.71 = few members 1.00 x 0.71
+//     keyed table: 2.79 = keys read as data 2.00 x 1.00 + values share a type 0.50 x 1.00 + many members 1.00 x 0.29

@@ -1,0 +1,16 @@
+record table SameRowsWithNoTagName {
+    Status: String
+    Id: Int
+    At: Int
+    By: Int
+    X: Option<Int>
+    Y: Option<Int>
+    Z: Option<Int>
+}
+
+// Json.Load<SameRowsWithNoTagName>("same_rows_with_no_tag_name.json")?
+//
+// Choices:
+//   $: table
+//     table: 1.81 = members every object has 2.00 x 0.57 + objects differ only by members left out 2.00 x 0.33
+//     tagged array: 1.58 = objects have members the others lack 2.00 x 0.67 + the tag decides the members 0.50 x 0.50

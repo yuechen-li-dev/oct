@@ -1,0 +1,12 @@
+record table IdsAreNotTags {
+    Id: String
+    Radius: Option<Int>
+    Side: Option<Int>
+}
+
+// Json.Load<IdsAreNotTags>("ids_are_not_tags.json")?
+//
+// Choices:
+//   $: table
+//     table: 0.67 = members every object has 2.00 x 0.33
+//     tagged array: cannot be: no member says which members an object has
