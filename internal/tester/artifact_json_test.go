@@ -78,21 +78,3 @@ func TestArtifactWriteJsonOutsideThePhaseStopsAnInterpretedProgram(t *testing.T)
 		os.Remove("outside.json")
 	}
 }
-
-// Until the first Json library is removed, `Artifact.WriteJson(path, text)`
-// given a String publishes that JSON text, compact, and not a JSON string.
-// This test goes when that library does.
-func TestArtifactWriteJsonGivenAStringIsStillTheFirstLibrarys(t *testing.T) {
-	outputRoot := t.TempDir()
-	var stdout bytes.Buffer
-	if err := ExecuteArtifactsWithOptions(artifactLanguageFixture("valid", "build_time_artifact_evaluation.octest"), &stdout, ArtifactOptions{OutputRoot: outputRoot}); err != nil {
-		t.Fatalf("artifact evaluation failed: %v\n%s", err, stdout.String())
-	}
-	got, err := os.ReadFile(filepath.Join(outputRoot, "nested", "model.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := `{"name":"typed-artifact","count":3}`; string(got) != want {
-		t.Errorf("published %q, want %q", got, want)
-	}
-}
