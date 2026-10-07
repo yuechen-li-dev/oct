@@ -2,6 +2,7 @@ package dimension
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -130,4 +131,57 @@ func formatUnitTerm(name string, exponent int) string {
 		return name
 	}
 	return fmt.Sprintf("%s^%d", name, exponent)
+}
+
+// Parse reads a dimension as String writes it: `m/s`, `kg*m^2/s^2`, `1/s`,
+// and "" for no dimension.
+func Parse(text string) (Dimension, bool) {
+	if text == "" {
+		return Dimension{}, true
+	}
+	numerator, denominator, divided := strings.Cut(text, "/")
+	if (!divided && numerator == "1") || (divided && denominator == "") {
+		return Dimension{}, false
+	}
+	result := Dimension{}
+	if numerator != "1" {
+		var ok bool
+		if result, ok = parseProduct(numerator); !ok {
+			return Dimension{}, false
+		}
+	}
+	if divided {
+		below, ok := parseProduct(denominator)
+		if !ok {
+			return Dimension{}, false
+		}
+		result = result.Divide(below)
+	}
+	return result, true
+}
+
+// parseProduct reads `kg*m^2`.
+func parseProduct(text string) (Dimension, bool) {
+	result := Dimension{}
+	for _, term := range strings.Split(text, "*") {
+		name, power, raised := strings.Cut(term, "^")
+		exponent := 1
+		if raised {
+			var err error
+			if exponent, err = strconv.Atoi(power); err != nil || exponent < 2 {
+				return Dimension{}, false
+			}
+		}
+		index := -1
+		for i, baseName := range baseNames {
+			if baseName == name {
+				index = i
+			}
+		}
+		if index < 0 || result.Exponents[index] != 0 {
+			return Dimension{}, false
+		}
+		result.Exponents[index] = exponent
+	}
+	return result, true
 }
