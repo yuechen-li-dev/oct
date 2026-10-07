@@ -1734,6 +1734,10 @@ func isPermittedExpressionStatementCall(expr ast.Expr) bool {
 		return isPermittedExpressionStatementCall(node.Inner)
 	case ast.UnwrapExpr:
 		return isPermittedExpressionStatementCall(node.Inner)
+	case ast.PropagateExpr:
+		// `Save(path, value)?`: the call is made for its effect, and its
+		// error goes to the caller.
+		return isPermittedExpressionStatementCall(node.Inner)
 	default:
 		return false
 	}

@@ -23,6 +23,10 @@ Note: enum variant payload binding uses the enum `match` form documented in [12 
 - Fallible `match` must include both arms, `ok` first and `err` second.
 - An arm that does not need its binding discards it with `_`: `ok(_)` or `err(_)`.
 - `!` unwrap is explicit handling for a fallible expression.
+- A fallible call may stand as a statement with `?` or `!`: `Save(path, value)?`.
+  The call is made for its effect, its value, if it has one, is discarded, and
+  with `?` its error goes to the caller. This is how a `Void ! Error` call is
+  propagated; it has no value to bind.
 - Returning a fallible value from an infallible function is invalid.
 
 ## Examples

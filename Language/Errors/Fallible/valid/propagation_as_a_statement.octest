@@ -1,0 +1,43 @@
+package MainValid
+
+// A fallible call may stand as a statement with `?`: the call is made for
+// its effect, its value, if it has one, is discarded, and its error goes to
+// the caller. This is how a `Void ! Error` call is propagated, since it has
+// no value to bind.
+
+fn Checked(ok: Bool) -> Int ! Error {
+    if ok {
+        return 7
+    }
+    return error("not ok")
+}
+
+fn Performed(ok: Bool) -> Void ! Error {
+    let checked = Checked(ok)?
+    return
+}
+
+fn InOrder(first: Bool, second: Bool) -> Int ! Error {
+    Performed(first)?
+    Checked(second)?
+    return 1
+}
+
+fn StopsAtTheFirstFailure(first: Bool) -> Int ! Error {
+    var reached = 0
+    Performed(first)?
+    reached = 1
+    Performed(false)?
+    reached = 2
+    return reached
+}
+
+[Fact]
+fn APropagatedCallIsAStatement() -> Void ! Error {
+    Assert.Equal(1, InOrder(true, true)?, "both calls succeed and the function goes on")
+    Assert.Error(InOrder(false, true), "the Void call fails and its error is the function's")
+    Assert.Error(InOrder(true, false), "the call with a value fails and its error is the function's")
+    Assert.Error(StopsAtTheFirstFailure(true), "statements after a failed call do not run")
+    Performed(true)?
+    Assert.True(true, "a fact propagates too")
+}
