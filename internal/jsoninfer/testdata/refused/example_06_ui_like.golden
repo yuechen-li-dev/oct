@@ -1,0 +1,23 @@
+record Page {
+    Id: String
+    Title: String
+    // Sections: no declaration; see below
+}
+
+record Example06UiLike {
+    Page: Page
+}
+
+// No declaration, so these do not load Experiments/JsonIntentRecoveryLab/M0/corpus/example_06_ui_like.json:
+//   $.page.sections (line 5, column 17): a tagged array: "kind" says which members an object has (hero, product_grid, banner), and Json reads no enum that carries a payload
+//
+// Choices:
+//   $: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00
+//   $.page: record
+//     record: 3.21 = keys read as field names 2.00 x 1.00 + values differ in type 0.50 x 1.00 + few members 1.00 x 0.71
+//     keyed table: cannot be: its values do not share a type: an array here, and a string at $.page.id
+//   $.page.sections: tagged array
+//     table: 0.44 = members every object has 2.00 x 0.22
+//     tagged array: 3.25 = objects have members the others lack 2.00 x 1.00 + a member named like a tag 1.00 x 1.00 + the tag decides the members 0.50 x 0.50

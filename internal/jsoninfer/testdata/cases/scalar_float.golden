@@ -1,0 +1,4 @@
+// Json.Load<Float>("scalar_float.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

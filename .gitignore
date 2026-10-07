@@ -128,6 +128,7 @@ work/
 # Fixtures the Json tests read.
 !internal/octjson/testdata/**/*.json
 !Language/Builtins/Json/data/*.json
+!internal/jsoninfer/testdata/**/*.json
 
 
 # Local verification logs

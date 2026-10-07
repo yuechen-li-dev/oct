@@ -1,0 +1,5 @@
+// No declaration, so these do not load repeated_key.json:
+//   $.a (line 1, column 15): the key "a" is written twice in one object
+//
+// Choices:
+//   none: nothing in this document reads two ways

@@ -1,0 +1,29 @@
+package JsonInferRakeLab
+
+// What `oct json infer Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_summary.json` --name RakeM4Summary
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record RakeM4Summary {
+    ScenarioCount: Int
+    VariantCount: Int
+    RowCount: Int
+    ExpectedBehaviorMet: Int
+    RakeSignal: Int
+    BoundaryOverPromotionBaseline: Int
+    BoundaryOverPromotionMargin: Int
+    BoundaryOverPromotionStreak: Int
+    BoundaryOverPromotionMarginAndStreak: Int
+    HealthySuppressedByMarginTotal: Int
+    HealthySuppressedByStreakTotal: Int
+    RecoveryStillPossibleCount: Int
+    Recommendation: String
+}
+
+// Json.Load<RakeM4Summary>("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_summary.json")?
+
+[Fact]
+fn RakeM4SummaryLoads() -> Void ! Error {
+    let loaded = Json.Load<RakeM4Summary>("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_summary.json")?
+    Assert.Equal(9, loaded.ScenarioCount, "the scenario count")
+}

@@ -1,0 +1,20 @@
+package JsonInferIoTestdata
+
+// What `oct json infer Libraries/IO/testdata/simple_mapping.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record SimpleMapping {
+    A: Int
+    B: Int
+    C: Option<String>  // null everywhere in this document; String is a placeholder
+}
+
+// Json.Load<SimpleMapping>("Libraries/IO/testdata/simple_mapping.json")?
+
+[Fact]
+fn AMemberThatIsOnlyNullLoads() -> Void ! Error {
+    let loaded = Json.Load<SimpleMapping>("Libraries/IO/testdata/simple_mapping.json")?
+    Assert.Equal(2, loaded.B, "a member")
+    Assert.Equal(Option<String>.None, loaded.C, "the null")
+}

@@ -1,0 +1,25 @@
+package JsonInferIoTestdata
+
+// What `oct json infer Libraries/IO/testdata/smoke_dispatch.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record table EventHandlers {
+    Key: String
+    Value: String
+}
+
+record SmokeDispatch {
+    EventHandlers: EventHandlers
+    Version: Int
+}
+
+// Json.Load<SmokeDispatch>("Libraries/IO/testdata/smoke_dispatch.json")?
+
+[Fact]
+fn AKeyedTableBesideAScalarLoads() -> Void ! Error {
+    let loaded = Json.Load<SmokeDispatch>("Libraries/IO/testdata/smoke_dispatch.json")?
+    Assert.Equal("user.deleted", loaded.EventHandlers[1].Key, "a key")
+    Assert.Equal("archive", loaded.EventHandlers[1].Value, "its value")
+    Assert.Equal(1, loaded.Version, "the scalar")
+}

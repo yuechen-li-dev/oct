@@ -1,0 +1,5 @@
+// null everywhere in this document; String is a placeholder
+// Json.Load<Option<String>[]>("only_nulls.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

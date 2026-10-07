@@ -1,0 +1,29 @@
+package JsonInferIoTestdata
+
+// What `oct json infer Libraries/IO/testdata/ambiguous_overlap.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record table Records {
+    Type: String
+    Amount: Int
+}
+
+record Meta {
+    Source: String
+}
+
+record AmbiguousOverlap {
+    Records: Records
+    Meta: Meta
+}
+
+// Json.Load<AmbiguousOverlap>("Libraries/IO/testdata/ambiguous_overlap.json")?
+
+[Fact]
+fn OneObjectIsARowOfATable() -> Void ! Error {
+    let loaded = Json.Load<AmbiguousOverlap>("Libraries/IO/testdata/ambiguous_overlap.json")?
+    Assert.Equal(1, Len(loaded.Records), "one row")
+    Assert.Equal(10, loaded.Records[0].Amount, "its amount")
+    Assert.Equal("x", loaded.Meta.Source, "the record beside it")
+}

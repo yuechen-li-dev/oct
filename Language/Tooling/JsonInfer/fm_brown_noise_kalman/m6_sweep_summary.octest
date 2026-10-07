@@ -1,0 +1,38 @@
+package JsonInferFmBrownNoiseKalman
+
+// What `oct json infer Experiments/FmBrownNoiseKalman/M6/sweep_summary.json` --name M6SweepSummary
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record M6SweepSummary {
+    TotalCases: Int
+    ScalarAdaptiveWin: Int
+    WindowedAdaptiveWin: Int
+    GuardedAdaptiveWin: Int
+    GuardedRecoveryOnly: Int
+    GuardedWhitenessOnly: Int
+    GuardedNoMeaningfulWin: Int
+    GuardedMeanDeltaOutputSNRDb: Float
+    GuardedMeanWhitenessRatio: Float
+    GuardedBetterRecoveryVsScalar: Int
+    GuardedBetterWhitenessVsScalar: Int
+    GuardedFinalAMin: Float
+    GuardedFinalAMax: Float
+    GuardedFinalAMean: Float
+    GuardedClampTotal: Int
+    GuardAcceptedTotal: Int
+    GuardAttenuatedTotal: Int
+    GuardRejectedTotal: Int
+    GuardTriggerTotal: Int
+    EquivalencePassCount: Int
+}
+
+// Json.Load<M6SweepSummary>("Experiments/FmBrownNoiseKalman/M6/sweep_summary.json")?
+
+[Fact]
+fn M6SweepSummaryLoads() -> Void ! Error {
+    let loaded = Json.Load<M6SweepSummary>("Experiments/FmBrownNoiseKalman/M6/sweep_summary.json")?
+    Assert.Equal(27, loaded.TotalCases, "the case count")
+    Assert.Equal(4666, loaded.GuardedClampTotal, "a count")
+    Assert.Equal(0.99, loaded.GuardedFinalAMax, "a Float")
+}

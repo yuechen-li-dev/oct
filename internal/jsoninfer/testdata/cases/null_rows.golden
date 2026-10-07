@@ -1,0 +1,14 @@
+record People {
+    Name: String
+}
+
+record NullRows {
+    People: Option<People>[]
+}
+
+// Json.Load<NullRows>("null_rows.json")?
+//
+// Choices:
+//   $: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00

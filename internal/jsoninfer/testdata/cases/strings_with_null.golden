@@ -1,0 +1,4 @@
+// Json.Load<Option<String>[]>("strings_with_null.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

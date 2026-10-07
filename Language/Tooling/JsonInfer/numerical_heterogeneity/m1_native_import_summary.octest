@@ -1,0 +1,30 @@
+package JsonInferNumericalHeterogeneity
+
+// What `oct json infer Experiments/PrometheusNumericalHeterogeneityLab/M1/native_import_summary.json` --name M1Summary
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record M1Summary {
+    Schema: String
+    EvidenceAuthority: String
+    SyntheticAuthority: String
+    SourceJsonSha256: String
+    NativeRecordCount: Int
+    IdentificationSupport: Int
+    HeldOutSupport: Int
+    HeldOutFailures: Int
+    EnvelopeCertified: Bool
+    LearnedPolicyCertified: Bool
+    LearnedPolicySelectedPath: String
+    LearnedPolicyShadowOnly: Bool
+    ProductAuthorityChanged: Bool
+}
+
+// Json.Load<M1Summary>("Experiments/PrometheusNumericalHeterogeneityLab/M1/native_import_summary.json")?
+
+[Fact]
+fn M1SummaryLoads() -> Void ! Error {
+    let loaded = Json.Load<M1Summary>("Experiments/PrometheusNumericalHeterogeneityLab/M1/native_import_summary.json")?
+    Assert.Equal(10, loaded.NativeRecordCount, "the record count")
+    Assert.Equal(false, loaded.EnvelopeCertified, "a Bool")
+}

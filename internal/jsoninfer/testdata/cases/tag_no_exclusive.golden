@@ -1,0 +1,12 @@
+record table TagNoExclusive {
+    Type: String  // could be an enum: A, B
+    X: Int
+    Y: Option<Int>
+}
+
+// Json.Load<TagNoExclusive>("tag_no_exclusive.json")?
+//
+// Choices:
+//   $: table
+//     table: 3.33 = members every object has 2.00 x 0.67 + objects differ only by members left out 2.00 x 1.00
+//     tagged array: 1.50 = a member named like a tag 1.00 x 1.00 + the tag decides the members 0.50 x 1.00

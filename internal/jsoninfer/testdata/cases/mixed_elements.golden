@@ -1,0 +1,11 @@
+record MixedElements {
+    // Values: no declaration; see below
+}
+
+// No declaration, so these do not load mixed_elements.json:
+//   $.values[1] (line 1, column 16): a string here, and a number at $.values[0]
+//
+// Choices:
+//   $: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00

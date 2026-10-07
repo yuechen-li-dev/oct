@@ -1,0 +1,20 @@
+package JsonInferFmBrownNoiseKalman
+
+// What `oct json infer Experiments/FmBrownNoiseKalman/M3/metrics.json` --name M3Metrics
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record M3Metrics {
+    Tolerance: Float
+    MaxOutputDiff: Float
+    MaxInnovationDiff: Float
+}
+
+// Json.Load<M3Metrics>("Experiments/FmBrownNoiseKalman/M3/metrics.json")?
+
+[Fact]
+fn M3MetricsLoad() -> Void ! Error {
+    let loaded = Json.Load<M3Metrics>("Experiments/FmBrownNoiseKalman/M3/metrics.json")?
+    Assert.Equal(1e-09, loaded.Tolerance, "a small Float")
+    Assert.Equal(0.0, loaded.MaxOutputDiff, "a zero written 0.0")
+}

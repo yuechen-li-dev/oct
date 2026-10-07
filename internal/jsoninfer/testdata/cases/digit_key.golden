@@ -1,0 +1,5 @@
+// No declaration, so these do not load digit_key.json:
+//   $ (line 1, column 1): an object that is neither a record (the key "3d" cannot be a field name) nor a keyed table (its values do not share a type: a string here, and a boolean at $["3d"])
+//
+// Choices:
+//   none: nothing in this document reads two ways

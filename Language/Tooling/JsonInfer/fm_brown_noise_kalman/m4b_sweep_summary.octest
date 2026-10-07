@@ -1,0 +1,24 @@
+package JsonInferFmBrownNoiseKalman
+
+// What `oct json infer Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json` --name M4bSweepSummary
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record M4bSweepSummary {
+    TotalCases: Int
+    AdaptiveWin: Int
+    RecoveryOnly: Int
+    WhitenessOnly: Int
+    NoMeaningfulWin: Int
+    MeanDeltaOutputSNRDb: Float
+    MeanWhitenessRatio: Float
+}
+
+// Json.Load<M4bSweepSummary>("Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json")?
+
+[Fact]
+fn M4bSweepSummaryLoads() -> Void ! Error {
+    let loaded = Json.Load<M4bSweepSummary>("Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json")?
+    Assert.Equal(27, loaded.TotalCases, "the case count")
+    Assert.Equal(16, loaded.WhitenessOnly, "a count")
+}

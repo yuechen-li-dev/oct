@@ -1,0 +1,24 @@
+package JsonInferIoTestdata
+
+// What `oct json infer Libraries/IO/testdata/smoke_config.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record Feature {
+    Enabled: Bool
+    Threshold: Float
+}
+
+record SmokeConfig {
+    Feature: Feature
+    Env: String
+}
+
+// Json.Load<SmokeConfig>("Libraries/IO/testdata/smoke_config.json")?
+
+[Fact]
+fn ASmallConfigLoads() -> Void ! Error {
+    let loaded = Json.Load<SmokeConfig>("Libraries/IO/testdata/smoke_config.json")?
+    Assert.Equal(0.75, loaded.Feature.Threshold, "a Float")
+    Assert.Equal("prod", loaded.Env, "a String")
+}

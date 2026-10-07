@@ -1,0 +1,18 @@
+record A {
+    X: Int
+}
+
+record ObjectOrNull {
+    A: A
+    B: Option<String>  // null everywhere in this document; String is a placeholder
+}
+
+// Json.Load<ObjectOrNull>("object_or_null.json")?
+//
+// Choices:
+//   $: record
+//     record: 2.86 = keys read as field names 2.00 x 1.00 + few members 1.00 x 0.86
+//     keyed table: 0.64 = values share a type 0.50 x 1.00 + many members 1.00 x 0.14
+//   $.a: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00

@@ -1,0 +1,25 @@
+record F {
+    G: Int
+}
+
+record WideRecord {
+    A: Int
+    B: String
+    C: Bool
+    D: Float
+    E: Int[]
+    F: F
+    H: Option<String>  // null everywhere in this document; String is a placeholder
+    I: String
+    J: Int
+}
+
+// Json.Load<WideRecord>("wide_record.json")?
+//
+// Choices:
+//   $: record
+//     record: 2.50 = keys read as field names 2.00 x 1.00 + values differ in type 0.50 x 1.00
+//     keyed table: cannot be: its values do not share a type: a string here, and a number at $.a
+//   $.f: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00

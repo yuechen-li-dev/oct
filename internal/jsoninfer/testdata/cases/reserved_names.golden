@@ -1,0 +1,30 @@
+record ReservedNamesString {
+    A: Int
+}
+
+record ReservedNamesOption {
+    B: Int
+}
+
+record table ReservedNamesMatrix {
+    C: Int
+}
+
+record ReservedNames {
+    String: ReservedNamesString
+    Option: ReservedNamesOption
+    Matrix: ReservedNamesMatrix
+}
+
+// Json.Load<ReservedNames>("reserved_names.json")?
+//
+// Choices:
+//   $: record
+//     record: 3.21 = keys read as field names 2.00 x 1.00 + values differ in type 0.50 x 1.00 + few members 1.00 x 0.71
+//     keyed table: cannot be: its values do not share a type: an array here, and an object at $.string
+//   $.string: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00
+//   $.option: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00

@@ -1,0 +1,11 @@
+record table Unnameable {
+    Key: String
+    Value: String
+}
+
+// Json.Load<Unnameable>("unnameable.json")?
+//
+// Choices:
+//   $: keyed table
+//     record: cannot be: the key "$schema" cannot be a field name
+//     keyed table: 1.64 = keys read as data 2.00 x 0.50 + values share a type 0.50 x 1.00 + many members 1.00 x 0.14

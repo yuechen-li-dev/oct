@@ -1,0 +1,12 @@
+record table TagDoesNotDecide {
+    Type: String  // could be an enum: A
+    X: Option<Int>
+    Y: Option<Int>
+}
+
+// Json.Load<TagDoesNotDecide>("tag_does_not_decide.json")?
+//
+// Choices:
+//   $: table
+//     table: 0.67 = members every object has 2.00 x 0.33
+//     tagged array: cannot be: no member says which members an object has

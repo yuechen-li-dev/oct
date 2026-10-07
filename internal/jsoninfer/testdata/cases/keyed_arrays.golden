@@ -1,0 +1,11 @@
+record table KeyedArrays {
+    Key: String
+    Value: Int[]
+}
+
+// Json.Load<KeyedArrays>("keyed_arrays.json")?
+//
+// Choices:
+//   $: keyed table
+//     record: cannot be: the key "2024" cannot be a field name
+//     keyed table: 2.64 = keys read as data 2.00 x 1.00 + values share a type 0.50 x 1.00 + many members 1.00 x 0.14

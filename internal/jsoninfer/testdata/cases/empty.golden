@@ -1,0 +1,5 @@
+// empty everywhere in this document; String is a placeholder
+// Json.Load<String[]>("empty.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

@@ -1,0 +1,7 @@
+// No declaration, so these do not load tag_repeats.json:
+//   $ (line 1, column 1): a tagged array: "kind" says which members an object has (circle, square), and Json reads no enum that carries a payload
+//
+// Choices:
+//   $: tagged array
+//     table: 0.67 = members every object has 2.00 x 0.33
+//     tagged array: 3.50 = objects have members the others lack 2.00 x 1.00 + a member named like a tag 1.00 x 1.00 + the tag decides the members 0.50 x 1.00

@@ -1,0 +1,5 @@
+// No declaration, so these do not load fold_collision.json:
+//   $ (line 1, column 1): an object that is neither a record (the keys "user_id" and "userId" are one field name) nor a keyed table (its values do not share a type: a string here, and a number at $.user_id)
+//
+// Choices:
+//   none: nothing in this document reads two ways

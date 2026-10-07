@@ -1,0 +1,7 @@
+// No declaration, so these do not load table_of_empty.json:
+//   $[0] (line 1, column 2): objects with no members: a table needs a column
+//
+// Choices:
+//   $: table
+//     table: 4.00 = members every object has 2.00 x 1.00 + objects differ only by members left out 2.00 x 1.00
+//     tagged array: cannot be: every object has the same members

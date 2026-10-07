@@ -1,0 +1,45 @@
+package JsonInferCorpus
+
+// What `oct json infer Experiments/JsonIntentRecoveryLab/M0/corpus/example_02_config.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record Http {
+    Host: String
+    Port: Int
+    ReadTimeoutMs: Int
+    WriteTimeoutMs: Int
+}
+
+record Features {
+    EnableAuditLog: Bool
+    EnableRetryQueue: Bool
+    EnableDebugRoutes: Bool
+}
+
+record Limits {
+    MaxConnections: Int
+    MaxPayloadKb: Int
+}
+
+record Service {
+    Name: String
+    Environment: String
+    Http: Http
+    Features: Features
+    Limits: Limits
+}
+
+record Example02Config {
+    Service: Service
+}
+
+// Json.Load<Example02Config>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_02_config.json")?
+
+[Fact]
+fn ConfigLoadsAsNestedRecords() -> Void ! Error {
+    let loaded = Json.Load<Example02Config>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_02_config.json")?
+    Assert.Equal(8080, loaded.Service.Http.Port, "a nested record")
+    Assert.Equal(1500, loaded.Service.Http.ReadTimeoutMs, "a snake_case key")
+    Assert.Equal(false, loaded.Service.Features.EnableDebugRoutes, "a flag")
+}

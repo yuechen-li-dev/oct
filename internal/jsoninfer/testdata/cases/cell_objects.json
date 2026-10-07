@@ -1,0 +1,1 @@
+[{"name": "a", "items": [{"sku": "x", "price": 1.5}], "labels": {"env": "prod"}}, {"name": "b", "items": [], "labels": {"env": "dev", "team": "t"}}]

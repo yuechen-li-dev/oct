@@ -1,0 +1,4 @@
+// Json.Load<Float[]>("mixed_numbers.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

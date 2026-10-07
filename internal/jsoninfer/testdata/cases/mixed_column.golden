@@ -1,0 +1,11 @@
+record table MixedColumn {
+    // Id: no declaration; see below
+}
+
+// No declaration, so these do not load mixed_column.json:
+//   $[1].id (line 1, column 20): a string here, and a number at $[0].id
+//
+// Choices:
+//   $: table
+//     table: 4.00 = members every object has 2.00 x 1.00 + objects differ only by members left out 2.00 x 1.00
+//     tagged array: cannot be: every object has the same members

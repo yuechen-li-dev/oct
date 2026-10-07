@@ -1,0 +1,39 @@
+package JsonInferNumericalHeterogeneity
+
+// What `oct json infer Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_summary.json` --name M0Summary
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record M0Summary {
+    Schema: String
+    Authority: String
+    CaseCount: Int
+    TrajectoryCount: Int
+    SelectedMitigation: String
+    BaselineHeldOutMeanError: Float
+    SelectedHeldOutMeanError: Float
+    HeldOutImprovementPct: Float
+    LearnedPolicyAlgorithm: String
+    LearnedPolicyTrainingRows: Int
+    LearnedPolicyHeldOutRows: Int
+    LearnedPolicyTrainingMse: Float
+    LearnedPolicyHeldOutMse: Float
+    AuthoredBaselineHeldOutMse: Float
+    UniformBaselineHeldOutMse: Float
+    LearnedPolicyCertified: Bool
+    AuthoredSelectedMitigation: String
+    UniformSelectedMitigation: String
+    ShadowAction: String
+    ProductAuthorityChanged: Bool
+    M48EvtState: String
+}
+
+// Json.Load<M0Summary>("Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_summary.json")?
+
+[Fact]
+fn M0SummaryLoads() -> Void ! Error {
+    let loaded = Json.Load<M0Summary>("Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_summary.json")?
+    Assert.Equal(12, loaded.CaseCount, "the case count")
+    Assert.Equal(true, loaded.LearnedPolicyCertified, "a Bool")
+    Assert.Equal("postponed", loaded.M48EvtState, "a key with digits")
+}

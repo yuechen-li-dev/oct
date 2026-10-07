@@ -1,0 +1,5 @@
+// No declaration, so these do not load rows_with_string.json:
+//   $[0][1] (line 1, column 6): a string here, and a number at $[0][0]
+//
+// Choices:
+//   none: nothing in this document reads two ways

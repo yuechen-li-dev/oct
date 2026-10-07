@@ -1,0 +1,16 @@
+record KeyedOptionalValue {
+    Zones: Int
+    Primary: Bool
+}
+
+record table KeyedOptional {
+    Key: String
+    Value: Option<KeyedOptionalValue>
+}
+
+// Json.Load<KeyedOptional>("keyed_optional.json")?
+//
+// Choices:
+//   $: keyed table
+//     record: 0.86 = few members 1.00 x 0.86
+//     keyed table: 2.64 = keys read as data 2.00 x 1.00 + values share a type 0.50 x 1.00 + many members 1.00 x 0.14

@@ -1,0 +1,31 @@
+package JsonInferCorpus
+
+// What `oct json infer Experiments/JsonIntentRecoveryLab/M0/corpus/example_03_dispatch.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record table EventHandlers {
+    Key: String
+    Value: String
+}
+
+record table RetryPolicy {
+    Key: String
+    Value: Int
+}
+
+record Example03Dispatch {
+    EventHandlers: EventHandlers
+    RetryPolicy: RetryPolicy
+}
+
+// Json.Load<Example03Dispatch>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_03_dispatch.json")?
+
+[Fact]
+fn DispatchLoadsAsTwoKeyedTables() -> Void ! Error {
+    let loaded = Json.Load<Example03Dispatch>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_03_dispatch.json")?
+    Assert.Equal(4, Len(loaded.EventHandlers), "four handlers")
+    Assert.Equal("user.created", loaded.EventHandlers[0].Key, "the key is the first cell")
+    Assert.Equal("handle_invoice_failed", loaded.EventHandlers[3].Value, "the value is the other")
+    Assert.Equal(5, loaded.RetryPolicy[0].Value, "a count")
+}

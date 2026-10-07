@@ -1,0 +1,25 @@
+package JsonInferCorpus
+
+// What `oct json infer Experiments/JsonIntentRecoveryLab/M0/corpus/example_04_matrix.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record SensorGrid {
+    Rows: Int
+    Cols: Int
+    Readings: Matrix<Float>
+}
+
+record Example04Matrix {
+    SensorGrid: SensorGrid
+}
+
+// Json.Load<Example04Matrix>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_04_matrix.json")?
+
+[Fact]
+fn ReadingsLoadAsAMatrix() -> Void ! Error {
+    let loaded = Json.Load<Example04Matrix>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_04_matrix.json")?
+    Assert.Equal(3, loaded.SensorGrid.Rows, "rows")
+    Assert.Equal(21.9, loaded.SensorGrid.Readings[0, 3], "a reading")
+    Assert.Equal(21.8, loaded.SensorGrid.Readings[2, 3], "the last")
+}

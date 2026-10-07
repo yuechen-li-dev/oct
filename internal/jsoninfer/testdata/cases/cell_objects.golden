@@ -1,0 +1,22 @@
+record Items {
+    Sku: String
+    Price: Float
+}
+
+record Labels {
+    Env: String
+    Team: Option<String>
+}
+
+record table CellObjects {
+    Name: String
+    Items: Items[]
+    Labels: Labels
+}
+
+// Json.Load<CellObjects>("cell_objects.json")?
+//
+// Choices:
+//   $: table
+//     table: 3.50 = members every object has 2.00 x 0.75 + objects differ only by members left out 2.00 x 1.00
+//     tagged array: 0.25 = the tag decides the members 0.50 x 0.50

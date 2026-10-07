@@ -1,0 +1,13 @@
+package JsonInferIoTestdata
+
+// What `oct json infer Libraries/IO/testdata/smoke_grid.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+// Json.Load<Matrix<Float>>("Libraries/IO/testdata/smoke_grid.json")?
+
+[Fact]
+fn AGridLoadsAsAMatrix() -> Void ! Error {
+    let loaded = Json.Load<Matrix<Float>>("Libraries/IO/testdata/smoke_grid.json")?
+    Assert.Equal(6.0, loaded[1, 2], "the last cell")
+}

@@ -1,0 +1,11 @@
+record MixedShapes {
+    // A: no declaration; see below
+}
+
+// No declaration, so these do not load mixed_shapes.json:
+//   $.a[1] (line 1, column 11): an array here, and a number at $.a[0]
+//
+// Choices:
+//   $: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00

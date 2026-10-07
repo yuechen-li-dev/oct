@@ -1,0 +1,5 @@
+// could be an enum: A, B, C, D, E, F, G, H
+// Json.Load<String[]>("eight_values.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

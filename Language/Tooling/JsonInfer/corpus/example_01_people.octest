@@ -1,0 +1,27 @@
+package JsonInferCorpus
+
+// What `oct json infer Experiments/JsonIntentRecoveryLab/M0/corpus/example_01_people.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record table People {
+    Id: String
+    Name: String
+    Role: String  // could be an enum: Analyst, Designer
+    Active: Bool
+    Skills: String[]
+}
+
+record Example01People {
+    People: People
+}
+
+// Json.Load<Example01People>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_01_people.json")?
+
+[Fact]
+fn PeopleLoadAsATable() -> Void ! Error {
+    let loaded = Json.Load<Example01People>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_01_people.json")?
+    Assert.Equal(3, Len(loaded.People), "three people")
+    Assert.Equal("Avery Chen", loaded.People[0].Name, "the first")
+    Assert.Equal("dbt", loaded.People[2].Skills[1], "a cell that is an array")
+}

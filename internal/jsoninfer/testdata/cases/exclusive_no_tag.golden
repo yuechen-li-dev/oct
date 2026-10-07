@@ -1,0 +1,11 @@
+record table ExclusiveNoTag {
+    Radius: Option<Int>
+    Side: Option<Int>
+}
+
+// Json.Load<ExclusiveNoTag>("exclusive_no_tag.json")?
+//
+// Choices:
+//   $: table
+//     table: 0.00 = nothing counts for it
+//     tagged array: cannot be: no member says which members an object has

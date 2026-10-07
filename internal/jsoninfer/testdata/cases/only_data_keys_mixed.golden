@@ -1,0 +1,11 @@
+record OnlyDataKeysMixed {
+    U100: Int
+    U101: String
+}
+
+// Json.Load<OnlyDataKeysMixed>("only_data_keys_mixed.json")?
+//
+// Choices:
+//   $: record
+//     record: 1.36 = values differ in type 0.50 x 1.00 + few members 1.00 x 0.86
+//     keyed table: cannot be: its values do not share a type: a string here, and a number at $["u-100"]

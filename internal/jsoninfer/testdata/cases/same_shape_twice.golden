@@ -1,0 +1,35 @@
+record Point {
+    X: Int
+}
+
+record Left {
+    Point: Point
+}
+
+record Right {
+    Point: Point
+}
+
+record SameShapeTwice {
+    Left: Left
+    Right: Right
+}
+
+// Json.Load<SameShapeTwice>("same_shape_twice.json")?
+//
+// Choices:
+//   $: record
+//     record: 2.86 = keys read as field names 2.00 x 1.00 + few members 1.00 x 0.86
+//     keyed table: 0.64 = values share a type 0.50 x 1.00 + many members 1.00 x 0.14
+//   $.left: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00
+//   $.left.point: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00
+//   $.right: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00
+//   $.right.point: record
+//     record: 3.00 = keys read as field names 2.00 x 1.00 + few members 1.00 x 1.00
+//     keyed table: 0.50 = values share a type 0.50 x 1.00

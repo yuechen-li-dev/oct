@@ -1,0 +1,12 @@
+record table KeyedRowsDiffer {
+    Key: String
+    N: Int
+    M: Option<String>
+}
+
+// Json.Load<KeyedRowsDiffer>("keyed_rows_differ.json")?
+//
+// Choices:
+//   $: keyed table
+//     record: 0.86 = few members 1.00 x 0.86
+//     keyed table: 2.64 = keys read as data 2.00 x 1.00 + values share a type 0.50 x 1.00 + many members 1.00 x 0.14

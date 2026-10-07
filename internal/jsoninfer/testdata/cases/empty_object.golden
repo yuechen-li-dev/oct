@@ -1,0 +1,17 @@
+record Meta {
+}
+
+record EmptyObject {
+    Meta: Meta
+    Name: String
+}
+
+// Json.Load<EmptyObject>("empty_object.json")?
+//
+// Choices:
+//   $: record
+//     record: 3.36 = keys read as field names 2.00 x 1.00 + values differ in type 0.50 x 1.00 + few members 1.00 x 0.86
+//     keyed table: cannot be: its values do not share a type: a string here, and an object at $.meta
+//   $.meta: record
+//     record: 3.50 = keys read as field names 2.00 x 1.00 + values differ in type 0.50 x 1.00 + few members 1.00 x 1.00
+//     keyed table: cannot be: it has no members

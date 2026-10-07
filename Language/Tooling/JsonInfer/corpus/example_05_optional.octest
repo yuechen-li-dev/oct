@@ -1,0 +1,29 @@
+package JsonInferCorpus
+
+// What `oct json infer Experiments/JsonIntentRecoveryLab/M0/corpus/example_05_optional.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record table Tickets {
+    Id: String
+    Title: String
+    Assignee: Option<String>
+    DueDate: Option<String>
+    Priority: String
+    Sprint: Option<String>
+}
+
+record Example05Optional {
+    Tickets: Tickets
+}
+
+// Json.Load<Example05Optional>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_05_optional.json")?
+
+[Fact]
+fn TicketsLoadWithOptions() -> Void ! Error {
+    let loaded = Json.Load<Example05Optional>("Experiments/JsonIntentRecoveryLab/M0/corpus/example_05_optional.json")?
+    Assert.Equal(3, Len(loaded.Tickets), "three tickets")
+    Assert.Equal(Option<String>.None, loaded.Tickets[1].Assignee, "null is None")
+    Assert.Equal(Option<String>.None, loaded.Tickets[1].DueDate, "an absent member is None")
+    Assert.Equal(Option<String>.Some("2026-05-10"), loaded.Tickets[2].DueDate, "a value is Some")
+}

@@ -1,0 +1,18 @@
+record table Items {
+    Sku: String
+}
+
+record Grid {
+    Columns: Int
+    Items: Items
+}
+
+record table NestedTableInRecordInCell {
+    Name: String
+    Grid: Grid
+}
+
+// Json.Load<NestedTableInRecordInCell>("nested_table_in_record_in_cell.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

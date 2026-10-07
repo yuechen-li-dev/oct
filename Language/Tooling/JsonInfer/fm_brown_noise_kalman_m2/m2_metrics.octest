@@ -1,0 +1,25 @@
+package JsonInferFmBrownNoiseKalmanM2
+
+// What `oct json infer Experiments/FmBrownNoiseKalman/M2/metrics.json` --name M2Metrics
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record LabelTolerance {
+    SnrEpsilonDb: Float
+    WhitenessRelativeEpsilon: Float
+}
+
+record M2Metrics {
+    RowCount: Int
+    LabelTolerance: LabelTolerance
+    OutputDiagnosticsCount: Int
+}
+
+// Json.Load<M2Metrics>("Experiments/FmBrownNoiseKalman/M2/metrics.json")?
+
+[Fact]
+fn M2MetricsLoad() -> Void ! Error {
+    let loaded = Json.Load<M2Metrics>("Experiments/FmBrownNoiseKalman/M2/metrics.json")?
+    Assert.Equal(12, loaded.RowCount, "the row count")
+    Assert.Equal(0.01, loaded.LabelTolerance.WhitenessRelativeEpsilon, "a nested record")
+}

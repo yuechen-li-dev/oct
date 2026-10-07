@@ -1,0 +1,23 @@
+package JsonInferIoTestdata
+
+// What `oct json infer Libraries/IO/testdata/smoke_optional.json`
+// prints, pasted as it is, and the document loaded with it. The tests of
+// internal/jsoninfer hold the command to the lines between here and the fact.
+
+record table Tickets {
+    Id: Int
+    DueDate: Option<String>
+}
+
+record SmokeOptional {
+    Tickets: Tickets
+}
+
+// Json.Load<SmokeOptional>("Libraries/IO/testdata/smoke_optional.json")?
+
+[Fact]
+fn ANullCellLoads() -> Void ! Error {
+    let loaded = Json.Load<SmokeOptional>("Libraries/IO/testdata/smoke_optional.json")?
+    Assert.Equal(Option<String>.None, loaded.Tickets[0].DueDate, "null")
+    Assert.Equal(Option<String>.Some("2026-01-15"), loaded.Tickets[1].DueDate, "a date")
+}

@@ -1,0 +1,4 @@
+// Json.Load<Int>("scalar_int.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

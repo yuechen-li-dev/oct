@@ -1,0 +1,5 @@
+// null everywhere in this document; String is a placeholder
+// Json.Load<Option<String>>("null_root.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways

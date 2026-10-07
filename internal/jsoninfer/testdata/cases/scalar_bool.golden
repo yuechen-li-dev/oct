@@ -1,0 +1,4 @@
+// Json.Load<Bool>("scalar_bool.json")?
+//
+// Choices:
+//   none: nothing in this document reads two ways
