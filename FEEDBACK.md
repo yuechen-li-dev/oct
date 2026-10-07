@@ -1248,3 +1248,13 @@ None for the inference: no signal in the document separates the two, and a recor
 Status: Open
 
 ---
+
+Observation:
+`oct test <directory>` of a directory with no `.octest` or `.octfail` file fails with "test failed: unknown package 'Main'". Seen on `Experiments/JsonIntentRecoveryLab/M0` after its only test was removed, and on an empty directory. The message names a package the user did not write and does not say that there is nothing to run.
+
+Suggestion:
+Say that the directory has no tests, and name it.
+
+Status: Open
+
+---
