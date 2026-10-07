@@ -24,12 +24,15 @@ absolute and escaping paths, and fail on duplicate output paths. Outputs are
 staged until every selected entry point succeeds, then published in sorted path
 order. Identical content is reported as unchanged and is not rewritten.
 
-## JSON authoring guidance (canonical)
+## JSON
 
-- In `[Artifact]` functions, prefer `Artifact.WriteJson(path, value)`.
-- Use `Json.Save(path, value)!` only when you intentionally need lower-level fallible control flow.
-- Do **not** manually stringify JSON for artifact output unless there is a specific reason.
-- `Json.Stringify(...)` is **not** currently exposed as a namespaced `Json.*` alias (`Json` namespace exposes `Load` and `Save`).
+- `Artifact.WriteJson(path, value)` publishes the JSON text of a typed value:
+  a record, a `record table`, an array, a scalar. The rules are those of
+  `Json.Save`; see [`Libraries/Json`](../Json/README.md).
+- Give it the value. JSON text is not built by hand: a String is written as
+  a JSON string, not taken as JSON.
+- `Json.Save` is rejected during artifact evaluation. `Json.Load<T>(path)`
+  may read an output this phase has already written, to assert on it.
 
 ## Example
 

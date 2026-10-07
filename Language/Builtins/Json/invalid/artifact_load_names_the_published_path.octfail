@@ -1,0 +1,12 @@
+expect artifact error: "Json.Load: levels.json: $[0] (line 1, column 2): expected Int, found 1.0, which has a fraction"
+
+package Main
+
+// An output read back during artifact evaluation is named as the program
+// named it, not by where the phase keeps it until it is published.
+[Artifact]
+fn LoadsItsOutputAsAnotherType() -> Void ! Error {
+    Artifact.WriteJson("levels.json", [1.0, 2.5])
+    let levels = Json.Load<Int[]>("levels.json")?
+    Assert.Equal(2, Len(levels), "not reached")
+}
