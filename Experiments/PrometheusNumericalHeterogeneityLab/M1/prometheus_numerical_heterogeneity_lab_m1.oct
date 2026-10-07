@@ -3,7 +3,6 @@ package PrometheusNumericalHeterogeneityLab
 import String
 import Artifact
 import Markdown
-import Json
 import Statistics
 
 /// A typed projection of one native M49a record. The source JSON remains the
@@ -234,22 +233,38 @@ fn M1RowsCsv(evidence: M1NativeEvidence) -> String[][] {
     return rows
 }
 
-fn M1SummaryJsonText(report: M1ImportReport) -> String {
-    return String.Concat([
-        "{\"schema\":", String.QuoteJson(report.Schema),
-        ",\"evidenceAuthority\":", String.QuoteJson(report.EvidenceAuthority),
-        ",\"syntheticAuthority\":", String.QuoteJson(report.SyntheticAuthority),
-        ",\"sourceJsonSha256\":", String.QuoteJson(report.SourceJsonSha256),
-        ",\"nativeRecordCount\":", String.From<Int>(report.NativeRecordCount),
-        ",\"identificationSupport\":", String.From<Int>(report.Envelope.IdentificationSupport),
-        ",\"heldOutSupport\":", String.From<Int>(report.Envelope.HeldOutSupport),
-        ",\"heldOutFailures\":", String.From<Int>(report.Envelope.HeldOutFailures),
-        ",\"envelopeCertified\":", String.From<Bool>(report.Envelope.Certified),
-        ",\"learnedPolicyCertified\":", String.From<Bool>(report.LearnedPolicy.Model.Certified),
-        ",\"learnedPolicySelectedPath\":", String.QuoteJson(report.LearnedPolicy.SelectedPath),
-        ",\"learnedPolicyShadowOnly\":true",
-        ",\"productAuthorityChanged\":false}"
-    ])
+record M1ImportSummary {
+    Schema: String
+    EvidenceAuthority: String
+    SyntheticAuthority: String
+    SourceJsonSha256: String
+    NativeRecordCount: Int
+    IdentificationSupport: Int
+    HeldOutSupport: Int
+    HeldOutFailures: Int
+    EnvelopeCertified: Bool
+    LearnedPolicyCertified: Bool
+    LearnedPolicySelectedPath: String
+    LearnedPolicyShadowOnly: Bool
+    ProductAuthorityChanged: Bool
+}
+
+fn M1BuildSummary(report: M1ImportReport) -> M1ImportSummary {
+    return M1ImportSummary {
+        Schema: report.Schema
+        EvidenceAuthority: report.EvidenceAuthority
+        SyntheticAuthority: report.SyntheticAuthority
+        SourceJsonSha256: report.SourceJsonSha256
+        NativeRecordCount: report.NativeRecordCount
+        IdentificationSupport: report.Envelope.IdentificationSupport
+        HeldOutSupport: report.Envelope.HeldOutSupport
+        HeldOutFailures: report.Envelope.HeldOutFailures
+        EnvelopeCertified: report.Envelope.Certified
+        LearnedPolicyCertified: report.LearnedPolicy.Model.Certified
+        LearnedPolicySelectedPath: report.LearnedPolicy.SelectedPath
+        LearnedPolicyShadowOnly: true
+        ProductAuthorityChanged: false
+    }
 }
 
 fn M1WriteArtifacts() -> Int ! Error {
@@ -271,7 +286,7 @@ fn M1WriteArtifacts() -> Int ! Error {
     }
     Artifact.WriteOctagon(root + "M1.native_import_report.octagon", report)
     Artifact.WriteCsv(root + "native_records.csv", M1RowsCsv(evidence))
-    Artifact.WriteJson(root + "native_import_summary.json", Json.Object(M1SummaryJsonText(report)))
+    Artifact.WriteJson(root + "native_import_summary.json", M1BuildSummary(report))
     Artifact.WriteMarkdown(root + "FINDINGS.md", md)
     let _disturbancePlot = PlotLine(x, d, root + "M1.native_disturbance_l2.png")
     return 0

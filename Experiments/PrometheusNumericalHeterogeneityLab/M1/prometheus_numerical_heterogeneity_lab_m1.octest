@@ -39,5 +39,5 @@ fn M1NativeArtifactsWrite() -> Void ! Error {
     let _ = M1WriteArtifacts()?
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M1/M1.native_import_report.octagon")?) > 0, "native Octagon report")
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M1/native_records.csv")?) > 1, "native CSV")
-    Assert.True(Len(IO.Load("Experiments/PrometheusNumericalHeterogeneityLab/M1/native_import_summary.json")?) > 0, "native summary JSON")
+    Assert.Equal(10, Json.Load<M1ImportSummary>("Experiments/PrometheusNumericalHeterogeneityLab/M1/native_import_summary.json")?.NativeRecordCount, "native summary JSON")
 }

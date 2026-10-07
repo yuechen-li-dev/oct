@@ -3,7 +3,6 @@ package PrometheusNumericalHeterogeneityLab
 import String
 import Artifact
 import Markdown
-import Json
 import Statistics
 
 /// Synthetic design lab for M49. These values are hypotheses and never replace
@@ -507,30 +506,54 @@ fn M0RowsCsv(report: M0SimulationReport) -> String[][] {
     return csv
 }
 
-fn M0SummaryJsonText(report: M0SimulationReport) -> String {
-    return String.Concat([
-        "{\"schema\":\"prometheus.m49.synthetic-numerical-heterogeneity.v1\"",
-        ",\"authority\":\"synthetic-design-lab-only\"",
-        ",\"caseCount\":", String.From<Int>(Len(report.Cases)),
-        ",\"trajectoryCount\":", String.From<Int>(Len(report.Trajectories)),
-        ",\"selectedMitigation\":", String.QuoteJson(report.SelectedMitigation),
-        ",\"baselineHeldOutMeanError\":", String.From<Float>(report.BaselineHeldOutMeanError),
-        ",\"selectedHeldOutMeanError\":", String.From<Float>(report.SelectedHeldOutMeanError),
-        ",\"heldOutImprovementPct\":", String.From<Float>(report.HeldOutImprovementPct),
-        ",\"learnedPolicyAlgorithm\":", String.QuoteJson(report.LearnedPolicy.Algorithm),
-        ",\"learnedPolicyTrainingRows\":", String.From<Int>(report.LearnedPolicy.Training.Rows),
-        ",\"learnedPolicyHeldOutRows\":", String.From<Int>(report.LearnedPolicy.HeldOut.Rows),
-        ",\"learnedPolicyTrainingMse\":", String.From<Float>(report.LearnedPolicy.Training.MeanSquaredError),
-        ",\"learnedPolicyHeldOutMse\":", String.From<Float>(report.LearnedPolicy.HeldOut.MeanSquaredError),
-        ",\"authoredBaselineHeldOutMse\":", String.From<Float>(report.AuthoredBaselineHeldOut.MeanSquaredError),
-        ",\"uniformBaselineHeldOutMse\":", String.From<Float>(report.UniformBaselineHeldOut.MeanSquaredError),
-        ",\"learnedPolicyCertified\":", String.From<Bool>(report.LearnedPolicy.Certified),
-        ",\"authoredSelectedMitigation\":", String.QuoteJson(report.AuthoredSelectedMitigation),
-        ",\"uniformSelectedMitigation\":", String.QuoteJson(report.UniformSelectedMitigation),
-        ",\"shadowAction\":", String.QuoteJson(report.ShadowDecision.ActionName),
-        ",\"productAuthorityChanged\":false",
-        ",\"m48EvtState\":\"postponed\"}"
-    ])
+record M0SyntheticSummary {
+    Schema: String
+    Authority: String
+    CaseCount: Int
+    TrajectoryCount: Int
+    SelectedMitigation: String
+    BaselineHeldOutMeanError: Float
+    SelectedHeldOutMeanError: Float
+    HeldOutImprovementPct: Float
+    LearnedPolicyAlgorithm: String
+    LearnedPolicyTrainingRows: Int
+    LearnedPolicyHeldOutRows: Int
+    LearnedPolicyTrainingMse: Float
+    LearnedPolicyHeldOutMse: Float
+    AuthoredBaselineHeldOutMse: Float
+    UniformBaselineHeldOutMse: Float
+    LearnedPolicyCertified: Bool
+    AuthoredSelectedMitigation: String
+    UniformSelectedMitigation: String
+    ShadowAction: String
+    ProductAuthorityChanged: Bool
+    M48EvtState: String
+}
+
+fn M0BuildSummary(report: M0SimulationReport) -> M0SyntheticSummary {
+    return M0SyntheticSummary {
+        Schema: "prometheus.m49.synthetic-numerical-heterogeneity.v1"
+        Authority: "synthetic-design-lab-only"
+        CaseCount: Len(report.Cases)
+        TrajectoryCount: Len(report.Trajectories)
+        SelectedMitigation: report.SelectedMitigation
+        BaselineHeldOutMeanError: report.BaselineHeldOutMeanError
+        SelectedHeldOutMeanError: report.SelectedHeldOutMeanError
+        HeldOutImprovementPct: report.HeldOutImprovementPct
+        LearnedPolicyAlgorithm: report.LearnedPolicy.Algorithm
+        LearnedPolicyTrainingRows: report.LearnedPolicy.Training.Rows
+        LearnedPolicyHeldOutRows: report.LearnedPolicy.HeldOut.Rows
+        LearnedPolicyTrainingMse: report.LearnedPolicy.Training.MeanSquaredError
+        LearnedPolicyHeldOutMse: report.LearnedPolicy.HeldOut.MeanSquaredError
+        AuthoredBaselineHeldOutMse: report.AuthoredBaselineHeldOut.MeanSquaredError
+        UniformBaselineHeldOutMse: report.UniformBaselineHeldOut.MeanSquaredError
+        LearnedPolicyCertified: report.LearnedPolicy.Certified
+        AuthoredSelectedMitigation: report.AuthoredSelectedMitigation
+        UniformSelectedMitigation: report.UniformSelectedMitigation
+        ShadowAction: report.ShadowDecision.ActionName
+        ProductAuthorityChanged: false
+        M48EvtState: "postponed"
+    }
 }
 
 fn M0WriteArtifacts() -> Int {
@@ -548,7 +571,7 @@ fn M0WriteArtifacts() -> Int {
     ])
     Artifact.WriteOctagon(root + "M0.synthetic_report.octagon", report)
     Artifact.WriteCsv(root + "synthetic_trajectories.csv", M0RowsCsv(report))
-    Artifact.WriteJson(root + "synthetic_summary.json", Json.Object(M0SummaryJsonText(report)))
+    Artifact.WriteJson(root + "synthetic_summary.json", M0BuildSummary(report))
     Artifact.WriteMarkdown(root + "FINDINGS.md", md)
     let _baselinePlot = PlotLine(representative.Trace.Depth, representative.Trace.Error, root + "a2x4_sparse_outlier_baseline.png")
     let _mitigatedPlot = PlotLine(mitigated.Trace.Depth, mitigated.Trace.Error, root + "a2x4_sparse_outlier_selective_fp32.png")

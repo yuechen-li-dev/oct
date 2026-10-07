@@ -70,7 +70,7 @@ fn M0SuspectReferenceIsQuarantined() -> Void {
 fn M0SyntheticArtifactsWrite() -> Void ! Error {
     let _ = M0WriteArtifacts()
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M0/M0.synthetic_report.octagon")?) > 0, "Octagon report")
-    Assert.True(Len(IO.Load("Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_summary.json")?) > 0, "summary JSON")
+    Assert.Equal(12, Json.Load<M0SyntheticSummary>("Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_summary.json")?.CaseCount, "summary JSON")
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_trajectories.csv")?) > 1, "trajectory CSV")
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M0/FINDINGS.md")?) > 0, "findings")
 }

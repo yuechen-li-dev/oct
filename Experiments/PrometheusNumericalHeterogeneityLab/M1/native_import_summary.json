@@ -1,1 +1,15 @@
-{"schema":"prometheus.m49a.oct-native-import.v1","evidenceAuthority":"native-rtx3070-vulkan","syntheticAuthority":"prometheus.m49.synthetic-design-lab-only","sourceJsonSha256":"ac8b7c0b8cb46985331c7db772e4b7413e8b64557d04c50de247c3b4b97662ad","nativeRecordCount":10,"identificationSupport":10,"heldOutSupport":0,"heldOutFailures":0,"envelopeCertified":false,"learnedPolicyCertified":false,"learnedPolicySelectedPath":"gpu_conventional_fp16","learnedPolicyShadowOnly":true,"productAuthorityChanged":false}
+{
+  "Schema": "prometheus.m49a.oct-native-import.v1",
+  "EvidenceAuthority": "native-rtx3070-vulkan",
+  "SyntheticAuthority": "prometheus.m49.synthetic-design-lab-only",
+  "SourceJsonSha256": "ac8b7c0b8cb46985331c7db772e4b7413e8b64557d04c50de247c3b4b97662ad",
+  "NativeRecordCount": 10,
+  "IdentificationSupport": 10,
+  "HeldOutSupport": 0,
+  "HeldOutFailures": 0,
+  "EnvelopeCertified": false,
+  "LearnedPolicyCertified": false,
+  "LearnedPolicySelectedPath": "gpu_conventional_fp16",
+  "LearnedPolicyShadowOnly": true,
+  "ProductAuthorityChanged": false
+}
