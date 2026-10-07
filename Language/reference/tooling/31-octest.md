@@ -305,6 +305,7 @@ directly from ordinary Oct code. Normal backend lowering excludes them.
 
 Artifact functions write files explicitly from user code.
 Prefer `Artifact.Write*` helpers (`WriteText`, `WriteLines`, `WriteMarkdown`, `WriteCsv`, `WriteJson`, `WriteOctagon`) when authoring `[Artifact]` functions.
+`Artifact.WriteJson(path, value)` publishes the JSON text of a typed value, as `Json.Save` writes it; see [17 standard libraries](../language/17-standard-libraries.md).
 `StaticAssert.True`, `StaticAssert.False`, `StaticAssert.Equal`,
 `StaticAssert.Near`, and `StaticAssert.Error` validate publication invariants in
 this phase without requiring `[Fact]` and without entering the runtime backend.

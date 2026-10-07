@@ -1,8 +1,7 @@
 # Json v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-05.** M1, M2 and M3 are closed; see
-`internal/json/JSON_V2_M1.md`, `JSON_V2_M2.md` and `JSON_V2_M3.md`. M4 is
-next.
+Status: **ACCEPTED 2026-10-05.** M1 to M4 are closed; see
+`internal/json/JSON_V2_M1.md` to `JSON_V2_M4.md`. M5 is next.
 Base commit: `d44566d` (main).
 
 This document is the source of truth for the `Json` rewrite while the ladder
@@ -137,6 +136,17 @@ that names the part that is not.
 argument is still that library's function and needs `import Json`. With a
 type argument it is this one.)*
 
+*(M4: a writer takes no type argument; `T` is the type of its value. Until
+M5, `Json.Save(path, text)` and `Artifact.WriteJson(path, text)` given a
+String of JSON text are still the first library's functions, so a String is
+not saved with `Json.Save` yet. `Json.Text` has no such form and writes a
+String as a JSON string.)*
+
+*(M4: `Json.Save(path, value)?` is a statement. The language refused a
+propagated call as a statement while it accepted an unwrapped one, which
+left a `Void ! Error` call with no way to propagate; D14 needs one. The rule
+is now the same for `?` as for `!`: `06-errors.md`.)*
+
 ### 3.3 JSON-representable types
 
 | Oct type | JSON |
@@ -224,6 +234,16 @@ The first is `record table Retry { Event: String  Retries: Int }`, the second
 - Strings escape `"`, `\` and control characters, and nothing else.
 - **Round trip:** for every JSON-representable `v` of type `T`,
   `Json.Parse<T>(Json.Text(v))` equals `v`.
+- *(M4.)* One row of a `record table`, `tickets[0]`, writes as one object.
+  `Json.Save` replaces the file and makes no directories. A value JSON cannot
+  hold stops the program before the file is opened, with the place of the
+  value: `runtime error: Json.Save: out.json: $.Levels[1]: NaN has no JSON
+  form`. A file that cannot be written is an `Error`: "the directory does not
+  exist", "this is a directory, not a file", "the file cannot be written:
+  permission denied", "the file cannot be written".
+- *(M4.)* Artifact evaluation and capability discovery refuse `Json.Load` and
+  `Json.Save`, which touch a file the program names, as they refuse the first
+  library's; artifact evaluation writes through `Artifact.WriteJson`.
 
 ### 3.7 Documents
 
@@ -416,6 +436,7 @@ The whole-tree sweeps run once more when the ladder closes.
 - **Tests:** Byte goldens for 3.6; I2 through both lanes; a value JSON cannot
   hold; the artifact path during `oct artifact`.
 - **Exit:** Both lanes green, writing equal bytes.
+- **Verdict:** SUCCESS, 2026-10-07. See `JSON_V2_M4.md`.
 
 ### M5 — Migration and removal
 - **Scope:**

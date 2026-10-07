@@ -246,14 +246,15 @@ Rules:
 `Array`, `Artifact` and `Entropy` are namespaces whose functions are builtins.
 Calling them needs no `import`. A call to a name the namespace does not have is
 reported as `package '<Namespace>' has no function '<Name>'`.
-`Json.Load<T>` and `Json.Parse<T>` are builtins of the same kind and need no
-`import`; the rest of `Json` is still a library.
+`Json.Load<T>`, `Json.Parse<T>`, `Json.Save` and `Json.Text` are builtins of
+the same kind and need no `import`; the rest of `Json` is still a library.
 
-## Json (typed reading)
+## Json
 
 `Json.Load<T>(path)` reads a file as a `T`, and `Json.Parse<T>(text)` reads
-text as a `T`. The declared type says how the document is read: nothing is
-guessed from the document.
+text as a `T`. `Json.Save(path, value)` writes a value to a file, and
+`Json.Text(value)` gives its text. The declared type says how a document is
+read and how a value is written: nothing is guessed from the document.
 
 ```oct
 record table Ticket {
@@ -270,9 +271,19 @@ fn OpenPoints(path: String) -> Int ! Error {
     }
     return points
 }
+
+record Summary {
+    OpenPoints: Int
+    Tickets:    Ticket
+}
+
+fn Summarize(from: String, to: String) -> Void ! Error {
+    let tickets = Json.Load<Ticket>(from)?
+    Json.Save(to, Summary { OpenPoints: OpenPoints(from)? Tickets: tickets })?
+}
 ```
 
-Rules:
+Reading:
 
 - `Json.Load<T>(path: String) -> T ! Error` and
   `Json.Parse<T>(text: String) -> T ! Error`. Both are builtins and need no
@@ -325,12 +336,52 @@ Rules:
 
 - The type is followed into every package it reaches, whether or not the file
   that makes the call imports it.
-- Capability discovery rejects `Json.Load`, which reads a file.
-- The first Json library is still present: `Json.Load(path)` with no type
-  argument, `Json.Save`, `Json.Object` and the `IO` JSON functions are its, and
-  need `import Json` or `import IO`. It is being replaced; see
-  `internal/json/JSON_V2_LADDER.md`, which is also the full specification.
-  Writing JSON from a typed value is not yet available.
+
+Writing:
+
+- `Json.Save(path: String, value: T) -> Void ! Error`,
+  `Json.Text(value: T) -> String`, and, during `oct artifact` evaluation,
+  `Artifact.WriteJson(path: String, value: T)`. They are builtins and need no
+  `import`. They take no type argument: `T` is the type of the value, and it
+  must have a JSON form as for reading.
+- A record is an object whose keys are the field names as declared, in
+  declaration order. A `record table` is an array of row objects, and one row
+  (`tickets[0]`) is one object. `Option.None` is `null`; its member is
+  written. An enum is the name of its variant as declared. A value of a
+  refined concept is a value of its base type, and a number with a dimension
+  is the number in the unit its type declares.
+- The text is UTF-8, indented by two spaces, and ends with one newline. An
+  array whose element type is a scalar is on one line (`[1, 2, 3]`); any
+  other array has one element to a line. The layout follows the type, not the
+  values, so a file's shape does not change with its data.
+- A `Float` is written in the shortest form that reads back as the same
+  value, always with a fraction or an exponent: `1.0`, `0.1`, `1500000.0`,
+  and `1e+21` or `1e-07` beyond 1e21 and below 1e-6.
+- A String escapes `"`, `\` and control characters, and nothing else.
+- `Json.Parse<T>(Json.Text(value))` is `value`.
+- `Json.Save` replaces the file and makes no directories. A file that cannot
+  be written is an `Error`:
+  `Json.Save: out/levels.json: the directory does not exist`.
+- JSON has no NaN and no infinity. A value that holds one stops the program
+  with the place of the value; it is not an `Error`, and `Json.Text` is not
+  fallible. Nothing is written.
+
+  ```
+  runtime error: Json.Text: $.Levels[1]: NaN has no JSON form
+  ```
+
+Both:
+
+- Capability discovery rejects `Json.Load` and `Json.Save`, which touch a
+  file. Artifact evaluation rejects them too: it reads no file the program
+  names, and writes through `Artifact.WriteJson`.
+- The first Json library is still present. `Json.Load(path)` with no type
+  argument, `Json.Save(path, text)` and `Artifact.WriteJson(path, text)` given
+  a String of JSON text, `Json.Object` and the `IO` JSON functions are its,
+  and need `import Json` or `import IO`. Until it is removed, a String is
+  therefore saved with `Json.Text` and a file writer, not with `Json.Save`.
+  See `internal/json/JSON_V2_LADDER.md`, which is also the full
+  specification.
 
 Contracts: `Language/Builtins/Json`.
 

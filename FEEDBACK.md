@@ -1107,3 +1107,47 @@ Print nothing for a `Void` result, fallible or not.
 Status: Open
 
 ---
+
+Observation:
+A fallible call could stand as a statement with `!` and not with `?`: `Save(path, value)?` was refused as a "standalone expression", so a `Void ! Error` call, which has no value to bind (`let _ = Save(...)?` is refused too), could be propagated only through a `match`.
+
+Suggestion:
+Permit a propagated call as a statement, as an unwrapped one is.
+
+Status: Resolved
+
+Resolution: The typechecker permits it; both lanes already ran it. Contract: `Language/Errors/Fallible/valid/propagation_as_a_statement.octest`, both lanes. Reference: `06-errors.md`.
+
+---
+
+Observation:
+A function declared `-> Void ! Error` cannot fail on its own: `return error("cannot write")` in it is refused with "Void function cannot return a value". It can only fail by propagating the error of a call it makes. The check for a returned value in a `Void` function runs before the function's fallibility is looked at.
+
+Suggestion:
+Accept `return error(...)`, and the return of an `Error` value, in a `Void ! Error` function.
+
+Status: Open
+
+---
+
+Observation:
+`Sqrt` and `Ln` of a value outside their domain differ by lane when the value is not a literal. `Sqrt(0.0 - 1.0)` and `Ln(0.0)` stop the interpreted lane with "Sqrt expects non-negative input, got -1" and "Ln expects positive input, got 0"; the compiled lane computes a NaN and an infinity and goes on. Met while looking for a NaN to give `Json.Text`.
+
+Suggestion:
+Give the compiled lane the same preconditions, as the Random builtins have theirs in both lanes.
+
+Status: Open
+
+---
+
+Observation:
+The compiled Octagon materialiser refused a value of a refined concept over a dimensioned base (`concept Depth = Float<m>`): "expected Main.Depth dimension \"\", got \"m\"". It read the declared dimension out of the expected type's name, which for a concept is the concept's. The interpreter loaded the value.
+
+Suggestion:
+Read the dimension of the concept's base.
+
+Status: Resolved
+
+Resolution: `__octCheckNumericDimension` resolves a refined concept to its base. Contract: `Language/Data/Octagon/Load/valid/load_octagon_refined_dimension.octest`, both lanes.
+
+---
