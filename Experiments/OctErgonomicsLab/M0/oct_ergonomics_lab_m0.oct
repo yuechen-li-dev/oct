@@ -16,6 +16,7 @@ record FixedSummary { OutputSNRDb: String WhitenessCost: String }
 record AdaptiveSummary { OutputSNRDb: String WhitenessCost: String FinalA: String }
 record RunSummary { Fixed: FixedSummary Adaptive: AdaptiveSummary }
 record ErgonomicsSnapshot { run: RunSummary caseCount: String joinedCases: String diagnostic: String }
+record ErgonomicsSummary { FixedOutputSNRDb: String AdaptiveFinalA: String Diagnostic: String }
 
 fn GenerateErgonomicsArtifacts() -> Void {
     let root = "out/test-artifacts/experiments_oct_ergonomics_lab_m0"
@@ -33,6 +34,6 @@ fn GenerateErgonomicsArtifacts() -> Void {
     Artifact.WriteMarkdown(IO.JoinPath([root, "ergonomics_report.md"]), lines)
     Artifact.WriteOctagon(IO.JoinPath([root, "ergonomics_report.octagon"]), ErgonomicsSnapshot { run: run caseCount: "3" joinedCases: String.Join(caseTable.caseName, ",") diagnostic: normalizedNote })
     Artifact.WriteCsv(IO.JoinPath([root, "ergonomics_metrics.csv"]), csvRows)
-    let summaryJson = Json.Object("{\"fixedOutputSNRDb\":" + String.QuoteJson(run.Fixed.OutputSNRDb) + ",\"adaptiveFinalA\":" + String.QuoteJson(run.Adaptive.FinalA) + ",\"diagnostic\":" + String.QuoteJson(normalizedNote) + "}")
-    Artifact.WriteJson(IO.JoinPath([root, "ergonomics_summary.json"]), summaryJson)
+    let summary = ErgonomicsSummary { FixedOutputSNRDb: run.Fixed.OutputSNRDb AdaptiveFinalA: run.Adaptive.FinalA Diagnostic: normalizedNote }
+    Artifact.WriteJson(IO.JoinPath([root, "ergonomics_summary.json"]), summary)
 }

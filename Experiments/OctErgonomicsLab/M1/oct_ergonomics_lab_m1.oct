@@ -6,6 +6,13 @@ import Json
 import Markdown
 import String
 
+record ProbeSummary {
+    RealRepresentation: String
+    RealMissingSurface: String
+    FallbackRepresentation: String
+    FallbackRecoveredCount: Int
+}
+
 record ProbeResult {
     DoneReached: Bool
     Recovered: Float[]
@@ -169,5 +176,10 @@ fn GenerateM1Artifacts() -> Void {
 
     Artifact.WriteMarkdown(IO.JoinPath([root, "m1_octomata_scalar_board_probe.md"]), report)
     Artifact.WriteCsv(IO.JoinPath([root, "metrics.csv"]), [["representation", "done", "steps", "history", "recovered", "innovations"], [real.Representation, ToString(real.DoneReached), ToString(real.StepCount), ToString(real.HistoryCount), ToString(Len(real.Recovered)), ToString(Len(real.Innovations))], [fallback.Representation, ToString(fallback.DoneReached), ToString(fallback.StepCount), ToString(fallback.HistoryCount), ToString(Len(fallback.Recovered)), ToString(Len(fallback.Innovations))]])
-    Artifact.WriteJson(IO.JoinPath([root, "summary.json"]), Json.Object("{" + String.Concat(["\"realRepresentation\":", String.QuoteJson(real.Representation), ",\"realMissingSurface\":", String.QuoteJson(real.MissingSurface), ",\"fallbackRepresentation\":", String.QuoteJson(fallback.Representation), ",\"fallbackRecoveredCount\":", ToString(Len(fallback.Recovered))]) + "}"))
+    Artifact.WriteJson(IO.JoinPath([root, "summary.json"]), ProbeSummary {
+        RealRepresentation: real.Representation
+        RealMissingSurface: real.MissingSurface
+        FallbackRepresentation: fallback.Representation
+        FallbackRecoveredCount: Len(fallback.Recovered)
+    })
 }
