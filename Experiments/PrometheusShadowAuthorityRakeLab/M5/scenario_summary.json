@@ -1,1 +1,10 @@
-{"scenarioCount":16,"expectedBehaviorMet":16,"feedforwardUseCount":4,"judgmentFallbackCount":12,"consumedCount":4,"noConsumeOnBlockedCount":12,"contractViolationCount":0,"recommendedNativeContract":"Validate first, then consume only if dispatch source is ShadowReservation."}
+{
+  "ScenarioCount": 16,
+  "ExpectedBehaviorMet": 16,
+  "FeedforwardUseCount": 4,
+  "JudgmentFallbackCount": 12,
+  "ConsumedCount": 4,
+  "NoConsumeOnBlockedCount": 12,
+  "ContractViolationCount": 0,
+  "RecommendedNativeContract": "Validate first, then consume only if dispatch source is ShadowReservation."
+}

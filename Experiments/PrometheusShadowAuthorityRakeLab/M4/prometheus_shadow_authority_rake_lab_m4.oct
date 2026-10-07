@@ -1,7 +1,6 @@
 package PrometheusShadowAuthorityRakeLab
 
 import Artifact
-import Json
 import Markdown
 import String
 
@@ -26,6 +25,22 @@ record Scenario {
     Name: String
     Events: ShadowOutcome[]
     Label: String
+}
+
+record ScenarioSummary {
+    ScenarioCount: Int
+    VariantCount: Int
+    RowCount: Int
+    ExpectedBehaviorMet: Int
+    RakeSignal: Int
+    BoundaryOverPromotionBaseline: Int
+    BoundaryOverPromotionMargin: Int
+    BoundaryOverPromotionStreak: Int
+    BoundaryOverPromotionMarginAndStreak: Int
+    HealthySuppressedByMarginTotal: Int
+    HealthySuppressedByStreakTotal: Int
+    RecoveryStillPossibleCount: Int
+    Recommendation: String
 }
 
 record ScenarioMetric {
@@ -560,7 +575,21 @@ fn PrometheusShadowAuthorityRakeM4ArtifactWriteAll() -> Int {
         else -> "ReasonBindingEMA_StrongerCommit"
     }
 
-    let summary = Json.Object(String.Concat(["{\"scenarioCount\":", String.From<Int>(Len(BuildScenariosM4())), ",\"variantCount\":", String.From<Int>(Len(BuildVariantsM4())), ",\"rowCount\":", String.From<Int>(Len(rows)), ",\"expectedBehaviorMet\":", String.From<Int>(ok), ",\"rakeSignal\":", String.From<Int>(rake), ",\"boundaryOverPromotionBaseline\":", String.From<Int>(overBase), ",\"boundaryOverPromotionMargin\":", String.From<Int>(overMargin), ",\"boundaryOverPromotionStreak\":", String.From<Int>(overStreak), ",\"boundaryOverPromotionMarginAndStreak\":", String.From<Int>(overBoth), ",\"healthySuppressedByMarginTotal\":", String.From<Int>(suppressMargin), ",\"healthySuppressedByStreakTotal\":", String.From<Int>(suppressStreak), ",\"recoveryStillPossibleCount\":", String.From<Int>(recovery), ",\"recommendation\":\"", rec, "\"}"]))
+    let summary = ScenarioSummary {
+        ScenarioCount: Len(BuildScenariosM4())
+        VariantCount: Len(BuildVariantsM4())
+        RowCount: Len(rows)
+        ExpectedBehaviorMet: ok
+        RakeSignal: rake
+        BoundaryOverPromotionBaseline: overBase
+        BoundaryOverPromotionMargin: overMargin
+        BoundaryOverPromotionStreak: overStreak
+        BoundaryOverPromotionMarginAndStreak: overBoth
+        HealthySuppressedByMarginTotal: suppressMargin
+        HealthySuppressedByStreakTotal: suppressStreak
+        RecoveryStillPossibleCount: recovery
+        Recommendation: rec
+    }
 
     let md = Markdown.Report([
         Markdown.Title("Prometheus Shadow Authority Rake Lab (M4)"),

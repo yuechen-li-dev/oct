@@ -1,1 +1,10 @@
-{"scenarioCount":12,"expectedBehaviorMet":12,"rakeSignalCount":5,"emaRecoveredFaster":2,"emaBlockedFaster":0,"emaChatterRegression":5,"reasonPrecisionImproved":1,"thresholdRecommendation":"one more lab pass before native would-act counters"}
+{
+  "ScenarioCount": 12,
+  "ExpectedBehaviorMet": 12,
+  "RakeSignalCount": 5,
+  "EmaRecoveredFaster": 2,
+  "EmaBlockedFaster": 0,
+  "EmaChatterRegression": 5,
+  "ReasonPrecisionImproved": 1,
+  "ThresholdRecommendation": "one more lab pass before native would-act counters"
+}

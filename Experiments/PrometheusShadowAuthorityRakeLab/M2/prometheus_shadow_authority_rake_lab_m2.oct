@@ -1,7 +1,6 @@
 package PrometheusShadowAuthorityRakeLab
 
 import Artifact
-import Json
 import Markdown
 import String
 
@@ -16,6 +15,17 @@ enum ShadowOutcome {
 }
 
 record Scenario { Name: String Events: ShadowOutcome[] Label: String }
+
+record ScenarioSummary {
+    ScenarioCount: Int
+    ExpectedBehaviorMet: Int
+    RakeSignalCount: Int
+    EmaRecoveredFaster: Int
+    EmaBlockedFaster: Int
+    EmaChatterRegression: Int
+    ReasonPrecisionImproved: Int
+    ThresholdRecommendation: String
+}
 
 record ScenarioMetric {
     ScenarioName: String
@@ -332,7 +342,16 @@ fn PrometheusShadowAuthorityRakeM2ArtifactWriteAll() -> Int {
     Artifact.WriteOctagon("Experiments/PrometheusShadowAuthorityRakeLab/M2/shadow_authority_m2_rake_report.octagon", rows)
     Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M2/shadow_authority_m2_rake_report.md", md)
     Artifact.WriteCsv("Experiments/PrometheusShadowAuthorityRakeLab/M2/scenario_metrics.csv", csv)
-    Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M2/scenario_summary.json", Json.Object(String.Concat(["{\"scenarioCount\":",String.From<Int>(Len(rows)),",\"expectedBehaviorMet\":",String.From<Int>(expected),",\"rakeSignalCount\":",String.From<Int>(chatterRegression),",\"emaRecoveredFaster\":",String.From<Int>(fasterRecover),",\"emaBlockedFaster\":",String.From<Int>(fasterBlock),",\"emaChatterRegression\":",String.From<Int>(chatterRegression),",\"reasonPrecisionImproved\":",String.From<Int>(reasonImproved),",\"thresholdRecommendation\":\"one more lab pass before native would-act counters\"}"])))
+    Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M2/scenario_summary.json", ScenarioSummary {
+        ScenarioCount: Len(rows)
+        ExpectedBehaviorMet: expected
+        RakeSignalCount: chatterRegression
+        EmaRecoveredFaster: fasterRecover
+        EmaBlockedFaster: fasterBlock
+        EmaChatterRegression: chatterRegression
+        ReasonPrecisionImproved: reasonImproved
+        ThresholdRecommendation: "one more lab pass before native would-act counters"
+    })
     Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M2/FINDINGS.md", findings)
     Artifact.Checkpoint("done")
     return 0

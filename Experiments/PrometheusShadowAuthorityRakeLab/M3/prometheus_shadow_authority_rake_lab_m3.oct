@@ -1,7 +1,6 @@
 package PrometheusShadowAuthorityRakeLab
 
 import Artifact
-import Json
 import Markdown
 import String
 
@@ -18,6 +17,21 @@ enum ShadowOutcome {
 enum Variant { BaselineEma ReasonBindingEma ReasonBindingEmaStrongerCommit }
 
 record Scenario { Name: String Events: ShadowOutcome[] Label: String }
+record ScenarioSummary {
+    ScenarioCount: Int
+    VariantCount: Int
+    RowCount: Int
+    ExpectedBehaviorMet: Int
+    RakeSignalCount: Int
+    ChatterBaseline: Int
+    ChatterReasonBinding: Int
+    ChatterStrongerCommit: Int
+    OverPromotionCount: Int
+    RecentStaleHealthyViolationCount: Int
+    RecentFallbackHealthyViolationCount: Int
+    Recommendation: String
+}
+
 record ScenarioMetric {
     ScenarioName: String VariantName: String EventCount: Int
     FinalGate: String FinalReason: String FinalConfidence: Float FinalMissRate: Float FinalArrivalError: Float
@@ -125,7 +139,20 @@ Artifact.Checkpoint("beforeWrites")
 Artifact.WriteOctagon("Experiments/PrometheusShadowAuthorityRakeLab/M3/shadow_authority_m3_stability_report.octagon", rows)
 Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M3/shadow_authority_m3_stability_report.md", md)
 Artifact.WriteCsv("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_metrics.csv", csv)
-Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_summary.json", Json.Object(String.Concat(["{\"scenarioCount\":",String.From<Int>(Len(BuildScenariosM3())),",\"variantCount\":",String.From<Int>(Len(BuildVariantsM3())),",\"rowCount\":",String.From<Int>(Len(rows)),",\"expectedBehaviorMet\":",String.From<Int>(ok),",\"rakeSignalCount\":",String.From<Int>(rake),",\"chatterBaseline\":",String.From<Int>(chatterBase),",\"chatterReasonBinding\":",String.From<Int>(chatterBinding),",\"chatterStrongerCommit\":",String.From<Int>(chatterCommit),",\"overPromotionCount\":",String.From<Int>(over),",\"recentStaleHealthyViolationCount\":",String.From<Int>(staleV),",\"recentFallbackHealthyViolationCount\":",String.From<Int>(fbV),",\"recommendation\":\"",recommendation,"\"}"])))
+Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_summary.json", ScenarioSummary {
+    ScenarioCount: Len(BuildScenariosM3())
+    VariantCount: Len(BuildVariantsM3())
+    RowCount: Len(rows)
+    ExpectedBehaviorMet: ok
+    RakeSignalCount: rake
+    ChatterBaseline: chatterBase
+    ChatterReasonBinding: chatterBinding
+    ChatterStrongerCommit: chatterCommit
+    OverPromotionCount: over
+    RecentStaleHealthyViolationCount: staleV
+    RecentFallbackHealthyViolationCount: fbV
+    Recommendation: recommendation
+})
 Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M3/FINDINGS.md", findings)
 Artifact.Checkpoint("done")
 return 0 }

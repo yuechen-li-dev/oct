@@ -1,7 +1,6 @@
 package PrometheusShadowAuthorityRakeLab
 
 import Artifact
-import Json
 import Markdown
 import String
 
@@ -51,6 +50,17 @@ record Scenario {
     FallbackRequired: Bool
     LookaheadRecommended: Int
     FirstAttempt: Bool
+}
+
+record ScenarioSummary {
+    ScenarioCount: Int
+    ExpectedBehaviorMet: Int
+    FeedforwardUseCount: Int
+    JudgmentFallbackCount: Int
+    ConsumedCount: Int
+    NoConsumeOnBlockedCount: Int
+    ContractViolationCount: Int
+    RecommendedNativeContract: String
 }
 
 record ScenarioMetric {
@@ -379,7 +389,16 @@ fn PrometheusShadowAuthorityRakeM5ArtifactWriteAll() -> Int {
     }
 
     let rec = "Validate first, then consume only if dispatch source is ShadowReservation."
-    let summary = Json.Object(String.Concat(["{\"scenarioCount\":", String.From<Int>(Len(rows)), ",\"expectedBehaviorMet\":", String.From<Int>(ok), ",\"feedforwardUseCount\":", String.From<Int>(ff), ",\"judgmentFallbackCount\":", String.From<Int>(fb), ",\"consumedCount\":", String.From<Int>(consume), ",\"noConsumeOnBlockedCount\":", String.From<Int>(noConsumeOnBlocked), ",\"contractViolationCount\":", String.From<Int>(violations), ",\"recommendedNativeContract\":\"", rec, "\"}"]))
+    let summary = ScenarioSummary {
+        ScenarioCount: Len(rows)
+        ExpectedBehaviorMet: ok
+        FeedforwardUseCount: ff
+        JudgmentFallbackCount: fb
+        ConsumedCount: consume
+        NoConsumeOnBlockedCount: noConsumeOnBlocked
+        ContractViolationCount: violations
+        RecommendedNativeContract: rec
+    }
 
     let md = Markdown.Report([
         Markdown.Title("Prometheus Shadow Authority Rake Lab (M5)"),

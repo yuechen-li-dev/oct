@@ -1,7 +1,6 @@
 package PrometheusShadowAuthorityRakeLab
 
 import Artifact
-import Json
 import Markdown
 import String
 
@@ -18,6 +17,11 @@ enum ShadowOutcome {
 record Scenario {
     Name: String
     Events: ShadowOutcome[]
+}
+
+record ScenarioSummary {
+    ScenarioCount: Int
+    Recommendation: String
 }
 
 record ScenarioMetric {
@@ -251,7 +255,10 @@ fn PrometheusShadowAuthorityRakeArtifactWriteAll() -> Int {
     Artifact.WriteOctagon("Experiments/PrometheusShadowAuthorityRakeLab/M1/shadow_authority_rake_report.octagon", rows)
     Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M1/shadow_authority_rake_report.md", md)
     Artifact.WriteCsv("Experiments/PrometheusShadowAuthorityRakeLab/M1/scenario_metrics.csv", csv)
-    Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M1/scenario_summary.json", Json.Object(String.Concat(["{\"scenarioCount\":", String.From<Int>(Len(rows)), ",\"recommendation\":\"add more mixed scenarios before native would-act counters\"}"])))
+    Artifact.WriteJson("Experiments/PrometheusShadowAuthorityRakeLab/M1/scenario_summary.json", ScenarioSummary {
+        ScenarioCount: Len(rows)
+        Recommendation: "add more mixed scenarios before native would-act counters"
+    })
     Artifact.WriteMarkdown("Experiments/PrometheusShadowAuthorityRakeLab/M1/FINDINGS.md", md)
     Artifact.Checkpoint("done")
     return 0

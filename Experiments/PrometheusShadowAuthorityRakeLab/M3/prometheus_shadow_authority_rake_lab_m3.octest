@@ -49,6 +49,6 @@ fn ArtifactOutputsExistM3() -> Void ! Error {
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M3/shadow_authority_m3_stability_report.octagon")?) > 0, "octagon")
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M3/shadow_authority_m3_stability_report.md")?) > 0, "md")
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_metrics.csv")?) > 0, "csv")
-    Assert.True(Len(IO.Load("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_summary.json")?) > 0, "json")
+    Assert.Equal(8, Json.Load<ScenarioSummary>("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_summary.json")?.ScenarioCount, "json")
     Assert.True(Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M3/FINDINGS.md")?) > 0, "findings")
 }

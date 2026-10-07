@@ -1,1 +1,15 @@
-{"scenarioCount":9,"variantCount":4,"rowCount":36,"expectedBehaviorMet":34,"rakeSignal":2,"boundaryOverPromotionBaseline":1,"boundaryOverPromotionMargin":0,"boundaryOverPromotionStreak":1,"boundaryOverPromotionMarginAndStreak":0,"healthySuppressedByMarginTotal":68,"healthySuppressedByStreakTotal":66,"recoveryStillPossibleCount":4,"recommendation":"HealthyMarginGate"}
+{
+  "ScenarioCount": 9,
+  "VariantCount": 4,
+  "RowCount": 36,
+  "ExpectedBehaviorMet": 34,
+  "RakeSignal": 2,
+  "BoundaryOverPromotionBaseline": 1,
+  "BoundaryOverPromotionMargin": 0,
+  "BoundaryOverPromotionStreak": 1,
+  "BoundaryOverPromotionMarginAndStreak": 0,
+  "HealthySuppressedByMarginTotal": 68,
+  "HealthySuppressedByStreakTotal": 66,
+  "RecoveryStillPossibleCount": 4,
+  "Recommendation": "HealthyMarginGate"
+}

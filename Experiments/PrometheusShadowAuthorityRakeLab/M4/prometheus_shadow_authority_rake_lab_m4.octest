@@ -92,10 +92,7 @@ fn ArtifactOutputsExistM4() -> Void ! Error {
         Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_metrics.csv")?) > 0,
         "csv"
     )
-    Assert.True(
-        Len(IO.Load("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_summary.json")?) > 0,
-        "json"
-    )
+    Assert.Equal(9, Json.Load<ScenarioSummary>("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_summary.json")?.ScenarioCount, "json")
     Assert.True(
         Len(IO.ReadLines("Experiments/PrometheusShadowAuthorityRakeLab/M4/FINDINGS.md")?) > 0,
         "findings"
