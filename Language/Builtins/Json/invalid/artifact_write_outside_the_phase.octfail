@@ -1,0 +1,16 @@
+expect error: "Artifact.WriteJson is available only during `oct artifact` evaluation"
+
+package Main
+
+// An ordinary program reaches Artifact.WriteJson with a value. As for
+// Artifact.WriteText, the compiled lane refuses to build it and the
+// interpreted lane stops when the call runs.
+record Reading {
+    Name: String
+    Levels: Float[]
+}
+
+fn Main() -> Int {
+    Artifact.WriteJson("outside.json", Reading { Name: "a" Levels: [1.0] })
+    return 0
+}

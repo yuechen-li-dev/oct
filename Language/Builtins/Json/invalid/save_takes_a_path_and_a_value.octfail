@@ -1,0 +1,7 @@
+expect error: "function 'Json.Save' expects 2 arguments, got 1"
+
+package Main
+
+fn Main() -> Void ! Error {
+    Json.Save([1.0])?
+}

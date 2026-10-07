@@ -1,0 +1,9 @@
+expect artifact error: "artifact evaluation rejected Json.Save outside Artifact.Write*; use the compiler-owned Artifact capability"
+
+package Main
+
+// Artifact evaluation writes through Artifact.Write* only.
+[Artifact]
+fn WritesAFile() -> Void ! Error {
+    Json.Save("Language/Builtins/Json/written/ambient.json", [1.0])?
+}

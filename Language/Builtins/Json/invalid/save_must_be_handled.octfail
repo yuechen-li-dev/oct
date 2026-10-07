@@ -1,0 +1,8 @@
+expect error: "expression statement must not be fallible"
+
+package Main
+
+// `Json.Save` is fallible: the file may not be writable.
+fn Main() -> Void {
+    Json.Save("levels.json", [1.0])
+}

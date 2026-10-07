@@ -1,0 +1,7 @@
+expect error: "function 'Json.Text' expects 1 argument, got 2"
+
+package Main
+
+fn Main() -> String {
+    return Json.Text(1, 2)
+}

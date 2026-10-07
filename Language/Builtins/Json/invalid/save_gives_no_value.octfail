@@ -1,0 +1,8 @@
+expect error: "Void result cannot be used as a value"
+
+package Main
+
+// `Json.Save` gives nothing back, not a status.
+fn Main() -> Void ! Error {
+    let status = Json.Save("levels.json", [1.0])?
+}

@@ -1,0 +1,11 @@
+expect error: "fallible expression must be handled explicitly"
+
+package Main
+
+fn Levels() -> Float[] ! Error {
+    return [1.0]
+}
+
+fn Main() -> String {
+    return Json.Text(Levels())
+}

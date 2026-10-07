@@ -1,0 +1,15 @@
+expect artifact error: "Artifact.WriteJson: report.json: $.Levels[1]: NaN has no JSON form"
+
+package Main
+
+// A value JSON cannot hold fails the artifact, and nothing is published.
+record Reading {
+    Name: String
+    Levels: Float[]
+}
+
+[Artifact]
+fn PublishesANaN() -> Void {
+    let huge = Exp(1000.0)
+    Artifact.WriteJson("report.json", Reading { Name: "a" Levels: [1.0, huge - huge] })
+}

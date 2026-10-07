@@ -1,0 +1,17 @@
+expect error: "function 'Json.Save' cannot write Drawing: Drawing.Shapes: the enum Shape, whose variant Circle carries a payload, has no JSON form"
+
+package Main
+
+// What cannot be read cannot be written: the error names the same part.
+enum Shape {
+    Dot
+    Circle(Float)
+}
+
+record Drawing {
+    Shapes: Shape[]
+}
+
+fn Main() -> Void ! Error {
+    Json.Save("drawing.json", Drawing { Shapes: [Shape.Dot] })?
+}

@@ -3407,8 +3407,13 @@ regularCall:
 			}
 			return ExprType{}, fmt.Errorf("function %s calls Make.%s and must be marked [RequiresAuthority]", ctx.name, primitive)
 		}
-		if json, ok := builtin.ResolveJsonCall(calleeName, len(expr.TypeArguments)); ok {
-			return c.checkJsonCall(scope, json, expr.TypeArguments, expr.Arguments, ctx)
+		if json, ok := builtin.LookupJson(calleeName); ok {
+			if result, handled, err := c.checkJsonCall(scope, json, expr, ctx); handled {
+				return result, err
+			}
+			// The first library's function of this name, which takes no
+			// type argument.
+			expr.TypeArguments = ast.WithoutInferredTypeArguments(expr.TypeArguments)
 		}
 		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
 			if builtinName, mapped := builtin.ResolveNamespacedAlias(namespace, symbol); mapped {

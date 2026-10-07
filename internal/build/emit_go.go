@@ -222,7 +222,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	usedBuiltins := map[string]bool{}
 	emittedRecordTypes := map[string]struct{}{}
 	loadTypes := map[string]struct{}{}
-	jsonReads := map[string]MIRCall{}
+	jsonCalls := map[string]MIRCall{}
 	resultTypes := map[string]struct{}{}
 	flowResultTypes := map[string]struct{}{}
 	needsUtilityHelpers := false
@@ -231,7 +231,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		flowResultTypes[flow.Return] = struct{}{}
 		collectFlowBuiltins(flow, usedBuiltins)
 		walkFlowSharedStatements(flow, func(statement MIRStmt) {
-			noteJsonRead(statement, jsonReads)
+			noteJsonCall(statement, jsonCalls, resultTypes)
 			switch node := statement.(type) {
 			case MIRCall:
 				if node.Builtin && node.Callee == "LoadOctagon" {
@@ -253,7 +253,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		}
 		for _, bb := range fn.Blocks {
 			for _, st := range bb.Statements {
-				noteJsonRead(st, jsonReads)
+				noteJsonCall(st, jsonCalls, resultTypes)
 				if call, ok := st.(MIRCall); ok && call.Builtin {
 					usedBuiltins[call.Callee] = true
 					if call.Callee == "LoadOctagon" {
@@ -294,12 +294,9 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		features := analyzeFlowFeatures(flow, usedBuiltins)
 		needsUtilityHelpers = needsUtilityHelpers || len(features.UtilitySites) > 0
 	}
-	for _, read := range jsonReads {
-		resultTypes[read.RetType] = struct{}{}
-	}
 	// A Json call hands its data to the Octagon materialiser, so it needs
 	// what LoadOctagon needs.
-	needsOctagonLoad := usedBuiltins["LoadOctagon"] || len(jsonReads) > 0
+	needsOctagonLoad := usedBuiltins["LoadOctagon"] || len(jsonCalls) > 0
 	supportFeatures := analyzeGoSupportFeatures(m, usedBuiltins)
 	importSet := map[string]struct{}{"fmt": {}, "os": {}, "reflect": {}}
 	if options.includeMain {
@@ -351,7 +348,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if len(jsonReads) > 0 {
+	if len(jsonCalls) > 0 {
 		importSet[octjsonImportPath] = struct{}{}
 	}
 	for builtinName := range usedBuiltins {
@@ -680,8 +677,8 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 				b.WriteString("}\n\n")
 			}
 		}
-		if len(jsonReads) > 0 {
-			if err := emitJsonSupport(&b, m, jsonReads); err != nil {
+		if len(jsonCalls) > 0 {
+			if err := emitJsonSupport(&b, m, jsonCalls); err != nil {
 				return "", err
 			}
 		}

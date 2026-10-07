@@ -1,0 +1,40 @@
+package Main
+
+// `Artifact.WriteJson(path, value)` publishes the JSON text of a value during
+// `oct artifact` evaluation, as `Json.Save` writes it in a running program.
+// internal/tester/artifact_json_test.go evaluates this file and compares the
+// published files with data/artifact_summary.json and
+// data/artifact_cases.json, byte for byte.
+
+enum Verdict {
+    Passed
+    Failed
+}
+
+record table Case {
+    Name: String
+    Verdict: Verdict
+    Seconds: Float<s>
+    Note: Option<String>
+}
+
+record Summary {
+    Title: String
+    TotalCases: Int
+    Passed: Int
+    Tolerance: Float
+    Cases: Case
+}
+
+fn Cases() -> Case ! Error {
+    return Json.Parse<Case>("[{\"name\": \"load\", \"verdict\": \"passed\", \"seconds\": 0.25}, {\"name\": \"save\", \"verdict\": \"failed\", \"seconds\": 1, \"note\": \"disk full\"}]")?
+}
+
+[Artifact]
+fn PublishSummary() -> Void ! Error {
+    let cases = Cases()?
+    let summary = Summary { Title: "nightly" TotalCases: Len(cases) Passed: 1 Tolerance: 1e-9 Cases: cases }
+    StaticAssert.Equal(Json.Text(summary), Json.Text(Json.Parse<Summary>(Json.Text(summary))?), "the summary reads back as itself")
+    Artifact.WriteJson("json/summary.json", summary)
+    Artifact.WriteJson("json/cases.json", cases)
+}

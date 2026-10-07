@@ -461,8 +461,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		if access, ok := e.Callee.(ast.FieldAccessExpr); ok {
 			if namespace, ok := access.Target.(ast.IdentifierExpr); ok {
-				if json, ok := builtin.ResolveJsonCall(namespace.Name+"."+access.Field, len(e.TypeArguments)); ok {
-					return c.lowerJsonCall(json, e)
+				if json, ok := builtin.LookupJson(namespace.Name + "." + access.Field); ok {
+					if callType, typed := ast.CallType(e); typed {
+						return c.lowerJsonCall(json, e, callType)
+					}
+					// The first library's function of this name, which
+					// takes no type argument.
+					e.TypeArguments = ast.WithoutInferredTypeArguments(e.TypeArguments)
 				}
 			}
 		}

@@ -1,0 +1,185 @@
+package Main
+
+// `Json.Text(value)` is the JSON text of a value, and `Json.Save(path, value)`
+// writes it to a file. The type of the value says how it is written, as it
+// says how the text is read.
+
+enum Mood {
+    Calm
+    VeryBusy
+}
+
+concept Depth = Float<m> {
+    Require(Self >= 0.0m, "a depth is not negative")
+}
+
+record Station {
+    Name: String
+    Open: Bool
+    Mood: Mood
+    At: Point
+    Depth: Depth
+    Wait: Float<s>
+    Lines: Int[]
+    Note: Option<String>
+}
+
+record table Reading {
+    Station: String
+    Level: Float
+    Flag: Option<Mood>
+}
+
+record Survey {
+    Title: String
+    Readings: Reading
+    Stations: Station[]
+    Levels: Vector<Float>
+    Grid: Matrix<Int>
+    Empty: Station[]
+    Gaps: Option<Point>[]
+}
+
+fn Central() -> Station ! Error {
+    return Station {
+        Name: "Central"
+        Open: true
+        Mood: Mood.VeryBusy
+        At: Point { X: 1.5 Y: -2.0 }
+        Depth: Depth(12.5m)?
+        Wait: 90.0s
+        Lines: [1, 4, 9]
+        Note: Option.None
+    }
+}
+
+[Fact]
+fn AScalarIsWrittenAsItsJsonValue() -> Void {
+    Assert.Equal("42\n", Json.Text(42), "an Int, and the text ends with one newline")
+    Assert.Equal("-7\n", Json.Text(-7), "a negative Int")
+    Assert.Equal("true\n", Json.Text(true), "a Bool")
+    Assert.Equal("\"billing-api\"\n", Json.Text("billing-api"), "a String")
+    Assert.Equal("\"VeryBusy\"\n", Json.Text(Mood.VeryBusy), "an enum is the name of its variant, as declared")
+}
+
+[Fact]
+fn AFloatAlwaysHasAFractionOrAnExponent() -> Void {
+    Assert.Equal("1.0\n", Json.Text(1.0), "a whole Float keeps its fraction")
+    Assert.Equal("-2.5\n", Json.Text(-2.5), "a negative Float")
+    Assert.Equal("0.1\n", Json.Text(0.1), "the shortest text that reads back as the same Float")
+    Assert.Equal("0.30000000000000004\n", Json.Text(0.30000000000000004), "every digit it needs")
+    Assert.Equal("1500000.0\n", Json.Text(1500000.0), "digits, not an exponent, up to 1e21")
+    Assert.Equal("0.000001\n", Json.Text(0.000001), "and down to 1e-6")
+    Assert.Equal("1e+21\n", Json.Text(1e21), "an exponent from 1e21")
+    Assert.Equal("1e-07\n", Json.Text(1e-7), "and below 1e-6")
+}
+
+[Fact]
+fn AStringEscapesQuotesBackslashesAndControlCharacters() -> Void {
+    Assert.Equal("\"a\\\"b\"\n", Json.Text("a\"b"), "a quote")
+    Assert.Equal("\"a\\\\b\"\n", Json.Text("a\\b"), "a backslash")
+    Assert.Equal("\"line\\nnext\"\n", Json.Text("line\nnext"), "a newline")
+    Assert.Equal("\"café / naïve\"\n", Json.Text("café / naïve"), "nothing else: not a slash, and not a character outside ASCII")
+}
+
+[Fact]
+fn ANumberIsWrittenInTheUnitItsTypeDeclares() -> Void {
+    Assert.Equal("1.5\n", Json.Text(1.5s), "seconds")
+    Assert.Equal("12\n", Json.Text(12m), "metres")
+}
+
+[Fact]
+fn AnOptionIsWrittenAsNullOrItsPayload() -> Void {
+    let none: Option<Int> = Option.None
+    Assert.Equal("null\n", Json.Text(none), "None is null")
+    Assert.Equal("7\n", Json.Text(Option<Int>.Some(7)), "Some is its payload")
+}
+
+[Fact]
+fn AnArrayOfScalarsIsOnOneLine() -> Void {
+    let none: Int[] = []
+    Assert.Equal("[1, 2, 3]\n", Json.Text([1, 2, 3]), "an array of Ints")
+    Assert.Equal("[1.0, 2.5]\n", Json.Text([1.0, 2.5]), "an array of Floats")
+    Assert.Equal("[\"a\", \"b\"]\n", Json.Text(["a", "b"]), "an array of Strings")
+    Assert.Equal("[]\n", Json.Text(none), "the empty array")
+    Assert.Equal("[\n  [1, 2],\n  [3]\n]\n", Json.Text([[1, 2], [3]]), "an array of arrays has one to a line")
+}
+
+[Fact]
+fn ARecordIsAnObjectWithItsFieldsAsDeclared() -> Void ! Error {
+    let central = Central()?
+    Assert.Equal("{\n  \"X\": 1.5,\n  \"Y\": -2.0\n}\n", Json.Text(central.At), "keys are the field names, in declaration order")
+    Assert.Equal("{\n  \"Name\": \"Central\",\n  \"Open\": true,\n  \"Mood\": \"VeryBusy\",\n  \"At\": {\n    \"X\": 1.5,\n    \"Y\": -2.0\n  },\n  \"Depth\": 12.5,\n  \"Wait\": 90.0,\n  \"Lines\": [1, 4, 9],\n  \"Note\": null\n}\n", Json.Text(central), "nested records indent by two spaces; a refined value is its base; None is written as null")
+}
+
+[Fact]
+fn ATableIsAnArrayOfRowObjects() -> Void ! Error {
+    let readings = Json.Parse<Reading>("[{\"station\": \"a\", \"level\": 1}, {\"station\": \"b\", \"level\": 2.5, \"flag\": \"calm\"}]")?
+    Assert.Equal("[\n  {\n    \"Station\": \"a\",\n    \"Level\": 1.0,\n    \"Flag\": null\n  },\n  {\n    \"Station\": \"b\",\n    \"Level\": 2.5,\n    \"Flag\": \"Calm\"\n  }\n]\n", Json.Text(readings), "one object for each row, whichever shape it was read from")
+    let none = Json.Parse<Reading>("[]")?
+    Assert.Equal("[]\n", Json.Text(none), "a table with no rows")
+    Assert.Equal("{\n  \"Station\": \"b\",\n  \"Level\": 2.5,\n  \"Flag\": \"Calm\"\n}\n", Json.Text(readings[1]), "one row is one object")
+}
+
+[Fact]
+fn VectorsAndMatricesAreArrays() -> Void ! Error {
+    let levels = Json.Parse<Vector<Float>>("[0.5, 1, 1.5]")?
+    Assert.Equal("[0.5, 1.0, 1.5]\n", Json.Text(levels), "a vector is on one line")
+    let grid = Json.Parse<Matrix<Int>>("[[1, 2], [3, 4]]")?
+    Assert.Equal("[\n  [1, 2],\n  [3, 4]\n]\n", Json.Text(grid), "a matrix has one row to a line")
+}
+
+[Fact]
+fn TheLayoutOfAnArrayFollowsItsElementType() -> Void {
+    let gaps: Option<Point>[] = [Option.None, Option.None]
+    Assert.Equal("[\n  null,\n  null\n]\n", Json.Text(gaps), "an array that could hold objects has one element to a line, even when it holds none")
+    let counts: Option<Int>[] = [Option.None, Option.Some(2)]
+    Assert.Equal("[null, 2]\n", Json.Text(counts), "an array of optional scalars is on one line")
+}
+
+[Fact]
+fn TextReadsBackAsTheSameValue() -> Void ! Error {
+    let central = Central()?
+    Assert.Equal(central, Json.Parse<Station>(Json.Text(central))?, "a record")
+    let survey = Survey {
+        Title: "north"
+        Readings: Json.Parse<Reading>("{\"a\": {\"level\": 0.1}, \"b\": {\"level\": -3e2, \"flag\": \"very_busy\"}}")?
+        Stations: [central, central]
+        Levels: Json.Parse<Vector<Float>>("[0.5, 1, 1.5]")?
+        Grid: Json.Parse<Matrix<Int>>("[[1, 2], [3, 4]]")?
+        Empty: []
+        Gaps: [Option.None, Option.Some(Point { X: 0.0 Y: 9007199254740993.0 })]
+    }
+    let text = Json.Text(survey)
+    let back = Json.Parse<Survey>(text)?
+    Assert.Equal(text, Json.Text(back), "a record of tables, records, vectors, matrices and options writes the same text again")
+    Assert.Equal(survey.Stations[1], back.Stations[1], "its records are equal")
+    Assert.Equal(survey.Gaps[1], back.Gaps[1], "its options are equal")
+    Assert.Equal(2, Len(back.Readings), "its table has its rows")
+    Assert.Equal(-300.0, back.Readings[1].Level, "and its cells")
+    Assert.Equal(Option<Mood>.Some(Mood.VeryBusy), back.Readings[1].Flag, "and its optional cells")
+}
+
+[Fact]
+fn SaveWritesTheTextToAFile() -> Void ! Error {
+    let central = Central()?
+    Json.Save("Language/Builtins/Json/written/station.json", central)?
+    let back = Json.Load<Station>("Language/Builtins/Json/written/station.json")?
+    Assert.Equal(central, back, "the file reads back as the value")
+    Assert.Equal(Json.Text(central), Json.Text(back), "and holds the text Json.Text gives")
+}
+
+[Fact]
+fn SaveReplacesTheFile() -> Void ! Error {
+    Json.Save("Language/Builtins/Json/written/levels.json", [1.0, 2.0, 3.0])?
+    Json.Save("Language/Builtins/Json/written/levels.json", [4.5])?
+    let back = Json.Load<Float[]>("Language/Builtins/Json/written/levels.json")?
+    Assert.Equal(1, Len(back), "the second save is the whole file")
+    Assert.Equal(4.5, back[0], "with its value")
+}
+
+[Fact]
+fn AFileThatCannotBeWrittenIsAnError() -> Void {
+    Assert.Error(Json.Save("Language/Builtins/Json/written/no_such_directory/levels.json", [1.0]), "the directory does not exist")
+    Assert.Error(Json.Save("Language/Builtins/Json/written", [1.0]), "the path is a directory")
+}

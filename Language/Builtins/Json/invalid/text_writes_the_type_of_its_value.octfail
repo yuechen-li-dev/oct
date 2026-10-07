@@ -1,0 +1,9 @@
+expect error: "function 'Json.Text' does not accept type arguments; it writes the type of its value"
+
+package Main
+
+// A writer takes the type of the value it is given. A reader is told its
+// type, `Json.Parse<Float>(text)`; a writer is not.
+fn Main() -> String {
+    return Json.Text<Float>(1.0)
+}

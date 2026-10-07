@@ -145,8 +145,11 @@ type MIRCall struct {
 	Builtin       bool
 	RetType       string
 	FunctionValue bool
-	// JSON is the schema of RetType, on a call to a Json builtin.
-	JSON *octjson.Schema
+	// JSONType is the type a call to a Json builtin is made at, and JSON
+	// its schema. It is RetType for a read, and the type of the value for
+	// a write.
+	JSONType string
+	JSON     *octjson.Schema
 }
 
 func (MIRCall) mirStmt() {}

@@ -16,58 +16,78 @@ import (
 // runs the same Go code as the interpreter rather than an emitted copy.
 const octjsonImportPath = "github.com/yuechen-li-dev/oct/internal/octjson"
 
-// lowerJsonCall lowers `Json.Load<T>(path)` and `Json.Parse<T>(text)` to a
-// builtin call that carries the schema of T.
-func (c *lowerCtx) lowerJsonCall(json builtin.JsonBuiltin, call ast.CallExpr) (string, string, bool, error) {
-	if len(call.TypeArguments) != 1 || len(call.Arguments) != 1 {
-		return "", "", false, fmt.Errorf("function '%s' expects 1 type argument and 1 argument", json.Name())
+// lowerJsonCall lowers a call to a Json builtin, made at callType, to a
+// builtin call that carries the schema of that type.
+func (c *lowerCtx) lowerJsonCall(json builtin.JsonBuiltin, call ast.CallExpr, callType ast.TypeRef) (string, string, bool, error) {
+	if json.Action == builtin.JsonWriteArtifact {
+		return "", "", false, unsupportedBuiltin("ArtifactWriteJson")
 	}
-	argument, _, _, err := c.lowerExpr(call.Arguments[0])
-	if err != nil {
-		return "", "", false, err
+	arguments := make([]string, 0, len(call.Arguments))
+	for _, argument := range call.Arguments {
+		lowered, _, _, err := c.lowerExpr(argument)
+		if err != nil {
+			return "", "", false, err
+		}
+		arguments = append(arguments, lowered)
 	}
-	ret := typeRefStringForPackage(c.pkg.Name, call.TypeArguments[0])
-	tmp := c.temp(fallibleType(ret))
+	valueType := typeRefStringForPackage(c.pkg.Name, callType)
+	// A read gives a T and is fallible. `Json.Save` gives nothing and is
+	// fallible; `Json.Text` gives a String and is not.
+	ret, fallible := valueType, true
+	switch json.Action {
+	case builtin.JsonWriteFile:
+		ret = "Void"
+	case builtin.JsonWriteText:
+		ret, fallible = "String", false
+	}
+	target := ret
+	if fallible {
+		target = fallibleType(ret)
+	}
+	tmp := c.temp(target)
 	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
-		Target:  tmp,
-		Callee:  json.Name(),
-		Args:    lowerMIRValues([]string{argument}, nil),
-		Builtin: true,
-		RetType: ret,
-		JSON:    jsontype.Of(c.program, c.pkg.Name, call.TypeArguments[0]),
+		Target:   tmp,
+		Callee:   json.Name(),
+		Args:     lowerMIRValues(arguments, nil),
+		Builtin:  true,
+		RetType:  ret,
+		JSONType: valueType,
+		JSON:     jsontype.Of(c.program, c.pkg.Name, callType),
 	})
-	return tmp, ret, true, nil
+	return tmp, ret, fallible, nil
 }
 
-// jsonReadName names the generated function for one Json builtin at one
+// jsonCallName names the generated function for one Json builtin at one
 // type, such as `__octJsonLoad_Main_Service`.
-func jsonReadName(json builtin.JsonBuiltin, valueType string) string {
+func jsonCallName(json builtin.JsonBuiltin, valueType string) string {
 	return "__octJson" + json.Symbol + "_" + goSafeName(valueType)
 }
 
-// noteJsonRead records a Json call the program makes, by the function that
-// will serve it.
-func noteJsonRead(statement MIRStmt, reads map[string]MIRCall) {
+// noteJsonCall records a Json call the program makes, by the function that
+// will serve it, and the result type a fallible one needs declared.
+func noteJsonCall(statement MIRStmt, calls map[string]MIRCall, resultTypes map[string]struct{}) {
 	call, ok := statement.(MIRCall)
 	if !ok || !call.Builtin {
 		return
 	}
-	if json, ok := builtin.LookupJson(call.Callee); ok {
-		reads[jsonReadName(json, call.RetType)] = call
+	json, ok := builtin.LookupJson(call.Callee)
+	if !ok {
+		return
+	}
+	calls[jsonCallName(json, call.JSONType)] = call
+	if json.Action != builtin.JsonWriteText {
+		resultTypes[call.RetType] = struct{}{}
 	}
 }
 
 // emitJsonCall emits a call to a Json builtin, and reports whether the call
-// is one. Its value is the Go result type of T, as for any fallible call.
+// is one. A fallible call's value is the Go result type of what it gives.
 func emitJsonCall(call MIRCall, args []string) (string, bool, error) {
 	json, ok := builtin.LookupJson(call.Callee)
 	if !ok || !call.Builtin {
 		return "", false, nil
 	}
-	if len(args) != 1 {
-		return "", true, fmt.Errorf("function '%s' expects 1 argument, got %d", json.Name(), len(args))
-	}
-	return fmt.Sprintf("%s = %s(%s)", call.Target, jsonReadName(json, call.RetType), args[0]), true, nil
+	return fmt.Sprintf("%s = %s(%s)", call.Target, jsonCallName(json, call.JSONType), strings.Join(args, ", ")), true, nil
 }
 
 // jsonHelpers adapts octjson to the generated program: it turns the Octagon
@@ -106,6 +126,79 @@ func __octJsonParsed(data octjson.Data) __octParsedValue {
 	}
 }
 
+// __octJsonData is a value as Octagon data, which is what octjson writes.
+// The schema says what the value is.
+func __octJsonData(v reflect.Value, s *octjson.Schema) octjson.Data {
+	for v.Kind() == reflect.Interface {
+		v = v.Elem()
+	}
+	list := func(items reflect.Value, element *octjson.Schema) octjson.Data {
+		array := octjson.Data{Kind: octjson.DataArray, Array: make([]octjson.Data, items.Len())}
+		for i := range array.Array {
+			array.Array[i] = __octJsonData(items.Index(i), element)
+		}
+		return array
+	}
+	switch s.Kind {
+	case octjson.KindBool:
+		return octjson.Data{Kind: octjson.DataBool, Bool: v.Bool()}
+	case octjson.KindInt:
+		return octjson.Data{Kind: octjson.DataInt, Int: v.Int(), Dimension: s.Dimension}
+	case octjson.KindFloat:
+		return octjson.Data{Kind: octjson.DataFloat, Float: v.Float(), Dimension: s.Dimension}
+	case octjson.KindString:
+		return octjson.Data{Kind: octjson.DataString, Text: v.String()}
+	case octjson.KindEnum:
+		return octjson.Data{Kind: octjson.DataEnum, EnumType: s.Name, Variant: s.Variants[v.FieldByName("Tag").Int()]}
+	case octjson.KindOption:
+		if v.FieldByName("Tag").Int() == 0 {
+			return octjson.Data{Kind: octjson.DataEnum, EnumType: octjson.OptionType, Variant: octjson.OptionNone}
+		}
+		payload := __octJsonData(v.FieldByName("Payload"), s.Elem)
+		return octjson.Data{Kind: octjson.DataEnum, EnumType: octjson.OptionType, Variant: octjson.OptionSome, Payload: &payload}
+	case octjson.KindRecord, octjson.KindTable:
+		record := octjson.Data{Kind: octjson.DataRecord, RecordType: s.Name, Fields: make([]octjson.DataField, len(s.Fields))}
+		for i, field := range s.Fields {
+			held := v.FieldByName(field.Name)
+			if s.Kind == octjson.KindTable {
+				// A table holds each field as a whole column.
+				record.Fields[i] = octjson.DataField{Name: field.Name, Value: list(held, field.Type)}
+			} else {
+				record.Fields[i] = octjson.DataField{Name: field.Name, Value: __octJsonData(held, field.Type)}
+			}
+		}
+		return record
+	case octjson.KindMatrix:
+		rows := octjson.Data{Kind: octjson.DataArray, Array: make([]octjson.Data, v.Len())}
+		for i := range rows.Array {
+			rows.Array[i] = list(v.Index(i), s.Elem)
+		}
+		return rows
+	default:
+		return list(v, s.Elem)
+	}
+}
+
+// __octJsonWriteText is the text of a value. A value JSON cannot hold stops the
+// program.
+func __octJsonWriteText(value any, schema *octjson.Schema) string {
+	text, err := octjson.TextAs(octjson.OperationText, "", __octJsonData(reflect.ValueOf(value), schema), schema)
+	if err != nil {
+		panic("runtime error: " + err.Error())
+	}
+	return text
+}
+
+// __octJsonWriteFile writes a value to a file. A value JSON cannot hold stops the
+// program; a file that cannot be written is the Error the call gives.
+func __octJsonWriteFile(path string, value any, schema *octjson.Schema) error {
+	err := octjson.SaveAs(path, __octJsonData(reflect.ValueOf(value), schema), schema)
+	if err != nil && octjson.Stops(err) {
+		panic("runtime error: " + err.Error())
+	}
+	return err
+}
+
 func __octJsonValue(operation string, data octjson.Data, refusal error, target reflect.Type, expectedType string) (any, error) {
 	if refusal != nil {
 		return nil, refusal
@@ -122,7 +215,7 @@ func __octJsonValue(operation string, data octjson.Data, refusal error, target r
 // emitJsonSupport writes what the program's Json calls need: the helpers,
 // the admission of refined values, and for each call its schema and the
 // function that serves it.
-func emitJsonSupport(b *strings.Builder, m MIRModule, reads map[string]MIRCall) error {
+func emitJsonSupport(b *strings.Builder, m MIRModule, calls map[string]MIRCall) error {
 	b.WriteString(jsonHelpers)
 
 	// __octJsonAdmit is octjson.Admit: it runs the checked constructor of
@@ -136,29 +229,39 @@ func emitJsonSupport(b *strings.Builder, m MIRModule, reads map[string]MIRCall) 
 	}
 	b.WriteString("\t}\n\treturn \"\"\n}\n\n")
 
-	names := make([]string, 0, len(reads))
-	for name := range reads {
+	names := make([]string, 0, len(calls))
+	for name := range calls {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		call := reads[name]
+		call := calls[name]
 		json, _ := builtin.LookupJson(call.Callee)
 		schema, err := goJsonSchema(call.JSON)
 		if err != nil {
-			return fmt.Errorf("%s<%s>: %w", json.Name(), call.RetType, err)
+			return fmt.Errorf("%s at %s: %w", json.Name(), call.JSONType, err)
 		}
-		read := "octjson.ParseAs"
-		if json.Source == builtin.JsonFromFile {
-			read = "octjson.LoadAs"
-		}
-		result := goResultTypeName(call.RetType)
 		fmt.Fprintf(b, "var %s_schema = %s\n\n", name, schema)
-		fmt.Fprintf(b, "func %s(source string) %s {\n", name, result)
-		fmt.Fprintf(b, "\tdata, refusal := %s(source, %s_schema, __octJsonAdmit)\n", read, name)
-		fmt.Fprintf(b, "\tvalue, err := __octJsonValue(%q, data, refusal, reflect.TypeOf((*%s)(nil)).Elem(), %q)\n", json.Name(), goType(call.RetType), call.RetType)
-		fmt.Fprintf(b, "\tif err != nil {\n\t\treturn %s{Err: err.Error(), IsErr: true}\n\t}\n", result)
-		fmt.Fprintf(b, "\treturn %s{Value: value.(%s)}\n}\n\n", result, goType(call.RetType))
+		valueType := goType(call.JSONType)
+		result := goResultTypeName(call.RetType)
+		switch json.Action {
+		case builtin.JsonWriteText:
+			fmt.Fprintf(b, "func %s(value %s) string {\n\treturn __octJsonWriteText(value, %s_schema)\n}\n\n", name, valueType, name)
+		case builtin.JsonWriteFile:
+			fmt.Fprintf(b, "func %s(path string, value %s) %s {\n", name, valueType, result)
+			fmt.Fprintf(b, "\tif err := __octJsonWriteFile(path, value, %s_schema); err != nil {\n\t\treturn %s{Err: err.Error(), IsErr: true}\n\t}\n", name, result)
+			fmt.Fprintf(b, "\treturn %s{}\n}\n\n", result)
+		default:
+			read := "octjson.ParseAs"
+			if json.Action == builtin.JsonReadFile {
+				read = "octjson.LoadAs"
+			}
+			fmt.Fprintf(b, "func %s(source string) %s {\n", name, result)
+			fmt.Fprintf(b, "\tdata, refusal := %s(source, %s_schema, __octJsonAdmit)\n", read, name)
+			fmt.Fprintf(b, "\tvalue, err := __octJsonValue(%q, data, refusal, reflect.TypeOf((*%s)(nil)).Elem(), %q)\n", json.Name(), valueType, call.JSONType)
+			fmt.Fprintf(b, "\tif err != nil {\n\t\treturn %s{Err: err.Error(), IsErr: true}\n\t}\n", result)
+			fmt.Fprintf(b, "\treturn %s{Value: value.(%s)}\n}\n\n", result, valueType)
+		}
 	}
 	return nil
 }

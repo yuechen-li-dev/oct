@@ -1,0 +1,9 @@
+expect runtime error: "Json.Save: Language/Builtins/Json/written/no_such_directory/levels.json: the directory does not exist"
+
+package Main
+
+// A file that cannot be written is an Error, in Oct's words and the same in
+// both lanes. `Json.Save` makes no directories.
+fn Main() -> Void ! Error {
+    Json.Save("Language/Builtins/Json/written/no_such_directory/levels.json", [1.0])?
+}

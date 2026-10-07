@@ -807,6 +807,26 @@ func (t TypeRef) IsUnresolved() bool {
 	return t.Inferred && t.Name == "" && t.Function == nil && t.VectorOf == nil && t.MatrixOf == nil && t.FlowInstanceOf == nil && len(t.TupleOf) == 0
 }
 
+// CallType is the type a call is made at: its one type argument, once that
+// is resolved. `Json.Load<Ticket>(path)` writes it. `Json.Text(value)` leaves
+// it to the typechecker, which fills in the slot the parser made; until then,
+// and for a call with no type argument or several, there is none.
+func CallType(call CallExpr) (TypeRef, bool) {
+	if len(call.TypeArguments) != 1 || call.TypeArguments[0].IsUnresolved() {
+		return TypeRef{}, false
+	}
+	return call.TypeArguments[0], true
+}
+
+// WithoutInferredTypeArguments is a call's type arguments as the source wrote
+// them: none, when the only one is a slot the parser made.
+func WithoutInferredTypeArguments(typeArguments []TypeRef) []TypeRef {
+	if len(typeArguments) == 1 && typeArguments[0].IsUnresolved() {
+		return nil
+	}
+	return typeArguments
+}
+
 // IsOptionType reports whether a type reference is `Option<T>` itself, not an
 // array of them.
 func IsOptionType(t TypeRef) bool {

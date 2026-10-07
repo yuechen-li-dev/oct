@@ -1,0 +1,10 @@
+expect artifact error: "artifact evaluation rejected ambient operation Json.Load"
+
+package Main
+
+// Artifact evaluation reads no file the program names.
+[Artifact]
+fn ReadsAFile() -> Void ! Error {
+    let levels = Json.Load<Float[]>("Language/Builtins/Json/data/tickets.json")?
+    Artifact.WriteJson("levels.json", levels)
+}

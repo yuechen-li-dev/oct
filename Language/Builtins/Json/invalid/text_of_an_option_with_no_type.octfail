@@ -1,0 +1,8 @@
+expect error: "`Option.None` does not say which Option it is"
+
+package Main
+
+// The value says what is written, so it has to have a type.
+fn Main() -> String {
+    return Json.Text(Option.None)
+}

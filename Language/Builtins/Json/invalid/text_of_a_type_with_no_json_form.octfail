@@ -1,0 +1,7 @@
+expect error: "function 'Json.Text' cannot write Complex: Complex has no JSON form"
+
+package Main
+
+fn Main() -> String {
+    return Json.Text(Complex(1.0, 2.0))
+}

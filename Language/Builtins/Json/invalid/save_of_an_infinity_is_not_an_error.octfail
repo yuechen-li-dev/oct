@@ -1,0 +1,17 @@
+expect runtime error: "runtime error: Json.Save: Language/Builtins/Json/written/reading.json: $.Levels[0]: an infinity has no JSON form"
+
+package Main
+
+// A value JSON cannot hold stops the program. It is not an Error: the `err`
+// arm below never runs, and nothing is written.
+record Reading {
+    Name: String
+    Levels: Float[]
+}
+
+fn Main() -> Int {
+    match Json.Save("Language/Builtins/Json/written/reading.json", Reading { Name: "a" Levels: [Exp(1000.0)] }) {
+        ok(_) => { return 0 }
+        err(_) => { return 1 }
+    }
+}

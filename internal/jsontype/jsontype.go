@@ -8,6 +8,8 @@
 package jsontype
 
 import (
+	"strings"
+
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/octjson"
 	"github.com/yuechen-li-dev/oct/internal/project"
@@ -20,6 +22,11 @@ func Of(program project.Program, pkg string, t ast.TypeRef) *octjson.Schema {
 	b := builder{program: program, named: map[string]*octjson.Schema{}}
 	return b.of(pkg, t)
 }
+
+// tableRowPrefix begins the name the typechecker gives the type of one row
+// of a record table: `__oct_table_row_Ticket` for a row of `Ticket`. No
+// source can write the name; it is the type of `tickets[0]`.
+const tableRowPrefix = "__oct_table_row_"
 
 type builder struct {
 	program project.Program
@@ -75,12 +82,15 @@ func (b *builder) of(pkg string, t ast.TypeRef) *octjson.Schema {
 		return schema
 	}
 	declared := b.program.Packages[owner]
+	// One row of a record table, `tickets[0]`, is a record of the table's
+	// cells, and is named after the table.
+	name, isRow := strings.CutPrefix(t.Name, tableRowPrefix)
 	for _, record := range declared.Records {
-		if record.Name != t.Name {
+		if record.Name != name || (isRow && !record.IsTable) {
 			continue
 		}
-		schema := &octjson.Schema{Kind: octjson.KindRecord, Name: t.Name}
-		if record.IsTable {
+		schema := &octjson.Schema{Kind: octjson.KindRecord, Name: name}
+		if record.IsTable && !isRow {
 			schema.Kind = octjson.KindTable
 		}
 		b.named[key] = schema

@@ -5,35 +5,37 @@ import (
 	"testing"
 )
 
-func TestJsonBuiltinsResolve(t *testing.T) {
+func TestJsonBuiltins(t *testing.T) {
 	cases := []struct {
-		callee        string
-		typeArguments int
-		want          string
+		name             string
+		action           JsonAction
+		writes           bool
+		firstLibraryForm bool
 	}{
-		{"Json.Load", 1, "Json.Load"},
-		{"Json.Parse", 1, "Json.Parse"},
-		// A missing type argument is the builtin's own error to report.
-		{"Json.Parse", 0, "Json.Parse"},
-		{"Json.Load", 2, "Json.Load"},
-		// Until the first Json library leaves, `Json.Load(path)` is its.
-		{"Json.Load", 0, ""},
-		{"Json.Save", 1, ""},
-		{"Json.Object", 0, ""},
-		{"IO.Load", 1, ""},
-		{"Load", 1, ""},
+		{"Json.Load", JsonReadFile, false, true},
+		{"Json.Parse", JsonReadText, false, false},
+		{"Json.Save", JsonWriteFile, true, true},
+		{"Json.Text", JsonWriteText, true, false},
+		{"Artifact.WriteJson", JsonWriteArtifact, true, true},
+	}
+	if len(JsonBuiltins()) != len(cases) {
+		t.Errorf("the table has %d builtins, and %d are described here", len(JsonBuiltins()), len(cases))
 	}
 	for _, c := range cases {
-		got, ok := ResolveJsonCall(c.callee, c.typeArguments)
-		if name := got.Name(); (c.want == "") == ok || (ok && name != c.want) {
-			t.Errorf("ResolveJsonCall(%q, %d) = %q, %v; want %q", c.callee, c.typeArguments, name, ok, c.want)
+		json, ok := LookupJson(c.name)
+		if !ok {
+			t.Errorf("LookupJson(%q) finds nothing", c.name)
+			continue
+		}
+		if json.Name() != c.name || json.Action != c.action || json.Writes() != c.writes || json.HasFirstLibraryForm() != c.firstLibraryForm {
+			t.Errorf("%s: action %q, writes %v, first library form %v; want %q, %v, %v",
+				json.Name(), json.Action, json.Writes(), json.HasFirstLibraryForm(), c.action, c.writes, c.firstLibraryForm)
 		}
 	}
-	if load, ok := LookupJson("Json.Load"); !ok || load.Source != JsonFromFile {
-		t.Errorf("Json.Load = %+v, %v; want a builtin that reads a file", load, ok)
-	}
-	if parse, ok := LookupJson("Json.Parse"); !ok || parse.Source != JsonFromText {
-		t.Errorf("Json.Parse = %+v, %v; want a builtin that reads text", parse, ok)
+	for _, name := range []string{"Json.Object", "Json.Decode", "IO.Load", "Load", "Artifact.WriteText", "WriteJson", ""} {
+		if json, ok := LookupJson(name); ok {
+			t.Errorf("LookupJson(%q) = %+v, want nothing", name, json)
+		}
 	}
 	table := JsonBuiltins()
 	table[0].Symbol = "Changed"
@@ -42,19 +44,13 @@ func TestJsonBuiltinsResolve(t *testing.T) {
 	}
 }
 
-// The Json builtins are typed and run from the table in json.go, so each
-// part of the compiler must consult it rather than name them.
+// The Json builtins are parsed, typed and run from the table in json.go, so
+// each part of the compiler must consult it rather than name them.
 func TestJsonBuiltinsHaveImplementationCoverage(t *testing.T) {
-	for part, selector := range map[string]string{
-		"typecheck": "builtin.ResolveJsonCall",
-		"interpret": "builtin.ResolveJsonCall",
-		"build":     "builtin.ResolveJsonCall",
-	} {
-		if _, ok := implementationSelectors(t, filepath.Join("..", part))[selector]; !ok {
-			t.Errorf("internal/%s does not consult %s, so the Json builtins are not implemented there", part, selector)
+	for _, part := range []string{"parse", "typecheck", "interpret", "build"} {
+		if _, ok := implementationSelectors(t, filepath.Join("..", part))["builtin.LookupJson"]; !ok {
+			t.Errorf("internal/%s does not consult builtin.LookupJson, so the Json builtins are not implemented there", part)
 		}
-	}
-	for _, part := range []string{"typecheck", "interpret", "build"} {
 		literals := implementationStringLiterals(t, filepath.Join("..", part))
 		for _, json := range JsonBuiltins() {
 			if _, named := literals[json.Name()]; named {

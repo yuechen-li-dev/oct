@@ -1,0 +1,7 @@
+expect error: "function 'Json.Save' argument 1 expects String, got Int"
+
+package Main
+
+fn Main() -> Void ! Error {
+    Json.Save(7, [1.0])?
+}

@@ -1,0 +1,7 @@
+expect runtime error: "Json.Save: Language/Builtins/Json/written: this is a directory, not a file"
+
+package Main
+
+fn Main() -> Void ! Error {
+    Json.Save("Language/Builtins/Json/written", [1.0])?
+}

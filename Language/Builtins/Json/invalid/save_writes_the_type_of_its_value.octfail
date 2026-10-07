@@ -1,0 +1,7 @@
+expect error: "function 'Json.Save' does not accept type arguments; it writes the type of its value"
+
+package Main
+
+fn Main() -> Void ! Error {
+    Json.Save<Float[]>("levels.json", [1.0])?
+}

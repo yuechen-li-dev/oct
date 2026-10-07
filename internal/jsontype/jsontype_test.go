@@ -109,6 +109,11 @@ func TestOf(t *testing.T) {
 			{Name: "Id", Type: scalar(octjson.KindString)},
 			{Name: "Assignee", Type: &octjson.Schema{Kind: octjson.KindOption, Elem: scalar(octjson.KindString)}},
 		}}},
+		{"one row of a table", "Main", named("__oct_table_row_Ticket"), &octjson.Schema{Kind: octjson.KindRecord, Name: "Ticket", Fields: []octjson.Field{
+			{Name: "Id", Type: scalar(octjson.KindString)},
+			{Name: "Assignee", Type: &octjson.Schema{Kind: octjson.KindOption, Elem: scalar(octjson.KindString)}},
+		}}},
+		{"a row of a record that is not a table", "Main", named("__oct_table_row_Service"), &octjson.Schema{Kind: octjson.KindUnsupported, Name: "__oct_table_row_Service"}},
 		{"a record of another package, qualified", "Main", in("Net", "Address"), address},
 		{"the same record from inside its package", "Net", named("Address"), address},
 		{"a record with a field of another package", "Main", named("Service"), &octjson.Schema{Kind: octjson.KindRecord, Name: "Service", Fields: []octjson.Field{

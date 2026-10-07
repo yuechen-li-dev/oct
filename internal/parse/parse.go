@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/builtin"
 	"github.com/yuechen-li-dev/oct/internal/dimension"
 	"github.com/yuechen-li-dev/oct/internal/lex"
 	"github.com/yuechen-li-dev/oct/internal/source"
@@ -2308,6 +2309,25 @@ func (p *parser) parsePrefixExpr() (ast.Expr, error) {
 	return p.parsePostfixExpr()
 }
 
+// inferredCallType is the type-argument slot of a call to a builtin that
+// takes its type from the value it is given, such as `Json.Text(value)`, and
+// nil for any other callee. The typechecker fills the slot in; see
+// ast.CallType.
+func inferredCallType(callee ast.Expr) []ast.TypeRef {
+	access, ok := callee.(ast.FieldAccessExpr)
+	if !ok {
+		return nil
+	}
+	namespace, ok := access.Target.(ast.IdentifierExpr)
+	if !ok {
+		return nil
+	}
+	if json, ok := builtin.LookupJson(namespace.Name + "." + access.Field); ok && json.Writes() {
+		return []ast.TypeRef{{Inferred: true}}
+	}
+	return nil
+}
+
 func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 	expr, err := p.parsePrimaryExpr()
 	if err != nil {
@@ -2322,7 +2342,7 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			expr = ast.CallExpr{Callee: expr, Arguments: arguments, Line: callToken.Line, Column: callToken.Column}
+			expr = ast.CallExpr{Callee: expr, TypeArguments: inferredCallType(expr), Arguments: arguments, Line: callToken.Line, Column: callToken.Column}
 		case isOptionName(expr) && !p.literalNameIsBound(ast.OptionTypeName) && (p.current().Kind == lex.Dot || (p.current().Kind == lex.LeftAngle && p.looksLikeOptionVariant())):
 			// `Option.Variant`, `Option<T>.Variant`, and either with a
 			// payload. See ast.AsOptionConstruction for the node.

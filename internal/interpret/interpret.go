@@ -2646,8 +2646,13 @@ regularCall:
 		return evalResult{}, fmt.Errorf("runtime error: Int(...) is not a conversion in Oct because float-to-int conversion must choose a rounding policy explicitly. Use FloorToInt(x), CeilToInt(x), or RoundToInt(x). For sample counts, FloorToInt(sampleRate * duration) is usually intended.")
 	}
 	if hasDirectName {
-		if json, ok := builtin.ResolveJsonCall(calleeName, len(expr.TypeArguments)); ok {
-			return i.evalJsonCall(env, pkgName, json, expr.TypeArguments, expr.Arguments)
+		if json, ok := builtin.LookupJson(calleeName); ok {
+			if callType, typed := ast.CallType(expr); typed {
+				return i.evalJsonCall(env, pkgName, json, callType, expr.Arguments)
+			}
+			// The first library's function of this name, which takes no
+			// type argument.
+			expr.TypeArguments = ast.WithoutInferredTypeArguments(expr.TypeArguments)
 		}
 	}
 	if hasDirectName && (builtin.IsName(calleeName) || isUnreservedRandomBuiltinCall(calleeName, pkgName)) {

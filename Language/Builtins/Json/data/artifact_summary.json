@@ -1,0 +1,20 @@
+{
+  "Title": "nightly",
+  "TotalCases": 2,
+  "Passed": 1,
+  "Tolerance": 1e-09,
+  "Cases": [
+    {
+      "Name": "load",
+      "Verdict": "Passed",
+      "Seconds": 0.25,
+      "Note": null
+    },
+    {
+      "Name": "save",
+      "Verdict": "Failed",
+      "Seconds": 1.0,
+      "Note": "disk full"
+    }
+  ]
+}

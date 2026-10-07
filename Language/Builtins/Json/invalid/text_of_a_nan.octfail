@@ -1,0 +1,15 @@
+expect runtime error: "runtime error: Json.Text: $.Levels[1]: NaN has no JSON form"
+
+package Main
+
+// JSON has no NaN. A value that holds one stops the program, with the place
+// of the NaN in the value; `Json.Text` is not fallible.
+record Reading {
+    Name: String
+    Levels: Float[]
+}
+
+fn Main() -> String {
+    let huge = Exp(1000.0)
+    return Json.Text(Reading { Name: "a" Levels: [1.0, huge - huge] })
+}
