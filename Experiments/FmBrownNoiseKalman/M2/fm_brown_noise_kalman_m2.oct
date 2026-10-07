@@ -1,7 +1,6 @@
 package FmBrownNoiseKalman
 
 import String
-import Json
 import Artifact
 import Markdown
 import Shared
@@ -109,6 +108,42 @@ record M2OctagonSummary {
     labelToleranceSnrEpsilonDb: Float
     labelToleranceWhitenessRelativeEpsilon: Float
     outputDiagnosticsCount: Int
+}
+
+record M2LabelTolerance {
+    SnrEpsilonDb: Float
+    WhitenessRelativeEpsilon: Float
+}
+
+record M2MetricsSummary {
+    RowCount: Int
+    LabelTolerance: M2LabelTolerance
+    OutputDiagnosticsCount: Int
+}
+
+record M2bSweepSummary {
+    TotalCases: Int
+    AdaptiveWin: Int
+    WhitenessOnly: Int
+    RecoveryOnly: Int
+    NoWin: Int
+    FinalAMin: Float
+    FinalAMax: Float
+    FinalAClampCount: Int
+}
+
+record M2bOctagonSummary {
+    Title: String
+    TotalCases: Int
+}
+
+record M2bSweepProgress {
+    Phase: String
+    ModeCount: Int
+    GridCount: Int
+    ExpectedRunSweepCaseCalls: Int
+    RunSweepCaseCalls: Int
+    RowCount: Int
 }
 
 record M2bParams {
@@ -747,9 +782,11 @@ fn M2ArtifactWriteAll() -> Int ! Error {
         ])
     ])
 
-    let summary = Json.Object(
-        "{\"rowCount\":" + ToString(Len(rows)) + ",\"labelTolerance\":{\"snrEpsilonDb\":0.01,\"whitenessRelativeEpsilon\":0.01},\"outputDiagnosticsCount\":" + ToString(Len(diagnostics)) + "}"
-    )
+    let summary = M2MetricsSummary {
+        RowCount: Len(rows)
+        LabelTolerance: M2LabelTolerance { SnrEpsilonDb: 0.01 WhitenessRelativeEpsilon: 0.01 }
+        OutputDiagnosticsCount: Len(diagnostics)
+    }
 
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M2/metrics.csv", csv)
     Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M2/metrics.json", summary)
@@ -783,7 +820,7 @@ fn M2bBuildCsvRows(rows: M2bComparison[]) -> String[][] {
     return csv
 }
 
-fn M2bBuildJsonSummary(rows: M2bComparison[]) -> String {
+fn M2bBuildSweepSummary(rows: M2bComparison[]) -> M2bSweepSummary {
     var adaptiveWin = 0
     var whitenessOnly = 0
     var recoveryOnly = 0
@@ -807,26 +844,42 @@ fn M2bBuildJsonSummary(rows: M2bComparison[]) -> String {
         if r.FinalA > finalAMax { finalAMax = r.FinalA }
         if Abs(r.FinalA) >= 0.98 { clampCount = clampCount + 1 }
     }
-    return "{\"totalCases\":" + ToString(Len(rows)) + ",\"adaptiveWin\":" + ToString(adaptiveWin) + ",\"whitenessOnly\":" + ToString(whitenessOnly) + ",\"recoveryOnly\":" + ToString(recoveryOnly) + ",\"noWin\":" + ToString(nowin) + ",\"finalAMin\":" + ToString(finalAMin) + ",\"finalAMax\":" + ToString(finalAMax) + ",\"finalAClampCount\":" + ToString(clampCount) + "}"
+    return M2bSweepSummary {
+        TotalCases: Len(rows)
+        AdaptiveWin: adaptiveWin
+        WhitenessOnly: whitenessOnly
+        RecoveryOnly: recoveryOnly
+        NoWin: nowin
+        FinalAMin: finalAMin
+        FinalAMax: finalAMax
+        FinalAClampCount: clampCount
+    }
 }
 
 fn M2bBuildMarkdownReport(tiny: M2Case, rows: M2bComparison[]) -> String[] {
-    let json = M2bBuildJsonSummary(rows)
+    let summary = M2bBuildSweepSummary(rows)
     return Markdown.Report([
         Markdown.H1("FM Brown-Noise Kalman M2b"),
         Markdown.Paragraph("Bounded oscillator/adaptive sensitivity sweep over covariance and adaptation settings."),
         Markdown.Section("Sweep settings", [Markdown.KeyValueTable(["sampleRate", "duration", "messageHz", "carrierHz", "frequencyDeviationHz", "inputSNRDb", "seed"], [ToString(tiny.SampleRate), ToString(tiny.Duration), ToString(tiny.MessageHz), ToString(tiny.CarrierHz), ToString(tiny.FrequencyDeviationHz), ToString(tiny.InputSNRDb), ToString(tiny.Seed)])]),
-        Markdown.Section("Summary", [Markdown.Paragraph(json)]),
+        Markdown.Section("Summary", [Markdown.KeyValueTable(["totalCases", "adaptiveWin", "whitenessOnly", "recoveryOnly", "noWin", "finalAMin", "finalAMax", "finalAClampCount"], [ToString(summary.TotalCases), ToString(summary.AdaptiveWin), ToString(summary.WhitenessOnly), ToString(summary.RecoveryOnly), ToString(summary.NoWin), ToString(summary.FinalAMin), ToString(summary.FinalAMax), ToString(summary.FinalAClampCount)])]),
         Markdown.Section("Limitations", [Markdown.Bullets(["still synthetic sine message", "still phase-domain FM, not real carrier/IQ FM", "no real audio", "covariance grid is small", "sweep is diagnostic, not exhaustive", "adaptive win can be sensitive to modeling assumptions"])])
     ])
 }
 
-fn M2bBuildOctagonSummary(rows: M2bComparison[]) -> String {
-    return "{\"title\":\"FM Brown-Noise Kalman M2b\",\"totalCases\":" + ToString(Len(rows)) + "}"
+fn M2bBuildOctagonSummary(rows: M2bComparison[]) -> M2bOctagonSummary {
+    return M2bOctagonSummary { Title: "FM Brown-Noise Kalman M2b" TotalCases: Len(rows) }
 }
 
-fn M2bBuildProgressJson(phase: String, modeCount: Int, gridCount: Int, runSweepCaseCalls: Int, rowCount: Int) -> String {
-    return "{\"phase\":\"" + phase + "\",\"modeCount\":" + ToString(modeCount) + ",\"gridCount\":" + ToString(gridCount) + ",\"expectedRunSweepCaseCalls\":" + ToString(modeCount * gridCount) + ",\"runSweepCaseCalls\":" + ToString(runSweepCaseCalls) + ",\"rowCount\":" + ToString(rowCount) + "}"
+fn M2bBuildProgress(phase: String, modeCount: Int, gridCount: Int, runSweepCaseCalls: Int, rowCount: Int) -> M2bSweepProgress {
+    return M2bSweepProgress {
+        Phase: phase
+        ModeCount: modeCount
+        GridCount: gridCount
+        ExpectedRunSweepCaseCalls: modeCount * gridCount
+        RunSweepCaseCalls: runSweepCaseCalls
+        RowCount: rowCount
+    }
 }
 
 fn M2bArtifactWriteAll() -> Int ! Error {
@@ -838,7 +891,7 @@ fn M2bArtifactWriteAll() -> Int ! Error {
 
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("start", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("start", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
 
     for mi in 0..Len(modes) {
@@ -849,54 +902,54 @@ fn M2bArtifactWriteAll() -> Int ! Error {
             runSweepCaseCalls = runSweepCaseCalls + 1
             Artifact.WriteJson(
                 "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-                Json.Object(M2bBuildProgressJson("sweepCase#" + ToString(runSweepCaseCalls), Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+                M2bBuildProgress("sweepCase#" + ToString(runSweepCaseCalls), Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
             )
         }
     }
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("afterSweep", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("afterSweep", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
 
     let csv = M2bBuildCsvRows(rows)
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("afterCsvBuild", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("afterCsvBuild", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
-    let json = Json.Object(M2bBuildJsonSummary(rows))
+    let json = M2bBuildSweepSummary(rows)
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("afterJsonBuild", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("afterJsonBuild", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
     let md = M2bBuildMarkdownReport(tiny, rows)
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("afterMarkdownBuild", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("afterMarkdownBuild", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
-    let octagon = Json.Object(M2bBuildOctagonSummary(rows))
+    let octagon = M2bBuildOctagonSummary(rows)
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("afterOctagonBuild", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("afterOctagonBuild", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M2/sweep_metrics.csv", csv)
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("afterWriteCsv", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("afterWriteCsv", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
     Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M2/sweep_summary.json", json)
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("afterWriteJson", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("afterWriteJson", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
     Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M2/m2b_sweep_report.octagon", octagon)
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("afterWriteOctagon", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("afterWriteOctagon", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M2/m2b_sweep_report.md", md)
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M2/m2b_sweep_progress.json",
-        Json.Object(M2bBuildProgressJson("done", Len(modes), Len(grid), runSweepCaseCalls, Len(rows)))
+        M2bBuildProgress("done", Len(modes), Len(grid), runSweepCaseCalls, Len(rows))
     )
     return 0
 }

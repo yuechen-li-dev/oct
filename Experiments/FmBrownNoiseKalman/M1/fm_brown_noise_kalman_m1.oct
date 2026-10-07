@@ -3,7 +3,6 @@ package FmBrownNoiseKalman
 import String
 import IO
 import Csv
-import Json
 import Artifact
 import Markdown
 import Shared
@@ -17,6 +16,9 @@ record M1Run { Mode: String Case: M1Case CleanMessage: Float[] Observed: Float[]
 record M1MetricReportTable { mode: String[] method: String[] outputSNRDb: String[] nrmse: String[] correlation: String[] whitenessCost: String[] lag1InnovationAutocorrelation: String[] finalA: String[] diagnosticLabel: String[] }
 record M1PairwiseTable { mode: String[] leftMethod: String[] rightMethod: String[] exactEqual: String[] rmsDifference: String[] maxAbsDifference: String[] correlation: String[] }
 record M1OctagonSummary { title: String rowCount: Int artifactSkipNotes: String[] limitations: String[] labelToleranceSnrEpsilonDb: Float labelToleranceWhitenessRelativeEpsilon: Float outputDiagnosticsCount: Int }
+record M1MetricsSettings { SampleRate: Float Duration: Float MessageHz: Float CarrierHz: Float FrequencyDeviationHz: Float InputSNRDb: Float Seed: Int }
+record M1LabelTolerance { SnrEpsilonDb: Float WhitenessRelativeEpsilon: Float }
+record M1MetricsSummary { RowCount: Int Settings: M1MetricsSettings LabelTolerance: M1LabelTolerance OutputDiagnosticsCount: Int ArtifactSkipNotes: String[] }
 
 fn M1TinyCase() -> M1Case { return M1Case { Label: "tiny" SampleRate: 2000.0 Duration: 0.5 MessageHz: 25.0 CarrierHz: 250.0 FrequencyDeviationHz: 50.0 InputSNRDb: -12.0 Seed: 12345 } }
 fn BuildCleanMessage(c: M1Case) -> Float[] { let n = FloorToInt(c.SampleRate * c.Duration) var clean: Float[] = [] for i in 0..n { let t = Float(i) / c.SampleRate clean = Append(clean, Sin(2.0 * Pi() * c.MessageHz * t)) } return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0) }
@@ -230,7 +232,21 @@ fn M1ArtifactWriteAll() -> Int ! Error {
         Markdown.Section("Artifacts", [Markdown.Bullets(["m1_report.octagon", "m1_report.md", "metrics.csv", "metrics.json", "recovered_signals_sample.csv: skipped unless <=1000 rows", "innovations_sample.csv: skipped unless <=1000 rows"])]),
         Markdown.Section("Limitations", [Markdown.Bullets(["Phase-domain FM path is not real carrier/IQ FM.", "M1 does not use real audio.", "Adaptive AR(1) model is diagnostic only.", "Whitening innovations does not guarantee better recovery.", "Message model may be too weak or mismatched.", "Phase-domain noise path can be partially whitened by differentiation."])])
     ])
-    let summary = Json.Object("{\"rowCount\":" + ToString(Len(rows)) + ",\"settings\":{\"sampleRate\":" + ToString(tiny.SampleRate) + ",\"duration\":" + ToString(tiny.Duration) + ",\"messageHz\":" + ToString(tiny.MessageHz) + ",\"carrierHz\":" + ToString(tiny.CarrierHz) + ",\"frequencyDeviationHz\":" + ToString(tiny.FrequencyDeviationHz) + ",\"inputSNRDb\":" + ToString(tiny.InputSNRDb) + ",\"seed\":" + ToString(tiny.Seed) + "},\"labelTolerance\":{\"snrEpsilonDb\":0.01,\"whitenessRelativeEpsilon\":0.01},\"outputDiagnosticsCount\":" + ToString(Len(diagnostics)) + ",\"artifactSkipNotes\":[\"sample CSV writes are bounded to <=1000 rows\"]}")
+    let summary = M1MetricsSummary {
+        RowCount: Len(rows)
+        Settings: M1MetricsSettings {
+            SampleRate: tiny.SampleRate
+            Duration: tiny.Duration
+            MessageHz: tiny.MessageHz
+            CarrierHz: tiny.CarrierHz
+            FrequencyDeviationHz: tiny.FrequencyDeviationHz
+            InputSNRDb: tiny.InputSNRDb
+            Seed: tiny.Seed
+        }
+        LabelTolerance: M1LabelTolerance { SnrEpsilonDb: 0.01 WhitenessRelativeEpsilon: 0.01 }
+        OutputDiagnosticsCount: Len(diagnostics)
+        ArtifactSkipNotes: ["sample CSV writes are bounded to <=1000 rows"]
+    }
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M1/metrics.csv", csv)
     Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M1/metrics.json", summary)
     Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M1/m1_report.octagon", M1OctagonSummary { title: "FM Brown-Noise Kalman M1" rowCount: Len(rows) artifactSkipNotes: ["sample CSV writes are bounded to <=1000 rows"] limitations: ["Phase-domain FM path is not real carrier/IQ FM.", "M1 does not use real audio.", "Adaptive AR(1) model is diagnostic only."] labelToleranceSnrEpsilonDb: 0.01 labelToleranceWhitenessRelativeEpsilon: 0.01 outputDiagnosticsCount: Len(diagnostics) })

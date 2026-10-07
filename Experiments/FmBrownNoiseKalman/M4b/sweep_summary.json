@@ -1,1 +1,9 @@
-{"totalCases":27,"adaptiveWin":11,"recoveryOnly":0,"whitenessOnly":16,"noMeaningfulWin":0,"meanDeltaOutputSNRDb":-0.016860697246958038,"meanWhitenessRatio":0.5343315017946046}
+{
+  "TotalCases": 27,
+  "AdaptiveWin": 11,
+  "RecoveryOnly": 0,
+  "WhitenessOnly": 16,
+  "NoMeaningfulWin": 0,
+  "MeanDeltaOutputSNRDb": -0.016860697246958038,
+  "MeanWhitenessRatio": 0.5343315017946046
+}

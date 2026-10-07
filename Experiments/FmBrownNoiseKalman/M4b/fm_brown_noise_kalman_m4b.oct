@@ -4,7 +4,6 @@ import Shared
 import String
 import Artifact
 import Markdown
-import Json
 
 record M4bCase {
     SampleRate: Float
@@ -74,6 +73,16 @@ record M4bSummary {
     FinalAMax: Float
     FinalAMean: Float
     ClampTotal: Int
+}
+
+record M4bSweepSummary {
+    TotalCases: Int
+    AdaptiveWin: Int
+    RecoveryOnly: Int
+    WhitenessOnly: Int
+    NoMeaningfulWin: Int
+    MeanDeltaOutputSNRDb: Float
+    MeanWhitenessRatio: Float
 }
 
 record M4bReport {
@@ -553,16 +562,15 @@ fn M4bArtifactWriteAll() -> Int {
     Artifact.Checkpoint("beforeJsonWrite")
     Artifact.WriteJson(
         "Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json",
-        Json.Object(String.Concat([
-            "{\"totalCases\":", String.From<Int>(report.Summary.TotalCases),
-            ",\"adaptiveWin\":", String.From<Int>(report.Summary.AdaptiveWinCount),
-            ",\"recoveryOnly\":", String.From<Int>(report.Summary.RecoveryOnlyCount),
-            ",\"whitenessOnly\":", String.From<Int>(report.Summary.WhitenessOnlyCount),
-            ",\"noMeaningfulWin\":", String.From<Int>(report.Summary.NoMeaningfulWinCount),
-            ",\"meanDeltaOutputSNRDb\":", String.From<Float>(report.Summary.MeanDeltaOutputSNRDb),
-            ",\"meanWhitenessRatio\":", String.From<Float>(report.Summary.MeanWhitenessRatio),
-            "}"
-        ]))
+        M4bSweepSummary {
+            TotalCases: report.Summary.TotalCases
+            AdaptiveWin: report.Summary.AdaptiveWinCount
+            RecoveryOnly: report.Summary.RecoveryOnlyCount
+            WhitenessOnly: report.Summary.WhitenessOnlyCount
+            NoMeaningfulWin: report.Summary.NoMeaningfulWinCount
+            MeanDeltaOutputSNRDb: report.Summary.MeanDeltaOutputSNRDb
+            MeanWhitenessRatio: report.Summary.MeanWhitenessRatio
+        }
     )
     Artifact.Checkpoint("done")
 

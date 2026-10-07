@@ -4,7 +4,6 @@ import Shared
 import String
 import Artifact
 import Markdown
-import Json
 
 record M3Case {
     SampleRate: Float
@@ -49,6 +48,12 @@ record M3MetricRow {
     Nrmse: Float
     WhitenessCost: Float
     Correlation: Float
+}
+
+record M3Metrics {
+    Tolerance: Float
+    MaxOutputDiff: Float
+    MaxInnovationDiff: Float
 }
 
 record M3Run {
@@ -296,6 +301,10 @@ fn M3ArtifactWriteAll() -> Int {
     Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.octagon", run)
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M3/m3_octomata_kalman_report.md", report)
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M3/metrics.csv", [["method", "outputSNRDb", "nrmse", "whitenessCost", "correlation"], [run.Metrics[0].Method, String.From<Float>(run.Metrics[0].OutputSNRDb), String.From<Float>(run.Metrics[0].Nrmse), String.From<Float>(run.Metrics[0].WhitenessCost), String.From<Float>(run.Metrics[0].Correlation)], [run.Metrics[1].Method, String.From<Float>(run.Metrics[1].OutputSNRDb), String.From<Float>(run.Metrics[1].Nrmse), String.From<Float>(run.Metrics[1].WhitenessCost), String.From<Float>(run.Metrics[1].Correlation)]])
-    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M3/metrics.json", Json.Object(String.Concat(["{\"tolerance\":", String.From<Float>(run.ToleranceUsed), ",\"maxOutputDiff\":", String.From<Float>(run.MaxOutputDiff), ",\"maxInnovationDiff\":", String.From<Float>(run.MaxInnovationDiff), "}"])))
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M3/metrics.json", M3Metrics {
+        Tolerance: run.ToleranceUsed
+        MaxOutputDiff: run.MaxOutputDiff
+        MaxInnovationDiff: run.MaxInnovationDiff
+    })
     return 0
 }

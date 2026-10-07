@@ -1,1 +1,18 @@
-{"rowCount":8,"settings":{"sampleRate":2000,"duration":0.5,"messageHz":25,"carrierHz":250,"frequencyDeviationHz":50,"inputSNRDb":-12,"seed":12345},"labelTolerance":{"snrEpsilonDb":0.01,"whitenessRelativeEpsilon":0.01},"outputDiagnosticsCount":8,"artifactSkipNotes":["sample CSV writes are bounded to <=1000 rows"]}
+{
+  "RowCount": 8,
+  "Settings": {
+    "SampleRate": 2000.0,
+    "Duration": 0.5,
+    "MessageHz": 25.0,
+    "CarrierHz": 250.0,
+    "FrequencyDeviationHz": 50.0,
+    "InputSNRDb": -12.0,
+    "Seed": 12345
+  },
+  "LabelTolerance": {
+    "SnrEpsilonDb": 0.01,
+    "WhitenessRelativeEpsilon": 0.01
+  },
+  "OutputDiagnosticsCount": 8,
+  "ArtifactSkipNotes": ["sample CSV writes are bounded to <=1000 rows"]
+}

@@ -4,7 +4,6 @@ import Shared
 import String
 import Artifact
 import Markdown
-import Json
 
 record M6Case { SampleRate: Float Duration: Float MessageHz: Float InputSNRDb: Float Seed: Int }
 record M6AdaptiveResult {
@@ -77,6 +76,29 @@ record M6Summary {
     GuardTriggerTotal: Int
     EquivalencePassCount: Int
 }
+record M6SweepSummary {
+    TotalCases: Int
+    ScalarAdaptiveWin: Int
+    WindowedAdaptiveWin: Int
+    GuardedAdaptiveWin: Int
+    GuardedRecoveryOnly: Int
+    GuardedWhitenessOnly: Int
+    GuardedNoMeaningfulWin: Int
+    GuardedMeanDeltaOutputSNRDb: Float
+    GuardedMeanWhitenessRatio: Float
+    GuardedBetterRecoveryVsScalar: Int
+    GuardedBetterWhitenessVsScalar: Int
+    GuardedFinalAMin: Float
+    GuardedFinalAMax: Float
+    GuardedFinalAMean: Float
+    GuardedClampTotal: Int
+    GuardAcceptedTotal: Int
+    GuardAttenuatedTotal: Int
+    GuardRejectedTotal: Int
+    GuardTriggerTotal: Int
+    EquivalencePassCount: Int
+}
+
 record M6Report { Cases: M6CaseMetrics[] Summary: M6Summary }
 
 flow M6GuardedAdaptiveMachine(observed: Float[], chosenA: Float[], accepted: Bool[], attenuated: Bool[], rejected: Bool[]) -> Bool {
@@ -417,28 +439,28 @@ fn M6ArtifactWriteAll() -> Int {
     Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M6/m6_recovery_guarded_adaptive_report.octagon", report)
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M6/m6_recovery_guarded_adaptive_report.md", findings)
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M6/sweep_metrics.csv", csv)
-    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M6/sweep_summary.json", Json.Object(String.Concat([
-        "{\"totalCases\":", String.From<Int>(report.Summary.TotalCases),
-        ",\"scalarAdaptiveWin\":", String.From<Int>(report.Summary.ScalarAdaptiveWinCount),
-        ",\"windowedAdaptiveWin\":", String.From<Int>(report.Summary.WindowedAdaptiveWinCount),
-        ",\"guardedAdaptiveWin\":", String.From<Int>(report.Summary.GuardedAdaptiveWinCount),
-        ",\"guardedRecoveryOnly\":", String.From<Int>(report.Summary.GuardedRecoveryOnlyCount),
-        ",\"guardedWhitenessOnly\":", String.From<Int>(report.Summary.GuardedWhitenessOnlyCount),
-        ",\"guardedNoMeaningfulWin\":", String.From<Int>(report.Summary.GuardedNoMeaningfulWinCount),
-        ",\"guardedMeanDeltaOutputSNRDb\":", String.From<Float>(report.Summary.GuardedMeanDeltaOutputSNRDb),
-        ",\"guardedMeanWhitenessRatio\":", String.From<Float>(report.Summary.GuardedMeanWhitenessRatio),
-        ",\"guardedBetterRecoveryVsScalar\":", String.From<Int>(report.Summary.GuardedBetterRecoveryVsScalarCount),
-        ",\"guardedBetterWhitenessVsScalar\":", String.From<Int>(report.Summary.GuardedBetterWhitenessVsScalarCount),
-        ",\"guardedFinalAMin\":", String.From<Float>(report.Summary.GuardedFinalAMin),
-        ",\"guardedFinalAMax\":", String.From<Float>(report.Summary.GuardedFinalAMax),
-        ",\"guardedFinalAMean\":", String.From<Float>(report.Summary.GuardedFinalAMean),
-        ",\"guardedClampTotal\":", String.From<Int>(report.Summary.GuardedClampTotal),
-        ",\"guardAcceptedTotal\":", String.From<Int>(report.Summary.GuardAcceptedTotal),
-        ",\"guardAttenuatedTotal\":", String.From<Int>(report.Summary.GuardAttenuatedTotal),
-        ",\"guardRejectedTotal\":", String.From<Int>(report.Summary.GuardRejectedTotal),
-        ",\"guardTriggerTotal\":", String.From<Int>(report.Summary.GuardTriggerTotal),
-        ",\"equivalencePassCount\":", String.From<Int>(report.Summary.EquivalencePassCount), "}"
-    ])))
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M6/sweep_summary.json", M6SweepSummary {
+        TotalCases: report.Summary.TotalCases
+        ScalarAdaptiveWin: report.Summary.ScalarAdaptiveWinCount
+        WindowedAdaptiveWin: report.Summary.WindowedAdaptiveWinCount
+        GuardedAdaptiveWin: report.Summary.GuardedAdaptiveWinCount
+        GuardedRecoveryOnly: report.Summary.GuardedRecoveryOnlyCount
+        GuardedWhitenessOnly: report.Summary.GuardedWhitenessOnlyCount
+        GuardedNoMeaningfulWin: report.Summary.GuardedNoMeaningfulWinCount
+        GuardedMeanDeltaOutputSNRDb: report.Summary.GuardedMeanDeltaOutputSNRDb
+        GuardedMeanWhitenessRatio: report.Summary.GuardedMeanWhitenessRatio
+        GuardedBetterRecoveryVsScalar: report.Summary.GuardedBetterRecoveryVsScalarCount
+        GuardedBetterWhitenessVsScalar: report.Summary.GuardedBetterWhitenessVsScalarCount
+        GuardedFinalAMin: report.Summary.GuardedFinalAMin
+        GuardedFinalAMax: report.Summary.GuardedFinalAMax
+        GuardedFinalAMean: report.Summary.GuardedFinalAMean
+        GuardedClampTotal: report.Summary.GuardedClampTotal
+        GuardAcceptedTotal: report.Summary.GuardAcceptedTotal
+        GuardAttenuatedTotal: report.Summary.GuardAttenuatedTotal
+        GuardRejectedTotal: report.Summary.GuardRejectedTotal
+        GuardTriggerTotal: report.Summary.GuardTriggerTotal
+        EquivalencePassCount: report.Summary.EquivalencePassCount
+    })
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M6/FINDINGS.md", findings)
     Artifact.Checkpoint("done")
     return 0

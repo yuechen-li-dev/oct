@@ -1,1 +1,22 @@
-{"totalCases":27,"scalarAdaptiveWin":11,"windowedAdaptiveWin":1,"guardedAdaptiveWin":9,"guardedRecoveryOnly":0,"guardedWhitenessOnly":17,"guardedNoMeaningfulWin":1,"guardedMeanDeltaOutputSNRDb":-0.019065477359533994,"guardedMeanWhitenessRatio":0.6005838206223174,"guardedBetterRecoveryVsScalar":9,"guardedBetterWhitenessVsScalar":0,"guardedFinalAMin":0.49171519733656094,"guardedFinalAMax":0.99,"guardedFinalAMean":0.9559220117076629,"guardedClampTotal":4666,"guardAcceptedTotal":12561,"guardAttenuatedTotal":749,"guardRejectedTotal":13690,"guardTriggerTotal":749,"equivalencePassCount":2}
+{
+  "TotalCases": 27,
+  "ScalarAdaptiveWin": 11,
+  "WindowedAdaptiveWin": 1,
+  "GuardedAdaptiveWin": 9,
+  "GuardedRecoveryOnly": 0,
+  "GuardedWhitenessOnly": 17,
+  "GuardedNoMeaningfulWin": 1,
+  "GuardedMeanDeltaOutputSNRDb": -0.019065477359533994,
+  "GuardedMeanWhitenessRatio": 0.6005838206223174,
+  "GuardedBetterRecoveryVsScalar": 9,
+  "GuardedBetterWhitenessVsScalar": 0,
+  "GuardedFinalAMin": 0.49171519733656094,
+  "GuardedFinalAMax": 0.99,
+  "GuardedFinalAMean": 0.9559220117076629,
+  "GuardedClampTotal": 4666,
+  "GuardAcceptedTotal": 12561,
+  "GuardAttenuatedTotal": 749,
+  "GuardRejectedTotal": 13690,
+  "GuardTriggerTotal": 749,
+  "EquivalencePassCount": 2
+}

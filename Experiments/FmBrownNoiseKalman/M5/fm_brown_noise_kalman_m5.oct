@@ -4,7 +4,6 @@ import Shared
 import String
 import Artifact
 import Markdown
-import Json
 
 record M5Case {
     SampleRate: Float
@@ -112,6 +111,14 @@ record M5Summary {
     WindowedClampTotal: Int
 
     EquivalencePassCount: Int
+}
+
+record M5SweepSummary {
+    TotalCases: Int
+    ScalarAdaptiveWin: Int
+    WindowedAdaptiveWin: Int
+    WindowedBetterRecovery: Int
+    WindowedBetterWhiteness: Int
 }
 
 record M5Report {
@@ -621,7 +628,13 @@ fn M5ArtifactWriteAll() -> Int {
     Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M5/m5_windowed_adaptive_comparison_report.octagon", report)
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M5/m5_windowed_adaptive_comparison_report.md", md)
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M5/sweep_metrics.csv", csv)
-    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M5/sweep_summary.json", Json.Object(String.Concat(["{\"totalCases\":", String.From<Int>(report.Summary.TotalCases), ",\"scalarAdaptiveWin\":", String.From<Int>(report.Summary.ScalarAdaptiveWinCount), ",\"windowedAdaptiveWin\":", String.From<Int>(report.Summary.WindowedAdaptiveWinCount), ",\"windowedBetterRecovery\":", String.From<Int>(report.Summary.WindowedBetterRecoveryCount), ",\"windowedBetterWhiteness\":", String.From<Int>(report.Summary.WindowedBetterWhitenessCount), "}"])))
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M5/sweep_summary.json", M5SweepSummary {
+        TotalCases: report.Summary.TotalCases
+        ScalarAdaptiveWin: report.Summary.ScalarAdaptiveWinCount
+        WindowedAdaptiveWin: report.Summary.WindowedAdaptiveWinCount
+        WindowedBetterRecovery: report.Summary.WindowedBetterRecoveryCount
+        WindowedBetterWhiteness: report.Summary.WindowedBetterWhitenessCount
+    })
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M5/FINDINGS.md", findings)
     Artifact.Checkpoint("done")
     return 0

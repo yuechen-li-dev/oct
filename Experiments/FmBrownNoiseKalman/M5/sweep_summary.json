@@ -1,1 +1,7 @@
-{"totalCases":27,"scalarAdaptiveWin":11,"windowedAdaptiveWin":1,"windowedBetterRecovery":11,"windowedBetterWhiteness":1}
+{
+  "TotalCases": 27,
+  "ScalarAdaptiveWin": 11,
+  "WindowedAdaptiveWin": 1,
+  "WindowedBetterRecovery": 11,
+  "WindowedBetterWhiteness": 1
+}

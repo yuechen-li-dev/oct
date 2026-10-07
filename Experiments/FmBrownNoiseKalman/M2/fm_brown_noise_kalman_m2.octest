@@ -39,8 +39,8 @@ fn M2ArtifactFilesWrite() -> Void ! Error {
     let csv = IO.Read("Experiments/FmBrownNoiseKalman/M2/metrics.csv")?
     Assert.True(Len(csv) <= 64, "metrics csv must remain compact")
 
-    let metricsJson = IO.Load("Experiments/FmBrownNoiseKalman/M2/metrics.json")?
-    Assert.True(Len(metricsJson) > 0, "metrics json written")
+    let metrics = Json.Load<M2MetricsSummary>("Experiments/FmBrownNoiseKalman/M2/metrics.json")?
+    Assert.Equal(12, metrics.RowCount, "metrics json records one row per mode and method")
 
     let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M2/m2a_report.octagon")?
     Assert.True(Len(octagon) > 0, "octagon report written")
@@ -85,9 +85,9 @@ fn M2bArtifactsWrite() -> Void ! Error {
     let csv = IO.ReadLines("Experiments/FmBrownNoiseKalman/M2/sweep_metrics.csv")?
     let octagon = IO.ReadLines("Experiments/FmBrownNoiseKalman/M2/m2b_sweep_report.octagon")?
     let md = IO.ReadLines("Experiments/FmBrownNoiseKalman/M2/m2b_sweep_report.md")?
-    let json = IO.Load("Experiments/FmBrownNoiseKalman/M2/sweep_summary.json")?
+    let summary = Json.Load<M2bSweepSummary>("Experiments/FmBrownNoiseKalman/M2/sweep_summary.json")?
     Assert.True(Len(csv) <= 128, "compact csv")
     Assert.True(Len(octagon) > 0, "octagon written")
     Assert.True(Len(md) > 5, "markdown written")
-    Assert.True(Len(json) > 0, "json written")
+    Assert.Equal(36, summary.TotalCases, "json records one case per mode and grid point")
 }

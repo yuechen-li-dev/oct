@@ -46,8 +46,9 @@ fn M1ModesProduceFiniteMetrics(mode: String) -> Void {
 fn M1RecordedArtifactsStayCompact() -> Void ! Error {
     let metricsRows = IO.Read("Experiments/FmBrownNoiseKalman/M1/metrics.csv")?
     Assert.True(Len(metricsRows) <= 32, "metrics csv must remain compact")
-    let metricsJson = IO.Load("Experiments/FmBrownNoiseKalman/M1/metrics.json")?
-    Assert.True(Len(metricsJson) > 0, "metrics json should be written")
+    let metrics = Json.Load<M1MetricsSummary>("Experiments/FmBrownNoiseKalman/M1/metrics.json")?
+    Assert.Equal(8, metrics.RowCount, "metrics json records one row per mode and method")
+    Assert.Equal(12345, metrics.Settings.Seed, "metrics json records the settings of the run")
     let reportLines = IO.ReadLines("Experiments/FmBrownNoiseKalman/M1/m1_report.octagon")?
     Assert.True(Len(reportLines) > 0, "m1 .octagon report should be written")
     let mdLines = IO.ReadLines("Experiments/FmBrownNoiseKalman/M1/m1_report.md")?

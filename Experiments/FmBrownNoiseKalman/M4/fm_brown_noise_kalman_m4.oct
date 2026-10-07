@@ -4,7 +4,6 @@ import Shared
 import String
 import Artifact
 import Markdown
-import Json
 
 record M4Case { SampleRate: Float Duration: Float MessageHz: Float InputSNRDb: Float Seed: Int }
 record M4AdaptiveResult { Recovered: Float[] Innovation: Float[] ATrace: Float[] FinalA: Float ClampCount: Int }
@@ -14,6 +13,14 @@ record M4TraceSummary {
 }
 record M4MetricRow { Method: String OutputSNRDb: Float Nrmse: Float WhitenessCost: Float Correlation: Float FinalA: Float }
 record M4ScienceSummary { FixedOutputSNRDb: Float AdaptiveOutputSNRDb: Float DeltaOutputSNRDb: Float FixedWhitenessCost: Float AdaptiveWhitenessCost: Float WhitenessRatio: Float Label: String }
+record M4Metrics {
+    Tolerance: Float
+    MaxRecoveredDiff: Float
+    MaxInnovationDiff: Float
+    MaxADiff: Float
+    FinalADiff: Float
+}
+
 record M4Run {
     Case: M4Case Clean: Float[] Observed: Float[] ProceduralAdaptive: M4AdaptiveResult OctomataAdaptive: M4AdaptiveResult FixedBaseline: Shared.KalmanResult Trace: M4TraceSummary
     Metrics: M4MetricRow[] Science: M4ScienceSummary MaxRecoveredDiff: Float MaxInnovationDiff: Float MaxADiff: Float FinalADiff: Float ToleranceUsed: Float
@@ -210,6 +217,12 @@ fn M4ArtifactWriteAll() -> Int {
     Artifact.WriteOctagon("Experiments/FmBrownNoiseKalman/M4/m4_octomata_adaptive_report.octagon", run)
     Artifact.WriteMarkdown("Experiments/FmBrownNoiseKalman/M4/m4_octomata_adaptive_report.md", report)
     Artifact.WriteCsv("Experiments/FmBrownNoiseKalman/M4/metrics.csv", [["method", "outputSNRDb", "nrmse", "whitenessCost", "correlation", "finalA"], [run.Metrics[0].Method, String.From<Float>(run.Metrics[0].OutputSNRDb), String.From<Float>(run.Metrics[0].Nrmse), String.From<Float>(run.Metrics[0].WhitenessCost), String.From<Float>(run.Metrics[0].Correlation), String.From<Float>(run.Metrics[0].FinalA)], [run.Metrics[1].Method, String.From<Float>(run.Metrics[1].OutputSNRDb), String.From<Float>(run.Metrics[1].Nrmse), String.From<Float>(run.Metrics[1].WhitenessCost), String.From<Float>(run.Metrics[1].Correlation), String.From<Float>(run.Metrics[1].FinalA)], [run.Metrics[2].Method, String.From<Float>(run.Metrics[2].OutputSNRDb), String.From<Float>(run.Metrics[2].Nrmse), String.From<Float>(run.Metrics[2].WhitenessCost), String.From<Float>(run.Metrics[2].Correlation), String.From<Float>(run.Metrics[2].FinalA)]])
-    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M4/metrics.json", Json.Object(String.Concat(["{\"tolerance\":", String.From<Float>(run.ToleranceUsed), ",\"maxRecoveredDiff\":", String.From<Float>(run.MaxRecoveredDiff), ",\"maxInnovationDiff\":", String.From<Float>(run.MaxInnovationDiff), ",\"maxADiff\":", String.From<Float>(run.MaxADiff), ",\"finalADiff\":", String.From<Float>(run.FinalADiff), "}"])))
+    Artifact.WriteJson("Experiments/FmBrownNoiseKalman/M4/metrics.json", M4Metrics {
+        Tolerance: run.ToleranceUsed
+        MaxRecoveredDiff: run.MaxRecoveredDiff
+        MaxInnovationDiff: run.MaxInnovationDiff
+        MaxADiff: run.MaxADiff
+        FinalADiff: run.FinalADiff
+    })
     return 0
 }

@@ -1,1 +1,8 @@
-{"rowCount":12,"labelTolerance":{"snrEpsilonDb":0.01,"whitenessRelativeEpsilon":0.01},"outputDiagnosticsCount":6}
+{
+  "RowCount": 12,
+  "LabelTolerance": {
+    "SnrEpsilonDb": 0.01,
+    "WhitenessRelativeEpsilon": 0.01
+  },
+  "OutputDiagnosticsCount": 6
+}
