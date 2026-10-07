@@ -1,7 +1,8 @@
 # Json v2 — Milestone Ladder Contract
 
-Status: **ACCEPTED 2026-10-05.** M1 to M5 are closed; see
-`internal/json/JSON_V2_M1.md` to `JSON_V2_M5.md`. M6 is next.
+Status: **CLOSED 2026-10-07.** Accepted 2026-10-05. M1 to M6 are closed; see
+`internal/json/JSON_V2_M1.md` to `JSON_V2_M6.md`. What is left open after the
+ladder is in `internal/json/JSON_V2_CLOSING.md`.
 Base commit: `d44566d` (main).
 
 This document is the source of truth for the `Json` rewrite while the ladder
@@ -359,6 +360,33 @@ loads into, and the `Json.Load<...>` line. Output is deterministic.
 - A shape it cannot express (a tagged array, mixed element types) is reported
   with its path, and no declaration is printed for it.
 
+*(M6, what the lines above left open or said two ways:)*
+
+- *No `enum` is printed. The first sentence lists enum declarations and the
+  fourth rule says inference does not invent them; the rule is followed.*
+- *The output is Oct source and comments, so it pastes as it is. The
+  `Json.Load` line is a comment: a call cannot stand outside a function.*
+- *An array of objects is a `record table` where one may be declared. In the
+  cell of a table or the element of an array it is an array of a record,
+  because a table cannot be a cell (`OCT-RTBL006`).*
+- *A keyed table has the columns `Key` and `Value`, or `Key` and the members
+  of its values when every value is an object with two members or more.
+  Inference cannot know what the key is a key of.*
+- *Where no value says what a type is (a member that is `null` everywhere, an
+  array that is empty everywhere), `String` is printed with a comment that
+  says it is a placeholder. The declaration still loads the document.*
+- *A String "takes few values" when most of the strings seen at its place
+  are a value seen more than once.*
+- *Whether an array of objects is a table or a tagged array is a second
+  judgment. It has the same nature as the first: a member named `type` is
+  not enough, and neither are members that only some objects have.*
+- *A value with no declaration also includes an object that can be neither a
+  record nor a keyed table: a key no field name can match (`$schema`), two
+  keys that are one field name, a key written twice. The command prints the
+  declarations around it, lists it with its place, and fails.*
+- *Declarations are named after their keys as written, plural or not. The
+  root is named by `--name` or after the file.*
+
 ### 3.12 Global invariants
 
 - **I1 Lane parity.** Interpreted and compiled execution give equal values,
@@ -491,6 +519,11 @@ The whole-tree sweeps run once more when the ladder closes.
   them.
 - **Exit:** The command is in `35-cli.md`. The loop "infer, paste, load" works
   on every corpus file it accepts.
+- **Verdict:** SUCCESS, 2026-10-07. See `JSON_V2_M6.md`. The golden for each
+  document that loads is a contract under `Language/Tooling/JsonInfer`: the
+  output pasted, and a fact that loads the document with it in both lanes. A
+  compiled-lane fault outside the ladder's list was found and fixed on the
+  way: a record whose fields have no leading capital could not be loaded.
 
 ## 5. Out of scope
 

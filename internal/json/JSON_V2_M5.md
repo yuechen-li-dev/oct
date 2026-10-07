@@ -4,6 +4,13 @@ Date: 2026-10-07
 Ladder: `internal/json/JSON_V2_LADDER.md`
 Base commit: `eb0d5d9` (M4)
 
+> **Correction, 2026-10-07 (from M6).** This milestone left one Go test
+> failing: `cmd/oct/json_intent_recovery_lab_test.go`, in the integration
+> lane, ran the lab test that M5 removed. The bounded verification below did
+> not run that lane and did not see it. It was found by the whole-tree run
+> that closed the ladder and removed there; see `JSON_V2_M6.md`,
+> "Correction to M5".
+
 ## Verdict
 
 **SUCCESS.** The first Json library is removed, and every Oct file that used
