@@ -1,0 +1,7 @@
+{
+  "people": [
+    {"id": "u-100", "name": "Avery", "active": true},
+    {"id": "u-101", "name": "Mina", "active": false},
+    {"id": "u-102"}
+  ]
+}

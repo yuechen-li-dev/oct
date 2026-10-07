@@ -1,0 +1,8 @@
+{
+  "name": "sprint 24",
+  "tickets": [
+    {"id": "T-1", "points": 3},
+    {"id": "T-2", "assignee": "nora", "points": 5}
+  ],
+  "limits": {"todo": 8, "doing": 3}
+}

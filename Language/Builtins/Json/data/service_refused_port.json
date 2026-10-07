@@ -1,0 +1,12 @@
+{
+  "name": "billing-api",
+  "environment": "staging",
+  "http": {
+    "host": "0.0.0.0",
+    "port": 70000,
+    "read_timeout_ms": 1500,
+    "write_timeout_ms": 1500
+  },
+  "startup_grace": 2.5,
+  "tags": ["billing"]
+}

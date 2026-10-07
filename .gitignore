@@ -125,6 +125,9 @@ work/
 
 *.json
 !internal/prometheus/DevelopmentReport/PROMETHEUS_DEVELOPMENT_EVIDENCE_INDEX.json
+# Fixtures the Json tests read.
+!internal/octjson/testdata/**/*.json
+!Language/Builtins/Json/data/*.json
 
 
 # Local verification logs

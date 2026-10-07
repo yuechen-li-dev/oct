@@ -1,0 +1,8 @@
+{
+  "name": "north",
+  "gate": {"host": "gate.north", "port": 7000},
+  "docks": [
+    {"host": "dock-1", "port": 7001, "backup": 7101},
+    {"host": "dock-2", "port": 7002}
+  ]
+}
