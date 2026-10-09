@@ -837,21 +837,14 @@ func TestRunCommandHandlesPlotBuiltins(t *testing.T) {
 }
 
 func TestBuildCommandHandlesPlotBuiltins(t *testing.T) {
-	t.Run("unsupported plot builtin in compiled mode fails deterministically", func(t *testing.T) {
-		sourcePath := writeSourceFile(t, "m10_valid_build.oct", "fn Main() -> Int {\n    return PlotLine([0.0], [1.0], \"plot.png\")\n}\n")
+	t.Run("plot builtin compiles without a sidecar present", func(t *testing.T) {
+		sourcePath := writeSourceFile(t, "m10_valid_build.oct", "fn Main() -> Int { return PlotLine([0.0], [1.0], \"plot.png\") }")
 		stdout, stderr, err := executeCLI("build", sourcePath)
-		if err == nil {
-			t.Fatalf("expected build failure, got success with stdout %q", stdout)
+		if err != nil {
+			t.Fatalf("expected build success, err=%v stdout=%q stderr=%q", err, stdout, stderr)
 		}
-		if stdout != "" {
-			t.Fatalf("expected empty stdout, got %q", stdout)
-		}
-		want := "build failed: function Main.Main: compiled mode does not yet support builtin PlotLine"
-		if !strings.Contains(stderr, want) {
-			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
-		}
-		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
-			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); statErr != nil {
+			t.Fatalf("expected built artifact: %v", statErr)
 		}
 	})
 

@@ -109,7 +109,7 @@ go run ./cmd/oct test Examples/SmartGreenhouseController --execution compiled
 go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M5 --suite Experiments.FmBrownNoiseKalman.M5.FlowSmoke --execution compiled
 go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M4 --suite Experiments.FmBrownNoiseKalman.M4.FlowSmoke --execution compiled
 go build -o .tmp/octxiliary-io ./cmd/octxiliary-io
-OCT_WRAPPER_PATH=$(pwd)/.tmp/octxiliary-io go run ./cmd/oct test Language/Testing/CompiledOctxiliary/valid --execution compiled
+OCT_WRAPPER_PATH=$(pwd)/.tmp/octxiliary-io go run ./cmd/oct test Language/Testing/OctxiliaryContracts/valid --execution compiled
 go run ./cmd/oct test Libraries/String --execution compiled
 go run ./cmd/oct test Experiments/LanguageFriction/ArrayMapGenerics --execution interpreted
 go run ./cmd/oct test Experiments/LanguageFriction/ArrayMapGenerics --execution auto

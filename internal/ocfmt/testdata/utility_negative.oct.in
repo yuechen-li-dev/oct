@@ -1,0 +1,7 @@
+package Main
+fn Choose(score: Int) -> Int {
+    return when utility {
+        case 1 when score - 5 > 0 score - 5
+        else 0
+    }
+}

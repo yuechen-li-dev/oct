@@ -47,9 +47,11 @@ Load and write are explicit through builtins.
 - Octagon data has arrays and no separate vector or matrix. An array loads as
   what the declared type says it is: a field declared `Vector<T>` takes an
   array of numbers, and a field declared `Matrix<T>` takes an array of rows of
-  numbers, all one length. `Vector<T>` and `Matrix<T>` are not accepted as the
-  type argument of `LoadOctagon` itself, and `WriteOctagon` does not yet write
-  either the same way in both lanes.
+  numbers, all one length. Vectors and matrices are also accepted at the root.
+  Both writers preserve Float literal kind (including whole values such as
+  `1.0`) and dimensions. Representability is checked recursively through
+  fields, enum payloads, options, and containers; nested unsupported values
+  such as `Complex` are rejected before execution.
 - An array declared as a refined array concept is loaded as its base array and
   then admitted whole by the concept, in both lanes.
 - Load rejects dimension mismatches.

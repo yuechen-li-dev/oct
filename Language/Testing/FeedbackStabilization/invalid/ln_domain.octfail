@@ -1,0 +1,3 @@
+expect runtime error: "Ln expects positive input, got 0"
+package Main
+fn Main() -> Float { return Ln(0.0) }

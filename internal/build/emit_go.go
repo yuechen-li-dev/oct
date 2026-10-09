@@ -296,7 +296,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	}
 	// A Json call hands its data to the Octagon materialiser, so it needs
 	// what LoadOctagon needs.
-	needsOctagonLoad := usedBuiltins["LoadOctagon"] || len(jsonCalls) > 0
+	needsOctagonLoad := usedBuiltins["LoadOctagon"] || usedBuiltins["WriteOctagon"] || len(jsonCalls) > 0
 	supportFeatures := analyzeGoSupportFeatures(m, usedBuiltins)
 	importSet := map[string]struct{}{"fmt": {}, "os": {}, "reflect": {}}
 	if options.includeMain {
@@ -483,7 +483,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	for _, e := range m.Enums {
 		fmt.Fprintf(&b, "type %s_%s struct {\n\tTag int\n\tPayload any\n}\nconst (\n", e.Package, e.Name)
 		for i, v := range e.Variants {
-			fmt.Fprintf(&b, "\t%s_%s_tag = %d\n", e.Name, v.Name, i)
+			fmt.Fprintf(&b, "\t%s_%s_%s_tag = %d\n", e.Package, e.Name, v.Name, i)
 		}
 		b.WriteString(")\n\n")
 		if options.hostFacade {
@@ -496,7 +496,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 				if variant.PayloadType != "" {
 					fmt.Fprintf(&b, "payload %s", goType(variant.PayloadType))
 				}
-				fmt.Fprintf(&b, ") %s_%s { return %s_%s{Tag: %s_%s_tag", e.Package, e.Name, e.Package, e.Name, e.Name, variant.Name)
+				fmt.Fprintf(&b, ") %s_%s { return %s_%s{Tag: %s_%s_%s_tag", e.Package, e.Name, e.Package, e.Name, e.Package, e.Name, variant.Name)
 				if variant.PayloadType != "" {
 					b.WriteString(", Payload: payload")
 				}
@@ -649,7 +649,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		if needsOctagonLoad {
 			b.WriteString("func __octValidateRefinement(expectedType string, value reflect.Value) error {\n\tswitch expectedType {\n")
 			for _, refinement := range m.Refinements {
-				fmt.Fprintf(&b, "\tcase %q, %q:\n", refinement.Package+"."+refinement.Name, refinement.Name)
+				fmt.Fprintf(&b, "\tcase %q:\n", refinement.Package+"."+refinement.Name)
 				fmt.Fprintf(&b, "\t\tchecked := fn_%s___oct_refine_%s(value.Interface().(%s))\n", refinement.Package, refinement.Name, goType(refinement.Base))
 				b.WriteString("\t\tif checked.IsErr { return errors.New(checked.Err) }\n")
 			}
@@ -658,7 +658,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 			// admitted, so the materialiser needs the base of each.
 			b.WriteString("var __octRefinementBase = map[string]string{\n")
 			for _, refinement := range m.Refinements {
-				fmt.Fprintf(&b, "\t%q: %q,\n\t%q: %q,\n", refinement.Package+"."+refinement.Name, refinement.Base, refinement.Name, refinement.Base)
+				fmt.Fprintf(&b, "\t%q: %q,\n", refinement.Package+"."+refinement.Name, refinement.Base)
 			}
 			b.WriteString("}\n\n")
 			b.WriteString(__octLoadHelpers)
@@ -747,15 +747,24 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 		b.WriteString("\t\t}\n\t}\n}\n\n")
 	}
 	b.WriteString("var __octAssertionCount int\n\n")
+	b.WriteString("func __octIndex[T any](values []T, index int) T { if index < 0 || index >= len(values) { panic(fmt.Sprintf(\"runtime error: index %d out of bounds for array of length %d\", index, len(values))) }; return values[index] }\n\n")
+	b.WriteString("func __octSetIndex[T any](values []T, index int, value T) { if index < 0 || index >= len(values) { panic(fmt.Sprintf(\"runtime error: index %d out of bounds for array of length %d\", index, len(values))) }; values[index] = value }\n\n")
+	if usedBuiltins["Sqrt"] {
+		b.WriteString("func __octSqrt(value float64) float64 { if value < 0 { panic(fmt.Sprintf(\"runtime error: Sqrt expects non-negative input, got %g\", value)) }; return math.Sqrt(value) }\n\n")
+	}
+	if usedBuiltins["Ln"] {
+		b.WriteString("func __octLn(value float64) float64 { if value <= 0 { panic(fmt.Sprintf(\"runtime error: Ln expects positive input, got %g\", value)) }; return math.Log(value) }\n\n")
+	}
 	if !options.includeMain {
 		return pruneGeneratedImports(appendOptionDeclarations(b.String())), nil
 	}
+	b.WriteString("func __octFloatLiteral(value float64) float64 { return value }\n\n")
 	b.WriteString("func __octRunMain(run func()) (diagnostic string) {\n")
 	b.WriteString("\tdefer func() {\n")
 	b.WriteString("\t\tif recovered := recover(); recovered != nil {\n")
 	b.WriteString("\t\t\tif _, internalRuntimePanic := recovered.(runtime.Error); internalRuntimePanic { panic(recovered) }\n")
 	b.WriteString("\t\t\tmessage := fmt.Sprint(recovered)\n")
-	b.WriteString("\t\t\tfor _, prefix := range []string{\"runtime error:\", \"oct error:\", \"unwrap failed:\"} {\n")
+	b.WriteString("\t\t\tfor _, prefix := range []string{\"runtime error:\", \"runtime error [\", \"oct error:\", \"unwrap failed:\"} {\n")
 	b.WriteString("\t\t\t\tif strings.HasPrefix(message, prefix) { diagnostic = message; return }\n")
 	b.WriteString("\t\t\t}\n")
 	b.WriteString("\t\t\tpanic(recovered)\n")
@@ -1209,7 +1218,7 @@ func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
 	case "Abs":
 		return fmt.Sprintf("math.Abs(%s)", args[0]), nil
 	case "Sqrt":
-		return fmt.Sprintf("math.Sqrt(%s)", args[0]), nil
+		return fmt.Sprintf("__octSqrt(float64(%s))", args[0]), nil
 	case "Sin":
 		return fmt.Sprintf("math.Sin(%s)", args[0]), nil
 	case "Cos":
@@ -1227,7 +1236,7 @@ func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
 	case "Exp":
 		return fmt.Sprintf("math.Exp(%s)", args[0]), nil
 	case "Ln":
-		return fmt.Sprintf("math.Log(%s)", args[0]), nil
+		return fmt.Sprintf("__octLn(float64(%s))", args[0]), nil
 	case "Pow":
 		return fmt.Sprintf("math.Pow(%s, %s)", args[0], args[1]), nil
 	case "Log10":
@@ -1401,7 +1410,11 @@ func goStmt(s MIRStmt) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%s[%s] = %s", st.Target, strings.Join(indices, "]["), value), nil
+		target := st.Target
+		for _, index := range indices[:len(indices)-1] {
+			target = fmt.Sprintf("__octIndex(%s, %s)", target, index)
+		}
+		return fmt.Sprintf("__octSetIndex(%s, %s, %s)", target, indices[len(indices)-1], value), nil
 	case MIRConstructArray:
 		values, err := emitGoValues(st.Values)
 		if err != nil {
@@ -1528,9 +1541,9 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("__octAssertionCount++; if %s { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", args[0], args[1], st.Target), nil
 			case "Assert.Equal":
 				if st.Target == "_" {
-					return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", args[0], args[1], args[2]), nil
+					return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s; expected %%v, actual %%v\\n\", %s, %s, %s); os.Exit(1) }", args[0], args[1], args[2], args[0], args[1]), nil
 				}
-				return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", args[0], args[1], args[2], st.Target), nil
+				return fmt.Sprintf("__octAssertionCount++; if !reflect.DeepEqual(%s, %s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s; expected %%v, actual %%v\\n\", %s, %s, %s); os.Exit(1) }; %s = __octVoid{}", args[0], args[1], args[2], args[0], args[1], st.Target), nil
 			case "Assert.Near":
 				if st.Target == "_" {
 					return fmt.Sprintf("__octAssertionCount++; if math.Abs((%s)-(%s)) > (%s) { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", args[0], args[1], args[2], args[3]), nil
@@ -1579,7 +1592,7 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				return "", fmt.Errorf("compiled mode does not yet support builtin Abs for type %s", st.RetType)
 			case "Sqrt":
-				return fmt.Sprintf("%s = math.Sqrt(float64(%s))", st.Target, args[0]), nil
+				return fmt.Sprintf("%s = __octSqrt(float64(%s))", st.Target, args[0]), nil
 			case "Sin":
 				return fmt.Sprintf("%s = math.Sin(float64(%s))", st.Target, args[0]), nil
 			case "Cos":
@@ -1603,7 +1616,7 @@ func goStmt(s MIRStmt) (string, error) {
 				if isComplexScalarTypeString(st.RetType) {
 					return fmt.Sprintf("%s = cmplx.Log(%s)", st.Target, args[0]), nil
 				}
-				return fmt.Sprintf("%s = math.Log(float64(%s))", st.Target, args[0]), nil
+				return fmt.Sprintf("%s = __octLn(float64(%s))", st.Target, args[0]), nil
 			case "Pow":
 				return fmt.Sprintf("%s = math.Pow(float64(%s), float64(%s))", st.Target, args[0], args[1]), nil
 			case "Log10":
@@ -1706,13 +1719,17 @@ func goStmt(s MIRStmt) (string, error) {
 			case "FFT":
 				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, args[0]), nil
 			case "WriteOctagon":
-				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", args[0], args[1], st.Target), nil
+				return fmt.Sprintf("__octWriteOctagon(%s, %s, %q); %s = 0", args[0], args[1], st.ArgTypes[1], st.Target), nil
 			case "LoadOctagon":
 				return fmt.Sprintf("%s = __octLoadOctagon_%s(%s)", st.Target, goSafeName(st.RetType), args[0]), nil
 			case "CsvRead", "CsvReadRows":
 				return fmt.Sprintf("%s = __octCsvReadRows(%s)", st.Target, args[0]), nil
 			case "CsvWrite", "CsvWriteRows":
 				return fmt.Sprintf("%s = __octCsvWriteRows(%s, %s)", st.Target, args[0], args[1]), nil
+			case "CsvWriteMatrix":
+				return fmt.Sprintf("%s = __octCsvWriteMatrix(%s, %s)", st.Target, args[0], args[1]), nil
+			case "CsvWriteTable":
+				return fmt.Sprintf("%s = octResult_Int{Err: %q, IsErr: true}", st.Target, "InvalidArgument: Csv.WriteTable is not implemented in M0; use Csv.WriteRows/Csv.Write"), nil
 			case "CsvReadMatrix":
 				return fmt.Sprintf("%s = __octCsvReadMatrix(%s)", st.Target, args[0]), nil
 			case "CsvReadTable":

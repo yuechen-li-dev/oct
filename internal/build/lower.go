@@ -1017,7 +1017,7 @@ func artifactPhaseOnly(spelling string) error {
 
 func isOctxiliaryBuiltin(name string) bool {
 	switch canonicalCompiledBuiltinName(name) {
-	case "FileReadText", "FileReadLines", "FileReadBytes", "FileWriteText", "FileWriteLines", "FileWriteBytes", "FileDelete", "DirectoryList", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll", "CsvRead", "CsvReadRows", "CsvReadTable", "CsvReadMatrix", "CsvWrite", "CsvWriteRows":
+	case "FileReadText", "FileReadLines", "FileReadBytes", "FileWriteText", "FileWriteLines", "FileWriteBytes", "FileDelete", "DirectoryList", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll", "CsvRead", "CsvReadRows", "CsvReadTable", "CsvReadMatrix", "CsvWrite", "CsvWriteRows", "CsvWriteMatrix", "CsvWriteTable":
 		return true
 	default:
 		return false
@@ -1056,7 +1056,7 @@ func usesLinearAlgebraHelpers(usedBuiltins map[string]bool) bool {
 		return true
 	}
 	for name := range usedBuiltins {
-		if strings.HasPrefix(name, "MatBinary") || strings.HasPrefix(name, "ArrayBinary") {
+		if strings.HasPrefix(name, "MatBinary") || strings.HasPrefix(name, "VecBinary") || strings.HasPrefix(name, "ArrayBinary") {
 			return true
 		}
 	}

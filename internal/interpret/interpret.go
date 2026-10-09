@@ -906,12 +906,12 @@ func (i interpreter) invokeFunctionValue(function FunctionValue, callerPackage s
 	}
 	if targetPackage != callerPackage {
 		for index := range arguments {
-			arguments[index] = dequalifyTargetPackageValue(arguments[index], targetPackage)
+			arguments[index] = dequalifyTargetPackageValue(qualifyCrossPackageValue(cloneValue(arguments[index]), callerPackage), targetPackage)
 		}
 	}
 	result, err := i.executeFunction(declaration, targetPackage, arguments)
 	if err == nil && targetPackage != callerPackage {
-		result.value = qualifyCrossPackageValue(result.value, targetPackage)
+		result.value = dequalifyTargetPackageValue(qualifyCrossPackageValue(result.value, targetPackage), callerPackage)
 	}
 	return result, err
 }
@@ -1371,7 +1371,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		} else {
 			value.value = conformLike(value.value, current)
 		}
-		updated.Record.Fields[node.Field] = value.value
+		updated.Record.Fields[node.Field] = cloneValue(value.value)
 		if !assignBindingValue(env, node.Target, updated) {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Target)
 		}
@@ -1550,7 +1550,10 @@ func assignNestedArrayIndex(target Value, indices []int64, value Value) (Value, 
 	if index < 0 || index >= int64(len(target.Array)) {
 		return Value{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index, len(target.Array))
 	}
-	updated := cloneValue(target)
+	// Targets are owned mutable bindings: declaration, assignment, capture,
+	// board-write and snapshot boundaries detach their storage. Copy only the
+	// incoming value, not the entire owned array on every indexed write.
+	updated := target
 	if len(indices) == 1 {
 		destination := updated.Array[index]
 		if destination.Kind == ValueArray && value.Kind == ValueArray && len(destination.Array) != len(value.Array) {
@@ -2756,7 +2759,7 @@ regularCall:
 			// under the same naming rule.
 			if targetPkg != pkgName {
 				for index := range arguments {
-					arguments[index] = dequalifyTargetPackageValue(arguments[index], targetPkg)
+					arguments[index] = dequalifyTargetPackageValue(qualifyCrossPackageValue(cloneValue(arguments[index]), pkgName), targetPkg)
 				}
 			}
 			result, err := i.evalGenericWrapperCall(wrapperFn, arguments)
@@ -2764,7 +2767,7 @@ regularCall:
 				return result, err
 			}
 			if targetPkg != pkgName {
-				result.value = qualifyCrossPackageValue(result.value, targetPkg)
+				result.value = dequalifyTargetPackageValue(qualifyCrossPackageValue(result.value, targetPkg), pkgName)
 			}
 			return result, nil
 		}
@@ -2772,7 +2775,7 @@ regularCall:
 	}
 	if targetPkg != pkgName {
 		for index := range arguments {
-			arguments[index] = dequalifyTargetPackageValue(arguments[index], targetPkg)
+			arguments[index] = dequalifyTargetPackageValue(qualifyCrossPackageValue(cloneValue(arguments[index]), pkgName), targetPkg)
 		}
 	}
 
@@ -2784,7 +2787,7 @@ regularCall:
 		return evalResult{hasError: true, errorVal: result.errorVal}, nil
 	}
 	if targetPkg != pkgName {
-		result.value = qualifyCrossPackageValue(result.value, targetPkg)
+		result.value = dequalifyTargetPackageValue(qualifyCrossPackageValue(result.value, targetPkg), pkgName)
 	}
 	return evalResult{value: result.value}, nil
 }
@@ -2889,7 +2892,7 @@ func (i interpreter) evalAssertCallExpr(env *environment, pkgName string, callee
 			return evalResult{hasError: true, errorVal: message.errorVal}, nil
 		}
 		if !valuesEqual(expected.value, actual.value) {
-			return fail(message.value.Text)
+			return fail(fmt.Sprintf("%s; expected %s, actual %s", message.value.Text, expected.value.String(), actual.value.String()))
 		}
 	case "Assert.Near":
 		recordAssertion()

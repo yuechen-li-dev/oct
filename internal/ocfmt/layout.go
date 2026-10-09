@@ -81,13 +81,20 @@ type layout struct {
 	inMarkup  []bool // inside a markup element
 	rowStart  []bool // a '[' that starts a row of a matrix literal
 
-	glue map[string]bool // memo for gluesSafely
+	glue             map[string]bool // memo for gluesSafely
+	expressionStarts map[int]bool
 }
 
 // formatLayout formats src, which has already been lexed and parsed
 // successfully and uses "\n" line endings.
-func formatLayout(src string, tokens []lex.Token, spans []ast.MarkupSpan, resolved settings) (string, error) {
+func formatLayout(src string, tokens []lex.Token, spans []ast.MarkupSpan, resolved settings, starts ...[]int) (string, error) {
 	l := &layout{src: src, compact: resolved.compact, arrow: resolved.arrow}
+	l.expressionStarts = make(map[int]bool)
+	for _, offsets := range starts {
+		for _, offset := range offsets {
+			l.expressionStarts[offset] = true
+		}
+	}
 	for _, tok := range tokens {
 		if tok.Kind != lex.EOF {
 			l.toks = append(l.toks, tok)
@@ -291,6 +298,9 @@ func (l *layout) separatesErrorType(i int) bool {
 // prefixPosition reports whether the token at i stands where an expression
 // may begin, which is what makes a '-' a sign and a '.' a selector.
 func (l *layout) prefixPosition(i int) bool {
+	if l.expressionStarts[l.toks[i].Offset] {
+		return true
+	}
 	if i == 0 {
 		return true
 	}

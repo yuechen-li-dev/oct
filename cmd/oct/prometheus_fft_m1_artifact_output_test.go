@@ -3,37 +3,24 @@
 package main
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/yuechen-li-dev/oct/internal/cli"
 	"github.com/yuechen-li-dev/oct/internal/octagon"
 )
 
 func TestPrometheusFftAlgorithmLabM1ArtifactWritesDeterministicVisibleOutputs(t *testing.T) {
-	cwdStart, err := os.Getwd()
+	workDir := t.TempDir()
+	outDir := filepath.Join(workDir, "out", "prometheus_fft_algorithm_lab", "m1")
+	project := repoPath(t, "Experiments", "PrometheusFftAlgorithmLab", "M1")
+	stdout, stderr, err := runOctWithWrapperPath(t, workDir, "", "artifact", project, "--output-root", workDir)
 	if err != nil {
-		t.Fatalf("get cwd: %v", err)
+		t.Fatalf("artifact command failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
 	}
-	root := filepath.Clean(filepath.Join(cwdStart, "..", ".."))
-	outDir := filepath.Join(root, "out", "prometheus_fft_algorithm_lab", "m1")
-	_ = os.RemoveAll(outDir)
-
-	if err := os.Chdir(root); err != nil {
-		t.Fatalf("chdir repo root: %v", err)
-	}
-	defer func() { _ = os.Chdir(cwdStart) }()
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if err := cli.Execute([]string{"artifact", "Experiments/PrometheusFftAlgorithmLab/M1"}, &stdout, &stderr); err != nil {
-		t.Fatalf("artifact command failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
-	}
-	if !strings.Contains(strings.ToLower(stdout.String()), "checkpoint") {
-		t.Fatalf("expected artifact output to include checkpoint logs, got:\n%s", stdout.String())
+	if !strings.Contains(strings.ToLower(stdout), "checkpoint") {
+		t.Fatalf("expected artifact output to include checkpoint logs, got:\n%s", stdout)
 	}
 
 	paths := []string{

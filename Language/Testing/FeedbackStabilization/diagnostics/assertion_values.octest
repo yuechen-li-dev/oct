@@ -1,0 +1,7 @@
+package Main
+
+// Deliberately failing contract, invoked by the host diagnostic integration.
+[Fact]
+fn ReportComparedValues() -> Void {
+    Assert.Equal(3, 4, "sample")
+}

@@ -9,7 +9,7 @@ Dimensions participate in expression typing.
 
 ## Rules
 
-- Implicit conversion is not allowed. A declared type is not an implicit conversion: where a declaration says `Float`, an `Int` value is that `Float`. See "Declared types and numeric values" in [02 Types](./02-types.md).
+- Mixed dimension-compatible `Int` and `Float` arithmetic promotes the operands to `Float`; comparisons use the same promotion and return `Bool`. A declaration saying `Float` also admits an `Int` as that `Float`. Other conversions require an explicit constructor. See "Declared types and numeric values" in [02 Types](./02-types.md).
 - Truthiness is not allowed. Conditions must be `Bool`.
 - Arithmetic operators are `+`, `-`, `*`, `/`, `%`.
 - Comparison operators are `==`, `!=`, `<`, `<=`, `>`, `>=`.

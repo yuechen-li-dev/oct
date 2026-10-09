@@ -291,7 +291,7 @@ The standard libraries (`Archive`, `Compression`, `Csv`, `Hash`, `IO`, `Image`, 
 - `CsvRead`, `CsvWrite` and the file, path and directory builtins keep their earlier dedicated lowering. The `Json` builtins are not wrappers: see "Json, compiled with no sidecar" above.
 - A direct call to one of these builtins compiles. Not compiled yet: `PdfDrawImage`, `PdfDrawImageSized`, `CsvWriteTable`, `CsvWriteMatrix`, `PlotLine`, `PlotScatter`.
 
-Manifest wrapper functions are for native code outside the toolchain. The manifest entry is the function's only definition, a source function of the same name is a compile error, and both lanes dispatch the call to the sidecar. `Libraries/Make` is the first-party example. Fixtures: `Language/Testing/CompiledOctxiliary` and `Language/Testing/InterpretedOctxiliary` (both run in both lanes now, despite their names) and `Language/Runtime/LibraryBuiltins`.
+Manifest wrapper functions are for native code outside the toolchain. The manifest entry is the function's only definition, a source function of the same name is a compile error, and both lanes dispatch the call to the sidecar. `Libraries/Make` is the first-party example. Fixtures: `Language/Testing/OctxiliaryContracts` and `Language/Testing/OctxiliaryDispatch` (both run in both lanes) and `Language/Runtime/LibraryBuiltins`.
 
 ## M6 Octxiliary generic wrapper lowering status
 
@@ -307,7 +307,7 @@ The remaining standard-library wrapper backlog identified in M5g is still future
 
 Current proof fixture:
 
-- `Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest`
+- `Language/Testing/OctxiliaryContracts/valid/generic_wrapper_m6.octest`
 - `cmd/octxiliary-test-wrapper`
 
 The fixture covers generic `String`, `String[]`, `Bytes`, `Int`, `Float`, `Bool`, `Void` return, missing sidecar diagnostics, and fallible sidecar-error propagation without changing real standard-library wrapper surfaces.

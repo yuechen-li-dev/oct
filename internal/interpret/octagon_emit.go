@@ -36,11 +36,23 @@ func serializeOctagonValueAtDepth(value Value, depth int) (string, error) {
 	case ValueInt:
 		return strconv.FormatInt(value.Int, 10) + formatUnitSuffix(value.Dimension), nil
 	case ValueFloat:
-		return strconv.FormatFloat(value.Float, 'g', -1, 64) + formatUnitSuffix(value.Dimension), nil
+		text := strconv.FormatFloat(value.Float, 'g', -1, 64)
+		if !strings.ContainsAny(text, ".eE") {
+			text += ".0"
+		}
+		return text + formatUnitSuffix(value.Dimension), nil
 	case ValueBool:
 		return strconv.FormatBool(value.Bool), nil
 	case ValueString:
 		return strconv.Quote(value.Text), nil
+	case ValueMatrix:
+		rows := make([]Value, value.Matrix.Rows)
+		for row := range rows {
+			rows[row] = Value{Kind: ValueArray, Array: value.Matrix.Elements[row*value.Matrix.Cols : (row+1)*value.Matrix.Cols]}
+		}
+		return serializeOctagonValueAtDepth(Value{Kind: ValueArray, Array: rows}, depth)
+	case ValueVector:
+		return serializeOctagonValueAtDepth(Value{Kind: ValueArray, Array: value.Vector}, depth)
 	case ValueArray:
 		parts := make([]string, 0, len(value.Array))
 		for _, element := range value.Array {

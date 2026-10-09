@@ -15,7 +15,7 @@ func TestCompiledGenericOctxiliaryWrapperFixture(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest", "--execution", "compiled")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/OctxiliaryContracts/valid/generic_wrapper_m6.octest", "--execution", "compiled")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
 	out, err := cmd.CombinedOutput()
@@ -30,7 +30,7 @@ func TestCompiledGenericOctxiliaryWrapperFixture(t *testing.T) {
 func TestCompiledGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
 	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest", "--execution", "compiled")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/OctxiliaryContracts/valid/generic_wrapper_m6.octest", "--execution", "compiled")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
 	out, err := cmd.CombinedOutput()
@@ -49,7 +49,7 @@ func TestCompiledGenericOctxiliarySupportsRecordReturn(t *testing.T) {
 	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest", "--execution", "compiled")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/OctxiliaryContracts/valid/generic_wrapper_m6.octest", "--execution", "compiled")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
 	out, err := cmd.CombinedOutput()
@@ -65,7 +65,7 @@ func TestCompiledGenericOctxiliaryRejectsUndeclaredRecordArg(t *testing.T) {
 	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command(sharedTestOctBinary(t), "pkg", "wrappers")
-	cmd.Dir = filepath.Join(repo, "Language", "Testing", "CompiledOctxiliary", "invalid", "Packages", "WrapperUndeclaredRecordArg")
+	cmd.Dir = filepath.Join(repo, "Language", "Testing", "OctxiliaryContracts", "invalid", "Packages", "WrapperUndeclaredRecordArg")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("expected undeclared record arg failure, got success:\n%s", string(out))
@@ -80,7 +80,7 @@ func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/InterpretedOctxiliary/valid", "--execution", "interpreted")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/OctxiliaryDispatch/valid", "--execution", "interpreted")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
 	out, err := cmd.CombinedOutput()
@@ -98,7 +98,7 @@ func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
 func TestInterpretedGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
 	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest", "--execution", "interpreted")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Language/Testing/OctxiliaryDispatch/valid/interpreted_generic_wrapper_w7b.octest", "--execution", "interpreted")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
 	out, err := cmd.CombinedOutput()

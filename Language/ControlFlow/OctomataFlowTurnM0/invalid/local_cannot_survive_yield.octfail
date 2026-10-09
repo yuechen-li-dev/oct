@@ -1,4 +1,4 @@
-expect error: "undefined variable: transient"
+expect error: "state local 'transient' expired at a turn boundary; persist its value on board"
 
 package Main
 

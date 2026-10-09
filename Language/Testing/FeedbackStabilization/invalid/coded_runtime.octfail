@@ -1,0 +1,8 @@
+expect runtime error: "runtime error [OCT-RTBL003]"
+package Main
+record table Columns { A: Int B: Int }
+fn Column(count: Int) -> Int[] { return [1 ... count] }
+fn Main() -> Int {
+    let columns = Columns { A: Column(2) B: Column(3) }
+    return Len(columns)
+}

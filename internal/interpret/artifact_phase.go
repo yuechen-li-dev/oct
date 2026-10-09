@@ -86,7 +86,7 @@ func (i *interpreter) prepareArtifactRead(path string) (string, error) {
 
 func artifactEffectDiagnostic(callee string) string {
 	switch callee {
-	case "FileDelete", "DirectoryList", "DirectoryRemoveAll", "CsvRead", "CsvReadRows", "CsvReadTable", "CsvReadMatrix",
+	case "FileDelete", "DirectoryList", "DirectoryRemoveAll",
 		"HashSha256File", "ZipListEntries", "ZipExtractAll", "ZipCreateFromFiles",
 		"GzipCompressFile", "GzipDecompressFile", "ImageLoad", "ImageSave", "PdfSave",
 		"PlotRenderLine", "PlotRenderScatter", "PlotRenderHistogram", "TimeNowIso8601", "TimeUnixSecondsNow":

@@ -1,0 +1,12 @@
+expect error: "state local 'x' expired at a turn boundary; persist its value on board"
+package Main
+flow Work() yields Int -> Int {
+    state Run {
+        let x = 7
+        for i in 0..2 {
+            yield i
+        }
+        return x
+    }
+}
+fn Main() -> Int { return 0 }

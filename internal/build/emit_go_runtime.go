@@ -1042,12 +1042,12 @@ func __octMarkdownRenderTable(columns []string, colArrays [][]string) []string {
 `
 
 const __octWriteHelpers = `
-func __octWriteOctagon(path string, value any) {
+func __octWriteOctagon(path string, value any, expectedType string) {
 	path = __octAttributedOutputPath(path)
 	if !strings.HasSuffix(path, ".octagon") {
 		panic("WriteOctagon path must end with .octagon")
 	}
-	rendered, err := __octSerialize(reflect.ValueOf(value), 0)
+	rendered, err := __octSerialize(reflect.ValueOf(value), 0, expectedType)
 	if err != nil {
 		panic(fmt.Sprintf("WriteOctagon cannot serialize value: %v", err))
 	}
@@ -1064,14 +1064,15 @@ func __octAttributedOutputPath(path string) string {
 	return filepath.Join(filepath.Dir(path), prefix+"."+filepath.Base(path))
 }
 
-func __octSerialize(v reflect.Value, depth int) (string, error) {
+func __octSerialize(v reflect.Value, depth int, expectedType string) (string, error) {
+	if base, refined := __octRefinementBase[expectedType]; refined { expectedType = base }
 	if !v.IsValid() {
 		return "", fmt.Errorf("invalid value")
 	}
 	if v.Kind() == reflect.Interface {
-		return __octSerialize(v.Elem(), depth)
+		return __octSerialize(v.Elem(), depth, expectedType)
 	}
-	if meta, ok := __octEnumMetaOf(v.Type(), ""); ok {
+	if meta, ok := __octEnumMetaOf(v.Type(), expectedType); ok {
 		idx := int(v.FieldByName("Tag").Int())
 		if idx < 0 || idx >= len(meta.Variants) {
 			return "", fmt.Errorf("enum %s variant index %d out of range", meta.ShortName, idx)
@@ -1080,15 +1081,17 @@ func __octSerialize(v reflect.Value, depth int) (string, error) {
 		if meta.PayloadTypes[idx] == nil { return name, nil }
 		payload := v.FieldByName("Payload")
 		if !payload.IsValid() || payload.IsNil() { return "", fmt.Errorf("enum %s variant %s missing payload", meta.ShortName, meta.Variants[idx]) }
-		rendered, err := __octSerialize(payload.Elem(), depth)
+		rendered, err := __octSerialize(payload.Elem(), depth, meta.PayloadNames[idx])
 		if err != nil { return "", err }
 		return name + "(" + rendered + ")", nil
 	}
 	switch v.Kind() {
 	case reflect.Int:
-		return strconv.FormatInt(v.Int(), 10), nil
+		return strconv.FormatInt(v.Int(), 10) + __octWriteUnit(expectedType, "Int"), nil
 	case reflect.Float64:
-		return strconv.FormatFloat(v.Float(), 'g', -1, 64), nil
+		text := strconv.FormatFloat(v.Float(), 'g', -1, 64)
+		if !strings.ContainsAny(text, ".eE") { text += ".0" }
+		return text + __octWriteUnit(expectedType, "Float"), nil
 	case reflect.Bool:
 		return strconv.FormatBool(v.Bool()), nil
 	case reflect.String:
@@ -1096,7 +1099,7 @@ func __octSerialize(v reflect.Value, depth int) (string, error) {
 	case reflect.Slice:
 		parts := make([]string, 0, v.Len())
 		for i := 0; i < v.Len(); i++ {
-			part, err := __octSerialize(v.Index(i), depth)
+			part, err := __octSerialize(v.Index(i), depth, __octElementType(expectedType))
 			if err != nil {
 				return "", err
 			}
@@ -1111,7 +1114,7 @@ func __octSerialize(v reflect.Value, depth int) (string, error) {
 		fields := make([]string, 0, len(meta.Fields))
 		for _, field := range meta.Fields {
 			fieldValue := v.FieldByName(field)
-			value, err := __octSerialize(fieldValue, depth+1)
+			value, err := __octSerialize(fieldValue, depth+1, meta.FieldTypes[field])
 			if err != nil {
 				return "", err
 			}
@@ -1124,6 +1127,13 @@ func __octSerialize(v reflect.Value, depth int) (string, error) {
 	default:
 		return "", fmt.Errorf("value kind %s is not representable in .octagon output", v.Kind().String())
 	}
+}
+
+func __octWriteUnit(expectedType, scalar string) string {
+	if strings.HasPrefix(expectedType, scalar+"<") && strings.HasSuffix(expectedType, ">") {
+		return strings.TrimSuffix(strings.TrimPrefix(expectedType, scalar+"<"), ">")
+	}
+	return ""
 }
 
 func __octIndent(depth int) string {
@@ -1827,6 +1837,15 @@ func __octCsvWriteRows(path string, rows [][]string) octResult_Int {
 	value, err := __octGenericFallible("octxiliary-csv", "Csv", "CsvWriteRows", []octxiliary.Value{{Kind: octxiliary.ValueString, String: path}, {Kind: octxiliary.ValueStringMatrix, Strings2: rows}}, octxiliary.ValueInt)
 	if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
 	return octResult_Int{Value: value.Int}
+}
+
+func __octCsvWriteMatrix(path string, matrix [][]float64) octResult_Int {
+	rows := make([][]string, len(matrix))
+	for i, row := range matrix {
+		rows[i] = make([]string, len(row))
+		for j, value := range row { rows[i][j] = strconv.FormatFloat(value, 'g', -1, 64) }
+	}
+	return __octCsvWriteRows(path, rows)
 }
 
 func __octCsvReadMatrix(path string) octResult_FloatSliceSlice {

@@ -23,6 +23,9 @@ func Execute(path string, output io.Writer) error {
 		return err
 	}
 
+	if value.Kind == "" {
+		return nil
+	}
 	_, err = fmt.Fprintln(output, value.String())
 	return err
 }

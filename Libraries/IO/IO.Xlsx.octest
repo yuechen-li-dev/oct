@@ -3,15 +3,18 @@ package IO
 [Fact]
 fn XlsxWriteMiniWorkflow() -> Void {
     let workbook = CreateWorkbook()
-    let _a0 = AddSheet(workbook, "Results") !
-    let _a1 = SetCellString(workbook, "Results", "A1", "Metric") !
-    let _a2 = SetCellString(workbook, "Results", "B1", "Value") !
-    let _a3 = SetCellString(workbook, "Results", "A2", "Gain") !
-    let _a4 = SetCellFloat(workbook, "Results", "B2", 42.5) !
-    let _a5 = SetCellString(workbook, "Results", "A3", "Loss") !
-    let _a6 = SetCellFloat(workbook, "Results", "B3", 3.25) !
-    let _a7 = SaveWorkbook(workbook, "io_xlsx_m0.xlsx") !
-    Assert.Equal(1, 1, "xlsx mini workflow completed without runtime error")
+    let _a0 = AddSheet(workbook, "Results")!
+    let _a1 = SetCellString(workbook, "Results", "A1", "Metric")!
+    let _a2 = SetCellString(workbook, "Results", "B1", "Value")!
+    let _a3 = SetCellString(workbook, "Results", "A2", "Gain")!
+    let _a4 = SetCellFloat(workbook, "Results", "B2", 42.5)!
+    let _a5 = SetCellString(workbook, "Results", "A3", "Loss")!
+    let _a6 = SetCellFloat(workbook, "Results", "B3", 3.25)!
+    let _a7 = SaveWorkbook(workbook, "io_xlsx_m0.xlsx")!
+    Assert.True(FileExists("io_xlsx_m0.xlsx"), "saved workbook exists")
+    let bytes = FileReadBytes("io_xlsx_m0.xlsx")!
+    Assert.True(Len(bytes) > 0, "saved workbook is non-empty")
+    FileDelete("io_xlsx_m0.xlsx")!
 }
 
 [Fact]
@@ -29,7 +32,7 @@ fn XlsxRejectsInvalidWorkbookHandle() -> Void {
 [Fact]
 fn XlsxRejectsInvalidSavePathExtension() -> Void {
     let workbook = CreateWorkbook()
-    let _a0 = AddSheet(workbook, "Data") !
+    let _a0 = AddSheet(workbook, "Data")!
     Assert.Error(SaveWorkbook(workbook, "io_xlsx_m0.txt"), "saving with a non-xlsx extension should fail")
 }
 

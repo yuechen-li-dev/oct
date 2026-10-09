@@ -159,7 +159,7 @@ fn Main() -> Int { return 0 }
 
 func TestExportFlowCheckpointRejectsStateLocalsAndMissingResumeAndPreservesUtility(t *testing.T) {
 	inst, _ := suspendedInstance(t, `package Main
-flow Local() -> Int { state Start { let x = 1 suspend return x } }
+flow Local() -> Int { state Start { let x = 1 suspend return 1 } }
 fn Main() -> Int { return 0 }
 `, "Local", 10)
 	_, err := ExportFlowCheckpoint(inst, FlowCheckpointOptions{})

@@ -34,7 +34,7 @@ type Request struct {
 }
 
 func PixelLength(px int) vg.Length {
-	return vg.Length(float64(px)) * vg.Points(1)
+	return vg.Length(float64(px)) * vg.Inch / 96
 }
 
 func Render(request Request) error {

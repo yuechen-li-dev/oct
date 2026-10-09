@@ -41,7 +41,7 @@ Octomata and records are complementary:
 - Flow declaration form is `flow Name(params) -> ReturnType { state ... }` (source also accepts `=>` for the arrow).
 - A reactive flow may separately declare one named turn input and one yielded type: `flow Name(params) accepts input: InputType yields YieldType -> FinalType { state ... }`.
 - Construction parameters are retained for the flow lifetime. The `accepts` binding exists only during one `Step(flow, input)` turn and is cleared at the boundary.
-- `yield value` publishes one value of the declared yield type, preserves the continuation immediately after the yield, and returns control without completing the flow.
+- `yield value` publishes one value of the declared yield type and returns control without completing the flow. A top-level state yield continues at the next state statement. A yield or suspend nested in a branch or loop continues after the containing top-level state statement; it does not retain the branch or loop's execution position. Statements following a nested boundary in its own block are unreachable and rejected.
 - Yield and final return types are distinct. Heterogeneous yielded values require a common nominal enum/record type.
 - State locals do not survive a yield. A reference after a yield must use construction state, the current turn input, or explicit private `board` state; a pre-yield local is out of scope.
 - A flow must declare at least one `state`.

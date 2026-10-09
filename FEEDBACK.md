@@ -1,5 +1,11 @@
 # FEEDBACK.md
 
+## Stabilization pass — 2026-10-09
+
+This pass treats the entries below as the user-requested checklist. Statuses are updated only after focused verification. An `Open` entry with a stabilization note is active work; `Deferred` records a deliberate scope or language-design decision, not a claimed fix. Duplicate reports point to their later resolution.
+
+All entries have a recorded disposition. Focused fixes and artifact regenerations are verified; the fast, external-tool, slow-wrapper and formatter gates passed. A final integration and fast rerun is in progress after repairing stale compile-refusal assertions and package normalization ownership uncovered by the broader suite. Deferred entries remain explicit design or packaging work, including the missing Make package-local module, and are not claimed as fixed.
+
 ## Direct WebAssembly backend exposed low-level emitter ownership duplication
 
 **Observation:** The existing Machina UI M98 binary emitter proved direct
@@ -191,6 +197,8 @@ Define one compiler-wide `Int` width and overflow contract, then make generated 
 
 Status: Deferred
 
+Resolution (2026-10-09): Deferred to a compiler-wide integer ABI milestone. This pass preserves existing 64-bit interpreter/WASM and amd64 native behavior; choosing 32-bit native overflow semantics affects every numeric/helper/sidecar boundary and is not a local stabilization fix.
+
 ---
 
 Observation:
@@ -212,10 +220,10 @@ The interpreter names a record value by the spelling used where it was construct
 Suggestion:
 Give record values one canonical type identity (package-qualified), or qualify record type names at the package boundary as enums already are, and add a cross-package equality contract under `Language/`.
 
-Status: Open
+Status: Superseded
 
 Resolution:
-Not fixed on 2026-10-03, and the suggestion as written is not safe. A call into another package strips that package's prefix from record and enum arguments, and the return adds it back to enums only. Adding it to records as well would rename a caller's own record that passes through a library and comes back. The fix is one canonical type identity at construction, which touches every place the interpreter keys on a type name.
+The later imported-record identity entry records the implementation and `Language/Packages/ImportedRecordIdentity` contracts. This duplicate is superseded; pass-through identity still needs a focused stabilization check before claiming that broader case.
 
 ---
 
@@ -303,10 +311,16 @@ The repository's Oct sources are not in the formatter's style and nothing checks
 Suggestion:
 Decide whether the tree is meant to be formatted. If it is, run `oct fmt` over `Libraries`, `Language`, `Experiments` and `Examples` once, in a commit of its own, and add `oct fmt <root> --check` to CI. Note that `.octfail` expectations that quote a column would need their columns rechecked.
 
-Status: Open
+Status: Resolved
 
 Resolution:
 Remeasured on 2026-10-03, after the formatter stopped rewriting arrows: 303 of 1,723 files would change (114 under Experiments, 120 under Libraries, 58 under Language).
+
+
+Stabilization note (2026-10-09): WIP: formatter contextual-negative fix is verified. Normalize the four maintained source roots in a separate mechanical commit, then add a CI formatting gate.
+
+
+Verification (2026-10-09): Resolved: normalized Libraries, Language, Experiments and Examples with the current formatter. CI now checks all four roots. The contextual negative-score fix preserves subtraction spacing; formatter golden and idempotence tests pass. Final whole-tree formatting check is part of closeout.
 
 ---
 
@@ -368,10 +382,16 @@ Observation:
 Suggestion:
 Keep read-back checks in `[Fact]` tests, not in `[Artifact]` entry points. For M2, give the progress file one owner.
 
-Status: Open
+Status: Resolved
 
 Resolution:
 The read-backs are removed from M3, M4, M4b, M5 and M6 and their outputs regenerate. M2 is unchanged and its recorded outputs are still the Random 0.1.0 ones.
+
+
+Stabilization note (2026-10-09): WIP: M2 now publishes nine distinct outputs successfully; repeated generation reports all unchanged. Verify the later milestones through their artifact entry points before closing this duplicate.
+
+
+Verification (2026-10-09): Resolved: M2 now publishes nine distinct outputs and repeat generation reports all unchanged; M3, M4, M4b, M5 and M6 artifact entry points all succeeded through the real artifact command into isolated output roots. Their earlier ambient read-back issue had already been corrected on main.
 
 ---
 
@@ -459,10 +479,12 @@ In the compiled lane a test file does not see declarations made in a sibling tes
 Suggestion:
 Either load a directory's test files the same way in both lanes, or document the rule.
 
-Status: Open
+Status: Resolved
 
 Resolution:
 Documented in `Language/reference/tooling/31-octest.md`: shared declarations go in a `.oct` file or in a `.octest` with no test entry points. The lanes still differ.
+
+Stabilization resolution (2026-10-09): Retained the deliberate compiled selection rule already documented in 31-octest.md. Shared declarations belong in .oct or declaration-only support .octest files.
 
 ---
 
@@ -560,7 +582,10 @@ Observation:
 Suggestion:
 Either let a first-party wrapper name its command package, or move the makehost sidecar's module under the library.
 
-Status: Open
+Status: Deferred
+
+
+Stabilization note (2026-10-09): Confirmed: package-local Libraries/Make/octxiliary is absent; the working first-party build is go run ./tools/build_sidecars --out dist/sidecars, which builds cmd/octxiliary-makehost. The W8b package builder intentionally requires a package-local standalone go.mod. A command-package source selector and distributable Make wrapper module need an explicit packaging milestone; path traversal or a machine-local replace directive would break that boundary. This remains a known packaging defect, not a claimed fix.
 
 ---
 
@@ -596,10 +621,13 @@ An ordinary program that reaches `Artifact.WriteText` is rejected at different t
 Suggestion:
 Reject it in the typechecker, in both lanes, when an `Artifact.*` call is reachable from `Main`.
 
-Status: Open
+Status: Deferred
 
 Resolution:
 The compiled message is now "Artifact.WriteText is available only during `oct artifact` evaluation; a compiled program cannot call it". The difference in timing remains; `Language/Tooling/Artifacts/invalid/artifact_write_outside_phase.octfail` holds the compiled half and `internal/tester/artifact_phase_test.go` the interpreted half.
+
+
+Stabilization note (2026-10-09): Retain the documented phase boundary: artifact evaluation owns publication, interpreted ordinary execution rejects when reached, and compiled ordinary programs reject during lowering. A shared reachability/phase checker requires a bounded compiler milestone (including dead code, imported calls and function values). The existing compiled diagnostic explicitly identifies Artifact.WriteText and its phase; no execution fallback was added.
 
 ---
 
@@ -609,7 +637,10 @@ An array index out of bounds stops both lanes with different messages: interpret
 Suggestion:
 Have the compiled lane report the interpreter's message.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+Compiled MIR indexing uses checked access and assignment helpers. `Language/Testing/FeedbackStabilization/invalid/array_read_bounds.octfail` and `array_write_bounds.octfail` pass through runtime checks in both lanes on 2026-10-09.
 
 ---
 
@@ -671,7 +702,9 @@ Observation:
 Suggestion:
 Accept arrays of the types it already compares, and report the first differing index.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Recursive array equality now uses the existing value-equality authority. ArraysAndEnumPayloadsCompareByValue passes interpreted and strict compiled execution.
 
 ---
 
@@ -681,7 +714,10 @@ A test run leaves files in the working tree. `Libraries/Pdf/Pdf.CompiledText.oct
 Suggestion:
 Write those outputs to the test's artifact scope or a temporary directory.
 
-Status: Open
+Status: Resolved
+
+
+Stabilization note (2026-10-09): PDF and XLSX contracts delete their generated files after successful assertions. The XLSX contract verifies existence and non-empty saved bytes before deletion; the host wrapper harness verifies cleanup. The CLI analysis test rewrites a temporary copy of its fixture to a t.TempDir output, so it cannot overwrite the tracked PNG. The FFT artifact harness also runs in a temporary child-process working directory; it no longer deletes/replaces tracked out/ witnesses or changes the test process working directory. Verified the PDF and XLSX strict compiled lanes with sidecars and cmd/oct tests. Failure outputs remain available for diagnosis; no new global output-scope API was invented.
 
 ---
 
@@ -691,7 +727,9 @@ Observation:
 Suggestion:
 Treat `score` in a utility `when` case as the keyword it is there, so that what follows starts an expression.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Parser-provided expression offsets identify contextual score operands. Golden and idempotence tests pass without changing ordinary score-variable subtraction.
 
 ---
 
@@ -701,7 +739,10 @@ Every library builtin that the compiled lane sends to a sidecar is implemented t
 Suggestion:
 Give each family one Go package that holds the work, as `internal/plotrender` does, and have the interpreter builtin and the sidecar both call it.
 
-Status: Open
+Status: Deferred
+
+
+Stabilization note (2026-10-09): Keep shared plotrender as the pixel-size authority; both adapters now call it and actual PNG dimensions are checked. The remaining extraction is an architecture proposal, not a bounded stabilization patch: interpreter capabilities and process-local sidecar handles differ. Extract one family at a time with explicit handle/capability ownership and both-lane contracts; do not replace those boundaries with a parallel generic runtime.
 
 ---
 
@@ -711,10 +752,12 @@ Eight library builtins have no compiled implementation, and a compiled program t
 Suggestion:
 Add the four data builtins and the two short plot forms to the sidecar table; they need wire functions and no new mechanism. Decide separately whether the image-handle form of `PdfDrawImage` should exist in the compiled lane or be retired in favour of `DrawImageBytes`.
 
-Status: Open
+Status: Resolved
 
 Resolution:
 Partly, 2026-10-07. `JsonLower` and `JsonLoadStructured` were removed with the first Json library, and `Libraries/IO/IO.Json.octest` with them (`internal/json/JSON_V2_M5.md`). The other six remain.
+
+Stabilization resolution (2026-10-09): Pdf image-handle calls transfer encoded bytes through existing image/PDF sidecars; all six Pdf.Core tests pass strict compiled. CsvWriteMatrix and short PlotLine/PlotScatter pass both lanes in serialization/csv_and_plot.octest. CsvWriteTable retains its explicit not-implemented error in both lanes rather than implying a writer exists. Retired Json v1 names stay removed.
 
 ---
 
@@ -724,7 +767,13 @@ Observation:
 Suggestion:
 Rename them when the corpus is next reorganized; two Go test files name the paths.
 
-Status: Open
+Status: Resolved
+
+
+Stabilization note (2026-10-09): WIP: rename the two corpora to describe contracts and dispatch rather than execution lanes, update executable references, and verify both lanes.
+
+
+Verification (2026-10-09): Resolved: renamed the corpora OctxiliaryContracts and OctxiliaryDispatch; updated live code/docs and fixture paths. Historical internal milestone notes retain their original paths. OctxiliaryDispatch passes all four contracts interpreted and strict compiled with a current test sidecar; the full corpus checks both new names.
 
 ---
 
@@ -734,7 +783,9 @@ A plot is larger than the size it is asked for. `Plot.Size { Width: 400px Height
 Suggestion:
 Convert pixels to points with the renderer's resolution, so that the image has the pixels the `Int<px>` asked for. Recorded plots, `cmd/oct/analysis_output.png` among them, will change size.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): PixelLength converts requested pixels at 96 DPI. The real PNG Render test verifies exactly 400 by 300 pixels; internal/plotrender passes.
 
 ---
 
@@ -744,7 +795,10 @@ In the interpreted lane a record of an imported package does not equal the same 
 Suggestion:
 Qualifying records on the way out, as enums are, is not enough: a record of the caller's own package that passes through a library function would come back named for the library. Give a record its package when it is constructed and compare that.
 
-Status: Open
+Status: Resolved
+
+
+Stabilization note (2026-10-09): The earlier main fix qualifies record results. This pass also qualifies caller-owned inputs before entering another package and restores the caller namespace on return, including nested values. Normalization operates on a clone so it cannot mutate caller-retained nested data. FeedbackStabilization/packages checks imported records, enums and caller-owned records in both lanes; interpreter package tests pass.
 
 ---
 
@@ -778,7 +832,9 @@ A compiled runtime error whose message carries a code prints a Go stack trace. `
 Suggestion:
 Have the generated program's top-level recovery accept `runtime error [` as it accepts `runtime error: `.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Generated top-level recovery recognizes coded Oct diagnostics. TestCodedRuntimeDiagnosticHasNoGoStack passes on a real compiled OCT-RTBL003 failure.
 
 ---
 
@@ -790,6 +846,8 @@ If Oct gains a sized array type, let its declaration fix the length for `value .
 
 Status: Deferred
 
+Resolution (2026-10-09): Sized array types and arbitrary-depth whole-row fill are explicit language extensions. Retain the current count-required contract and two-dimensional row fill; no inferred length is invented when the type supplies none.
+
 ---
 
 Observation:
@@ -798,7 +856,9 @@ The compiled test runner names its generated Go file after the package and the a
 Suggestion:
 Keep a readable prefix of the name and replace the rest with a short hash of the whole of it.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Names have a maximum 64-byte readable prefix and a 16-digit SHA-256 suffix. TestHarnessNamesAreBoundedAndDistinct verifies length, determinism and distinct paths; internal/tester passes.
 
 ---
 
@@ -808,7 +868,9 @@ A state local read after a `suspend` is accepted, and the two lanes give differe
 Suggestion:
 Treat `suspend` as `yield` is treated, and drop the locals of every enclosing block of the state body, not only the innermost. When a name fails to resolve for this reason, say that it was a state local before a turn boundary and belongs on the board; today the message is "undefined variable".
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Possible boundaries expire all enclosing activation locals without mutating sibling scopes. Loops, branches, matches and suspend/yield actions are covered. suspend_local and nested_yield_local contracts pass with a board-oriented diagnostic.
 
 ---
 
@@ -818,7 +880,9 @@ A `suspend` or `yield` inside an `if`, a loop or a `when` action resumes after t
 Suggestion:
 Decide which is the language. If a nested boundary really leaves the containing statement, say so in the reference and reject a statement that follows one in the same block as unreachable. If the continuation is meant to be the next statement, both lanes need it, and a loop with a `suspend` in it becomes the generator it reads as.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Preserved the existing containing-state-statement continuation contract and documented it explicitly in 21-octomata.md. Statements after a direct nested boundary are rejected; nested_boundary_unreachable.octfail passes. This is a visible correction of the previous reference inconsistency.
 
 ---
 
@@ -828,7 +892,9 @@ A failed `Assert.Equal` reports its message and neither value: `assertion failed
 Suggestion:
 Append the expected and actual values to the failure, in both lanes, at least for scalars and strings.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Both lanes report expected and actual values. The deliberately failing Language/Testing/FeedbackStabilization/diagnostics/assertion_values.octest is exercised by TestAssertionDiagnosticReportsValuesInBothLanes; internal/tester passes.
 
 ---
 
@@ -850,7 +916,10 @@ An element assignment in the interpreter copies the whole array. `xs[i] = value`
 Suggestion:
 Write in place when the binding owns its array, or make a value small. Every other holder of an array would have to be shown to hold its own copy first: a record field, an element of an array of arrays, an enum payload, a flow parameter and a returned value all share storage with the variable they came from today, and are safe only because a write makes a new array.
 
-Status: Open
+Status: Resolved
+
+
+Stabilization note (2026-10-09): assignNestedArrayIndex mutates the storage already owned by the target binding; existing copy boundaries still clone binding/assignment/capture/board/snapshot values and replacement elements. All 36 Array valid contracts pass interpreted. Host benchmark: 1,024 and 65,536 element writes take about 105 and 104 ns/op respectively with zero allocations, removing array-length-dependent copying. The real PrometheusSgemmAlgorithmLab/M19 directory now passes all eight facts interpreted in 23.9 seconds, including the formerly timing-out rectangular stress case (.tmp/feedback-m19-interpreted.json records the command result).
 
 ---
 
@@ -872,7 +941,9 @@ The reference says "Implicit conversion is not allowed" (`03-expressions.md`), a
 Suggestion:
 Decide whether `1.5 + 1` is the language. If it is, the reference should say so beside the declared-type rule, and the other operators need contracts. If it is not, the typechecker should reject it and say to write `1.0`.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): 03-expressions.md now states dimension-compatible Int/Float arithmetic and comparison promotion. Mixed operations pass both lanes.
 
 ---
 
@@ -894,7 +965,9 @@ A state local cannot be assigned by index in a compiled flow. `var held = board.
 Suggestion:
 Lower it as the same statement is lowered in a function.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): LocalWritesAndIndependentSnapshots passes both lanes; indexed writes reuse ordinary MIR lowering.
 
 ---
 
@@ -904,7 +977,9 @@ In the interpreted lane a matrix assigned to a board field shares storage with t
 Suggestion:
 Copy a value that holds a matrix when it is assigned to a board field. Lowering index assignment on a state local in the compiled lane comes first, so that the fix can have a contract.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Field assignments clone persistent values. LocalWritesAndIndependentSnapshots proves detached board storage in both lanes.
 
 ---
 
@@ -914,7 +989,10 @@ An array read out of bounds is a Go panic in the compiled lane. `let ns = [1, 1]
 Suggestion:
 Read and write elements through a checked helper, or recover the Go bounds panic in the generated `main` and report it in Oct's words.
 
-Status: Open
+Status: Resolved
+
+Resolution:
+The compiled backend uses checked MIR index reads and writes. `Language/Testing/FeedbackStabilization/invalid/array_read_bounds.octfail` and `array_write_bounds.octfail` pass in both runtime lanes with the interpreter's diagnostic on 2026-10-09. True Go implementation panics remain distinguishable from Oct diagnostics.
 
 ---
 
@@ -963,7 +1041,9 @@ Measured with a record `{ Dt: Float<s>, Samples: Float<m>[] }` written and loade
 Suggestion:
 Write a `Float` so that it reads as one (`1.0m`), and give the compiled serializer the declared type of each value, as the compiled loader already has (`FieldTypes`, `PayloadNames`), so that it writes the dimension.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Writers preserve Float literal kind and numeric dimensions. Compiled serialization receives declared types for fields, elements, and payloads. WholeFloatsDimensionsAndContainersRoundTrip passes both lanes.
 
 ---
 
@@ -973,7 +1053,9 @@ A `match` case label names its variant, and the enum name written before it is n
 Suggestion:
 Keep the written enum name and check it against the subject's type.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): The AST preserves the written enum label and typechecking verifies subject identity. match_wrong_enum.octfail passes; parser and typechecker Go tests pass.
 
 ---
 
@@ -983,7 +1065,9 @@ Two packages of one program cannot each declare an enum of the same name in the 
 Suggestion:
 Name the constants with the package, as the enum's Go type is named.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Generated tag names include package identity. PackageQualifiedMetadataDoesNotCollide passes both lanes.
 
 ---
 
@@ -993,7 +1077,9 @@ In the compiled lane `==` on two values of an enum whose payload holds an array 
 Suggestion:
 Compile `==` on any enum that has a payload variant to the same comparison by value.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Nominal enum equality compares recursive payload values with reflect.DeepEqual, preserving distinct qualified enum types. ArraysAndEnumPayloadsCompareByValue passes both lanes.
 
 ---
 
@@ -1015,7 +1101,9 @@ In the compiled lane `BoardSnapshot(machine)` does not build when two flows of o
 Suggestion:
 Carry the flow's identity in the type of the instance, which the typechecker already has (`FlowIdentity`), instead of finding the flow by its result type.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Concrete FLOW instance metadata preserves package-qualified flow identity. LocalWritesAndIndependentSnapshots exercises two Int-result flows with different board shapes and passes both lanes.
 
 ---
 
@@ -1037,7 +1125,9 @@ Observation:
 Suggestion:
 Check the whole type, as the Json builtins do (`internal/jsontype` with `octjson.Check`), and accept a vector or a matrix wherever a field of one is accepted.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Recursive representability checks accept supported containers at any depth and reject nested unsupported types. Vector-root roundtrip passes both lanes; nested_complex.octfail passes.
 
 ---
 
@@ -1047,7 +1137,9 @@ Observation:
 Suggestion:
 Write a vector as an array and a matrix as an array of rows in both lanes, once a `Float` is written so that it reads as one (the entry above on the Octagon writer).
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Both writers serialize vectors as arrays and matrices as rows, preserving Float kind. WholeFloatsDimensionsAndContainersRoundTrip passes both lanes.
 
 ---
 
@@ -1057,7 +1149,9 @@ Indexing a value of a refined array concept gives the concept's type and not the
 Suggestion:
 Type an index of a refined array as an element of its base array, as the reference's "Refined scalar to underlying representation is permitted" reads for scalars.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Typechecking and lowering erase the container refinement before selecting its element type. RefinedArrayIndexHasElementType passes both lanes.
 
 ---
 
@@ -1067,7 +1161,9 @@ In the compiled lane `v + v` and `v - v` on two `Vector<Float>` values do not bu
 Suggestion:
 Add the two names to the list, or have the emitter record a helper as needed where it emits the call to it.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): VecBinary helpers participate in helper discovery. VectorAdditionNeedsNoOtherBuiltin passes both lanes.
 
 ---
 
@@ -1077,7 +1173,9 @@ Float literal arithmetic differs by lane. `0.1 + 0.2 != 0.3` is true in the inte
 Suggestion:
 Emit Float literals as typed values (`float64(0.1)`), so that the compiled lane rounds each literal before it adds, as the interpreter does.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Go emits Float literals through a typed identity call, ensuring each operand rounds before arithmetic while preserving backend-neutral MIR and WASM optimizer specimens. FloatLiteralsRoundBeforeArithmetic passes both lanes; a Go constant conversion alone would still fold exactly.
 
 ---
 
@@ -1087,7 +1185,9 @@ The compiled lane does not build a program that loads Octagon or JSON data and h
 Suggestion:
 Name a refined type by `Package.Name` everywhere in the generated metadata, and drop the bare name.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Refinement metadata has only package-qualified keys. The Main.Port/Net.Port contract passes both lanes with independent requirements.
 
 ---
 
@@ -1097,7 +1197,13 @@ A file can hold a value whose type is declared in a package the file does not im
 Suggestion:
 Say "import Net to read the fields of Net.Address" in the diagnostic; and state in `18-concepts.md` that a transparent alias is local to its package, or let it be named.
 
-Status: Open
+Status: Resolved
+
+
+Stabilization note (2026-10-09): WIP: missing-owner-import diagnostic now names the import needed for field access. The reference explicitly documents transparent aliases as package-local. Add and run the focused missing-import contract before closing.
+
+
+Verification (2026-10-09): Resolved: the missing-owner-import diagnostic names the import needed for field access. The reference documents transparent aliases as package-local. FeedbackStabilization/missing_import/missing_import.octfail passes through the real negative-contract runner with fixture-only FeedbackFieldConfig and FeedbackFieldNet packages.
 
 ---
 
@@ -1107,7 +1213,10 @@ Observation:
 Suggestion:
 Print nothing for a `Void` result, fallible or not.
 
-Status: Open
+Status: Resolved
+
+
+Stabilization note (2026-10-09): The run adapter omits the zero/void Value result. internal/run/run_test.go invokes the real CLI execution path with fallible Void Main and verifies no invalid marker; internal/run tests pass.
 
 ---
 
@@ -1129,7 +1238,9 @@ A function declared `-> Void ! Error` cannot fail on its own: `return error("can
 Suggestion:
 Accept `return error(...)`, and the return of an `Error` value, in a `Void ! Error` function.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Fallible Void may return an Error value; infallible Void remains value-less. VoidFunctionsCanReturnErrors passes both lanes.
 
 ---
 
@@ -1139,7 +1250,9 @@ Observation:
 Suggestion:
 Give the compiled lane the same preconditions, as the Random builtins have theirs in both lanes.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Compiled scalar helpers enforce the interpreter domain preconditions. sqrt_domain/ln_domain runtime contracts pass both lanes.
 
 ---
 
@@ -1173,7 +1286,9 @@ The CSV readers are still refused outright during `oct artifact` evaluation: `IO
 Suggestion:
 Route the CSV readers through the same staged read as the text readers and `Json.Load<T>`, so one rule covers every reader: an output of the phase may be read back, nothing else.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Staged CSV reads use the existing artifact capability. TestStagedCsvArtifactReadback and ambient_csv.octfail pass; ambient reads remain refused.
 
 ---
 
@@ -1183,7 +1298,9 @@ An `.octfail` expectation cannot contain a double quote. `expect artifact error:
 Suggestion:
 Read the substring as an Oct string literal, with `\"` and `\\`, or say in the reference that it is taken verbatim up to the last quote.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Shared expectation parsing decodes escaped quotes/backslashes and preserves legacy raw quotes. Header tests and the quoted-path ambient_csv contract pass; 31-octest.md documents the rule.
 
 ---
 
@@ -1193,7 +1310,9 @@ Observation:
 Suggestion:
 Remove `M2Artifacts`, report sweep progress with `Artifact.Progress` instead of a file, and regenerate the recorded outputs.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Removed duplicate M2Artifacts; progress goes through Artifact.Progress and the summary file is published once. Both generators pass, publishing nine outputs; a repeat reports all unchanged. Refreshed tracked metrics.csv and m2a_report.md for Random v2.
 
 ---
 
@@ -1203,7 +1322,10 @@ A recorded artifact can be pinned by its SHA-256 somewhere else, and nothing con
 Suggestion:
 Decide whether the witness is regenerated and the ledger re-pinned, or kept as the bytes of the completed campaign. Longer term, let a ledger name the artifact it pins in a form `oct artifact` can check, so a change of bytes is reported where it happens.
 
-Status: Open
+Status: Resolved
+
+
+Stabilization note (2026-10-09): Keep the completed Evt2OctOracle ledger and all archived witness bytes historical. New O0 runs default to Experiments/ZImageTurboNoiseRefiner0/M0/artifacts/current. A real new artifact run succeeds in a scratch root. oracle_ledger_test verifies all twelve named SHA-256 pins against archived bytes; .gitattributes disables text conversion for that archive. internal/prometheus tests pass.
 
 ---
 
@@ -1225,7 +1347,10 @@ A JSON key that no field name can match cannot be read into a record. Json match
 Suggestion:
 Decide how a record names such a key. The smallest answer is to let the match ignore any character that cannot be in an identifier, so `$schema` matches `Schema`; that keeps "the declared type is the intent" and needs no new syntax, but writing would give `Schema`, not `$schema`. A field attribute that states the key (`[Key("$schema")]`) covers writing too.
 
-Status: Open
+Status: Deferred
+
+
+Stabilization note (2026-10-09): Confirmed limitation, retained explicitly rather than silently discarding punctuation or unknown members. A reversible JSON key annotation/mapping requires a language and Json milestone, with collision checks, schema inference and parse/write round trips. Existing keyed-table support and inference refusal remain honest; stripping $, @ or / would conflate distinct keys.
 
 ---
 
@@ -1235,7 +1360,9 @@ Observation:
 Suggestion:
 Add `Range` to the builtin type names a declaration cannot take.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Range is registered with the other reserved builtin types. range_name.octfail passes.
 
 ---
 
@@ -1245,7 +1372,10 @@ Observation:
 Suggestion:
 None for the inference: no signal in the document separates the two, and a record is the reading that loses nothing. A `--table <path>` option that says "this object is a keyed table" would let a person state it without editing the output.
 
-Status: Open
+Status: Deferred
+
+
+Stabilization note (2026-10-09): The record reading is deliberately retained because it preserves all data and the document supplies no authoritative table signal. A --table path override is an optional inference feature, requiring path validation and nested schema contracts; it is not a correctness fix and is deferred to a bounded JSON inference milestone.
 
 ---
 
@@ -1255,7 +1385,9 @@ Observation:
 Suggestion:
 Say that the directory has no tests, and name it.
 
-Status: Open
+Status: Resolved
+
+Stabilization resolution (2026-10-09): Empty directories report the missing .octest/.octfail tests and directory. TestEmptyDirectoryReportsMissingTests passes; SkipTest validation remains intact.
 
 ---
 Observation:
@@ -1277,7 +1409,10 @@ A record-shaped concept cannot state a requirement over its fields. `concept Win
 Suggestion:
 A Concepts milestone, not a Json change: requirements in a record-shaped concept. The open question is construction, since a record-shaped concept has no unrefined base to pass to a checked constructor: a literal whose requirements are not proved would have to be fallible. Json needs nothing new for it; a refusal would be reported at the object's place, as a refined field's is at its own.
 
-Status: Open
+Status: Deferred
+
+
+Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ---
 

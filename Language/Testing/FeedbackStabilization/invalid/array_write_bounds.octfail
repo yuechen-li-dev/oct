@@ -1,0 +1,8 @@
+expect runtime error: "runtime error: index -1 out of bounds for array of length 2"
+package Main
+fn Main() -> Int {
+    var values = [1, 1]
+    let index = -1
+    values[index] = 3
+    return 0
+}
