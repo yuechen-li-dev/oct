@@ -4,7 +4,11 @@
 
 This pass treats the entries below as the user-requested checklist. Statuses are updated only after focused verification. An `Open` entry with a stabilization note is active work; `Deferred` records a deliberate scope or language-design decision, not a claimed fix. Duplicate reports point to their later resolution.
 
-All entries have a recorded disposition. Focused fixes and artifact regenerations are verified; the fast, external-tool, slow-wrapper and formatter gates passed. A final integration and fast rerun is in progress after repairing stale compile-refusal assertions and package normalization ownership uncovered by the broader suite. Deferred entries remain explicit design or packaging work, including the missing Make package-local module, and are not claimed as fixed.
+Checklist closeout: **85 Resolved, 10 Deferred, 1 Superseded** (including resolutions already on main). Every entry has a recorded disposition; none remains active WIP. Deferred entries remain explicit design or packaging work, including the missing Make package-local module, and are not claimed as fixed.
+
+Verification on Windows: full fast suite, full integration suite (including all Language directories in interpreted and strict compiled lanes), external-tool suite, and explicit slow wrapper suite pass. All four maintained source roots pass the formatter gate. The updated FFT temporary-output harness also passes its focused integration check. Kalman M2–M6 and a new O0 artifact run succeed; all twelve historical ledger pins match checkout and Git bytes. M19 passes all eight interpreted facts in 23.9 seconds.
+
+The work is split into compiler/runtime stabilization and a separate mechanical formatting commit. Generated outputs and local test evidence remain outside commits.
 
 ## Direct WebAssembly backend exposed low-level emitter ownership duplication
 
