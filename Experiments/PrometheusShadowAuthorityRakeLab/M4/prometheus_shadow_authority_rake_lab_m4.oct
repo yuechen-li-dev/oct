@@ -266,12 +266,12 @@ flow ShadowAuthorityGateMachineM4(events: ShadowOutcome[], variant: Variant) -> 
         } {
             case 4 when healthyEligible score 100
             case 3 when
-                eligible and
+            eligible and
                 confidenceCanary and
                 board.MissRateEma <= 0.25 and
                 board.ArrivalErrorEma <= 2.5 and
                 not board.RecentFallbackActive
-                score 80
+            score 80
             case 2 when eligible score 60
             case 1 when not eligible score 50
             else 0

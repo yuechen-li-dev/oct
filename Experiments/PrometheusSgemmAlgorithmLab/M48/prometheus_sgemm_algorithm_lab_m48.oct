@@ -206,20 +206,20 @@ fn M48AllShapes() -> M48ShapeClass[] {
 
 fn M48ShapeProfiles() -> M48ShapeProfile[] {
     return [
-        M48ShapeProfile {Shape: M48ShapeClass.SmallSquare MWeightPermille: 500 NWeightPermille: 500 KWeightPermille: 350 TailRiskPermille: 650},
-        M48ShapeProfile {Shape: M48ShapeClass.MediumSquare MWeightPermille: 550 NWeightPermille: 550 KWeightPermille: 550 TailRiskPermille: 450},
-        M48ShapeProfile {Shape: M48ShapeClass.LargeSquare MWeightPermille: 650 NWeightPermille: 650 KWeightPermille: 700 TailRiskPermille: 300},
-        M48ShapeProfile {Shape: M48ShapeClass.TallSkinny MWeightPermille: 900 NWeightPermille: 300 KWeightPermille: 450 TailRiskPermille: 520},
-        M48ShapeProfile {Shape: M48ShapeClass.WideShort MWeightPermille: 300 NWeightPermille: 900 KWeightPermille: 450 TailRiskPermille: 520},
-        M48ShapeProfile {Shape: M48ShapeClass.KHeavy MWeightPermille: 500 NWeightPermille: 500 KWeightPermille: 1000 TailRiskPermille: 350},
-        M48ShapeProfile {Shape: M48ShapeClass.MlFfnLike MWeightPermille: 650 NWeightPermille: 850 KWeightPermille: 900 TailRiskPermille: 340}
+        M48ShapeProfile { Shape: M48ShapeClass.SmallSquare MWeightPermille: 500 NWeightPermille: 500 KWeightPermille: 350 TailRiskPermille: 650 },
+        M48ShapeProfile { Shape: M48ShapeClass.MediumSquare MWeightPermille: 550 NWeightPermille: 550 KWeightPermille: 550 TailRiskPermille: 450 },
+        M48ShapeProfile { Shape: M48ShapeClass.LargeSquare MWeightPermille: 650 NWeightPermille: 650 KWeightPermille: 700 TailRiskPermille: 300 },
+        M48ShapeProfile { Shape: M48ShapeClass.TallSkinny MWeightPermille: 900 NWeightPermille: 300 KWeightPermille: 450 TailRiskPermille: 520 },
+        M48ShapeProfile { Shape: M48ShapeClass.WideShort MWeightPermille: 300 NWeightPermille: 900 KWeightPermille: 450 TailRiskPermille: 520 },
+        M48ShapeProfile { Shape: M48ShapeClass.KHeavy MWeightPermille: 500 NWeightPermille: 500 KWeightPermille: 1000 TailRiskPermille: 350 },
+        M48ShapeProfile { Shape: M48ShapeClass.MlFfnLike MWeightPermille: 650 NWeightPermille: 850 KWeightPermille: 900 TailRiskPermille: 340 }
     ]
 }
 
 fn M48FindShape(shape: M48ShapeClass) -> M48ShapeProfile {
     let profiles = M48ShapeProfiles()
     var out = profiles[0]
-    for i in 0 .. Len(profiles) {
+    for i in 0..Len(profiles) {
         if profiles[i].Shape == shape {
             out = profiles[i]
         }
@@ -238,18 +238,18 @@ fn M48DefaultSafetyPolicy() -> M48SafetyPolicy {
 
 fn M48RecipeModels() -> M48RecipeModel[] {
     return [
-        M48RecipeModel {Recipe: M48RecipeName.BaselineControl OutputTileRows: 1 OutputTileCols: 1 AccumulatorCount: 1 EstimatedRegistersPerThread: 22 AReuseFactorPermille: 1000 BReuseFactorPermille: 1000 ArithmeticIntensityGainPermille: 1000 CoalescedLoadRisk: 15 CoalescedStoreRisk: 15 SharedMemoryPressure: 15 TailDimensionAffected: M48TailDimension.None MaskedLoadStoreComplexity: 10 ImplementationComplexity: 10 CorrectnessRisk: 8 HarnessIntegrationComplexity: 8 RobustUsefulnessBase: 46},
-        M48RecipeModel {Recipe: M48RecipeName.Srt1x2Row OutputTileRows: 1 OutputTileCols: 2 AccumulatorCount: 2 EstimatedRegistersPerThread: 32 AReuseFactorPermille: 1450 BReuseFactorPermille: 1100 ArithmeticIntensityGainPermille: 1300 CoalescedLoadRisk: 20 CoalescedStoreRisk: 20 SharedMemoryPressure: 35 TailDimensionAffected: M48TailDimension.NOnly MaskedLoadStoreComplexity: 30 ImplementationComplexity: 30 CorrectnessRisk: 24 HarnessIntegrationComplexity: 20 RobustUsefulnessBase: 104},
-        M48RecipeModel {Recipe: M48RecipeName.Srt2x1Col OutputTileRows: 2 OutputTileCols: 1 AccumulatorCount: 2 EstimatedRegistersPerThread: 32 AReuseFactorPermille: 1100 BReuseFactorPermille: 1450 ArithmeticIntensityGainPermille: 1280 CoalescedLoadRisk: 24 CoalescedStoreRisk: 48 SharedMemoryPressure: 35 TailDimensionAffected: M48TailDimension.MOnly MaskedLoadStoreComplexity: 34 ImplementationComplexity: 34 CorrectnessRisk: 28 HarnessIntegrationComplexity: 22 RobustUsefulnessBase: 74},
-        M48RecipeModel {Recipe: M48RecipeName.Srt2AccumK OutputTileRows: 1 OutputTileCols: 1 AccumulatorCount: 2 EstimatedRegistersPerThread: 30 AReuseFactorPermille: 1000 BReuseFactorPermille: 1000 ArithmeticIntensityGainPermille: 1150 CoalescedLoadRisk: 16 CoalescedStoreRisk: 15 SharedMemoryPressure: 24 TailDimensionAffected: M48TailDimension.None MaskedLoadStoreComplexity: 14 ImplementationComplexity: 26 CorrectnessRisk: 22 HarnessIntegrationComplexity: 16 RobustUsefulnessBase: 78},
-        M48RecipeModel {Recipe: M48RecipeName.Srt2x2 OutputTileRows: 2 OutputTileCols: 2 AccumulatorCount: 4 EstimatedRegistersPerThread: 52 AReuseFactorPermille: 1700 BReuseFactorPermille: 1700 ArithmeticIntensityGainPermille: 1600 CoalescedLoadRisk: 36 CoalescedStoreRisk: 40 SharedMemoryPressure: 62 TailDimensionAffected: M48TailDimension.MAndN MaskedLoadStoreComplexity: 62 ImplementationComplexity: 58 CorrectnessRisk: 52 HarnessIntegrationComplexity: 40 RobustUsefulnessBase: 70}
+        M48RecipeModel { Recipe: M48RecipeName.BaselineControl OutputTileRows: 1 OutputTileCols: 1 AccumulatorCount: 1 EstimatedRegistersPerThread: 22 AReuseFactorPermille: 1000 BReuseFactorPermille: 1000 ArithmeticIntensityGainPermille: 1000 CoalescedLoadRisk: 15 CoalescedStoreRisk: 15 SharedMemoryPressure: 15 TailDimensionAffected: M48TailDimension.None MaskedLoadStoreComplexity: 10 ImplementationComplexity: 10 CorrectnessRisk: 8 HarnessIntegrationComplexity: 8 RobustUsefulnessBase: 46 },
+        M48RecipeModel { Recipe: M48RecipeName.Srt1x2Row OutputTileRows: 1 OutputTileCols: 2 AccumulatorCount: 2 EstimatedRegistersPerThread: 32 AReuseFactorPermille: 1450 BReuseFactorPermille: 1100 ArithmeticIntensityGainPermille: 1300 CoalescedLoadRisk: 20 CoalescedStoreRisk: 20 SharedMemoryPressure: 35 TailDimensionAffected: M48TailDimension.NOnly MaskedLoadStoreComplexity: 30 ImplementationComplexity: 30 CorrectnessRisk: 24 HarnessIntegrationComplexity: 20 RobustUsefulnessBase: 104 },
+        M48RecipeModel { Recipe: M48RecipeName.Srt2x1Col OutputTileRows: 2 OutputTileCols: 1 AccumulatorCount: 2 EstimatedRegistersPerThread: 32 AReuseFactorPermille: 1100 BReuseFactorPermille: 1450 ArithmeticIntensityGainPermille: 1280 CoalescedLoadRisk: 24 CoalescedStoreRisk: 48 SharedMemoryPressure: 35 TailDimensionAffected: M48TailDimension.MOnly MaskedLoadStoreComplexity: 34 ImplementationComplexity: 34 CorrectnessRisk: 28 HarnessIntegrationComplexity: 22 RobustUsefulnessBase: 74 },
+        M48RecipeModel { Recipe: M48RecipeName.Srt2AccumK OutputTileRows: 1 OutputTileCols: 1 AccumulatorCount: 2 EstimatedRegistersPerThread: 30 AReuseFactorPermille: 1000 BReuseFactorPermille: 1000 ArithmeticIntensityGainPermille: 1150 CoalescedLoadRisk: 16 CoalescedStoreRisk: 15 SharedMemoryPressure: 24 TailDimensionAffected: M48TailDimension.None MaskedLoadStoreComplexity: 14 ImplementationComplexity: 26 CorrectnessRisk: 22 HarnessIntegrationComplexity: 16 RobustUsefulnessBase: 78 },
+        M48RecipeModel { Recipe: M48RecipeName.Srt2x2 OutputTileRows: 2 OutputTileCols: 2 AccumulatorCount: 4 EstimatedRegistersPerThread: 52 AReuseFactorPermille: 1700 BReuseFactorPermille: 1700 ArithmeticIntensityGainPermille: 1600 CoalescedLoadRisk: 36 CoalescedStoreRisk: 40 SharedMemoryPressure: 62 TailDimensionAffected: M48TailDimension.MAndN MaskedLoadStoreComplexity: 62 ImplementationComplexity: 58 CorrectnessRisk: 52 HarnessIntegrationComplexity: 40 RobustUsefulnessBase: 70 }
     ]
 }
 
 fn M48FindRecipe(recipe: M48RecipeName) -> M48RecipeModel {
     let models = M48RecipeModels()
     var out = models[0]
-    for i in 0 .. Len(models) {
+    for i in 0..Len(models) {
         if models[i].Recipe == recipe {
             out = models[i]
         }
@@ -316,7 +316,7 @@ fn M48AggregateRecipe(recipe: M48RecipeName, policy: M48SafetyPolicy) -> M48Reci
     var total = 0
     var coverage = 0
 
-    for i in 0 .. Len(shapes) {
+    for i in 0..Len(shapes) {
         let s = M48RecipeScoreForShape(recipe, shapes[i], policy)
         total = total + s.Score
         if s.Score >= 55 {
@@ -357,7 +357,7 @@ fn M48AllAggregates(policy: M48SafetyPolicy) -> M48RecipeAggregate[] {
     var bestScore = out[0].AggregateScore
     var bestIndex = 0
 
-    for i in 1 .. Len(recipes) {
+    for i in 1..Len(recipes) {
         let agg = M48AggregateRecipe(recipes[i], policy)
         out = Append(out, agg)
         if agg.AggregateScore > bestScore {
@@ -372,7 +372,7 @@ fn M48AllAggregates(policy: M48SafetyPolicy) -> M48RecipeAggregate[] {
 
 fn M48FindAggregate(aggregates: M48RecipeAggregate[], recipe: M48RecipeName) -> M48RecipeAggregate {
     var out = aggregates[0]
-    for i in 0 .. Len(aggregates) {
+    for i in 0..Len(aggregates) {
         if aggregates[i].Recipe == recipe {
             out = aggregates[i]
         }
@@ -394,7 +394,7 @@ fn M48FinalRecommendationFromModel() -> M48FinalRecommendation {
     let policy = M48DefaultSafetyPolicy()
     let aggregates = M48AllAggregates(policy)
     var best = aggregates[0]
-    for i in 0 .. Len(aggregates) {
+    for i in 0..Len(aggregates) {
         if aggregates[i].Recommended {
             best = aggregates[i]
         }
@@ -436,7 +436,7 @@ fn M48RecipeComparisonTable() -> M48TableRecipeComparison {
     var harness = [recipes[0].HarnessIntegrationComplexity]
     var usefulness = [recipes[0].RobustUsefulnessBase]
 
-    for i in 1 .. Len(recipes) {
+    for i in 1..Len(recipes) {
         names = Append(names, M48RecipeToString(recipes[i].Recipe))
         tile = Append(tile, ToString(recipes[i].OutputTileRows) + "x" + ToString(recipes[i].OutputTileCols))
         accum = Append(accum, recipes[i].AccumulatorCount)
@@ -484,7 +484,7 @@ fn M48ShapeRecipeMatrixTable(policy: M48SafetyPolicy) -> M48TableShapeRecipeMatr
     var k2 = [M48RecipeScoreForShape(M48RecipeName.Srt2AccumK, shapes[0], policy).Score]
     var t22 = [M48RecipeScoreForShape(M48RecipeName.Srt2x2, shapes[0], policy).Score]
 
-    for i in 1 .. Len(shapes) {
+    for i in 1..Len(shapes) {
         shapeNames = Append(shapeNames, M48ShapeToString(shapes[i]))
         baseline = Append(baseline, M48RecipeScoreForShape(M48RecipeName.BaselineControl, shapes[i], policy).Score)
         row = Append(row, M48RecipeScoreForShape(M48RecipeName.Srt1x2Row, shapes[i], policy).Score)
@@ -512,7 +512,7 @@ fn M48SafetyMarginTable() -> M48TableSafetyMargin {
     var k2 = [M48AggregateRecipe(M48RecipeName.Srt2AccumK, M48DefaultSafetyPolicy() with { SafetyMarginPermille: margins[0] }).AggregateScore]
     var t22 = [M48AggregateRecipe(M48RecipeName.Srt2x2, M48DefaultSafetyPolicy() with { SafetyMarginPermille: margins[0] }).AggregateScore]
 
-    for i in 1 .. Len(margins) {
+    for i in 1..Len(margins) {
         let p = M48DefaultSafetyPolicy() with { SafetyMarginPermille: margins[i] }
         marginCol = Append(marginCol, margins[i])
         baseline = Append(baseline, M48AggregateRecipe(M48RecipeName.BaselineControl, p).AggregateScore)
@@ -546,7 +546,7 @@ fn M48TailPolicyTable() -> M48TableTailPolicy {
     var dimensions = [M48TailToString(M48FindRecipe(recipes[0]).TailDimensionAffected)]
     var complexity = ["low"]
 
-    for i in 1 .. Len(recipes) {
+    for i in 1..Len(recipes) {
         let model = M48FindRecipe(recipes[i])
         names = Append(names, M48RecipeToString(recipes[i]))
         policy = Append(policy, M48TailPolicyForRecipe(recipes[i]))

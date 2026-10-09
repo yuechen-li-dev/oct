@@ -2,6 +2,7 @@ package tester
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -97,8 +98,25 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 	if err != nil {
 		return err
 	}
-
 	program, loadErr := project.LoadForTest(path)
+	if loadErr != nil && strings.Contains(loadErr.Error(), "unknown package") && selectedSources == nil && len(octFailCases) == 0 {
+		found := false
+		if err := filepath.WalkDir(path, func(_ string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !entry.IsDir() && filepath.Ext(entry.Name()) == ".octest" {
+				found = true
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if !found {
+			return fmt.Errorf("no .octest or .octfail tests found in %q", path)
+		}
+	}
+
 	if loadErr == nil {
 		if len(options.Wrappers) > 0 {
 			pkg := program.Packages[program.Entry]
@@ -559,7 +577,12 @@ func sanitizeHarnessName(group compiledHarnessGroup) string {
 			b.WriteByte('_')
 		}
 	}
-	return b.String()
+	prefix := b.String()
+	if len(prefix) > 64 {
+		prefix = prefix[:64]
+	}
+	digest := sha256.Sum256([]byte(group.id))
+	return fmt.Sprintf("%s-%x", prefix, digest[:8])
 }
 
 func inlineValueToSource(value interpret.Value) string {

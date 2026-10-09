@@ -103,43 +103,43 @@ fn ChooseDepth(policy: PolicyConfig, confidence: Float, e: FilteredEvidenceSampl
 fn Scenario(name: String) -> FilteredEvidenceSample[] {
     if name == "stable" {
         return [
-            FilteredEvidenceSample { Tick:0 RawValue:3.0 FilteredValue:3.0 Confidence:0.82 Warmup:false Valid:true OutlierCount:0 },
-            FilteredEvidenceSample { Tick:1 RawValue:3.1 FilteredValue:3.1 Confidence:0.84 Warmup:false Valid:true OutlierCount:0 },
-            FilteredEvidenceSample { Tick:2 RawValue:3.0 FilteredValue:3.0 Confidence:0.86 Warmup:false Valid:true OutlierCount:0 },
-            FilteredEvidenceSample { Tick:3 RawValue:3.1 FilteredValue:3.1 Confidence:0.87 Warmup:false Valid:true OutlierCount:0 },
-            FilteredEvidenceSample { Tick:4 RawValue:3.0 FilteredValue:3.0 Confidence:0.88 Warmup:false Valid:true OutlierCount:0 }
+            FilteredEvidenceSample { Tick: 0 RawValue: 3.0 FilteredValue: 3.0 Confidence: 0.82 Warmup: false Valid: true OutlierCount: 0 },
+            FilteredEvidenceSample { Tick: 1 RawValue: 3.1 FilteredValue: 3.1 Confidence: 0.84 Warmup: false Valid: true OutlierCount: 0 },
+            FilteredEvidenceSample { Tick: 2 RawValue: 3.0 FilteredValue: 3.0 Confidence: 0.86 Warmup: false Valid: true OutlierCount: 0 },
+            FilteredEvidenceSample { Tick: 3 RawValue: 3.1 FilteredValue: 3.1 Confidence: 0.87 Warmup: false Valid: true OutlierCount: 0 },
+            FilteredEvidenceSample { Tick: 4 RawValue: 3.0 FilteredValue: 3.0 Confidence: 0.88 Warmup: false Valid: true OutlierCount: 0 }
         ]
     }
     if name == "warmup" {
         return [
-            FilteredEvidenceSample { Tick:0 RawValue:3.0 FilteredValue:3.0 Confidence:0.80 Warmup:true Valid:true OutlierCount:0 },
-            FilteredEvidenceSample { Tick:1 RawValue:3.0 FilteredValue:3.0 Confidence:0.78 Warmup:true Valid:true OutlierCount:0 },
-            FilteredEvidenceSample { Tick:2 RawValue:3.0 FilteredValue:3.0 Confidence:0.77 Warmup:true Valid:true OutlierCount:0 }
+            FilteredEvidenceSample { Tick: 0 RawValue: 3.0 FilteredValue: 3.0 Confidence: 0.80 Warmup: true Valid: true OutlierCount: 0 },
+            FilteredEvidenceSample { Tick: 1 RawValue: 3.0 FilteredValue: 3.0 Confidence: 0.78 Warmup: true Valid: true OutlierCount: 0 },
+            FilteredEvidenceSample { Tick: 2 RawValue: 3.0 FilteredValue: 3.0 Confidence: 0.77 Warmup: true Valid: true OutlierCount: 0 }
         ]
     }
     if name == "low-confidence" {
-        return [FilteredEvidenceSample { Tick:0 RawValue:4.0 FilteredValue:4.0 Confidence:0.30 Warmup:false Valid:true OutlierCount:2 }]
+        return [FilteredEvidenceSample { Tick: 0 RawValue: 4.0 FilteredValue: 4.0 Confidence: 0.30 Warmup: false Valid: true OutlierCount: 2 }]
     }
     return [
-        FilteredEvidenceSample { Tick:0 RawValue:3.0 FilteredValue:3.0 Confidence:0.82 Warmup:false Valid:true OutlierCount:0 },
-        FilteredEvidenceSample { Tick:1 RawValue:3.0 FilteredValue:3.0 Confidence:0.80 Warmup:false Valid:true OutlierCount:0 },
-        FilteredEvidenceSample { Tick:2 RawValue:8.0 FilteredValue:5.8 Confidence:0.50 Warmup:false Valid:true OutlierCount:3 },
-        FilteredEvidenceSample { Tick:3 RawValue:8.0 FilteredValue:7.2 Confidence:0.48 Warmup:false Valid:true OutlierCount:2 },
-        FilteredEvidenceSample { Tick:4 RawValue:8.0 FilteredValue:8.0 Confidence:0.76 Warmup:false Valid:true OutlierCount:0 }
+        FilteredEvidenceSample { Tick: 0 RawValue: 3.0 FilteredValue: 3.0 Confidence: 0.82 Warmup: false Valid: true OutlierCount: 0 },
+        FilteredEvidenceSample { Tick: 1 RawValue: 3.0 FilteredValue: 3.0 Confidence: 0.80 Warmup: false Valid: true OutlierCount: 0 },
+        FilteredEvidenceSample { Tick: 2 RawValue: 8.0 FilteredValue: 5.8 Confidence: 0.50 Warmup: false Valid: true OutlierCount: 3 },
+        FilteredEvidenceSample { Tick: 3 RawValue: 8.0 FilteredValue: 7.2 Confidence: 0.48 Warmup: false Valid: true OutlierCount: 2 },
+        FilteredEvidenceSample { Tick: 4 RawValue: 8.0 FilteredValue: 8.0 Confidence: 0.76 Warmup: false Valid: true OutlierCount: 0 }
     ]
 }
 
 fn Observation(name: String, tick: Int) -> PhysicalObservation {
     if name == "resource-pressure" {
-        return PhysicalObservation { Tick:tick ActualReady:true ActualLatency:3.0 SlotValid:true RuntimeUnsafe:false OutstandingDepth:2 MemoryBudgetOk:false }
+        return PhysicalObservation { Tick: tick ActualReady: true ActualLatency: 3.0 SlotValid: true RuntimeUnsafe: false OutstandingDepth: 2 MemoryBudgetOk: false }
     }
     if name == "runtime-unsafe" {
-        return PhysicalObservation { Tick:tick ActualReady:false ActualLatency:6.0 SlotValid:false RuntimeUnsafe:true OutstandingDepth:0 MemoryBudgetOk:true }
+        return PhysicalObservation { Tick: tick ActualReady: false ActualLatency: 6.0 SlotValid: false RuntimeUnsafe: true OutstandingDepth: 0 MemoryBudgetOk: true }
     }
     if name == "prediction-miss" and tick >= 2 {
-        return PhysicalObservation { Tick:tick ActualReady:false ActualLatency:7.5 SlotValid:true RuntimeUnsafe:false OutstandingDepth:0 MemoryBudgetOk:true }
+        return PhysicalObservation { Tick: tick ActualReady: false ActualLatency: 7.5 SlotValid: true RuntimeUnsafe: false OutstandingDepth: 0 MemoryBudgetOk: true }
     }
-    return PhysicalObservation { Tick:tick ActualReady:true ActualLatency:3.0 SlotValid:true RuntimeUnsafe:false OutstandingDepth:0 MemoryBudgetOk:true }
+    return PhysicalObservation { Tick: tick ActualReady: true ActualLatency: 3.0 SlotValid: true RuntimeUnsafe: false OutstandingDepth: 0 MemoryBudgetOk: true }
 }
 
 fn SimulateScenario(policy: PolicyConfig, scenario: String) -> PolicyOutcome {
@@ -192,7 +192,7 @@ fn SimulateScenario(policy: PolicyConfig, scenario: String) -> PolicyOutcome {
     let waste = Float(wastes)
     let fallbackRate = Float(fallbacks) / n
     let composite = (opp * 1.7) + (safety * 1.5) - (missPenalty * 0.9) - (waste * 0.7) - (fallbackRate * 0.2) - (Float(thrash) * 0.4)
-    return PolicyOutcome { Scenario:scenario Policy:policy.Name OpportunityScore:opp SafetyScore:safety MissPenalty:missPenalty FutureLeaseWaste:waste FallbackRate:fallbackRate ThrashCount:thrash CompositeScore:composite FinalDepth:depthPrev }
+    return PolicyOutcome { Scenario: scenario Policy: policy.Name OpportunityScore: opp SafetyScore: safety MissPenalty: missPenalty FutureLeaseWaste: waste FallbackRate: fallbackRate ThrashCount: thrash CompositeScore: composite FinalDepth: depthPrev }
 }
 
 fn ComparePolicies(scenario: String) -> PolicyOutcome[] {

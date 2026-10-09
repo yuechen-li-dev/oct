@@ -1,0 +1,7 @@
+expect error: ".octagon-representable"
+package Main
+record Reading { Phase: Complex }
+fn Main() -> Int {
+    let reading = LoadOctagon<Reading>("reading.octagon")!
+    return 0
+}

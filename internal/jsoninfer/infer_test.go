@@ -359,7 +359,22 @@ func TestRootName(t *testing.T) {
 // seven under Libraries/IO/testdata.
 var ladderDocuments = []string{
 	filepath.Join("Experiments", "JsonIntentRecoveryLab", "M0", "corpus", "*.json"),
-	filepath.Join("Experiments", "*", "M*", "*.json"),
+	// The fourteen recorded acceptance documents; generated scratch outputs
+	// beside them must not change the frozen ladder census.
+	filepath.FromSlash("Experiments/FmBrownNoiseKalman/M1/metrics.json"),
+	filepath.FromSlash("Experiments/FmBrownNoiseKalman/M2/metrics.json"),
+	filepath.FromSlash("Experiments/FmBrownNoiseKalman/M3/metrics.json"),
+	filepath.FromSlash("Experiments/FmBrownNoiseKalman/M4/metrics.json"),
+	filepath.FromSlash("Experiments/FmBrownNoiseKalman/M4b/sweep_summary.json"),
+	filepath.FromSlash("Experiments/FmBrownNoiseKalman/M5/sweep_summary.json"),
+	filepath.FromSlash("Experiments/FmBrownNoiseKalman/M6/sweep_summary.json"),
+	filepath.FromSlash("Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_summary.json"),
+	filepath.FromSlash("Experiments/PrometheusNumericalHeterogeneityLab/M1/native_import_summary.json"),
+	filepath.FromSlash("Experiments/PrometheusShadowAuthorityRakeLab/M1/scenario_summary.json"),
+	filepath.FromSlash("Experiments/PrometheusShadowAuthorityRakeLab/M2/scenario_summary.json"),
+	filepath.FromSlash("Experiments/PrometheusShadowAuthorityRakeLab/M3/scenario_summary.json"),
+	filepath.FromSlash("Experiments/PrometheusShadowAuthorityRakeLab/M4/scenario_summary.json"),
+	filepath.FromSlash("Experiments/PrometheusShadowAuthorityRakeLab/M5/scenario_summary.json"),
 	filepath.Join("Libraries", "IO", "testdata", "*.json"),
 }
 

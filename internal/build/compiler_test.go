@@ -2703,16 +2703,6 @@ fn main() -> Int {
 `,
 			wantErr: "range step must be positive, got 0",
 		},
-		{
-			name: "plot builtin",
-			source: `package Main
-
-fn main() -> Int {
-    return PlotLine([0.0], [1.0], "out.png")
-}
-`,
-			wantErr: "compiled mode does not yet support builtin PlotLine",
-		},
 	}
 
 	for _, tc := range tests {

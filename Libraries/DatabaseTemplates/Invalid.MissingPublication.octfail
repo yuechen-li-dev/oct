@@ -2,10 +2,10 @@ expect error: "missing field 'Access'"
 
 package DatabaseTemplates
 
-record MissingPublicationJob {Ready: Bool}
-fn MissingPublicationReady(job: MissingPublicationJob) -> Bool {return job.Ready}
+record MissingPublicationJob { Ready: Bool }
+fn MissingPublicationReady(job: MissingPublicationJob) -> Bool { return job.Ready }
 
-template record ReadMostlyDataset<Record> {ExpectedReadsPerPublish: Int}
+template record ReadMostlyDataset<Record> { ExpectedReadsPerPublish: Int }
 
 template record MaterializedFilter<Record> {
     Access: ReadMostlyDataset<Record>
@@ -14,5 +14,5 @@ template record MaterializedFilter<Record> {
 }
 
 fn Main() -> Void {
-    let invalid = MaterializedFilter<MissingPublicationJob> {Predicate: MissingPublicationReady Limit: 10}
+    let invalid = MaterializedFilter<MissingPublicationJob> { Predicate: MissingPublicationReady Limit: 10 }
 }

@@ -20,13 +20,13 @@ fn BaselineSeriesUseLongerSequenceLength() -> Void {
 fn BaselineSeriesShowExpectedMonotonicTrends() -> Void {
     let baseline = BuildSequenceBaseline()
 
-    for i in 1 .. Len(baseline.Distances) {
+    for i in 1..Len(baseline.Distances) {
         Assert.True(baseline.FreeSpacePathLoss[i] > baseline.FreeSpacePathLoss[i - 1], "free-space path loss should increase with distance")
         Assert.True(baseline.LogDistancePathLoss[i] > baseline.LogDistancePathLoss[i - 1], "log-distance path loss should increase with distance")
         Assert.True(baseline.FreeSpaceReceivedPower[i] < baseline.FreeSpaceReceivedPower[i - 1], "received power should drop with distance")
     }
 
-    for i in 1 .. Len(baseline.BandwidthsHz) {
+    for i in 1..Len(baseline.BandwidthsHz) {
         Assert.True(baseline.NoiseByBandwidth[i] > baseline.NoiseByBandwidth[i - 1], "noise should increase across this rising bandwidth/noise-figure schedule")
         Assert.True(baseline.SnrLinear[i] < baseline.SnrLinear[i - 1], "snr should decrease as effective noise rises")
     }
@@ -74,7 +74,7 @@ fn RayleighProbePreservesShapeAndComposesWithGainHelpers() -> Void {
     Assert.Equal(16, Len(probe.RayleighSignalViaHelper), "rayleigh helper output should preserve shape")
     Assert.Equal(16, Len(probe.RayleighSignalViaGain), "power-gain output should preserve shape")
 
-    for i in 0 .. Len(probe.BaselineSignal) {
+    for i in 0..Len(probe.BaselineSignal) {
         Assert.Near(probe.RayleighSignalViaHelper[i] / (1.0kg*m^2/s^3), probe.RayleighSignalViaGain[i] / (1.0kg*m^2/s^3), 0.000001, "rayleigh helper and explicit gain composition should agree elementwise")
     }
 

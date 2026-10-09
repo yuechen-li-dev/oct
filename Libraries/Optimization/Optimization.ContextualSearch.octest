@@ -4,7 +4,7 @@ package Optimization
 // New callers capture the target directly in an ordinary fn(Float[]) -> Float.
 fn SumOfSquaresAgainstContext(x: Float[], context: Float[]) -> Float {
     var sum = 0.0
-    for i in 0 .. Len(x) {
+    for i in 0..Len(x) {
         let diff = x[i] - context[i]
         sum = sum + diff * diff
     }
@@ -28,7 +28,7 @@ fn NelderMeadAcceptsExplicitlyCapturedScientificObjective() -> Void ! Error {
         target: target
     } {
         var sum = 0.0
-        for i in 0 .. Len(x) {
+        for i in 0..Len(x) {
             let diff = x[i] - target[i]
             sum = sum + diff * diff
         }
@@ -57,7 +57,7 @@ fn CoordinateDescentAcceptsCapturedObjectiveDirectly() -> Void ! Error {
         target: target
     } {
         var sum = 0.0
-        for i in 0 .. Len(x) {
+        for i in 0..Len(x) {
             let residual = x[i] - target[i]
             sum = sum + residual * residual
         }

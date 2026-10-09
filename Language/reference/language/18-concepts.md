@@ -33,6 +33,8 @@ inputs require the same compile-time proof or explicit checked construction as
 refined function arguments. Nominal enums remain the preferred closed sum for
 heterogeneous command protocols.
 
+Transparent aliases without requirements are expanded within their declaring package and are not exported nominal types. To name a shape across packages, export a record-shaped concept or a refined concept with requirements.
+
 ## Record-shaped concepts
 
 `concept Name { fields }` lowers directly to an ordinary nominal record declaration. Construction, field access, immutable `with` updates, arrays, equality, argument passing, return values, interpreted execution, Octagon-compatible record behavior, and Go struct emission therefore use the established record paths. Missing, extra, duplicate, and incorrectly typed fields are rejected by the record checker.

@@ -28,9 +28,9 @@ fn BuildDesignMatrix(library: Feature[], xs: Float[], ys: Float[], zs: Float[]) 
     }
     let nf = Len(library)
     var theta = [0.0]
-    for k in 1 .. n * nf { theta = Append(theta, 0.0) }
-    for i in 0 .. n {
-        for j in 0 .. nf {
+    for k in 1..n * nf { theta = Append(theta, 0.0) }
+    for i in 0..n {
+        for j in 0..nf {
             theta[i * nf + j] = EvalFeature(library[j], xs[i], ys[i], zs[i])
         }
     }
@@ -47,7 +47,7 @@ fn FitEquation(library: Feature[], xs: Float[], ys: Float[], zs: Float[], target
     let result = Statistics.SequentialThresholdedLeastSquares(theta, n, nf, target, threshold, maxIter)?
 
     var activeTerms: FittedFeature[] = []
-    for j in 0 .. nf {
+    for j in 0..nf {
         if result.ActiveMask[j] {
             activeTerms = Append(activeTerms, FittedFeature { Feature: library[j] Coefficient: result.Coefficients[j] })
         }
@@ -66,7 +66,7 @@ fn FitEquation(library: Feature[], xs: Float[], ys: Float[], zs: Float[], target
 /// DifferentialEquations.VectorRK4Solve.
 fn EvalFittedEquation(library: Feature[], coefficients: Float[], x: Float, y: Float, z: Float) -> Float {
     var sum = 0.0
-    for j in 0 .. Len(library) {
+    for j in 0..Len(library) {
         sum = sum + coefficients[j] * EvalFeature(library[j], x, y, z)
     }
     return sum
@@ -77,7 +77,7 @@ fn EvalFittedEquation(library: Feature[], coefficients: Float[], x: Float, y: Fl
 /// caveats on RationalAffine's contribution.
 fn FittedEquationComplexity(equation: FittedSystemEquation) -> Int {
     var total = 0
-    for i in 0 .. Len(equation.ActiveTerms) {
+    for i in 0..Len(equation.ActiveTerms) {
         let term = equation.ActiveTerms[i]
         let isUnit = Abs(Abs(term.Coefficient) - 1.0) < 0.0000001
         total = total + FittedTermComplexity(term.Feature, isUnit)
@@ -134,7 +134,7 @@ fn SafeCubicCrossTerms() -> Feature[] {
 /// line by construction.
 fn SafeBareTrigTerms() -> Feature[] {
     var lib: Feature[] = []
-    for varIdx in 0 .. 3 {
+    for varIdx in 0..3 {
         lib = Append(lib, UnaryOfVar(UnaryFn.Sin, varIdx))
         lib = Append(lib, UnaryOfVar(UnaryFn.Cos, varIdx))
     }
@@ -150,10 +150,10 @@ fn SafeBareTrigTerms() -> Feature[] {
 /// represent at any coefficient setting.
 fn AffineTrigCandidates(weights: Float[]) -> Feature[] {
     var lib: Feature[] = []
-    for primary in 0 .. 3 {
-        for secondary in 0 .. 3 {
+    for primary in 0..3 {
+        for secondary in 0..3 {
             if primary != secondary {
-                for w in 0 .. Len(weights) {
+                for w in 0..Len(weights) {
                     lib = Append(lib, UnaryOfAffinePair(UnaryFn.Sin, primary, secondary, weights[w]))
                     lib = Append(lib, UnaryOfAffinePair(UnaryFn.Cos, primary, secondary, weights[w]))
                 }
@@ -172,13 +172,13 @@ fn AffineTrigCandidates(weights: Float[]) -> Feature[] {
 /// polynomial-plus-bare-unary library can approximate well globally.
 fn AffineRationalCandidates(weights: Float[]) -> Feature[] {
     var lib: Feature[] = []
-    for primary in 0 .. 3 {
-        for secondary in 0 .. 3 {
+    for primary in 0..3 {
+        for secondary in 0..3 {
             if primary != secondary {
-                for denomPrimary in 0 .. 3 {
-                    for denomSecondary in 0 .. 3 {
+                for denomPrimary in 0..3 {
+                    for denomSecondary in 0..3 {
                         if denomPrimary != denomSecondary {
-                            for w in 0 .. Len(weights) {
+                            for w in 0..Len(weights) {
                                 lib = Append(lib, RationalOfUnaryAffinePair(UnaryFn.Sin, primary, secondary, weights[w], denomPrimary, denomSecondary, 0.0 - 1.0))
                                 lib = Append(lib, RationalOfUnaryAffinePair(UnaryFn.Cos, primary, secondary, weights[w], denomPrimary, denomSecondary, 0.0 - 1.0))
                             }

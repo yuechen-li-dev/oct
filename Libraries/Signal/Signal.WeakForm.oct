@@ -62,19 +62,19 @@ fn BumpWeight(s: Float, power: Int) -> Float {
 /// point and its main loop.
 fn FitWeakFormWindow(values: Float[], weights: Float[], center: Int, halfWidth: Int, windowSize: Int, nCoef: Int) -> Float[] ! Error {
     var AtWA = [0.0]
-    for k in 1 .. nCoef * nCoef { AtWA = Append(AtWA, 0.0) }
+    for k in 1..nCoef * nCoef { AtWA = Append(AtWA, 0.0) }
     var AtWy = [0.0]
-    for k in 1 .. nCoef { AtWy = Append(AtWy, 0.0) }
+    for k in 1..nCoef { AtWy = Append(AtWy, 0.0) }
 
-    for i in 0 .. windowSize {
+    for i in 0..windowSize {
         let offset = Float(i - halfWidth)
         let w = weights[i]
         let y = values[center - halfWidth + i]
         var powers = [1.0]
-        for k in 1 .. nCoef { powers = Append(powers, powers[k - 1] * offset) }
-        for r in 0 .. nCoef {
+        for k in 1..nCoef { powers = Append(powers, powers[k - 1] * offset) }
+        for r in 0..nCoef {
             AtWy[r] = AtWy[r] + w * powers[r] * y
-            for c in 0 .. nCoef {
+            for c in 0..nCoef {
                 AtWA[r * nCoef + c] = AtWA[r * nCoef + c] + w * powers[r] * powers[c]
             }
         }
@@ -112,8 +112,8 @@ fn WeakFormSmooth(times: Float[], values: Float[], halfWidth: Int, polyOrder: In
     // Bump weights are the same for every window (uniform sampling),
     // so precompute once.
     var weights = [0.0]
-    for k in 1 .. windowSize { weights = Append(weights, 0.0) }
-    for i in 0 .. windowSize {
+    for k in 1..windowSize { weights = Append(weights, 0.0) }
+    for i in 0..windowSize {
         let offset = i - halfWidth
         let s = Float(offset) / Float(halfWidth)
         weights[i] = BumpWeight(s, bumpPower)

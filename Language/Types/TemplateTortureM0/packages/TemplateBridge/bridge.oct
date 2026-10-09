@@ -3,5 +3,5 @@ package TemplateBridge
 import TemplateOrigin
 
 template fn Compose<T>(value: T) -> TemplateOrigin.Box<T> {
-    return TemplateOrigin.Box<T> {Value: TemplateOrigin.Double<T>(value)}
+    return TemplateOrigin.Box<T> { Value: TemplateOrigin.Double<T>(value) }
 }

@@ -148,23 +148,23 @@ record M42FinalContract {
     RecommendationComputed: Bool
 }
 
-fn M42Min(a: Int, b: Int) -> Int {return switch {case a < b -> a else -> b}}
-fn M42Max(a: Int, b: Int) -> Int {return switch {case a > b -> a else -> b}}
+fn M42Min(a: Int, b: Int) -> Int { return switch { case a < b -> a else -> b } }
+fn M42Max(a: Int, b: Int) -> Int { return switch { case a > b -> a else -> b } }
 
 fn M42JoinInts(values: Int[]) -> String {
     var out = ""
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         out = out + ToString(values[i])
-        if i + 1 < Len(values) {out = out + ","}
+        if i + 1 < Len(values) { out = out + "," }
     }
     return out
 }
 
 fn M42JoinStrings(values: String[]) -> String {
     var out = ""
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         out = out + values[i]
-        if i + 1 < Len(values) {out = out + "|"}
+        if i + 1 < Len(values) { out = out + "|" }
     }
     return out
 }
@@ -177,51 +177,51 @@ fn M42ComputeQueueCount(s: M42Scenario) -> Int {
 }
 
 fn M42TopologyClass(s: M42Scenario) -> String {
-    if s.QueueTopology == "single-compute" {return "single-compute"}
-    if s.QueueTopology == "two-compute" {return "independent-compute"}
-    if s.QueueTopology == "four-compute" {return "independent-compute"}
-    if s.QueueTopology == "compute-plus-transfer" {return "compute-plus-transfer"}
-    if s.QueueTopology == "pseudo-shared" {return "pseudo-shared"}
+    if s.QueueTopology == "single-compute" { return "single-compute" }
+    if s.QueueTopology == "two-compute" { return "independent-compute" }
+    if s.QueueTopology == "four-compute" { return "independent-compute" }
+    if s.QueueTopology == "compute-plus-transfer" { return "compute-plus-transfer" }
+    if s.QueueTopology == "pseudo-shared" { return "pseudo-shared" }
     return "custom"
 }
 
 fn M42EffectiveWorkers(s: M42Scenario) -> Int {
-    let memoryWorkers = switch {case s.PerWorkerArenaBytes <= 0 -> 1 else -> M42Max(s.MemoryBudgetBytes / s.PerWorkerArenaBytes, 1)}
+    let memoryWorkers = switch { case s.PerWorkerArenaBytes <= 0 -> 1 else -> M42Max(s.MemoryBudgetBytes / s.PerWorkerArenaBytes, 1) }
     let requested = M42Min(s.WorkerCount, memoryWorkers)
     let computeQueues = M42ComputeQueueCount(s)
 
-    if s.Candidate == "A-serialized-bridge-baseline" {return requested}
-    if s.Candidate == "B-per-worker-command-single-queue" {return requested}
+    if s.Candidate == "A-serialized-bridge-baseline" { return requested }
+    if s.Candidate == "B-per-worker-command-single-queue" { return requested }
     if s.Candidate == "C-true-per-worker-queues" {
-        if computeQueues <= 1 {return 1}
+        if computeQueues <= 1 { return 1 }
         return M42Min(requested, computeQueues)
     }
     if s.Candidate == "D-per-worker-plus-transfer" {
-        if computeQueues <= 1 {return 1}
+        if computeQueues <= 1 { return 1 }
         return M42Min(requested, computeQueues)
     }
     if s.Candidate == "E-shared-arena-lock" {
-        if computeQueues <= 1 {return 1}
+        if computeQueues <= 1 { return 1 }
         return M42Min(requested, computeQueues)
     }
     return M42Min(requested, computeQueues)
 }
 
 fn M42CandidateComplexity(candidate: String) -> Int {
-    if candidate == "A-serialized-bridge-baseline" {return 120}
-    if candidate == "B-per-worker-command-single-queue" {return 180}
-    if candidate == "C-true-per-worker-queues" {return 520}
-    if candidate == "D-per-worker-plus-transfer" {return 620}
-    if candidate == "E-shared-arena-lock" {return 700}
+    if candidate == "A-serialized-bridge-baseline" { return 120 }
+    if candidate == "B-per-worker-command-single-queue" { return 180 }
+    if candidate == "C-true-per-worker-queues" { return 520 }
+    if candidate == "D-per-worker-plus-transfer" { return 620 }
+    if candidate == "E-shared-arena-lock" { return 700 }
     return 500
 }
 
 fn M42CandidateRisk(candidate: String) -> Int {
-    if candidate == "A-serialized-bridge-baseline" {return 140}
-    if candidate == "B-per-worker-command-single-queue" {return 190}
-    if candidate == "C-true-per-worker-queues" {return 500}
-    if candidate == "D-per-worker-plus-transfer" {return 580}
-    if candidate == "E-shared-arena-lock" {return 700}
+    if candidate == "A-serialized-bridge-baseline" { return 140 }
+    if candidate == "B-per-worker-command-single-queue" { return 190 }
+    if candidate == "C-true-per-worker-queues" { return 500 }
+    if candidate == "D-per-worker-plus-transfer" { return 580 }
+    if candidate == "E-shared-arena-lock" { return 700 }
     return 500
 }
 
@@ -234,7 +234,7 @@ fn M42BaseScenario(candidate: String, topology: String) -> M42Scenario {
         case topology == "pseudo-shared" -> 2
         else -> 1
     }
-    let transferQueues = switch {case topology == "compute-plus-transfer" -> 1 else -> 0}
+    let transferQueues = switch { case topology == "compute-plus-transfer" -> 1 else -> 0 }
     let independent = topology != "pseudo-shared"
 
     return M42Scenario {
@@ -275,14 +275,14 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
     let workers = M42EffectiveWorkers(s)
     let computeQueues = M42ComputeQueueCount(s)
 
-    var workerQueue =[0]
-    var workerTasks =[0]
-    var workerFinish =[0]
-    var workerEvents =[0]
-    var workerInFlight =["idle"]
-    var workerFence =["ready"]
-    var workerFailure =["none"]
-    for w in 1 .. workers {
+    var workerQueue = [0]
+    var workerTasks = [0]
+    var workerFinish = [0]
+    var workerEvents = [0]
+    var workerInFlight = ["idle"]
+    var workerFence = ["ready"]
+    var workerFailure = ["none"]
+    for w in 1..workers {
         workerQueue = Append(workerQueue, 0)
         workerTasks = Append(workerTasks, 0)
         workerFinish = Append(workerFinish, 0)
@@ -292,12 +292,12 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
         workerFailure = Append(workerFailure, "none")
     }
 
-    for w in 0 .. workers {
+    for w in 0..workers {
         workerQueue[w] = w % M42Max(computeQueues, 1)
     }
 
-    var queueBusy =[0]
-    for q in 1 .. computeQueues {queueBusy = Append(queueBusy, 0)}
+    var queueBusy = [0]
+    for q in 1..computeQueues { queueBusy = Append(queueBusy, 0) }
 
     var queueOwnershipViolation = 0
     var commandOwnershipViolation = 0
@@ -306,11 +306,11 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
     var sharedArenaViolation = 0
     var dominatusViolation = 0
 
-    if s.InjectCommandOwnershipViolation {commandOwnershipViolation = commandOwnershipViolation + 1}
-    if s.InjectQueueOwnershipViolation {queueOwnershipViolation = queueOwnershipViolation + 1}
-    if s.InjectFenceOwnershipViolation {fenceOwnershipViolation = fenceOwnershipViolation + 1}
-    if s.InjectOutputOwnershipViolation {outputOwnershipViolation = outputOwnershipViolation + 1}
-    if s.InjectDominatusDirectMutation {dominatusViolation = dominatusViolation + 1}
+    if s.InjectCommandOwnershipViolation { commandOwnershipViolation = commandOwnershipViolation + 1 }
+    if s.InjectQueueOwnershipViolation { queueOwnershipViolation = queueOwnershipViolation + 1 }
+    if s.InjectFenceOwnershipViolation { fenceOwnershipViolation = fenceOwnershipViolation + 1 }
+    if s.InjectOutputOwnershipViolation { outputOwnershipViolation = outputOwnershipViolation + 1 }
+    if s.InjectDominatusDirectMutation { dominatusViolation = dominatusViolation + 1 }
 
     if s.SharedArenaEnabled {
         if s.InjectArenaAccessWithoutLock or not s.SharedArenaLockHeld {
@@ -319,12 +319,12 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
     }
 
     var completion = 0
-    for i in 0 .. s.BatchSize {
+    for i in 0..s.BatchSize {
         let w = i % M42Max(workers, 1)
         let q = workerQueue[w]
-        let duration = 8 +((i * 5) % 9)
+        let duration = 8 + ((i * 5) % 9)
         workerTasks[w] = workerTasks[w] + 1
-        workerEvents[w] = workerEvents[w] +(s.CriticalEventsPerTask + s.DiagnosticsEventsPerTask)
+        workerEvents[w] = workerEvents[w] + (s.CriticalEventsPerTask + s.DiagnosticsEventsPerTask)
 
         if s.Candidate == "A-serialized-bridge-baseline" or s.Candidate == "B-per-worker-command-single-queue" or computeQueues == 1 {
             workerFinish[w] = workerFinish[w] + duration
@@ -334,7 +334,7 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
             queueBusy[q] = queueBusy[q] + duration
         }
 
-        if workerFinish[w] > completion {completion = workerFinish[w]}
+        if workerFinish[w] > completion { completion = workerFinish[w] }
         workerInFlight[w] = "drained"
         workerFence[w] = "signaled"
     }
@@ -357,11 +357,11 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
         transferBenefit = s.TransferOverlapBenefit
     }
 
-    let totalEvents =(s.CriticalEventsPerTask + s.DiagnosticsEventsPerTask) * s.BatchSize
+    let totalEvents = (s.CriticalEventsPerTask + s.DiagnosticsEventsPerTask) * s.BatchSize
     let totalRingCap = s.EventRingCapacity * M42Max(workers, 1)
-    let eventPressure =((totalEvents * 1000) / M42Max(totalRingCap, 1))
+    let eventPressure = ((totalEvents * 1000) / M42Max(totalRingCap, 1))
 
-    let memoryPressure =(((workers * s.PerWorkerArenaBytes) * 1000) / M42Max(s.MemoryBudgetBytes, 1))
+    let memoryPressure = (((workers * s.PerWorkerArenaBytes) * 1000) / M42Max(s.MemoryBudgetBytes, 1))
 
     let claimedParallel = switch {
         case s.Candidate == "C-true-per-worker-queues" -> workers > 1 and computeQueues > 1 and s.QueuesIndependent
@@ -371,8 +371,8 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
     }
     let actualParallel = claimedParallel
 
-    var firstFailureEntry = - 1
-    var firstFailureWorker = - 1
+    var firstFailureEntry = -1
+    var firstFailureWorker = -1
     var firstFailureDetail = "none"
     var failurePropagationLatency = 0
     var drainLatency = 0
@@ -384,12 +384,12 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
     if ownershipHazards > 0 {
         firstFailureEntry = 0
         firstFailureWorker = 0
-        if commandOwnershipViolation > 0 {firstFailureDetail = "command-resource-ownership-violation"}
-        if queueOwnershipViolation > 0 and firstFailureDetail == "none" {firstFailureDetail = "queue-submit-ownership-violation"}
-        if fenceOwnershipViolation > 0 and firstFailureDetail == "none" {firstFailureDetail = "fence-ownership-violation"}
-        if outputOwnershipViolation > 0 and firstFailureDetail == "none" {firstFailureDetail = "output-staging-ownership-violation"}
-        if sharedArenaViolation > 0 and firstFailureDetail == "none" {firstFailureDetail = "shared-arena-lock-required"}
-        if dominatusViolation > 0 and firstFailureDetail == "none" {firstFailureDetail = "dominatus-direct-mutation-forbidden"}
+        if commandOwnershipViolation > 0 { firstFailureDetail = "command-resource-ownership-violation" }
+        if queueOwnershipViolation > 0 and firstFailureDetail == "none" { firstFailureDetail = "queue-submit-ownership-violation" }
+        if fenceOwnershipViolation > 0 and firstFailureDetail == "none" { firstFailureDetail = "fence-ownership-violation" }
+        if outputOwnershipViolation > 0 and firstFailureDetail == "none" { firstFailureDetail = "output-staging-ownership-violation" }
+        if sharedArenaViolation > 0 and firstFailureDetail == "none" { firstFailureDetail = "shared-arena-lock-required" }
+        if dominatusViolation > 0 and firstFailureDetail == "none" { firstFailureDetail = "dominatus-direct-mutation-forbidden" }
     }
 
     if s.FailureMode == "before-submit" {
@@ -415,7 +415,7 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
     }
     if s.FailureMode == "device-lost" {
         firstFailureEntry = 0
-        firstFailureWorker = - 1
+        firstFailureWorker = -1
         firstFailureDetail = "device-lost-global"
     }
     if s.FailureMode == "drain-timeout" {
@@ -433,45 +433,45 @@ fn M42RunScenario(s: M42Scenario) -> M42Result {
         if s.FailureMode == "drain-timeout" {
             drainLatency = drainLatency + 50
         }
-        for w in 0 .. workers {
+        for w in 0..workers {
             workerFailure[w] = firstFailureDetail
-            workerInFlight[w] = switch {case s.FailureMode == "drain-timeout" -> "stuck" else -> "drained"}
-            workerFence[w] = switch {case s.FailureMode == "fence-wait-failure" and w == s.FailureWorkerId -> "wait-failed" else -> workerFence[w]}
+            workerInFlight[w] = switch { case s.FailureMode == "drain-timeout" -> "stuck" else -> "drained" }
+            workerFence[w] = switch { case s.FailureMode == "fence-wait-failure" and w == s.FailureWorkerId -> "wait-failed" else -> workerFence[w] }
         }
     }
 
-    let batchFinal = switch {case hasFailure -> "FAILED" else -> "SUCCEEDED"}
+    let batchFinal = switch { case hasFailure -> "FAILED" else -> "SUCCEEDED" }
     let outputCommitted = not hasFailure
-    let resourcesSafe = switch {case hasFailure and drainTimeoutCount > 0 -> false else -> true}
+    let resourcesSafe = switch { case hasFailure and drainTimeoutCount > 0 -> false else -> true }
     let cleanupRequired = hasFailure
 
     var queueBusyTotal = 0
     var queueBusyMax = 0
-    for q in 0 .. computeQueues {
+    for q in 0..computeQueues {
         queueBusyTotal = queueBusyTotal + queueBusy[q]
-        if queueBusy[q] > queueBusyMax {queueBusyMax = queueBusy[q]}
+        if queueBusy[q] > queueBusyMax { queueBusyMax = queueBusy[q] }
     }
     let queueUtil = switch {
         case queueBusyMax <= 0 -> 0
-        else ->(queueBusyTotal * 1000) /(queueBusyMax * M42Max(computeQueues, 1))
+        else -> (queueBusyTotal * 1000) / (queueBusyMax * M42Max(computeQueues, 1))
     }
     let queueIdle = M42Max(1000 - queueUtil, 0)
 
     var workerBusyTotal = 0
     var workerBusyMax = 0
-    for w in 0 .. workers {
+    for w in 0..workers {
         workerBusyTotal = workerBusyTotal + workerFinish[w]
-        if workerFinish[w] > workerBusyMax {workerBusyMax = workerFinish[w]}
+        if workerFinish[w] > workerBusyMax { workerBusyMax = workerFinish[w] }
     }
     let workerUtil = switch {
         case workerBusyMax <= 0 -> 0
-        else ->(workerBusyTotal * 1000) /(workerBusyMax * M42Max(workers, 1))
+        else -> (workerBusyTotal * 1000) / (workerBusyMax * M42Max(workers, 1))
     }
 
     let completionTime = completion + queueSerializationOverhead + lockContention - transferBenefit
 
     let complexity = M42CandidateComplexity(s.Candidate)
-    let risk = M42CandidateRisk(s.Candidate) + ownershipHazards * 120 + drainTimeoutCount * 200 + switch {case s.FailureMode == "device-lost" -> 150 else -> 0}
+    let risk = M42CandidateRisk(s.Candidate) + ownershipHazards * 120 + drainTimeoutCount * 200 + switch { case s.FailureMode == "device-lost" -> 150 else -> 0 }
 
     let throughputBenefit = 2000 - completionTime
     let fallbackClarity = switch {
@@ -543,16 +543,16 @@ fn M42CandidateComparisonTable() -> M42CandidateComparison {
     let best = M42RecommendationFromMetrics().FirstImplementationCandidateForM13
 
     return M42CandidateComparison {
-        Candidate:[a.Candidate, b.Candidate, c.Candidate, d.Candidate, e.Candidate]
-        QueueTopology:[a.QueueTopology, b.QueueTopology, c.QueueTopology, d.QueueTopology, e.QueueTopology]
-        EffectiveWorkers:[a.EffectiveWorkers, b.EffectiveWorkers, c.EffectiveWorkers, d.EffectiveWorkers, e.EffectiveWorkers]
-        ClaimedHardwareParallelism:[a.ClaimedHardwareParallelism, b.ClaimedHardwareParallelism, c.ClaimedHardwareParallelism, d.ClaimedHardwareParallelism, e.ClaimedHardwareParallelism]
-        CompletionTime:[a.CompletionTime, b.CompletionTime, c.CompletionTime, d.CompletionTime, e.CompletionTime]
-        MemoryPressureMilli:[a.MemoryPressureMilli, b.MemoryPressureMilli, c.MemoryPressureMilli, d.MemoryPressureMilli, e.MemoryPressureMilli]
-        CorrectnessRiskScore:[a.CorrectnessRiskScore, b.CorrectnessRiskScore, c.CorrectnessRiskScore, d.CorrectnessRiskScore, e.CorrectnessRiskScore]
-        ImplementationComplexityScore:[a.ImplementationComplexityScore, b.ImplementationComplexityScore, c.ImplementationComplexityScore, d.ImplementationComplexityScore, e.ImplementationComplexityScore]
-        ProductScore:[a.ProductScore, b.ProductScore, c.ProductScore, d.ProductScore, e.ProductScore]
-        RecommendedForM13:[a.Candidate == best, b.Candidate == best, c.Candidate == best, d.Candidate == best, e.Candidate == best]
+        Candidate: [a.Candidate, b.Candidate, c.Candidate, d.Candidate, e.Candidate]
+        QueueTopology: [a.QueueTopology, b.QueueTopology, c.QueueTopology, d.QueueTopology, e.QueueTopology]
+        EffectiveWorkers: [a.EffectiveWorkers, b.EffectiveWorkers, c.EffectiveWorkers, d.EffectiveWorkers, e.EffectiveWorkers]
+        ClaimedHardwareParallelism: [a.ClaimedHardwareParallelism, b.ClaimedHardwareParallelism, c.ClaimedHardwareParallelism, d.ClaimedHardwareParallelism, e.ClaimedHardwareParallelism]
+        CompletionTime: [a.CompletionTime, b.CompletionTime, c.CompletionTime, d.CompletionTime, e.CompletionTime]
+        MemoryPressureMilli: [a.MemoryPressureMilli, b.MemoryPressureMilli, c.MemoryPressureMilli, d.MemoryPressureMilli, e.MemoryPressureMilli]
+        CorrectnessRiskScore: [a.CorrectnessRiskScore, b.CorrectnessRiskScore, c.CorrectnessRiskScore, d.CorrectnessRiskScore, e.CorrectnessRiskScore]
+        ImplementationComplexityScore: [a.ImplementationComplexityScore, b.ImplementationComplexityScore, c.ImplementationComplexityScore, d.ImplementationComplexityScore, e.ImplementationComplexityScore]
+        ProductScore: [a.ProductScore, b.ProductScore, c.ProductScore, d.ProductScore, e.ProductScore]
+        RecommendedForM13: [a.Candidate == best, b.Candidate == best, c.Candidate == best, d.Candidate == best, e.Candidate == best]
     }
 }
 
@@ -564,13 +564,13 @@ fn M42QueueTopologyContractTable() -> M42QueueTopologyTable {
     let pseudo = M42RunScenario(M42BaseScenario("C-true-per-worker-queues", "pseudo-shared"))
 
     return M42QueueTopologyTable {
-        QueueTopology:[single.QueueTopology, two.QueueTopology, four.QueueTopology, transfer.QueueTopology, pseudo.QueueTopology]
-        Candidate:[single.Candidate, two.Candidate, four.Candidate, transfer.Candidate, pseudo.Candidate]
-        HardwareQueueCount:[single.HardwareQueueCount, two.HardwareQueueCount, four.HardwareQueueCount, transfer.HardwareQueueCount, pseudo.HardwareQueueCount]
-        EffectiveWorkers:[single.EffectiveWorkers, two.EffectiveWorkers, four.EffectiveWorkers, transfer.EffectiveWorkers, pseudo.EffectiveWorkers]
-        ClaimedHardwareParallelism:[single.ClaimedHardwareParallelism, two.ClaimedHardwareParallelism, four.ClaimedHardwareParallelism, transfer.ClaimedHardwareParallelism, pseudo.ClaimedHardwareParallelism]
-        ActualHardwareParallelism:[single.ActualHardwareParallelism, two.ActualHardwareParallelism, four.ActualHardwareParallelism, transfer.ActualHardwareParallelism, pseudo.ActualHardwareParallelism]
-        QueueContract:[
+        QueueTopology: [single.QueueTopology, two.QueueTopology, four.QueueTopology, transfer.QueueTopology, pseudo.QueueTopology]
+        Candidate: [single.Candidate, two.Candidate, four.Candidate, transfer.Candidate, pseudo.Candidate]
+        HardwareQueueCount: [single.HardwareQueueCount, two.HardwareQueueCount, four.HardwareQueueCount, transfer.HardwareQueueCount, pseudo.HardwareQueueCount]
+        EffectiveWorkers: [single.EffectiveWorkers, two.EffectiveWorkers, four.EffectiveWorkers, transfer.EffectiveWorkers, pseudo.EffectiveWorkers]
+        ClaimedHardwareParallelism: [single.ClaimedHardwareParallelism, two.ClaimedHardwareParallelism, four.ClaimedHardwareParallelism, transfer.ClaimedHardwareParallelism, pseudo.ClaimedHardwareParallelism]
+        ActualHardwareParallelism: [single.ActualHardwareParallelism, two.ActualHardwareParallelism, four.ActualHardwareParallelism, transfer.ActualHardwareParallelism, pseudo.ActualHardwareParallelism]
+        QueueContract: [
             "single compute queue => no hardware parallelism claim; candidate C collapses to 1 effective worker",
             "two independent compute queues => claim parallelism up to two workers",
             "four independent compute queues => cap by worker count + memory budget",
@@ -652,14 +652,14 @@ fn M42ResourceOwnershipContractTable() -> M42ResourceOwnershipTable {
     })
 
     return M42ResourceOwnershipTable {
-        Candidate:[local.Candidate, cmd.Candidate, sharedBad.Candidate]
-        QueueTopology:[local.QueueTopology, cmd.QueueTopology, sharedBad.QueueTopology]
-        CommandOwnershipValid:[local.FirstFailureDetail != "command-resource-ownership-violation", cmd.FirstFailureDetail != "command-resource-ownership-violation", sharedBad.FirstFailureDetail != "command-resource-ownership-violation"]
-        QueueOwnershipValid:[local.FirstFailureDetail != "queue-submit-ownership-violation", cmd.FirstFailureDetail != "queue-submit-ownership-violation", sharedBad.FirstFailureDetail != "queue-submit-ownership-violation"]
-        FenceOwnershipValid:[local.FirstFailureDetail != "fence-ownership-violation", cmd.FirstFailureDetail != "fence-ownership-violation", sharedBad.FirstFailureDetail != "fence-ownership-violation"]
-        OutputOwnershipValid:[local.FirstFailureDetail != "output-staging-ownership-violation", cmd.FirstFailureDetail != "output-staging-ownership-violation", sharedBad.FirstFailureDetail != "output-staging-ownership-violation"]
-        ArenaOwnershipValid:[local.FirstFailureDetail != "shared-arena-lock-required", cmd.FirstFailureDetail != "shared-arena-lock-required", sharedBad.FirstFailureDetail != "shared-arena-lock-required"]
-        RequiredResourceContract:[local.RequiredResourceContract, cmd.RequiredResourceContract, sharedBad.RequiredResourceContract]
+        Candidate: [local.Candidate, cmd.Candidate, sharedBad.Candidate]
+        QueueTopology: [local.QueueTopology, cmd.QueueTopology, sharedBad.QueueTopology]
+        CommandOwnershipValid: [local.FirstFailureDetail != "command-resource-ownership-violation", cmd.FirstFailureDetail != "command-resource-ownership-violation", sharedBad.FirstFailureDetail != "command-resource-ownership-violation"]
+        QueueOwnershipValid: [local.FirstFailureDetail != "queue-submit-ownership-violation", cmd.FirstFailureDetail != "queue-submit-ownership-violation", sharedBad.FirstFailureDetail != "queue-submit-ownership-violation"]
+        FenceOwnershipValid: [local.FirstFailureDetail != "fence-ownership-violation", cmd.FirstFailureDetail != "fence-ownership-violation", sharedBad.FirstFailureDetail != "fence-ownership-violation"]
+        OutputOwnershipValid: [local.FirstFailureDetail != "output-staging-ownership-violation", cmd.FirstFailureDetail != "output-staging-ownership-violation", sharedBad.FirstFailureDetail != "output-staging-ownership-violation"]
+        ArenaOwnershipValid: [local.FirstFailureDetail != "shared-arena-lock-required", cmd.FirstFailureDetail != "shared-arena-lock-required", sharedBad.FirstFailureDetail != "shared-arena-lock-required"]
+        RequiredResourceContract: [local.RequiredResourceContract, cmd.RequiredResourceContract, sharedBad.RequiredResourceContract]
     }
 }
 
@@ -869,15 +869,15 @@ fn M42FailureDrainContractTable() -> M42FailureDrainTable {
     })
 
     return M42FailureDrainTable {
-        FailureMode:["before-submit", "after-submit", "dual-failure", "fence-wait-failure", "device-lost", "drain-timeout"]
-        BatchFinalState:[before.BatchFinalState, after.BatchFinalState, dual.BatchFinalState, fence.BatchFinalState, lost.BatchFinalState, timeout.BatchFinalState]
-        FirstFailureDetail:[before.FirstFailureDetail, after.FirstFailureDetail, dual.FirstFailureDetail, fence.FirstFailureDetail, lost.FirstFailureDetail, timeout.FirstFailureDetail]
-        QueueDrainCount:[before.QueueDrainCount, after.QueueDrainCount, dual.QueueDrainCount, fence.QueueDrainCount, lost.QueueDrainCount, timeout.QueueDrainCount]
-        DrainTimeoutCount:[before.DrainTimeoutCount, after.DrainTimeoutCount, dual.DrainTimeoutCount, fence.DrainTimeoutCount, lost.DrainTimeoutCount, timeout.DrainTimeoutCount]
-        DrainLatency:[before.DrainLatency, after.DrainLatency, dual.DrainLatency, fence.DrainLatency, lost.DrainLatency, timeout.DrainLatency]
-        ResourcesSafeToReuse:[before.ResourcesSafeToReuse, after.ResourcesSafeToReuse, dual.ResourcesSafeToReuse, fence.ResourcesSafeToReuse, lost.ResourcesSafeToReuse, timeout.ResourcesSafeToReuse]
-        OutputCommitted:[before.OutputCommitted, after.OutputCommitted, dual.OutputCommitted, fence.OutputCommitted, lost.OutputCommitted, timeout.OutputCommitted]
-        CleanupActionRequired:[before.CleanupActionRequired, after.CleanupActionRequired, dual.CleanupActionRequired, fence.CleanupActionRequired, lost.CleanupActionRequired, timeout.CleanupActionRequired]
+        FailureMode: ["before-submit", "after-submit", "dual-failure", "fence-wait-failure", "device-lost", "drain-timeout"]
+        BatchFinalState: [before.BatchFinalState, after.BatchFinalState, dual.BatchFinalState, fence.BatchFinalState, lost.BatchFinalState, timeout.BatchFinalState]
+        FirstFailureDetail: [before.FirstFailureDetail, after.FirstFailureDetail, dual.FirstFailureDetail, fence.FirstFailureDetail, lost.FirstFailureDetail, timeout.FirstFailureDetail]
+        QueueDrainCount: [before.QueueDrainCount, after.QueueDrainCount, dual.QueueDrainCount, fence.QueueDrainCount, lost.QueueDrainCount, timeout.QueueDrainCount]
+        DrainTimeoutCount: [before.DrainTimeoutCount, after.DrainTimeoutCount, dual.DrainTimeoutCount, fence.DrainTimeoutCount, lost.DrainTimeoutCount, timeout.DrainTimeoutCount]
+        DrainLatency: [before.DrainLatency, after.DrainLatency, dual.DrainLatency, fence.DrainLatency, lost.DrainLatency, timeout.DrainLatency]
+        ResourcesSafeToReuse: [before.ResourcesSafeToReuse, after.ResourcesSafeToReuse, dual.ResourcesSafeToReuse, fence.ResourcesSafeToReuse, lost.ResourcesSafeToReuse, timeout.ResourcesSafeToReuse]
+        OutputCommitted: [before.OutputCommitted, after.OutputCommitted, dual.OutputCommitted, fence.OutputCommitted, lost.OutputCommitted, timeout.OutputCommitted]
+        CleanupActionRequired: [before.CleanupActionRequired, after.CleanupActionRequired, dual.CleanupActionRequired, fence.CleanupActionRequired, lost.CleanupActionRequired, timeout.CleanupActionRequired]
     }
 }
 
@@ -919,13 +919,13 @@ fn M42TransferInteractionContractTable() -> M42TransferInteractionTable {
     })
 
     return M42TransferInteractionTable {
-        Candidate:[d.Candidate, viol.Candidate]
-        QueueTopology:[d.QueueTopology, viol.QueueTopology]
-        TransferQueueCount:[d.HardwareQueueCount - d.EffectiveWorkers + 1, viol.HardwareQueueCount - viol.EffectiveWorkers + 1]
-        TransferOverlapAllowed:[d.BatchFinalState == "SUCCEEDED", viol.BatchFinalState == "SUCCEEDED"]
-        ComputeOwnershipPreserved:[d.FirstFailureDetail != "queue-submit-ownership-violation", viol.FirstFailureDetail != "queue-submit-ownership-violation"]
-        QueueOwnershipViolationCount:[switch {case d.FirstFailureDetail == "queue-submit-ownership-violation" -> 1 else -> 0}, switch {case viol.FirstFailureDetail == "queue-submit-ownership-violation" -> 1 else -> 0}]
-        CompletionTime:[d.CompletionTime, viol.CompletionTime]
+        Candidate: [d.Candidate, viol.Candidate]
+        QueueTopology: [d.QueueTopology, viol.QueueTopology]
+        TransferQueueCount: [d.HardwareQueueCount - d.EffectiveWorkers + 1, viol.HardwareQueueCount - viol.EffectiveWorkers + 1]
+        TransferOverlapAllowed: [d.BatchFinalState == "SUCCEEDED", viol.BatchFinalState == "SUCCEEDED"]
+        ComputeOwnershipPreserved: [d.FirstFailureDetail != "queue-submit-ownership-violation", viol.FirstFailureDetail != "queue-submit-ownership-violation"]
+        QueueOwnershipViolationCount: [switch { case d.FirstFailureDetail == "queue-submit-ownership-violation" -> 1 else -> 0 }, switch { case viol.FirstFailureDetail == "queue-submit-ownership-violation" -> 1 else -> 0 }]
+        CompletionTime: [d.CompletionTime, viol.CompletionTime]
     }
 }
 
@@ -939,12 +939,12 @@ fn M42RecommendationFromMetrics() -> M42FinalContract {
     var best = b.Candidate
     var bestScore = b.ProductScore
 
-    if c.ProductScore > bestScore and c.BatchFinalState == "SUCCEEDED" {best = c.Candidate
-        bestScore = c.ProductScore}
-    if d.ProductScore > bestScore and d.BatchFinalState == "SUCCEEDED" {best = d.Candidate
-        bestScore = d.ProductScore}
-    if e.ProductScore > bestScore and e.BatchFinalState == "SUCCEEDED" {best = e.Candidate
-        bestScore = e.ProductScore}
+    if c.ProductScore > bestScore and c.BatchFinalState == "SUCCEEDED" { best = c.Candidate
+        bestScore = c.ProductScore }
+    if d.ProductScore > bestScore and d.BatchFinalState == "SUCCEEDED" { best = d.Candidate
+        bestScore = d.ProductScore }
+    if e.ProductScore > bestScore and e.BatchFinalState == "SUCCEEDED" { best = e.Candidate
+        bestScore = e.ProductScore }
 
     let ready = c.BatchFinalState == "SUCCEEDED" and c.ActualHardwareParallelism and c.EffectiveWorkers > 1
 

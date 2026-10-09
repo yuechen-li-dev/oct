@@ -32,7 +32,7 @@ fn ValidatePairedSeries(xs: Float[], ys: Float[]) -> Bool ! Error {
 
 fn ValidateStrictlyIncreasing(xs: Float[]) -> Bool ! Error {
     let ok = ValidateSeries(xs)?
-    for i in 0 .. Len(xs) - 1 {
+    for i in 0..Len(xs) - 1 {
         if xs[i] >= xs[i + 1] {
             return error("xs must be strictly increasing")
         }
@@ -56,7 +56,7 @@ fn DiffForward(xs: Float[], ys: Float[]) -> Float[] ! Error {
     }
 
     var out = [(ys[1] - ys[0]) / (xs[1] - xs[0])]
-    for i in 1 .. Len(xs) - 1 {
+    for i in 1..Len(xs) - 1 {
         out = Append(out, (ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]))
     }
     return out
@@ -75,7 +75,7 @@ fn DiffCentral(xs: Float[], ys: Float[]) -> Float[] ! Error {
 
     // Interior points only: i=1..n-2, using neighbors i-1 and i+1.
     var out = [(ys[2] - ys[0]) / (xs[2] - xs[0])]
-    for i in 2 .. Len(xs) - 1 {
+    for i in 2..Len(xs) - 1 {
         out = Append(out, (ys[i + 1] - ys[i - 1]) / (xs[i + 1] - xs[i - 1]))
     }
     return out
@@ -96,7 +96,7 @@ fn Diff2Central(xs: Float[], ys: Float[]) -> Float[] ! Error {
     let h0 = (xs[2] - xs[0]) / 2.0
     var out = [(ys[2] - 2.0 * ys[1] + ys[0]) / (h0 * h0)]
 
-    for i in 2 .. Len(xs) - 1 {
+    for i in 2..Len(xs) - 1 {
         let h = (xs[i + 1] - xs[i - 1]) / 2.0
         out = Append(out, (ys[i + 1] - 2.0 * ys[i] + ys[i - 1]) / (h * h))
     }
@@ -120,7 +120,7 @@ fn IntegrateTrapezoidal(xs: Float[], ys: Float[]) -> Float ! Error {
     }
 
     var total = 0.0
-    for i in 0 .. Len(xs) - 1 {
+    for i in 0..Len(xs) - 1 {
         total = total + 0.5 * (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i])
     }
     return total
@@ -139,7 +139,7 @@ fn CumulativeIntegral(xs: Float[], ys: Float[]) -> Float[] ! Error {
 
     var out = [0.0]
     var running = 0.0
-    for i in 0 .. Len(xs) - 1 {
+    for i in 0..Len(xs) - 1 {
         running = running + 0.5 * (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i])
         out = Append(out, running)
     }
@@ -155,7 +155,7 @@ fn CumulativeSum(ys: Float[]) -> Float[] ! Error {
     let ok = ValidateSeries(ys)?
     var out = [ys[0]]
     var running = ys[0]
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         running = running + ys[i]
         out = Append(out, running)
     }
@@ -167,7 +167,7 @@ fn RunningMin(ys: Float[]) -> Float[] ! Error {
     let ok = ValidateSeries(ys)?
     var out = [ys[0]]
     var current = ys[0]
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         if ys[i] < current {
             current = ys[i]
         }
@@ -181,7 +181,7 @@ fn RunningMax(ys: Float[]) -> Float[] ! Error {
     let ok = ValidateSeries(ys)?
     var out = [ys[0]]
     var current = ys[0]
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         if ys[i] > current {
             current = ys[i]
         }
@@ -203,7 +203,7 @@ fn Normalize(ys: Float[]) -> Float[] ! Error {
 
     var minVal = ys[0]
     var maxVal = ys[0]
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         if ys[i] < minVal { minVal = ys[i] }
         if ys[i] > maxVal { maxVal = ys[i] }
     }
@@ -214,7 +214,7 @@ fn Normalize(ys: Float[]) -> Float[] ! Error {
     }
 
     var out = [(ys[0] - minVal) / range]
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         out = Append(out, (ys[i] - minVal) / range)
     }
     return out
@@ -228,13 +228,13 @@ fn Center(ys: Float[]) -> Float[] ! Error {
     let ok = ValidateSeries(ys)?
 
     var sum = 0.0
-    for i in 0 .. Len(ys) {
+    for i in 0..Len(ys) {
         sum = sum + ys[i]
     }
     let mean = sum / Float(Len(ys))
 
     var out = [ys[0] - mean]
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         out = Append(out, ys[i] - mean)
     }
     return out
@@ -248,25 +248,25 @@ fn Standardize(ys: Float[]) -> Float[] ! Error {
     let ok = ValidateSeries(ys)?
 
     var sum = 0.0
-    for i in 0 .. Len(ys) {
+    for i in 0..Len(ys) {
         sum = sum + ys[i]
     }
     let mean = sum / Float(Len(ys))
 
     var sumSq = 0.0
-    for i in 0 .. Len(ys) {
+    for i in 0..Len(ys) {
         let d = ys[i] - mean
         sumSq = sumSq + d * d
     }
     let variance = sumSq / Float(Len(ys))
-    let stddev   = Sqrt(variance)
+    let stddev = Sqrt(variance)
 
     if Abs(stddev) < 0.000000000001 {
         return error("standardize requires non-constant series")
     }
 
     var out = [(ys[0] - mean) / stddev]
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         out = Append(out, (ys[i] - mean) / stddev)
     }
     return out
@@ -288,7 +288,7 @@ fn LocalMaxima(ys: Float[]) -> Int[] ! Error {
 
     var out = [0]
     var found = false
-    for i in 1 .. Len(ys) - 1 {
+    for i in 1..Len(ys) - 1 {
         if ys[i] > ys[i - 1] and ys[i] > ys[i + 1] {
             if not found {
                 out[0] = i
@@ -317,7 +317,7 @@ fn LocalMinima(ys: Float[]) -> Int[] ! Error {
 
     var out = [0]
     var found = false
-    for i in 1 .. Len(ys) - 1 {
+    for i in 1..Len(ys) - 1 {
         if ys[i] < ys[i - 1] and ys[i] < ys[i + 1] {
             if not found {
                 out[0] = i
@@ -346,7 +346,7 @@ fn ZeroCrossings(ys: Float[]) -> Int[] ! Error {
 
     var out = [0]
     var found = false
-    for i in 0 .. Len(ys) - 1 {
+    for i in 0..Len(ys) - 1 {
         if ys[i] * ys[i + 1] < 0.0 {
             if not found {
                 out[0] = i
@@ -368,7 +368,7 @@ fn ArgMax(ys: Float[]) -> Int ! Error {
     let ok = ValidateSeries(ys)?
     var maxVal = ys[0]
     var maxIdx = 0
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         if ys[i] > maxVal {
             maxVal = ys[i]
             maxIdx = i
@@ -382,7 +382,7 @@ fn ArgMin(ys: Float[]) -> Int ! Error {
     let ok = ValidateSeries(ys)?
     var minVal = ys[0]
     var minIdx = 0
-    for i in 1 .. Len(ys) {
+    for i in 1..Len(ys) {
         if ys[i] < minVal {
             minVal = ys[i]
             minIdx = i
@@ -400,7 +400,7 @@ fn RMSE(actual: Float[], predicted: Float[]) -> Float ! Error {
     let ok = ValidatePairedSeries(actual, predicted)?
 
     var sumSq = 0.0
-    for i in 0 .. Len(actual) {
+    for i in 0..Len(actual) {
         let diff = actual[i] - predicted[i]
         sumSq = sumSq + diff * diff
     }
@@ -412,7 +412,7 @@ fn MAE(actual: Float[], predicted: Float[]) -> Float ! Error {
     let ok = ValidatePairedSeries(actual, predicted)?
 
     var sumAbs = 0.0
-    for i in 0 .. Len(actual) {
+    for i in 0..Len(actual) {
         sumAbs = sumAbs + Abs(actual[i] - predicted[i])
     }
     return sumAbs / Float(Len(actual))

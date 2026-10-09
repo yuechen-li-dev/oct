@@ -64,9 +64,9 @@ fn ApplyMimoChannel(channel: MimoChannel, transmitVector: Float[]) -> Float[] {
     }
 
     var received = [0.0]
-    for row in 0 .. channel.RowCount {
+    for row in 0..channel.RowCount {
         var mixed = 0.0
-        for column in 0 .. channel.ColumnCount {
+        for column in 0..channel.ColumnCount {
             mixed = mixed + MimoCoefficientAt(channel, row, column) * transmitVector[column]
         }
 
@@ -91,7 +91,7 @@ fn ReceivedStreamPowerSeries(channel: MimoChannel, transmitVector: Float[]) -> F
 
     let received = ApplyMimoChannel(channel, transmitVector)
     var out = [received[0] * received[0]]
-    for i in 1 .. Len(received) {
+    for i in 1..Len(received) {
         out = Append(out, received[i] * received[i])
     }
     return out
@@ -104,9 +104,9 @@ fn RowPowerGainSeries(channel: MimoChannel) -> Float[] {
     }
 
     var out = [0.0]
-    for row in 0 .. channel.RowCount {
+    for row in 0..channel.RowCount {
         var rowGain = 0.0
-        for column in 0 .. channel.ColumnCount {
+        for column in 0..channel.ColumnCount {
             let coefficient = MimoCoefficientAt(channel, row, column)
             rowGain = rowGain + coefficient * coefficient
         }
@@ -128,9 +128,9 @@ fn ColumnPowerGainSeries(channel: MimoChannel) -> Float[] {
     }
 
     var out = [0.0]
-    for column in 0 .. channel.ColumnCount {
+    for column in 0..channel.ColumnCount {
         var columnGain = 0.0
-        for row in 0 .. channel.RowCount {
+        for row in 0..channel.RowCount {
             let coefficient = MimoCoefficientAt(channel, row, column)
             columnGain = columnGain + coefficient * coefficient
         }
@@ -153,7 +153,7 @@ fn TotalChannelPowerGain(channel: MimoChannel) -> Float {
 
     let rowGain = RowPowerGainSeries(channel)
     var total = rowGain[0]
-    for i in 1 .. Len(rowGain) {
+    for i in 1..Len(rowGain) {
         total = total + rowGain[i]
     }
     return total

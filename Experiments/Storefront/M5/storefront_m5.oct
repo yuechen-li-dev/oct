@@ -143,7 +143,7 @@ fn CatalogProductIds() -> String[] {
 
 fn ProductById(productId: String) -> Product {
     let catalog = CatalogTable()
-    for i in 0 .. Len(catalog.Ids) {
+    for i in 0..Len(catalog.Ids) {
         if catalog.Ids[i] == productId {
             return Product {
                 Id: catalog.Ids[i]
@@ -195,7 +195,7 @@ fn FeaturedCableLabEvent() -> String { return "storefront.featured.cablelab" }
 
 fn MatchCatalogEvent(event: String, prefix: String) -> String {
     let productIds = CatalogProductIds()
-    for i in 0 .. Len(productIds) {
+    for i in 0..Len(productIds) {
         if event == prefix + productIds[i] {
             return productIds[i]
         }
@@ -482,8 +482,8 @@ fn CardSlotPlacements(model: StoreState, grid: ProductPlacementGrid) -> UI[] {
     let firstFrame = AbsoluteBox(grid.ColumnX[0], grid.RowY[0], grid.CardWidth, grid.CardHeight)
     var out = [Place(firstFrame, ProductCardSlot(ProductById(grid.ProductIds[0]), model))]
 
-    for row in 0 .. Len(grid.RowStarts) {
-        for col in 0 .. grid.RowLengths[row] {
+    for row in 0..Len(grid.RowStarts) {
+        for col in 0..grid.RowLengths[row] {
             if row != 0 or col != 0 {
                 let frame = AbsoluteBox(grid.ColumnX[col], grid.RowY[row], grid.CardWidth, grid.CardHeight)
                 let productIndex = grid.RowStarts[row] + col
@@ -524,7 +524,7 @@ fn View(model: StoreState) -> UI {
         Place(AnchoredBox(0.01 ui, FooterTop, 0.99 ui, 0.99 ui), Footer(model))
     ]
 
-    for i in 0 .. Len(cardPlacements) {
+    for i in 0..Len(cardPlacements) {
         nodes = Append(nodes, cardPlacements[i])
     }
 

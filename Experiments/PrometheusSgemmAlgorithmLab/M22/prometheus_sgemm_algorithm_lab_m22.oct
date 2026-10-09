@@ -151,7 +151,7 @@ fn M22SampleProfile(profile: String) -> Int[] {
 fn M22CancellationRiskPPM(samples: Int[]) -> Int {
     var sumAbs = 0
     var signed = 0
-    for i in 0 .. Len(samples) {
+    for i in 0..Len(samples) {
         sumAbs = sumAbs + M22AbsInt(samples[i])
         signed = signed + samples[i]
     }
@@ -166,7 +166,7 @@ fn M22MetricsForScenario(s: M22Scenario) -> M22MetricRow {
     var agg = 0
     var worst = -1
 
-    for i in 0 .. Len(samples) {
+    for i in 0..Len(samples) {
         let original = samples[i]
         let quant = M22FP16QuantizeMilli(original)
         let absErr = M22AbsInt(original - quant)
@@ -289,7 +289,7 @@ fn M22PolicyGateScenarios() -> M22Scenario[] {
 
 fn M22MetricsRows(scenarios: M22Scenario[]) -> M22MetricRow[] {
     var rows = [M22MetricsForScenario(scenarios[0])]
-    for i in 1 .. Len(scenarios) {
+    for i in 1..Len(scenarios) {
         rows = Append(rows, M22MetricsForScenario(scenarios[i]))
     }
     return rows
@@ -298,7 +298,7 @@ fn M22MetricsRows(scenarios: M22Scenario[]) -> M22MetricRow[] {
 fn M22PolicyRows() -> M22PolicyRow[] {
     let scenarios = M22PolicyGateScenarios()
     var rows = [M22PolicyForScenario(scenarios[0])]
-    for i in 1 .. Len(scenarios) {
+    for i in 1..Len(scenarios) {
         rows = Append(rows, M22PolicyForScenario(scenarios[i]))
     }
     return rows
@@ -311,7 +311,7 @@ fn M22RoundTripTableFrom(rows: M22MetricRow[]) -> M22RoundTripTable {
     var maxRel = [rows[0].MaxRelativeError]
     var agg = [rows[0].AggregateError]
     var worst = [rows[0].WorstCaseElementIndex]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         names = Append(names, rows[i].CaseName)
         profiles = Append(profiles, rows[i].Profile)
         maxAbs = Append(maxAbs, rows[i].MaxAbsoluteError)
@@ -329,7 +329,7 @@ fn M22MagnitudeEdgeTableFrom(rows: M22MetricRow[]) -> M22MagnitudeEdgeTable {
     var maxRel = [rows[0].MaxRelativeError]
     var agg = [rows[0].AggregateError]
     var cancel = [rows[0].CancellationRisk]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         names = Append(names, rows[i].CaseName)
         profiles = Append(profiles, rows[i].Profile)
         maxAbs = Append(maxAbs, rows[i].MaxAbsoluteError)
@@ -346,7 +346,7 @@ fn M22KGrowthTableFrom(rows: M22MetricRow[]) -> M22KGrowthTable {
     var maxAbs = [rows[0].MaxAbsoluteError]
     var growth = [rows[0].KErrorGrowth]
     var agg = [rows[0].AggregateError]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         names = Append(names, rows[i].CaseName)
         k = Append(k, rows[i].KDim)
         maxAbs = Append(maxAbs, rows[i].MaxAbsoluteError)
@@ -363,7 +363,7 @@ fn M22CancellationTableFrom(rows: M22MetricRow[]) -> M22CancellationTable {
     var maxAbs = [rows[0].MaxAbsoluteError]
     var maxRel = [rows[0].MaxRelativeError]
     var agg = [rows[0].AggregateError]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         names = Append(names, rows[i].CaseName)
         profiles = Append(profiles, rows[i].Profile)
         risk = Append(risk, rows[i].CancellationRisk)
@@ -385,7 +385,7 @@ fn M22PolicyGateTableFrom(rows: M22PolicyRow[]) -> M22PolicyGateTable {
     var reason = [rows[0].FallbackReason]
     var selected = [rows[0].SelectedCandidate]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         names = Append(names, rows[i].CaseName)
         eligible = Append(eligible, rows[i].CandidateEligibility)
         strict = Append(strict, rows[i].StrictFP32GatePass)

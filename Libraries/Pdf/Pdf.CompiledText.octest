@@ -9,6 +9,7 @@ fn CompiledBasicTextSave() -> Void {
     let save = Save(page, out)!
     Assert.Equal(0, save, "save should return zero")
     Assert.True(FileExists(out), "compiled pdf output should exist")
+    FileDelete(out)!
 }
 
 [Fact]
@@ -24,6 +25,7 @@ fn CompiledStyledTextSave() -> Void {
     let save = Save(page, out)!
     Assert.Equal(0, save, "styled save should return zero")
     Assert.True(FileExists(out), "compiled styled pdf output should exist")
+    FileDelete(out)!
 }
 
 [Fact]

@@ -8,10 +8,10 @@ fn fParaboloid(v: Float[]) -> Float {
 
 [Fact]
 fn ArmijoFindsSufficientDecrease() -> Void {
-    let x  = [0.0, 0.0]   // far from minimum
-    let d  = [1.0, 1.5]   // direction toward minimum
+    let x = [0.0, 0.0] // far from minimum
+    let d = [1.0, 1.5] // direction toward minimum
     let fx = fParaboloid(x)
-    let gd = -2.0 * 2.0 - 2.0 * 3.0 * 1.5   // ∇f·d (negative = descent)
+    let gd = -2.0 * 2.0 - 2.0 * 3.0 * 1.5 // ∇f·d (negative = descent)
     let ls = ArmijoLineSearch(x, d, fParaboloid, fx, gd, 0.0001, 0.5, 1.0, 50)!
     Assert.True(ls.Satisfied, "Armijo should find sufficient decrease")
     Assert.True(ls.StepSize > 0.0, "step size must be positive")
@@ -20,8 +20,8 @@ fn ArmijoFindsSufficientDecrease() -> Void {
 
 [Fact]
 fn ArmijoRejectsBadDirection() -> Void {
-    let x  = [0.0, 0.0]
-    let d  = [1.0, 1.0]
+    let x = [0.0, 0.0]
+    let d = [1.0, 1.0]
     let fx = fParaboloid(x)
     Assert.Error(
         ArmijoLineSearch(x, d, fParaboloid, fx, 1.0, 0.0001, 0.5, 1.0, 50),
@@ -30,8 +30,8 @@ fn ArmijoRejectsBadDirection() -> Void {
 
 [Fact]
 fn ArmijoRejectsInvalidC1() -> Void {
-    let x  = [0.0, 0.0]
-    let d  = [-1.0, -1.0]
+    let x = [0.0, 0.0]
+    let d = [-1.0, -1.0]
     Assert.Error(
         ArmijoLineSearch(x, d, fParaboloid, 13.0, -1.0, 1.5, 0.5, 1.0, 50),
         "c1 > 1 should error")
@@ -64,10 +64,10 @@ fn WolfeCurvatureConditionBasic() -> Void {
 
 [Fact]
 fn DefaultArmijoWorks() -> Void {
-    let x  = [0.0, 0.0]
-    let d  = [2.0, 3.0]   // direction toward min
+    let x = [0.0, 0.0]
+    let d = [2.0, 3.0] // direction toward min
     let fx = fParaboloid(x)
-    let gd = -2.0 * (2.0 * 2.0 + 3.0 * 3.0)   // negative
+    let gd = -2.0 * (2.0 * 2.0 + 3.0 * 3.0) // negative
     let ls = DefaultArmijoLineSearch(x, d, fParaboloid, fx, gd)!
     Assert.True(ls.Satisfied, "default Armijo should satisfy")
     Assert.True(ls.FNew < fx, "should decrease f")

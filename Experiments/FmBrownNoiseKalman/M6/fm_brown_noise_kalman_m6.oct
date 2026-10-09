@@ -193,25 +193,25 @@ fn M6Label(deltaSNR: Float, fixedW: Float, adaptiveW: Float) -> String {
     if recoveryImproved == false and whiteningImproved { return "WhitenessOnly" }
     return "NoMeaningfulWin"
 }
-fn M6MaxAbsDiff(a: Float[], b: Float[]) -> Float { var m=0.0 for i in 0..Len(a) { let d=Abs(a[i]-b[i]) if d>m { m=d } } return m }
-fn M6BuildClean(c: M6Case) -> Float[] { let n=FloorToInt(c.SampleRate*c.Duration) var clean:Float[]=[] var x=0.0 let dx=1.0/c.SampleRate for i in 0..n { clean=Append(clean, Sin(2.0*Pi()*c.MessageHz*x)) x=x+dx } return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0) }
+fn M6MaxAbsDiff(a: Float[], b: Float[]) -> Float { var m = 0.0 for i in 0..Len(a) { let d = Abs(a[i] - b[i]) if d > m { m = d } } return m }
+fn M6BuildClean(c: M6Case) -> Float[] { let n = FloorToInt(c.SampleRate * c.Duration) var clean: Float[] = [] var x = 0.0 let dx = 1.0 / c.SampleRate for i in 0..n { clean = Append(clean, Sin(2.0 * Pi() * c.MessageHz * x)) x = x + dx } return Shared.NormalizeRms(Shared.RemoveMean(clean), 1.0) }
 
 fn M6ProceduralScalarAdaptive(observed: Float[]) -> M6AdaptiveResult {
-    var x0=0.0 var x1=0.0 var xn=0.0 var p00=1.0 var p11=1.0 var p22=1.0 var a=0.0 var prevInnovation=0.0 var clampCount=0
-    var out:Float[]=[] var innovation:Float[]=[] var aTrace:Float[]=[]
+    var x0 = 0.0 var x1 = 0.0 var xn = 0.0 var p00 = 1.0 var p11 = 1.0 var p22 = 1.0 var a = 0.0 var prevInnovation = 0.0 var clampCount = 0
+    var out: Float[] = [] var innovation: Float[] = [] var aTrace: Float[] = []
     for k in 0..Len(observed) {
-        let x0Pred=x0+x1 let x1Pred=x1 let xnPred=a*xn
-        let p00Pred=p00+p11+1e-3 let p11Pred=p11+1e-2 let p22Pred=a*a*p22+0.1
-        let y=observed[k]-(x0Pred+xnPred)
-        let s=p00Pred+p22Pred+1.0
-        let k0=p00Pred/s let k1=p11Pred/s let k2=p22Pred/s
-        x0=x0Pred+k0*y x1=x1Pred+k1*y xn=xnPred+k2*y
-        p00=(1.0-k0)*p00Pred p11=(1.0-k1)*p11Pred p22=(1.0-k2)*p22Pred
-        a=a+0.05*prevInnovation*y
-        if a>0.99 { a=0.99 clampCount=clampCount+1 }
-        if a<-0.99 { a=-0.99 clampCount=clampCount+1 }
-        prevInnovation=y
-        out=Append(out,x0) innovation=Append(innovation,y) aTrace=Append(aTrace,a)
+        let x0Pred = x0 + x1 let x1Pred = x1 let xnPred = a * xn
+        let p00Pred = p00 + p11 + 1e-3 let p11Pred = p11 + 1e-2 let p22Pred = a * a * p22 + 0.1
+        let y = observed[k] - (x0Pred + xnPred)
+        let s = p00Pred + p22Pred + 1.0
+        let k0 = p00Pred / s let k1 = p11Pred / s let k2 = p22Pred / s
+        x0 = x0Pred + k0 * y x1 = x1Pred + k1 * y xn = xnPred + k2 * y
+        p00 = (1.0 - k0) * p00Pred p11 = (1.0 - k1) * p11Pred p22 = (1.0 - k2) * p22Pred
+        a = a + 0.05 * prevInnovation * y
+        if a > 0.99 { a = 0.99 clampCount = clampCount + 1 }
+        if a < -0.99 { a = -0.99 clampCount = clampCount + 1 }
+        prevInnovation = y
+        out = Append(out, x0) innovation = Append(innovation, y) aTrace = Append(aTrace, a)
     }
     return M6AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount GuardAcceptedCount: 0 GuardAttenuatedCount: 0 GuardRejectedCount: 0 RecoveryGuardTriggerCount: 0 }
 }
@@ -223,7 +223,7 @@ fn M6BuildWindowAEstimate(innovation: Float[], windowSize: Int, initialA: Float)
             var denom = 0.0
             let start = if k - windowSize > 0 { k - windowSize } else { 1 }
             for i in start..(k + 1) { numer = numer + innovation[i] * innovation[i - 1] denom = denom + innovation[i - 1] * innovation[i - 1] }
-            if Abs(denom) <= 1e-12 { out = Append(out, if Len(out) > 0 { out[Len(out)-1] } else { initialA }) } else {
+            if Abs(denom) <= 1e-12 { out = Append(out, if Len(out) > 0 { out[Len(out) - 1] } else { initialA }) } else {
                 var aHat = numer / denom
                 if aHat > 0.99 { aHat = 0.99 }
                 if aHat < -0.99 { aHat = -0.99 }
@@ -234,20 +234,20 @@ fn M6BuildWindowAEstimate(innovation: Float[], windowSize: Int, initialA: Float)
     return out
 }
 fn M6ProceduralWindowedAdaptive(observed: Float[], windowAEstimate: Float[]) -> M6AdaptiveResult {
-    var x0=0.0 var x1=0.0 var xn=0.0 var p00=1.0 var p11=1.0 var p22=1.0 var a=0.0 var clampCount=0 let alpha=0.2
-    var out:Float[]=[] var innovation:Float[]=[] var aTrace:Float[]=[]
+    var x0 = 0.0 var x1 = 0.0 var xn = 0.0 var p00 = 1.0 var p11 = 1.0 var p22 = 1.0 var a = 0.0 var clampCount = 0 let alpha = 0.2
+    var out: Float[] = [] var innovation: Float[] = [] var aTrace: Float[] = []
     for k in 0..Len(observed) {
-        let x0Pred=x0+x1 let x1Pred=x1 let xnPred=a*xn
-        let p00Pred=p00+p11+1e-3 let p11Pred=p11+1e-2 let p22Pred=a*a*p22+0.1
-        let y=observed[k]-(x0Pred+xnPred)
-        let s=p00Pred+p22Pred+1.0
-        let k0=p00Pred/s let k1=p11Pred/s let k2=p22Pred/s
-        x0=x0Pred+k0*y x1=x1Pred+k1*y xn=xnPred+k2*y
-        p00=(1.0-k0)*p00Pred p11=(1.0-k1)*p11Pred p22=(1.0-k2)*p22Pred
-        a=(1.0-alpha)*a+alpha*windowAEstimate[k]
-        if a>0.99 { a=0.99 clampCount=clampCount+1 }
-        if a<-0.99 { a=-0.99 clampCount=clampCount+1 }
-        out=Append(out,x0) innovation=Append(innovation,y) aTrace=Append(aTrace,a)
+        let x0Pred = x0 + x1 let x1Pred = x1 let xnPred = a * xn
+        let p00Pred = p00 + p11 + 1e-3 let p11Pred = p11 + 1e-2 let p22Pred = a * a * p22 + 0.1
+        let y = observed[k] - (x0Pred + xnPred)
+        let s = p00Pred + p22Pred + 1.0
+        let k0 = p00Pred / s let k1 = p11Pred / s let k2 = p22Pred / s
+        x0 = x0Pred + k0 * y x1 = x1Pred + k1 * y xn = xnPred + k2 * y
+        p00 = (1.0 - k0) * p00Pred p11 = (1.0 - k1) * p11Pred p22 = (1.0 - k2) * p22Pred
+        a = (1.0 - alpha) * a + alpha * windowAEstimate[k]
+        if a > 0.99 { a = 0.99 clampCount = clampCount + 1 }
+        if a < -0.99 { a = -0.99 clampCount = clampCount + 1 }
+        out = Append(out, x0) innovation = Append(innovation, y) aTrace = Append(aTrace, a)
     }
     return M6AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount GuardAcceptedCount: 0 GuardAttenuatedCount: 0 GuardRejectedCount: 0 RecoveryGuardTriggerCount: 0 }
 }
@@ -256,17 +256,17 @@ fn M6ProceduralGuardedAdaptive(observed: Float[], clean: Float[]) -> M6AdaptiveR
     let epsRecovery = 0.005
     let guardScale = 0.5
     let recoveryWindowSize = 32
-    var x0=0.0 var x1=0.0 var xn=0.0 var p00=1.0 var p11=1.0 var p22=1.0 var a=0.0 var prevInnovation=0.0 var clampCount=0
-    var out:Float[]=[] var innovation:Float[]=[] var aTrace:Float[]=[]
-    var accepted=0 var attenuated=0 var rejected=0 var triggered=0
+    var x0 = 0.0 var x1 = 0.0 var xn = 0.0 var p00 = 1.0 var p11 = 1.0 var p22 = 1.0 var a = 0.0 var prevInnovation = 0.0 var clampCount = 0
+    var out: Float[] = [] var innovation: Float[] = [] var aTrace: Float[] = []
+    var accepted = 0 var attenuated = 0 var rejected = 0 var triggered = 0
     for k in 0..Len(observed) {
-        let x0Pred=x0+x1 let x1Pred=x1 let xnPred=a*xn
-        let p00Pred=p00+p11+1e-3 let p11Pred=p11+1e-2 let p22Pred=a*a*p22+0.1
-        let y=observed[k]-(x0Pred+xnPred)
-        let s=p00Pred+p22Pred+1.0
-        let k0=p00Pred/s let k1=p11Pred/s let k2=p22Pred/s
-        x0=x0Pred+k0*y x1=x1Pred+k1*y xn=xnPred+k2*y
-        p00=(1.0-k0)*p00Pred p11=(1.0-k1)*p11Pred p22=(1.0-k2)*p22Pred
+        let x0Pred = x0 + x1 let x1Pred = x1 let xnPred = a * xn
+        let p00Pred = p00 + p11 + 1e-3 let p11Pred = p11 + 1e-2 let p22Pred = a * a * p22 + 0.1
+        let y = observed[k] - (x0Pred + xnPred)
+        let s = p00Pred + p22Pred + 1.0
+        let k0 = p00Pred / s let k1 = p11Pred / s let k2 = p22Pred / s
+        x0 = x0Pred + k0 * y x1 = x1Pred + k1 * y xn = xnPred + k2 * y
+        p00 = (1.0 - k0) * p00Pred p11 = (1.0 - k1) * p11Pred p22 = (1.0 - k2) * p22Pred
         let proposedA = a + 0.05 * prevInnovation * y
         var corrCurrent = 0.0
         var corrProposed = 0.0
@@ -282,10 +282,10 @@ fn M6ProceduralGuardedAdaptive(observed: Float[], clean: Float[]) -> M6AdaptiveR
         if whiteningImproves and recoveryDegradation <= epsRecovery { a = proposedA accepted = accepted + 1 }
         if whiteningImproves and recoveryDegradation > epsRecovery { a = a + guardScale * (proposedA - a) attenuated = attenuated + 1 triggered = triggered + 1 }
         if whiteningImproves == false { rejected = rejected + 1 }
-        if a>0.99 { a=0.99 clampCount=clampCount+1 }
-        if a<-0.99 { a=-0.99 clampCount=clampCount+1 }
-        prevInnovation=y
-        out=Append(out,x0) innovation=Append(innovation,y) aTrace=Append(aTrace,a)
+        if a > 0.99 { a = 0.99 clampCount = clampCount + 1 }
+        if a < -0.99 { a = -0.99 clampCount = clampCount + 1 }
+        prevInnovation = y
+        out = Append(out, x0) innovation = Append(innovation, y) aTrace = Append(aTrace, a)
     }
     return M6AdaptiveResult { Recovered: out Innovation: innovation ATrace: aTrace FinalA: a ClampCount: clampCount GuardAcceptedCount: accepted GuardAttenuatedCount: attenuated GuardRejectedCount: rejected RecoveryGuardTriggerCount: triggered }
 }
@@ -350,7 +350,7 @@ fn RunM6Case(c: M6Case) -> M6CaseMetrics ! Error {
         MaxRecoveredDiffOctomataVsProcedural: M6MaxAbsDiff(guarded.Recovered, recovered)
         MaxInnovationDiffOctomataVsProcedural: M6MaxAbsDiff(guarded.Innovation, innovation)
         MaxATraceDiff: M6MaxAbsDiff(guarded.ATrace, aTrace)
-        FinalADiff: Abs(guarded.FinalA - (if Len(aTrace) > 0 { aTrace[Len(aTrace)-1] } else { 0.0 }))
+        FinalADiff: Abs(guarded.FinalA - (if Len(aTrace) > 0 { aTrace[Len(aTrace) - 1] } else { 0.0 }))
         EquivalencePass: M6MaxAbsDiff(guarded.Recovered, recovered) <= 1e-9 and M6MaxAbsDiff(guarded.Innovation, innovation) <= 1e-9 and M6MaxAbsDiff(guarded.ATrace, aTrace) <= 1e-9 and snap.ClampCount == guarded.ClampCount
     }
 }
@@ -367,8 +367,8 @@ fn RunM6Sweep() -> M6Report ! Error {
             }
         }
     }
-    var sAw=0 var sRo=0 var sWo=0 var sNm=0 var wAw=0 var wRo=0 var wWo=0 var wNm=0 var gAw=0 var gRo=0 var gWo=0 var gNm=0
-    var sumSD=0.0 var sumWD=0.0 var sumGD=0.0 var sumSW=0.0 var sumWW=0.0 var sumGW=0.0 var gRec=0 var gWhite=0 var gMin=rows[0].GuardedFinalA var gMax=rows[0].GuardedFinalA var gSum=0.0 var gClamp=0 var gAcc=0 var gAtt=0 var gRej=0 var gTrig=0 var eq=0
+    var sAw = 0 var sRo = 0 var sWo = 0 var sNm = 0 var wAw = 0 var wRo = 0 var wWo = 0 var wNm = 0 var gAw = 0 var gRo = 0 var gWo = 0 var gNm = 0
+    var sumSD = 0.0 var sumWD = 0.0 var sumGD = 0.0 var sumSW = 0.0 var sumWW = 0.0 var sumGW = 0.0 var gRec = 0 var gWhite = 0 var gMin = rows[0].GuardedFinalA var gMax = rows[0].GuardedFinalA var gSum = 0.0 var gClamp = 0 var gAcc = 0 var gAtt = 0 var gRej = 0 var gTrig = 0 var eq = 0
     for i in 0..Len(rows) {
         let r = rows[i]
         if r.ScalarLabel == "AdaptiveWin" { sAw = sAw + 1 }
@@ -420,19 +420,19 @@ fn M6ArtifactWriteAll() -> Int {
     Artifact.Checkpoint("artifactStart")
     let report = RunM6Sweep()!
     Artifact.Checkpoint("beforeReportBuild")
-    var csv = [["seed","inputSNRDb","messageHz","scalarLabel","windowedLabel","guardedLabel","guardedDeltaSNRDb","guardedWhitenessRatio","guardedFinalA","guardAccepted","guardAttenuated","guardRejected","guardTrigger","equivalencePass"]]
+    var csv = [["seed", "inputSNRDb", "messageHz", "scalarLabel", "windowedLabel", "guardedLabel", "guardedDeltaSNRDb", "guardedWhitenessRatio", "guardedFinalA", "guardAccepted", "guardAttenuated", "guardRejected", "guardTrigger", "equivalencePass"]]
     for i in 0..Len(report.Cases) {
         Artifact.Progress("sweep", i + 1, 27)
         let r = report.Cases[i]
-        csv = Append(csv, [String.From<Int>(r.Seed),String.From<Float>(r.InputSNRDb),String.From<Float>(r.MessageHz),r.ScalarLabel,r.WindowedLabel,r.GuardedLabel,String.From<Float>(r.GuardedDeltaOutputSNRDb),String.From<Float>(r.GuardedWhitenessRatio),String.From<Float>(r.GuardedFinalA),String.From<Int>(r.GuardAcceptedCount),String.From<Int>(r.GuardAttenuatedCount),String.From<Int>(r.GuardRejectedCount),String.From<Int>(r.RecoveryGuardTriggerCount),String.From<Bool>(r.EquivalencePass)])
+        csv = Append(csv, [String.From<Int>(r.Seed), String.From<Float>(r.InputSNRDb), String.From<Float>(r.MessageHz), r.ScalarLabel, r.WindowedLabel, r.GuardedLabel, String.From<Float>(r.GuardedDeltaOutputSNRDb), String.From<Float>(r.GuardedWhitenessRatio), String.From<Float>(r.GuardedFinalA), String.From<Int>(r.GuardAcceptedCount), String.From<Int>(r.GuardAttenuatedCount), String.From<Int>(r.GuardRejectedCount), String.From<Int>(r.RecoveryGuardTriggerCount), String.From<Bool>(r.EquivalencePass)])
     }
     let findings = Markdown.Report([
         Markdown.Title("M6 Findings"),
         Markdown.Section("Scope", [Markdown.Paragraph("Bounded 27-case deterministic direct-message brown-noise sweep with fixed, scalar, windowed, and recovery-guarded scalar policies.")]),
-        Markdown.Section("Guarded policy", [Markdown.KeyValueTable(["recoveryWindowSize","epsRecovery","guardScale","clampRange"],["32","0.005","0.5","[-0.99,0.99]"])]),
-        Markdown.Section("Label counts", [Markdown.KeyValueTable(["scalarAdaptiveWin","windowedAdaptiveWin","guardedAdaptiveWin","guardedRecoveryOnly","guardedWhitenessOnly","guardedNoMeaningfulWin"],[String.From<Int>(report.Summary.ScalarAdaptiveWinCount),String.From<Int>(report.Summary.WindowedAdaptiveWinCount),String.From<Int>(report.Summary.GuardedAdaptiveWinCount),String.From<Int>(report.Summary.GuardedRecoveryOnlyCount),String.From<Int>(report.Summary.GuardedWhitenessOnlyCount),String.From<Int>(report.Summary.GuardedNoMeaningfulWinCount)])]),
-        Markdown.Section("Guard counters", [Markdown.KeyValueTable(["guardAcceptedTotal","guardAttenuatedTotal","guardRejectedTotal","guardTriggerTotal"],[String.From<Int>(report.Summary.GuardAcceptedTotal),String.From<Int>(report.Summary.GuardAttenuatedTotal),String.From<Int>(report.Summary.GuardRejectedTotal),String.From<Int>(report.Summary.GuardTriggerTotal)])]),
-        Markdown.Section("Means", [Markdown.KeyValueTable(["scalarMeanDeltaOutputSNRDb","windowedMeanDeltaOutputSNRDb","guardedMeanDeltaOutputSNRDb","scalarMeanWhitenessRatio","windowedMeanWhitenessRatio","guardedMeanWhitenessRatio"],[String.From<Float>(report.Summary.ScalarMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.WindowedMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.GuardedMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.ScalarMeanWhitenessRatio),String.From<Float>(report.Summary.WindowedMeanWhitenessRatio),String.From<Float>(report.Summary.GuardedMeanWhitenessRatio)])]),
+        Markdown.Section("Guarded policy", [Markdown.KeyValueTable(["recoveryWindowSize", "epsRecovery", "guardScale", "clampRange"], ["32", "0.005", "0.5", "[-0.99,0.99]"])]),
+        Markdown.Section("Label counts", [Markdown.KeyValueTable(["scalarAdaptiveWin", "windowedAdaptiveWin", "guardedAdaptiveWin", "guardedRecoveryOnly", "guardedWhitenessOnly", "guardedNoMeaningfulWin"], [String.From<Int>(report.Summary.ScalarAdaptiveWinCount), String.From<Int>(report.Summary.WindowedAdaptiveWinCount), String.From<Int>(report.Summary.GuardedAdaptiveWinCount), String.From<Int>(report.Summary.GuardedRecoveryOnlyCount), String.From<Int>(report.Summary.GuardedWhitenessOnlyCount), String.From<Int>(report.Summary.GuardedNoMeaningfulWinCount)])]),
+        Markdown.Section("Guard counters", [Markdown.KeyValueTable(["guardAcceptedTotal", "guardAttenuatedTotal", "guardRejectedTotal", "guardTriggerTotal"], [String.From<Int>(report.Summary.GuardAcceptedTotal), String.From<Int>(report.Summary.GuardAttenuatedTotal), String.From<Int>(report.Summary.GuardRejectedTotal), String.From<Int>(report.Summary.GuardTriggerTotal)])]),
+        Markdown.Section("Means", [Markdown.KeyValueTable(["scalarMeanDeltaOutputSNRDb", "windowedMeanDeltaOutputSNRDb", "guardedMeanDeltaOutputSNRDb", "scalarMeanWhitenessRatio", "windowedMeanWhitenessRatio", "guardedMeanWhitenessRatio"], [String.From<Float>(report.Summary.ScalarMeanDeltaOutputSNRDb), String.From<Float>(report.Summary.WindowedMeanDeltaOutputSNRDb), String.From<Float>(report.Summary.GuardedMeanDeltaOutputSNRDb), String.From<Float>(report.Summary.ScalarMeanWhitenessRatio), String.From<Float>(report.Summary.WindowedMeanWhitenessRatio), String.From<Float>(report.Summary.GuardedMeanWhitenessRatio)])]),
         Markdown.Section("Interpretation", [Markdown.Paragraph("This M6 implementation is oracle-assisted synthetic design-lab work. It tests whether adding a recovery guard to scalar adaptation shifts the whitening-recovery tradeoff. It is not deployable as-is and not real FM/IQ/audio evidence.")])
     ])
     Artifact.Checkpoint("beforeWrites")

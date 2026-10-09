@@ -33,9 +33,9 @@ fn StorefrontM7SelectionAndCartFlowWorks() -> Void {
 fn StorefrontM7EventFamiliesArePredictable() -> Void {
     Assert.Equal("storefront.inspect.harbor-board", UI.EventTokenValue(InspectEvent("harbor-board")), "inspect family should produce canonical event")
     Assert.Equal("storefront.cart.add.harbor-board", UI.EventTokenValue(AddToCartEvent("harbor-board")), "add family should produce canonical event")
-    Assert.Equal("harbor-board", UI.MatchEventPrefix(UI.EventTokenValue(InspectEvent("harbor-board")), InspectPrefix(), CatalogProductIds()) !, "inspect match should resolve known product")
-    Assert.Equal("harbor-board", UI.MatchEventPrefix(UI.EventTokenValue(AddToCartEvent("harbor-board")), AddToCartPrefix(), CatalogProductIds()) !, "add match should resolve known product")
-    Assert.Equal("", UI.MatchEventPrefix(UI.EventTokenValue(InspectEvent("missing-product")), InspectPrefix(), CatalogProductIds()) !, "unknown product should not match catalog")
+    Assert.Equal("harbor-board", UI.MatchEventPrefix(UI.EventTokenValue(InspectEvent("harbor-board")), InspectPrefix(), CatalogProductIds())!, "inspect match should resolve known product")
+    Assert.Equal("harbor-board", UI.MatchEventPrefix(UI.EventTokenValue(AddToCartEvent("harbor-board")), AddToCartPrefix(), CatalogProductIds())!, "add match should resolve known product")
+    Assert.Equal("", UI.MatchEventPrefix(UI.EventTokenValue(InspectEvent("missing-product")), InspectPrefix(), CatalogProductIds())!, "unknown product should not match catalog")
 }
 
 [Fact]
@@ -95,8 +95,8 @@ fn StorefrontM7ViewUsesGridRowsComposition() -> Void {
 
 [Fact]
 fn StorefrontM7DispatchTablesAreDeterministicAndNoMatchIsStable() -> Void {
-    Assert.Equal("Shop", UI.ResolveEventValue(UI.EventTokenValue(NavShopEvent()), NavDispatchTable()) !, "nav dispatch should resolve canonical value")
-    Assert.Equal("", UI.ResolveEventValue("storefront.nav.unknown", NavDispatchTable()) !, "unknown nav event should not resolve")
+    Assert.Equal("Shop", UI.ResolveEventValue(UI.EventTokenValue(NavShopEvent()), NavDispatchTable())!, "nav dispatch should resolve canonical value")
+    Assert.Equal("", UI.ResolveEventValue("storefront.nav.unknown", NavDispatchTable())!, "unknown nav event should not resolve")
 
     let model = Init()
     let unchanged = Update(model, "storefront.unknown.event")

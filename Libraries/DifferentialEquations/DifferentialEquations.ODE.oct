@@ -57,7 +57,7 @@ fn MidpointSolve(f: fn(Float, Float) -> Float, t0: Float, y0: Float, dt: ODEStep
     var t = t0
     var y = y0
     let stepCount = steps + 0
-    for i in 0 .. stepCount {
+    for i in 0..stepCount {
         y = MidpointStep(f, t, y, dt)
         t = t + dt
         times = Append(times, t)

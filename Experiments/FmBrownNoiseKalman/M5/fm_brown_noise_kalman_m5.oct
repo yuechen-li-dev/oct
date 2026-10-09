@@ -354,7 +354,7 @@ fn M5BuildWindowAEstimate(innovation: Float[], windowSize: Int, initialA: Float)
                 denom = denom + innovation[i - 1] * innovation[i - 1]
             }
             if Abs(denom) <= 1e-12 {
-                out = Append(out, if Len(out) > 0 { out[Len(out)-1] } else { initialA })
+                out = Append(out, if Len(out) > 0 { out[Len(out) - 1] } else { initialA })
             } else {
                 var aHat = numer / denom
                 if aHat > 0.99 { aHat = 0.99 }
@@ -451,31 +451,31 @@ fn RunM5Case(c: M5Case) -> M5CaseMetrics ! Error {
         Seed: c.Seed InputSNRDb: c.InputSNRDb MessageHz: c.MessageHz SampleRate: c.SampleRate Duration: c.Duration SampleCount: Len(clean)
         FixedOutputSNRDb: fixedOutputSNR FixedWhitenessCost: fixedW
         ScalarOutputSNRDb: scalarOutputSNR ScalarWhitenessCost: scalarW ScalarFinalA: scalar.FinalA ScalarClampCount: scalar.ClampCount ScalarLabel: M5Label(scalarOutputSNR - fixedOutputSNR, fixedW, scalarW)
-        WindowedOutputSNRDb: windowedOutputSNR WindowedWhitenessCost: windowedW WindowedFinalA: if Len(aTrace) > 0 { aTrace[Len(aTrace)-1] } else { 0.0 } WindowedClampCount: BoardSnapshot(machine)!.ClampCount WindowedLabel: M5Label(windowedOutputSNR - fixedOutputSNR, fixedW, windowedW)
+        WindowedOutputSNRDb: windowedOutputSNR WindowedWhitenessCost: windowedW WindowedFinalA: if Len(aTrace) > 0 { aTrace[Len(aTrace) - 1] } else { 0.0 } WindowedClampCount: BoardSnapshot(machine)!.ClampCount WindowedLabel: M5Label(windowedOutputSNR - fixedOutputSNR, fixedW, windowedW)
         ScalarDeltaOutputSNRDb: scalarOutputSNR - fixedOutputSNR ScalarWhitenessRatio: scalarW / (fixedW + 1e-12)
         WindowedDeltaOutputSNRDb: windowedOutputSNR - fixedOutputSNR WindowedWhitenessRatio: windowedW / (fixedW + 1e-12)
         WindowedVsScalarDeltaOutputSNRDb: windowedOutputSNR - scalarOutputSNR WindowedVsScalarWhitenessRatio: windowedW / (scalarW + 1e-12)
         WindowedBetterRecovery: windowedOutputSNR > scalarOutputSNR + 0.01
         WindowedBetterWhiteness: windowedW < scalarW * (1.0 - 0.01)
-        MaxRecoveredDiffOctomataVsProcedural: maxRecoveredDiff MaxInnovationDiffOctomataVsProcedural: maxInnovationDiff MaxATraceDiff: maxADiff FinalADiff: Abs(windowedProcedural.FinalA - (if Len(aTrace) > 0 { aTrace[Len(aTrace)-1] } else { 0.0 })) EquivalencePass: maxRecoveredDiff <= 1e-9 and maxInnovationDiff <= 1e-9 and maxADiff <= 1e-9
+        MaxRecoveredDiffOctomataVsProcedural: maxRecoveredDiff MaxInnovationDiffOctomataVsProcedural: maxInnovationDiff MaxATraceDiff: maxADiff FinalADiff: Abs(windowedProcedural.FinalA - (if Len(aTrace) > 0 { aTrace[Len(aTrace) - 1] } else { 0.0 })) EquivalencePass: maxRecoveredDiff <= 1e-9 and maxInnovationDiff <= 1e-9 and maxADiff <= 1e-9
     }
 }
 
 fn M5SummarizeGroup(cases: M5CaseMetrics[], key: Float) -> M5GroupSummary {
-    var saw=0
-    var sro=0
-    var swo=0
-    var snw=0
-    var waw=0
-    var wro=0
-    var wwo=0
-    var wnw=0
-    var sumSD=0.0
-    var sumWD=0.0
-    var sumSR=0.0
-    var sumWR=0.0
-    var sumSA=0.0
-    var sumWA=0.0
+    var saw = 0
+    var sro = 0
+    var swo = 0
+    var snw = 0
+    var waw = 0
+    var wro = 0
+    var wwo = 0
+    var wnw = 0
+    var sumSD = 0.0
+    var sumWD = 0.0
+    var sumSR = 0.0
+    var sumWR = 0.0
+    var sumSA = 0.0
+    var sumWA = 0.0
     for i in 0..Len(cases) {
         let r = cases[i]
         if r.ScalarLabel == "AdaptiveWin" { saw = saw + 1 }
@@ -518,29 +518,29 @@ fn RunM5Sweep() -> M5Report ! Error {
         }
     }
 
-    var sb=0
-    var sr=0
-    var sw=0
-    var sn=0
-    var wb=0
-    var wr=0
-    var ww=0
-    var wn=0
-    var sumSD=0.0
-    var sumWD=0.0
-    var sumSR=0.0
-    var sumWR=0.0
-    var sMinA=rows[0].ScalarFinalA
-    var sMaxA=rows[0].ScalarFinalA
-    var sSumA=0.0
-    var wMinA=rows[0].WindowedFinalA
-    var wMaxA=rows[0].WindowedFinalA
-    var wSumA=0.0
-    var sClamp=0
-    var wClamp=0
-    var wbr=0
-    var wbw=0
-    var eq=0
+    var sb = 0
+    var sr = 0
+    var sw = 0
+    var sn = 0
+    var wb = 0
+    var wr = 0
+    var ww = 0
+    var wn = 0
+    var sumSD = 0.0
+    var sumWD = 0.0
+    var sumSR = 0.0
+    var sumWR = 0.0
+    var sMinA = rows[0].ScalarFinalA
+    var sMaxA = rows[0].ScalarFinalA
+    var sSumA = 0.0
+    var wMinA = rows[0].WindowedFinalA
+    var wMaxA = rows[0].WindowedFinalA
+    var wSumA = 0.0
+    var sClamp = 0
+    var wClamp = 0
+    var wbr = 0
+    var wbw = 0
+    var eq = 0
     for i in 0..Len(rows) {
         let r = rows[i]
         if r.ScalarLabel == "AdaptiveWin" { sb = sb + 1 }
@@ -604,7 +604,7 @@ fn M5ArtifactWriteAll() -> Int {
     Artifact.Checkpoint("artifactStart")
     let report = RunM5Sweep()!
     Artifact.Checkpoint("beforeReportBuild")
-    var csv = [["seed","inputSNRDb","messageHz","scalarLabel","windowedLabel","scalarDeltaSNRDb","windowedDeltaSNRDb","windowedVsScalarDeltaSNRDb","scalarWhitenessRatio","windowedWhitenessRatio","windowedVsScalarWhitenessRatio","scalarFinalA","windowedFinalA","scalarClampCount","windowedClampCount","equivalencePass"]]
+    var csv = [["seed", "inputSNRDb", "messageHz", "scalarLabel", "windowedLabel", "scalarDeltaSNRDb", "windowedDeltaSNRDb", "windowedVsScalarDeltaSNRDb", "scalarWhitenessRatio", "windowedWhitenessRatio", "windowedVsScalarWhitenessRatio", "scalarFinalA", "windowedFinalA", "scalarClampCount", "windowedClampCount", "equivalencePass"]]
     for i in 0..Len(report.Cases) {
         Artifact.Progress("sweep", i + 1, Len(report.Cases))
         let r = report.Cases[i]
@@ -615,13 +615,13 @@ fn M5ArtifactWriteAll() -> Int {
         Markdown.Section("Scope", [Markdown.Paragraph("Bounded 27-case deterministic direct-message brown-noise sweep; no FM/IQ/audio realism.")]),
         Markdown.Section("Architecture", [Markdown.Paragraph("Scalar board preserved; history arrays external to Octomata board.")]),
         Markdown.Section("Algorithm", [Markdown.Paragraph("Windowed lag-1 estimator with windowSize=32; smoothed A update with alpha=0.2; clamp range [-0.99,0.99].")]),
-        Markdown.Section("Key counts", [Markdown.KeyValueTable(["scalarAdaptiveWin","scalarRecoveryOnly","scalarWhitenessOnly","scalarNoMeaningfulWin","windowedAdaptiveWin","windowedRecoveryOnly","windowedWhitenessOnly","windowedNoMeaningfulWin","windowedBetterRecovery","windowedBetterWhiteness"],[String.From<Int>(report.Summary.ScalarAdaptiveWinCount),String.From<Int>(report.Summary.ScalarRecoveryOnlyCount),String.From<Int>(report.Summary.ScalarWhitenessOnlyCount),String.From<Int>(report.Summary.ScalarNoMeaningfulWinCount),String.From<Int>(report.Summary.WindowedAdaptiveWinCount),String.From<Int>(report.Summary.WindowedRecoveryOnlyCount),String.From<Int>(report.Summary.WindowedWhitenessOnlyCount),String.From<Int>(report.Summary.WindowedNoMeaningfulWinCount),String.From<Int>(report.Summary.WindowedBetterRecoveryCount),String.From<Int>(report.Summary.WindowedBetterWhitenessCount)])])
+        Markdown.Section("Key counts", [Markdown.KeyValueTable(["scalarAdaptiveWin", "scalarRecoveryOnly", "scalarWhitenessOnly", "scalarNoMeaningfulWin", "windowedAdaptiveWin", "windowedRecoveryOnly", "windowedWhitenessOnly", "windowedNoMeaningfulWin", "windowedBetterRecovery", "windowedBetterWhiteness"], [String.From<Int>(report.Summary.ScalarAdaptiveWinCount), String.From<Int>(report.Summary.ScalarRecoveryOnlyCount), String.From<Int>(report.Summary.ScalarWhitenessOnlyCount), String.From<Int>(report.Summary.ScalarNoMeaningfulWinCount), String.From<Int>(report.Summary.WindowedAdaptiveWinCount), String.From<Int>(report.Summary.WindowedRecoveryOnlyCount), String.From<Int>(report.Summary.WindowedWhitenessOnlyCount), String.From<Int>(report.Summary.WindowedNoMeaningfulWinCount), String.From<Int>(report.Summary.WindowedBetterRecoveryCount), String.From<Int>(report.Summary.WindowedBetterWhitenessCount)])])
     ])
     let md = Markdown.Report([
         Markdown.Title("FM Brown-Noise Kalman M5"),
         Markdown.Subtitle("Windowed AR(1) adaptive comparison"),
         Markdown.Section("Architecture", [Markdown.Paragraph("Octomata board remained scalar current-state only; recovered/innovation/aTrace/window estimates stayed external and were consumed as deterministic scalar stream input.")]),
-        Markdown.Section("Summary", [Markdown.KeyValueTable(["totalCases","scalarAdaptiveWin","windowedAdaptiveWin","scalarMeanDeltaOutputSNRDb","windowedMeanDeltaOutputSNRDb","scalarMeanWhitenessRatio","windowedMeanWhitenessRatio","windowedBetterRecovery","windowedBetterWhiteness","equivalencePassCount"],[String.From<Int>(report.Summary.TotalCases),String.From<Int>(report.Summary.ScalarAdaptiveWinCount),String.From<Int>(report.Summary.WindowedAdaptiveWinCount),String.From<Float>(report.Summary.ScalarMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.WindowedMeanDeltaOutputSNRDb),String.From<Float>(report.Summary.ScalarMeanWhitenessRatio),String.From<Float>(report.Summary.WindowedMeanWhitenessRatio),String.From<Int>(report.Summary.WindowedBetterRecoveryCount),String.From<Int>(report.Summary.WindowedBetterWhitenessCount),String.From<Int>(report.Summary.EquivalencePassCount)])]),
+        Markdown.Section("Summary", [Markdown.KeyValueTable(["totalCases", "scalarAdaptiveWin", "windowedAdaptiveWin", "scalarMeanDeltaOutputSNRDb", "windowedMeanDeltaOutputSNRDb", "scalarMeanWhitenessRatio", "windowedMeanWhitenessRatio", "windowedBetterRecovery", "windowedBetterWhiteness", "equivalencePassCount"], [String.From<Int>(report.Summary.TotalCases), String.From<Int>(report.Summary.ScalarAdaptiveWinCount), String.From<Int>(report.Summary.WindowedAdaptiveWinCount), String.From<Float>(report.Summary.ScalarMeanDeltaOutputSNRDb), String.From<Float>(report.Summary.WindowedMeanDeltaOutputSNRDb), String.From<Float>(report.Summary.ScalarMeanWhitenessRatio), String.From<Float>(report.Summary.WindowedMeanWhitenessRatio), String.From<Int>(report.Summary.WindowedBetterRecoveryCount), String.From<Int>(report.Summary.WindowedBetterWhitenessCount), String.From<Int>(report.Summary.EquivalencePassCount)])]),
         Markdown.Section("Boundedness", [Markdown.Callout("note", ["Bounded 27-case sweep. No FM/IQ/audio receiver realism. Results should not be over-generalized."])])
     ])
     Artifact.Checkpoint("beforeWrites")

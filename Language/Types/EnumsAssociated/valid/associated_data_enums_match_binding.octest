@@ -59,8 +59,8 @@ fn AssociatedEnumConstructorsAndMatchBindingWork() -> Void {
 
 [Fact]
 fn AssociatedEnumsReplaceLegacySentinelRecordPattern() -> Void {
-    let okLegacy = LegacyParseEnvelope{IsOk: true Value: 11 Message: ""}
-    let errLegacy = LegacyParseEnvelope{IsOk: false Value: 0 Message: "bad"}
+    let okLegacy = LegacyParseEnvelope { IsOk: true Value: 11 Message: "" }
+    let errLegacy = LegacyParseEnvelope { IsOk: false Value: 0 Message: "bad" }
     Assert.Equal(22, LegacyDouble(okLegacy), "legacy sentinel-flag shape still behaves")
     Assert.Equal(-1, LegacyDouble(errLegacy), "legacy sentinel-flag shape still needs separate flag checks")
 

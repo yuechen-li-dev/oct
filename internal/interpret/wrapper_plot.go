@@ -4,6 +4,7 @@ import (
 	"gonum.org/v1/plot/vg"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/plotrender"
 )
 
 func plotWrapperBuiltins() map[string]wrapperBuiltinHandler {
@@ -181,5 +182,5 @@ func pixelLengthArg(call wrapperCall, index int) (vg.Length, *evalResult, error)
 		result := wrapperErrorResult(call.callee, wrapperErrorf(wrapperErrorInvalidArgument, "argument %d expects a positive Int<px>", index+1))
 		return 0, &result, nil
 	}
-	return vg.Length(float64(argument.Int)) * vg.Points(1), nil, nil
+	return plotrender.PixelLength(int(argument.Int)), nil, nil
 }

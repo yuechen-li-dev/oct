@@ -27,6 +27,11 @@ func emitGoValue(value MIRValue) (string, error) {
 		if v.Type == "String" {
 			return strconv.Quote(v.Value), nil
 		}
+		if isFloatScalarTypeString(v.Type) {
+			// A call is a typed value, unlike a Go constant conversion. Each
+			// operand rounds to float64 before Go performs arithmetic.
+			return "__octFloatLiteral(" + v.Value + ")", nil
+		}
 		return v.Value, nil
 	case MIRLocal:
 		return v.Name, nil
@@ -66,7 +71,7 @@ func emitGoValue(value MIRValue) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return target + "[" + index + "]", nil
+		return "__octIndex(" + target + ", " + index + ")", nil
 	case MIRFieldAccess:
 		target, err := emitGoValue(v.Target)
 		if err != nil {
@@ -147,7 +152,7 @@ func emitGoValue(value MIRValue) (string, error) {
 		if len(parts) > 1 {
 			pkg = parts[0] + "_"
 		}
-		out := pkg + name + "{Tag: " + name + "_" + v.Variant + "_tag"
+		out := pkg + name + "{Tag: " + pkg + name + "_" + v.Variant + "_tag"
 		if payloadType, ok := parseOptionType(v.EnumType); ok {
 			out = goOptionType(payloadType) + "{Tag: Option_" + v.Variant + "_tag"
 		}
@@ -184,7 +189,11 @@ func emitGoValue(value MIRValue) (string, error) {
 			if len(v.Metadata) != 2 {
 				return "", fmt.Errorf("enum-is requires enum type and variant")
 			}
-			return "(" + args[0] + ".Tag == " + enumShortName(v.Metadata[0]) + "_" + v.Metadata[1] + "_tag)", nil
+			prefix := strings.ReplaceAll(v.Metadata[0], ".", "_")
+			if _, option := parseOptionType(v.Metadata[0]); option {
+				prefix = "Option"
+			}
+			return "(" + args[0] + ".Tag == " + prefix + "_" + v.Metadata[1] + "_tag)", nil
 		default:
 			return "", fmt.Errorf("unsupported MIR intrinsic %q", v.Kind)
 		}

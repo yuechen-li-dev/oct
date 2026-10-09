@@ -7,7 +7,7 @@ template record Box<T> {
 }
 
 template fn Recur<T>(value: T) -> T {
-    return Recur<Box<T>>(Box<T> {Value: value}).Value
+    return Recur<Box<T>>(Box<T> { Value: value }).Value
 }
 
 fn Main() -> Int {

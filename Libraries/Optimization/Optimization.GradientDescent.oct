@@ -39,10 +39,10 @@ package Optimization
 /// Returns OptimizationResultND with point, value, gradient norm,
 /// and convergence status.
 fn GradientDescent(
-    f:             fn(Float[]) -> Float,
-    grad:          fn(Float[]) -> Float[],
-    x0:            Float[],
-    gTol:          Float,
+    f: fn(Float[]) -> Float,
+    grad: fn(Float[]) -> Float[],
+    x0: Float[],
+    gTol: Float,
     maxIterations: Int
 ) -> OptimizationResultND ! Error {
     if Len(x0) == 0 {
@@ -55,25 +55,25 @@ fn GradientDescent(
         return error("GradientDescent: maxIterations must be > 0")
     }
 
-    var x         = x0
+    var x = x0
     var iterations = 0
-    var converged  = false
-    var gNorm      = 0.0
+    var converged = false
+    var gNorm = 0.0
 
     while iterations < maxIterations and not converged {
-        let g     = grad(x)
+        let g = grad(x)
         let gNorm0 = LInfNorm(g)?
 
         if gNorm0 <= gTol {
             converged = true
-            gNorm     = gNorm0
+            gNorm = gNorm0
         }
 
         if not converged {
             // Descent direction: d = -g (steepest descent)
-            let d  = Scale(g, -1.0)
+            let d = Scale(g, -1.0)
             let fx = f(x)
-            let gd = Dot(g, d)?   // = -|g|² < 0 (always a descent direction)
+            let gd = Dot(g, d)? // = -|g|² < 0 (always a descent direction)
 
             let ls = DefaultArmijoLineSearch(x, d, f, fx, gd)?
             x = VecAdd(x, Scale(d, ls.StepSize))?
@@ -83,11 +83,11 @@ fn GradientDescent(
     }
 
     return OptimizationResultND {
-        Point:      x
-        FMin:       f(x)
+        Point: x
+        FMin: f(x)
         Iterations: iterations
-        Converged:  converged
-        GradNorm:   gNorm
+        Converged: converged
+        GradNorm: gNorm
     }
 }
 
@@ -110,12 +110,12 @@ fn GradientDescent(
 /// alpha — fixed step size (typical: 0.01)
 /// beta  — momentum coefficient in [0, 1) (typical: 0.9)
 fn GradientDescentMomentum(
-    f:             fn(Float[]) -> Float,
-    grad:          fn(Float[]) -> Float[],
-    x0:            Float[],
-    alpha:         Float,
-    beta:          Float,
-    gTol:          Float,
+    f: fn(Float[]) -> Float,
+    grad: fn(Float[]) -> Float[],
+    x0: Float[],
+    alpha: Float,
+    beta: Float,
+    gTol: Float,
     maxIterations: Int
 ) -> OptimizationResultND ! Error {
     if Len(x0) == 0 {
@@ -134,38 +134,38 @@ fn GradientDescentMomentum(
         return error("GradientDescentMomentum: maxIterations must be > 0")
     }
 
-    var x     = x0
-    var xPrev = x0    // previous iterate (for momentum)
+    var x = x0
+    var xPrev = x0 // previous iterate (for momentum)
     var iterations = 0
-    var converged  = false
-    var gNorm      = 0.0
+    var converged = false
+    var gNorm = 0.0
 
     while iterations < maxIterations and not converged {
-        let g      = grad(x)
+        let g = grad(x)
         let gNorm0 = LInfNorm(g)?
 
         if gNorm0 <= gTol {
             converged = true
-            gNorm     = gNorm0
+            gNorm = gNorm0
         }
 
         if not converged {
             // x_new = x - alpha * g + beta * (x - xPrev)
-            let step     = Scale(g, alpha)
+            let step = Scale(g, alpha)
             let momentum = Scale(VecSub(x, xPrev)?, beta)
-            let xNew     = VecAdd(VecSub(x, step)?, momentum)?
-            xPrev        = x
-            x            = xNew
-            gNorm        = gNorm0
-            iterations   = iterations + 1
+            let xNew = VecAdd(VecSub(x, step)?, momentum)?
+            xPrev = x
+            x = xNew
+            gNorm = gNorm0
+            iterations = iterations + 1
         }
     }
 
     return OptimizationResultND {
-        Point:      x
-        FMin:       f(x)
+        Point: x
+        FMin: f(x)
         Iterations: iterations
-        Converged:  converged
-        GradNorm:   gNorm
+        Converged: converged
+        GradNorm: gNorm
     }
 }

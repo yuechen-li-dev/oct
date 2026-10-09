@@ -167,7 +167,10 @@ func lowerGoExprNode(node goast.Expr, original, typ string) MIRValue {
 		}
 		if tagExpr, ok := fields["Tag"]; ok && typ != "" {
 			if tag, ok := tagExpr.(*goast.Ident); ok {
-				prefix := enumShortName(typ) + "_"
+				prefix := strings.ReplaceAll(typ, ".", "_") + "_"
+				if _, option := parseOptionType(typ); option {
+					prefix = "Option_"
+				}
 				variant := strings.TrimSuffix(strings.TrimPrefix(tag.Name, prefix), "_tag")
 				var payload MIRValue
 				if payloadExpr, ok := fields["Payload"]; ok {

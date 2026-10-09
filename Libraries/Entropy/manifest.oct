@@ -21,6 +21,6 @@ fn Manifest() -> PackageManifest {
         Authors: ["Claude"]
         Date: "2026-10-02"
         Description: "Draws from the operating system random source: not reproducible, fallible, rejected in artifact evaluation"
-        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

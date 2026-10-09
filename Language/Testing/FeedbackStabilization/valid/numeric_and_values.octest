@@ -1,0 +1,59 @@
+package FeedbackStabilization
+
+concept Tags = String[] {
+    Require(Len(Self) > 0, "tags must not be empty")
+}
+
+enum Held {
+    Empty
+    Items(Int[])
+}
+
+fn FailDirectly() -> Void ! Error {
+    return error("cannot write")
+}
+
+fn FailWithValue() -> Void ! Error {
+    let failure = error("cannot save")
+    return failure
+}
+
+[Fact]
+fn FloatLiteralsRoundBeforeArithmetic() -> Void {
+    Assert.True(0.1 + 0.2 != 0.3, "IEEE rounding of each operand")
+    Assert.Equal(2.5, 1.5 + 1, "mixed addition")
+    Assert.Equal(0.5, 1.5 - 1, "mixed subtraction")
+    Assert.Equal(4.5, 3 * 1.5, "mixed multiplication")
+    Assert.True(3 > 1.5, "mixed comparison")
+}
+
+[Fact]
+fn VectorAdditionNeedsNoOtherBuiltin() -> Void {
+    let v = vector[1.5, 2.5]
+    let twice = v + v
+    let zero = v - v
+    Assert.Equal(3.0, twice[0], "vector addition")
+    Assert.Equal(0.0, zero[1], "vector subtraction")
+}
+
+[Fact]
+fn RefinedArrayIndexHasElementType() -> Void ! Error {
+    let tags = Tags(["a", "b"])?
+    let first: String = tags[0]
+    Assert.Equal("a", first, "refinement is on the container")
+    Assert.Equal("b", tags[1], "direct indexed element")
+}
+
+[Fact]
+fn ArraysAndEnumPayloadsCompareByValue() -> Void {
+    Assert.Equal([1, 2], [1, 2], "array equality")
+    Assert.Equal([["a"], ["b"]], [["a"], ["b"]], "nested array equality")
+    Assert.True(Held.Items([1, 2]) == Held.Items([1, 2]), "equal array payloads")
+    Assert.True(Held.Items([1]) != Held.Items([2]), "different array payloads")
+}
+
+[Fact]
+fn VoidFunctionsCanReturnErrors() -> Void {
+    Assert.Error(FailDirectly(), "direct error")
+    Assert.Error(FailWithValue(), "error value")
+}

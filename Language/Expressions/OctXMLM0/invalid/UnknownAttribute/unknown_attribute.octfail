@@ -2,5 +2,5 @@ expect error: "Panel has no parameter 'Widht'"
 package UnknownAttribute
 
 record Node { Value: String }
-fn Panel(width: Int, children: Node[]) -> Node { return Node {Value: "x"} }
+fn Panel(width: Int, children: Node[]) -> Node { return Node { Value: "x" } }
 fn Main() -> Node { return <Panel Widht={1} /> }

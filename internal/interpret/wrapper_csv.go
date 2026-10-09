@@ -34,6 +34,10 @@ func (i *interpreter) evalCSVReadBuiltin(env *environment, pkgName string, calle
 	if errResult != nil {
 		return *errResult, nil
 	}
+	path, err = i.prepareArtifactRead(path)
+	if err != nil {
+		return evalResult{}, err
+	}
 	file, openErr := os.Open(path)
 	if openErr != nil {
 		return wrapperErrorResult(callee, mapPathError(path, openErr)), nil

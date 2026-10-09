@@ -183,13 +183,13 @@ fn M19BValue(k: Int, j: Int) -> Int {
 
 fn M19ScalarSgemm(m: Int, n: Int, kDim: Int) -> Int[] {
     var out = [0]
-    for idx in 1 .. (m * n) {
+    for idx in 1..(m * n) {
         out = Append(out, 0)
     }
-    for i in 0 .. m {
-        for j in 0 .. n {
+    for i in 0..m {
+        for j in 0..n {
             var sum = 0
-            for k in 0 .. kDim {
+            for k in 0..kDim {
                 sum = sum + M19AValue(i, k) * M19BValue(k, j)
             }
             out[i * n + j] = sum
@@ -203,12 +203,12 @@ fn M19PackedSgemm(m: Int, n: Int, kDim: Int, contaminationSeed: Int) -> Int[] {
     let kBlocks = M19CeilDiv(kDim, 4)
 
     var aPacked = [0]
-    for idx in 1 .. (m * kPadded) {
+    for idx in 1..(m * kPadded) {
         aPacked = Append(aPacked, 0)
     }
-    for i in 0 .. m {
-        for block in 0 .. kBlocks {
-            for lane in 0 .. 4 {
+    for i in 0..m {
+        for block in 0..kBlocks {
+            for lane in 0..4 {
                 let k = block * 4 + lane
                 let packedIndex = i * kPadded + block * 4 + lane
                 if k < kDim {
@@ -221,12 +221,12 @@ fn M19PackedSgemm(m: Int, n: Int, kDim: Int, contaminationSeed: Int) -> Int[] {
     }
 
     var bPacked = [0]
-    for idx in 1 .. (n * kPadded) {
+    for idx in 1..(n * kPadded) {
         bPacked = Append(bPacked, 0)
     }
-    for j in 0 .. n {
-        for block in 0 .. kBlocks {
-            for lane in 0 .. 4 {
+    for j in 0..n {
+        for block in 0..kBlocks {
+            for lane in 0..4 {
                 let k = block * 4 + lane
                 let packedIndex = j * kPadded + block * 4 + lane
                 if k < kDim {
@@ -239,15 +239,15 @@ fn M19PackedSgemm(m: Int, n: Int, kDim: Int, contaminationSeed: Int) -> Int[] {
     }
 
     var out = [0]
-    for idx in 1 .. (m * n) {
+    for idx in 1..(m * n) {
         out = Append(out, 0)
     }
 
-    for i in 0 .. m {
-        for j in 0 .. n {
+    for i in 0..m {
+        for j in 0..n {
             var sum = 0
-            for block in 0 .. kBlocks {
-                for lane in 0 .. 4 {
+            for block in 0..kBlocks {
+                for lane in 0..4 {
                     let k = block * 4 + lane
                     let laneActive = switch {
                         case k < kDim => 1
@@ -269,8 +269,8 @@ fn M19MismatchSummary(lhs: Int[], rhs: Int[], m: Int, n: Int) -> Int[] {
     var mismatchCount = 0
     var firstRow = -1
     var firstCol = -1
-    for i in 0 .. m {
-        for j in 0 .. n {
+    for i in 0..m {
+        for j in 0..n {
             let idx = i * n + j
             if lhs[idx] != rhs[idx] {
                 mismatchCount = mismatchCount + 1
@@ -329,9 +329,9 @@ fn M19EvaluateScenario(s: M19Scenario) -> M19Result {
 
 fn M19TailExhaustiveRows() -> M19Result[] {
     var rows = [M19EvaluateScenario(M19Scenario { CaseName: "tail_m0_n0_k0" M: 8 N: 8 KDim: 8 Mode: "SAFE" Packed4Capability: true FallbackAvailable: true ContaminationSeed: 999 })]
-    for mTail in 0 .. 4 {
-        for nTail in 0 .. 4 {
-            for kTail in 0 .. 4 {
+    for mTail in 0..4 {
+        for nTail in 0..4 {
+            for kTail in 0..4 {
                 if not (mTail == 0 and nTail == 0 and kTail == 0) {
                     rows = Append(rows, M19EvaluateScenario(M19Scenario {
                         CaseName: "tail_combo"
@@ -412,22 +412,22 @@ fn M19PackUnpackRows() -> M19PackUnpackRow[] {
 
 fn M19PackUnpackCheck(caseName: String, rows: Int, cols: Int, kind: String) -> M19PackUnpackRow {
     var scalar = [0]
-    for idx in 1 .. (rows * cols) {
+    for idx in 1..(rows * cols) {
         scalar = Append(scalar, 0)
     }
-    for i in 0 .. rows {
-        for j in 0 .. cols {
+    for i in 0..rows {
+        for j in 0..cols {
             scalar[i * cols + j] = ((i * 31 + j * 11 + 2) % 37) - 18
         }
     }
 
     let paddedCols = M19CeilDiv(cols, 4) * 4
     var packed = [0]
-    for idx in 1 .. (rows * paddedCols) {
+    for idx in 1..(rows * paddedCols) {
         packed = Append(packed, 0)
     }
-    for i in 0 .. rows {
-        for j in 0 .. paddedCols {
+    for i in 0..rows {
+        for j in 0..paddedCols {
             if j < cols {
                 packed[i * paddedCols + j] = scalar[i * cols + j]
             } else {
@@ -437,11 +437,11 @@ fn M19PackUnpackCheck(caseName: String, rows: Int, cols: Int, kind: String) -> M
     }
 
     var unpacked = [0]
-    for idx in 1 .. (rows * cols) {
+    for idx in 1..(rows * cols) {
         unpacked = Append(unpacked, 0)
     }
-    for i in 0 .. rows {
-        for j in 0 .. cols {
+    for i in 0..rows {
+        for j in 0..cols {
             unpacked[i * cols + j] = packed[i * paddedCols + j]
         }
     }
@@ -471,7 +471,7 @@ fn M19TailExhaustiveColumns(rows: M19Result[]) -> M19TailExhaustiveTable {
     var contaminationPass = [rows[0].ContaminationCheckPass]
     var reason = [rows[0].FallbackReason]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         m = Append(m, rows[i].M)
         n = Append(n, rows[i].N)
@@ -510,7 +510,7 @@ fn M19RowMajorColumns(rows: M19Result[]) -> M19RowMajorTable {
     var rowPass = [rows[0].RowMajorCheckPass]
     var mismatch = [rows[0].MismatchCount]
     var location = [rows[0].FirstMismatchLocation]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         m = Append(m, rows[i].M)
         n = Append(n, rows[i].N)
@@ -537,7 +537,7 @@ fn M19ContaminationColumns(rows: M19Result[]) -> M19ContaminationTable {
     var pass = [rows[0].ContaminationCheckPass]
     var mismatch = [switch { case rows[0].ContaminationCheckPass => 0 else => 1 }]
     var location = [switch { case rows[0].ContaminationCheckPass => "none" else => rows[0].FirstMismatchLocation }]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         seed = Append(seed, 999 + i)
         padded = Append(padded, rows[i].PaddedLaneCount)
@@ -562,7 +562,7 @@ fn M19PackUnpackColumns(rows: M19PackUnpackRow[]) -> M19PackUnpackTable {
     var kind = [rows[0].PackKind]
     var roundTrip = [rows[0].RoundTripPass]
     var canonical = [rows[0].CanonicalRowMajorPass]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         r = Append(r, rows[i].Rows)
         c = Append(c, rows[i].Cols)
@@ -591,7 +591,7 @@ fn M19ModeBudgetColumns(rows: M19ModeBudgetRow[]) -> M19ModeBudgetTable {
     var modePass = [rows[0].ModeBudgetPass]
     var eligible = [rows[0].PackedEligible]
     var reason = [rows[0].FallbackReason]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         m = Append(m, rows[i].M)
         n = Append(n, rows[i].N)

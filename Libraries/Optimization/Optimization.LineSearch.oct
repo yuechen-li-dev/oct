@@ -32,10 +32,10 @@ package Optimization
 // ============================================================
 
 record LineSearchResult {
-    StepSize:   Float   // α found
-    FNew:       Float   // f(x + α·d)
+    StepSize: Float // α found
+    FNew: Float // f(x + α·d)
     Iterations: Int
-    Satisfied:  Bool    // did the condition hold?
+    Satisfied: Bool // did the condition hold?
 }
 
 /// Armijo backtracking line search.
@@ -49,15 +49,15 @@ record LineSearchResult {
 /// initialStep — starting step size (typical: 1.0)
 /// maxIter — maximum backtracks
 fn ArmijoLineSearch(
-    x:           Float[],
-    d:           Float[],
-    f:           fn(Float[]) -> Float,
-    fx:          Float,
-    gd:          Float,
-    c1:          Float,
-    tau:         Float,
+    x: Float[],
+    d: Float[],
+    f: fn(Float[]) -> Float,
+    fx: Float,
+    gd: Float,
+    c1: Float,
+    tau: Float,
     initialStep: Float,
-    maxIter:     Int
+    maxIter: Int
 ) -> LineSearchResult ! Error {
     if c1 <= 0.0 or c1 >= 1.0 {
         return error("ArmijoLineSearch: c1 must be in (0, 1)")
@@ -76,7 +76,7 @@ fn ArmijoLineSearch(
     }
 
     var alpha = initialStep
-    var iter  = 0
+    var iter = 0
     var found = false
 
     while iter < maxIter and not found {
@@ -89,25 +89,25 @@ fn ArmijoLineSearch(
             found = true
         } else {
             alpha = alpha * tau
-            iter  = iter + 1
+            iter = iter + 1
         }
     }
 
     let xFinal = VecAdd(x, Scale(d, alpha))?
     return LineSearchResult {
-        StepSize:   alpha
-        FNew:       f(xFinal)
+        StepSize: alpha
+        FNew: f(xFinal)
         Iterations: iter
-        Satisfied:  found
+        Satisfied: found
     }
 }
 
 /// Default Armijo line search with standard parameters.
 /// c1=1e-4, tau=0.5, initialStep=1.0, maxIter=50.
 fn DefaultArmijoLineSearch(
-    x:  Float[],
-    d:  Float[],
-    f:  fn(Float[]) -> Float,
+    x: Float[],
+    d: Float[],
+    f: fn(Float[]) -> Float,
     fx: Float,
     gd: Float
 ) -> LineSearchResult ! Error {
@@ -143,14 +143,14 @@ fn WolfeCurvatureConditionMet(gdNew: Float, gd: Float, c2: Float) -> Bool {
 
 /// Check both strong Wolfe conditions simultaneously.
 fn StrongWolfeConditionsMet(
-    fNew:  Float,
-    fx:    Float,
+    fNew: Float,
+    fx: Float,
     alpha: Float,
-    gd:    Float,
+    gd: Float,
     gdNew: Float,
-    c1:    Float,
-    c2:    Float
+    c1: Float,
+    c2: Float
 ) -> Bool {
     return ArmijoConditionMet(fNew, fx, alpha, gd, c1) and
-           WolfeCurvatureConditionMet(gdNew, gd, c2)
+        WolfeCurvatureConditionMet(gdNew, gd, c2)
 }

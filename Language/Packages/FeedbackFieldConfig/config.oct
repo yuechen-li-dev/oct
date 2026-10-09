@@ -1,0 +1,4 @@
+package FeedbackFieldConfig
+import FeedbackFieldNet
+record Service { Listen: FeedbackFieldNet.Address }
+fn Default() -> Service { return Service { Listen: FeedbackFieldNet.Address { Host: "localhost" } } }

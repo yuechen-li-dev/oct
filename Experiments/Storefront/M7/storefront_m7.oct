@@ -99,7 +99,7 @@ fn CatalogProductIds() -> String[] {
 
 fn ProductById(productId: String) -> Product {
     let catalog = CatalogTable()
-    for i in 0 .. Len(catalog.Ids) {
+    for i in 0..Len(catalog.Ids) {
         if catalog.Ids[i] == productId {
             return Product {
                 Id: catalog.Ids[i]
@@ -179,26 +179,26 @@ fn FeaturedDispatchTable() -> UI.EventValueDispatch {
 
 
 fn Update(model: StoreState, event: String) -> StoreState {
-    let nav = UI.ResolveEventValue(event, NavDispatchTable()) !
+    let nav = UI.ResolveEventValue(event, NavDispatchTable())!
     if nav != "" { return model with { SelectedNav: nav } }
 
-    let category = UI.ResolveEventValue(event, CategoryDispatchTable()) !
+    let category = UI.ResolveEventValue(event, CategoryDispatchTable())!
     if category != "" { return model with { SelectedCategory: category } }
 
     if event == UI.EventTokenValue(ToggleNewEvent()) { return model with { NewOnly: not model.NewOnly } }
     if event == UI.EventTokenValue(ToggleInStockEvent()) { return model with { InStockOnly: not model.InStockOnly } }
     if event == UI.EventTokenValue(ToggleBestSellerEvent()) { return model with { BestSellerOnly: not model.BestSellerOnly } }
 
-    let sortBy = UI.ResolveEventValue(event, SortDispatchTable()) !
+    let sortBy = UI.ResolveEventValue(event, SortDispatchTable())!
     if sortBy != "" { return model with { SortBy: sortBy } }
 
-    let featuredTab = UI.ResolveEventValue(event, FeaturedDispatchTable()) !
+    let featuredTab = UI.ResolveEventValue(event, FeaturedDispatchTable())!
     if featuredTab != "" { return model with { FeaturedTab: featuredTab } }
 
-    let inspectMatch = UI.MatchEventPrefix(event, InspectPrefix(), CatalogProductIds()) !
+    let inspectMatch = UI.MatchEventPrefix(event, InspectPrefix(), CatalogProductIds())!
     if inspectMatch != "" { return model with { SelectedProduct: inspectMatch } }
 
-    let addMatch = UI.MatchEventPrefix(event, AddToCartPrefix(), CatalogProductIds()) !
+    let addMatch = UI.MatchEventPrefix(event, AddToCartPrefix(), CatalogProductIds())!
     if addMatch != "" { return model with { CartCount: model.CartCount + 1.0 } }
 
     return model
@@ -227,7 +227,7 @@ fn SelectionLabel(selected: Bool) -> String {
 }
 
 fn ResolveLabelMapping(key: String, mapping: KeyLabelMapping, fallback: String) -> String {
-    for i in 0 .. Len(mapping.Keys) {
+    for i in 0..Len(mapping.Keys) {
         if key == mapping.Keys[i] {
             return mapping.Labels[i]
         }

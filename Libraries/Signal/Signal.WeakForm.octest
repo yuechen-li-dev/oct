@@ -5,7 +5,7 @@ fn WeakFormSmoothRecoversQuadraticExactly() -> Void ! Error {
     let dt = 0.05
     var times = [0.0]
     var values = [1.0]
-    for i in 1 .. 60 {
+    for i in 1..60 {
         let t = Float(i) * dt
         times = Append(times, t)
         values = Append(values, 2.0 * t * t - 3.0 * t + 1.0)

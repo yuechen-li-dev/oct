@@ -8,14 +8,14 @@ record Color {
 }
 
 record Insets {
-    Top: Int < px >
-    Right: Int < px >
-    Bottom: Int < px >
-    Left: Int < px >
+    Top: Int<px>
+    Right: Int<px>
+    Bottom: Int<px>
+    Left: Int<px>
 }
 
 record TextStyle {
-    Size: Int < px >
+    Size: Int<px>
     Color: Color
     Weight: Int
 }
@@ -24,8 +24,8 @@ record Style {
     Background: Color
     Foreground: Color
     BorderColor: Color
-    BorderWidth: Int < px >
-    Radius: Int < px >
+    BorderWidth: Int<px>
+    Radius: Int<px>
     Padding: Insets
 }
 
@@ -34,12 +34,12 @@ concept ColorChannel = Int {
     Require(Self <= 255, "a color channel must be at most 255")
 }
 
-concept NonNegativePx = Int < px > {
+concept NonNegativePx = Int<px> {
     Require(Self >= 0px, "a pixel inset must be non-negative")
 }
 
 fn Rgba(r: ColorChannel, g: ColorChannel, b: ColorChannel, a: ColorChannel) -> Color {
-    return Color {R: r G: g B: b A: a}
+    return Color { R: r G: g B: b A: a }
 }
 
 fn Rgb(r: ColorChannel, g: ColorChannel, b: ColorChannel) -> Color {

@@ -17,13 +17,13 @@ template fn ParameterShadowsRecordName<Candidate>(value: Candidate) -> Candidate
 }
 
 template fn BoxValue<T>(x: T) -> Box<T> {
-    return Box<T> {Value: x}
+    return Box<T> { Value: x }
 }
 
 template fn PairBoxes<T, U>(first: T, second: U) -> Pair<Box<T>, Pair<T, U>> {
     return Pair<Box<T>, Pair<T, U>> {
-        First: Box<T> {Value: first}
-        Second: Pair<T, U> {First: first Second: second}
+        First: Box<T> { Value: first }
+        Second: Pair<T, U> { First: first Second: second }
     }
 }
 
@@ -33,7 +33,7 @@ template fn Midpoint<T>(a: T, b: T) -> T {
 
 template fn Mean<T>(values: T[]) -> T {
     var total = values[0]
-    for i in 1 .. Len(values) {
+    for i in 1..Len(values) {
         total = total + values[i]
     }
     let count: Float = Len(values)
@@ -68,7 +68,7 @@ template fn MakeScale<T>(factor: T) -> fn(T) -> T {
 
 template fn MapLocal<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
     var result: U[] = []
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         result = Append(result, transform(values[i]))
     }
     return result
@@ -76,7 +76,7 @@ template fn MapLocal<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
 
 template fn FoldLocal<T, A>(values: T[], initial: A, reducer: fn(A, T) -> A) -> A {
     var result = initial
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         result = reducer(result, values[i])
     }
     return result

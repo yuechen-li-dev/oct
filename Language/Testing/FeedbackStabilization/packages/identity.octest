@@ -1,0 +1,26 @@
+package Main
+import Net
+
+enum Mode { Fast Slow }
+concept Port = Int { Require(Self < 10, "small port") }
+record Local { Value: Int }
+record Bundle { Values: Mode[] }
+
+[Fact]
+fn PackageQualifiedMetadataDoesNotCollide() -> Void ! Error {
+    Assert.True(Mode.Fast != Mode.Slow, "local enum")
+    Assert.True(Net.Fast() == Net.Mode.Fast, "imported enum with different variant order")
+    let local = Json.Parse<Port>("3")?
+    let remote = Json.Parse<Net.Port>("20")?
+    let localInt: Int = local
+    let remoteInt: Int = remote
+    Assert.Equal(3, localInt, "local refinement")
+    Assert.Equal(20, remoteInt, "imported refinement")
+    Assert.Error(Json.Parse<Port>("20"), "local requirement is preserved")
+    let value = Local { Value: 4 }
+    Assert.Equal(value, Net.Echo<Local>(value), "caller-owned record passes through")
+    let bundle = Bundle { Values: [Mode.Fast, Mode.Slow] }
+    let restored = Net.Echo<Bundle>(bundle)
+    Assert.Equal(Bundle { Values: [Mode.Fast, Mode.Slow] }, bundle, "package calls preserve caller-owned nested values")
+    Assert.Equal(bundle, restored, "nested values keep their nominal owner on return")
+}

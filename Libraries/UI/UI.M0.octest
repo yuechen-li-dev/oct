@@ -45,7 +45,7 @@ fn MountPatchUnmountLifecycleWorks() -> Void {
 [Fact]
 fn ExplicitEventTokensDriveStateTransition() -> Void {
     let mounted = MountUI(CounterView(CounterState { Count: 0 Voltage: 0.0 }))
-    let emitted = Emit(mounted, CounterIncrementEventValue()) !
+    let emitted = Emit(mounted, CounterIncrementEventValue())!
     Assert.Equal(0, emitted, "event emission should succeed")
 
     let events = DrainEvents(mounted)
@@ -78,7 +78,7 @@ fn DisabledButtonPreventsEventEmission() -> Void {
 [Fact]
 fn EnabledButtonStillEmitsAfterRerender() -> Void {
     let mounted = MountUI(CounterView(CounterState { Count: 1 Voltage: 0.25 }))
-    let emitted = Emit(mounted, CounterDecrementEventValue()) !
+    let emitted = Emit(mounted, CounterDecrementEventValue())!
     Assert.Equal(0, emitted, "enabled decrement should emit")
 
     let events = DrainEvents(mounted)

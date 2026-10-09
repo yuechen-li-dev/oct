@@ -8,7 +8,7 @@ fn ConstantFloatSeries(value: Float, count: Int) -> Float[] {
     }
 
     var out = [value]
-    for _ in 1 .. count {
+    for _ in 1..count {
         out = Append(out, value)
     }
     return out
@@ -22,7 +22,7 @@ fn ConstantDistanceSeries(value: Float<m>, count: Int) -> Float<m>[] {
     }
 
     var out = [value]
-    for _ in 1 .. count {
+    for _ in 1..count {
         out = Append(out, value)
     }
     return out
@@ -40,7 +40,7 @@ fn LinearFloatSeries(start: Float, end: Float, count: Int) -> Float[] {
 
     let delta = (end - start) / (count - 1)
     var out = [start]
-    for i in 1 .. count {
+    for i in 1..count {
         out = Append(out, start + delta * i)
     }
     return out
@@ -58,7 +58,7 @@ fn LinearDistanceSeries(start: Float<m>, end: Float<m>, count: Int) -> Float<m>[
 
     let delta = (end - start) / (count - 1)
     var out = [start]
-    for i in 1 .. count {
+    for i in 1..count {
         out = Append(out, start + delta * i)
     }
     return out
@@ -75,11 +75,11 @@ fn ConcatFloatSeries(left: Float[], right: Float[]) -> Float[] {
     }
 
     var out = [left[0]]
-    for i in 1 .. Len(left) {
+    for i in 1..Len(left) {
         out = Append(out, left[i])
     }
 
-    for i in 0 .. Len(right) {
+    for i in 0..Len(right) {
         out = Append(out, right[i])
     }
 

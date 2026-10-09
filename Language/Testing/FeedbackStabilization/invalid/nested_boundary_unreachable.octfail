@@ -1,0 +1,13 @@
+expect error: "statement after nested turn boundary is unreachable"
+package Main
+flow Work() yields Int -> Int {
+    board { Count: Int }
+    state Run {
+        if true {
+            yield 1
+            board.Count = 50
+        }
+        return board.Count
+    }
+}
+fn Main() -> Int { return 0 }

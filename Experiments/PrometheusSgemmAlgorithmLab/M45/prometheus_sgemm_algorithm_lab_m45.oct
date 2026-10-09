@@ -126,24 +126,24 @@ record M45TableBandVariantMatrix {
     ManualOverrideUseful: Bool[]
 }
 
-fn M45Min(a: Int, b: Int) -> Int {return switch {case a < b -> a else -> b}}
-fn M45Max(a: Int, b: Int) -> Int {return switch {case a > b -> a else -> b}}
-fn M45Clamp(v: Int, lo: Int, hi: Int) -> Int {return M45Min(M45Max(v, lo), hi)}
+fn M45Min(a: Int, b: Int) -> Int { return switch { case a < b -> a else -> b } }
+fn M45Max(a: Int, b: Int) -> Int { return switch { case a > b -> a else -> b } }
+fn M45Clamp(v: Int, lo: Int, hi: Int) -> Int { return M45Min(M45Max(v, lo), hi) }
 
 fn M45VariantVocabulary() -> M45KernelVariant[] {
     return [
-        M45KernelVariant {Name: "baseline-scalar" RegisterTileClass: 1 AccumulatorCount: 1 SharedTileClass: 1 PrefetchDepth: 0 RegisterPressureClass: 1 SharedPressureClass: 1 IntensityClass: 1 OccupancyClass: 5 ComplexityScore: 1 PortabilityRisk: 1},
-        M45KernelVariant {Name: "memory-conservative" RegisterTileClass: 1 AccumulatorCount: 2 SharedTileClass: 1 PrefetchDepth: 0 RegisterPressureClass: 2 SharedPressureClass: 1 IntensityClass: 2 OccupancyClass: 5 ComplexityScore: 2 PortabilityRisk: 1},
-        M45KernelVariant {Name: "small-register-tile" RegisterTileClass: 2 AccumulatorCount: 2 SharedTileClass: 2 PrefetchDepth: 0 RegisterPressureClass: 2 SharedPressureClass: 2 IntensityClass: 3 OccupancyClass: 4 ComplexityScore: 3 PortabilityRisk: 2},
-        M45KernelVariant {Name: "balanced-2x2-accum4" RegisterTileClass: 3 AccumulatorCount: 4 SharedTileClass: 3 PrefetchDepth: 0 RegisterPressureClass: 3 SharedPressureClass: 3 IntensityClass: 4 OccupancyClass: 3 ComplexityScore: 4 PortabilityRisk: 2},
-        M45KernelVariant {Name: "aggressive-4x4-accum8" RegisterTileClass: 4 AccumulatorCount: 5 SharedTileClass: 4 PrefetchDepth: 0 RegisterPressureClass: 5 SharedPressureClass: 4 IntensityClass: 5 OccupancyClass: 1 ComplexityScore: 6 PortabilityRisk: 4}
+        M45KernelVariant { Name: "baseline-scalar" RegisterTileClass: 1 AccumulatorCount: 1 SharedTileClass: 1 PrefetchDepth: 0 RegisterPressureClass: 1 SharedPressureClass: 1 IntensityClass: 1 OccupancyClass: 5 ComplexityScore: 1 PortabilityRisk: 1 },
+        M45KernelVariant { Name: "memory-conservative" RegisterTileClass: 1 AccumulatorCount: 2 SharedTileClass: 1 PrefetchDepth: 0 RegisterPressureClass: 2 SharedPressureClass: 1 IntensityClass: 2 OccupancyClass: 5 ComplexityScore: 2 PortabilityRisk: 1 },
+        M45KernelVariant { Name: "small-register-tile" RegisterTileClass: 2 AccumulatorCount: 2 SharedTileClass: 2 PrefetchDepth: 0 RegisterPressureClass: 2 SharedPressureClass: 2 IntensityClass: 3 OccupancyClass: 4 ComplexityScore: 3 PortabilityRisk: 2 },
+        M45KernelVariant { Name: "balanced-2x2-accum4" RegisterTileClass: 3 AccumulatorCount: 4 SharedTileClass: 3 PrefetchDepth: 0 RegisterPressureClass: 3 SharedPressureClass: 3 IntensityClass: 4 OccupancyClass: 3 ComplexityScore: 4 PortabilityRisk: 2 },
+        M45KernelVariant { Name: "aggressive-4x4-accum8" RegisterTileClass: 4 AccumulatorCount: 5 SharedTileClass: 4 PrefetchDepth: 0 RegisterPressureClass: 5 SharedPressureClass: 4 IntensityClass: 5 OccupancyClass: 1 ComplexityScore: 6 PortabilityRisk: 4 }
     ]
 }
 
 fn M45FindVariant(name: String) -> M45KernelVariant {
     let variants = M45VariantVocabulary()
     var out = variants[0]
-    for i in 0 .. Len(variants) {
+    for i in 0..Len(variants) {
         if variants[i].Name == name {
             out = variants[i]
         }
@@ -177,22 +177,22 @@ fn M45ClassifyDeviceBand(device: M45Device) -> M45DerivedDevice {
 
 fn M45RepresentativeDevices() -> M45Device[] {
     return [
-        M45Device {Name: "edge-low-register" RegisterCapacityClass: 1 SharedMemoryCapacityClass: 2 MemoryBandwidthClass: 2 Fp32ThroughputClass: 2 MaxWorkgroupClass: 2 QueueCapabilityClass: 2 HasExactProfile: false RuntimeAutotuneAllowed: true OverrideVariantName: ""},
-        M45Device {Name: "consumer-balanced" RegisterCapacityClass: 3 SharedMemoryCapacityClass: 3 MemoryBandwidthClass: 3 Fp32ThroughputClass: 3 MaxWorkgroupClass: 3 QueueCapabilityClass: 3 HasExactProfile: false RuntimeAutotuneAllowed: true OverrideVariantName: ""},
-        M45Device {Name: "compute-workstation" RegisterCapacityClass: 5 SharedMemoryCapacityClass: 4 MemoryBandwidthClass: 3 Fp32ThroughputClass: 5 MaxWorkgroupClass: 4 QueueCapabilityClass: 4 HasExactProfile: true RuntimeAutotuneAllowed: true OverrideVariantName: "aggressive-4x4-accum8"},
-        M45Device {Name: "memory-hpc" RegisterCapacityClass: 4 SharedMemoryCapacityClass: 5 MemoryBandwidthClass: 5 Fp32ThroughputClass: 4 MaxWorkgroupClass: 4 QueueCapabilityClass: 5 HasExactProfile: true RuntimeAutotuneAllowed: false OverrideVariantName: "balanced-2x2-accum4"}
+        M45Device { Name: "edge-low-register" RegisterCapacityClass: 1 SharedMemoryCapacityClass: 2 MemoryBandwidthClass: 2 Fp32ThroughputClass: 2 MaxWorkgroupClass: 2 QueueCapabilityClass: 2 HasExactProfile: false RuntimeAutotuneAllowed: true OverrideVariantName: "" },
+        M45Device { Name: "consumer-balanced" RegisterCapacityClass: 3 SharedMemoryCapacityClass: 3 MemoryBandwidthClass: 3 Fp32ThroughputClass: 3 MaxWorkgroupClass: 3 QueueCapabilityClass: 3 HasExactProfile: false RuntimeAutotuneAllowed: true OverrideVariantName: "" },
+        M45Device { Name: "compute-workstation" RegisterCapacityClass: 5 SharedMemoryCapacityClass: 4 MemoryBandwidthClass: 3 Fp32ThroughputClass: 5 MaxWorkgroupClass: 4 QueueCapabilityClass: 4 HasExactProfile: true RuntimeAutotuneAllowed: true OverrideVariantName: "aggressive-4x4-accum8" },
+        M45Device { Name: "memory-hpc" RegisterCapacityClass: 4 SharedMemoryCapacityClass: 5 MemoryBandwidthClass: 5 Fp32ThroughputClass: 4 MaxWorkgroupClass: 4 QueueCapabilityClass: 5 HasExactProfile: true RuntimeAutotuneAllowed: false OverrideVariantName: "balanced-2x2-accum4" }
     ]
 }
 
 fn M45RepresentativeShapes() -> M45Shape[] {
     return [
-        M45Shape {Name: "small-square-128" ShapeClass: "small-square" MemoryPressureClass: 1 IntensityNeedClass: 1 TileSuitabilityClass: 1 OccupancySensitivityClass: 4},
-        M45Shape {Name: "medium-square-512" ShapeClass: "medium-square" MemoryPressureClass: 2 IntensityNeedClass: 3 TileSuitabilityClass: 3 OccupancySensitivityClass: 3},
-        M45Shape {Name: "large-square-2048" ShapeClass: "large-square" MemoryPressureClass: 4 IntensityNeedClass: 5 TileSuitabilityClass: 5 OccupancySensitivityClass: 2},
-        M45Shape {Name: "tall-skinny" ShapeClass: "tall-skinny" MemoryPressureClass: 2 IntensityNeedClass: 2 TileSuitabilityClass: 2 OccupancySensitivityClass: 4},
-        M45Shape {Name: "wide-short" ShapeClass: "wide-short" MemoryPressureClass: 2 IntensityNeedClass: 2 TileSuitabilityClass: 2 OccupancySensitivityClass: 4},
-        M45Shape {Name: "k-heavy" ShapeClass: "k-heavy" MemoryPressureClass: 3 IntensityNeedClass: 5 TileSuitabilityClass: 4 OccupancySensitivityClass: 3},
-        M45Shape {Name: "ml-ffn" ShapeClass: "ffn-like" MemoryPressureClass: 4 IntensityNeedClass: 4 TileSuitabilityClass: 4 OccupancySensitivityClass: 3}
+        M45Shape { Name: "small-square-128" ShapeClass: "small-square" MemoryPressureClass: 1 IntensityNeedClass: 1 TileSuitabilityClass: 1 OccupancySensitivityClass: 4 },
+        M45Shape { Name: "medium-square-512" ShapeClass: "medium-square" MemoryPressureClass: 2 IntensityNeedClass: 3 TileSuitabilityClass: 3 OccupancySensitivityClass: 3 },
+        M45Shape { Name: "large-square-2048" ShapeClass: "large-square" MemoryPressureClass: 4 IntensityNeedClass: 5 TileSuitabilityClass: 5 OccupancySensitivityClass: 2 },
+        M45Shape { Name: "tall-skinny" ShapeClass: "tall-skinny" MemoryPressureClass: 2 IntensityNeedClass: 2 TileSuitabilityClass: 2 OccupancySensitivityClass: 4 },
+        M45Shape { Name: "wide-short" ShapeClass: "wide-short" MemoryPressureClass: 2 IntensityNeedClass: 2 TileSuitabilityClass: 2 OccupancySensitivityClass: 4 },
+        M45Shape { Name: "k-heavy" ShapeClass: "k-heavy" MemoryPressureClass: 3 IntensityNeedClass: 5 TileSuitabilityClass: 4 OccupancySensitivityClass: 3 },
+        M45Shape { Name: "ml-ffn" ShapeClass: "ffn-like" MemoryPressureClass: 4 IntensityNeedClass: 4 TileSuitabilityClass: 4 OccupancySensitivityClass: 3 }
     ]
 }
 
@@ -380,8 +380,8 @@ fn M45BandVariantMatrix() -> M45BandVariantDecision[] {
         ManualOverrideUseful: devices[0].HasExactProfile
     }]
 
-    for di in 0 .. Len(devices) {
-        for si in 0 .. Len(shapes) {
+    for di in 0..Len(devices) {
+        for si in 0..Len(shapes) {
             if not (di == 0 and si == 0) {
                 let d = devices[di]
                 let s = shapes[si]
@@ -418,8 +418,8 @@ fn M45RecommendationFromModel() -> M45Recommendation {
     let shapes = M45RepresentativeShapes()
     var baselineTotal = 0
     var bandTotal = 0
-    for di in 0 .. Len(devices) {
-        for si in 0 .. Len(shapes) {
+    for di in 0..Len(devices) {
+        for si in 0..Len(shapes) {
             baselineTotal = baselineTotal + M45EvaluateNoSelection(devices[di], shapes[si]).ProductScore
             bandTotal = bandTotal + M45EvaluateDeviceBand(devices[di], shapes[si]).ProductScore
         }
@@ -444,7 +444,7 @@ fn M45DeviceBandTable() -> M45TableDeviceBand {
     var shTol = [M45ClassifyDeviceBand(devices[0]).SharedTolerance]
     var accum = [M45ClassifyDeviceBand(devices[0]).SafeAccumulatorCeiling]
     var tile = [M45ClassifyDeviceBand(devices[0]).SafeTileCeiling]
-    for i in 1 .. Len(devices) {
+    for i in 1..Len(devices) {
         let derived = M45ClassifyDeviceBand(devices[i])
         names = Append(names, devices[i].Name)
         bands = Append(bands, derived.Band)
@@ -453,7 +453,7 @@ fn M45DeviceBandTable() -> M45TableDeviceBand {
         accum = Append(accum, derived.SafeAccumulatorCeiling)
         tile = Append(tile, derived.SafeTileCeiling)
     }
-    return M45TableDeviceBand {DeviceName: names DeviceBand: bands RegisterTolerance: regTol SharedTolerance: shTol SafeAccumulatorCeiling: accum SafeTileCeiling: tile}
+    return M45TableDeviceBand { DeviceName: names DeviceBand: bands RegisterTolerance: regTol SharedTolerance: shTol SafeAccumulatorCeiling: accum SafeTileCeiling: tile }
 }
 
 fn M45ShapeClassTable() -> M45TableShapeClass {
@@ -464,7 +464,7 @@ fn M45ShapeClassTable() -> M45TableShapeClass {
     var intensity = [shapes[0].IntensityNeedClass]
     var tile = [shapes[0].TileSuitabilityClass]
     var occupancy = [shapes[0].OccupancySensitivityClass]
-    for i in 1 .. Len(shapes) {
+    for i in 1..Len(shapes) {
         names = Append(names, shapes[i].Name)
         classes = Append(classes, shapes[i].ShapeClass)
         memory = Append(memory, shapes[i].MemoryPressureClass)
@@ -472,7 +472,7 @@ fn M45ShapeClassTable() -> M45TableShapeClass {
         tile = Append(tile, shapes[i].TileSuitabilityClass)
         occupancy = Append(occupancy, shapes[i].OccupancySensitivityClass)
     }
-    return M45TableShapeClass {ShapeName: names ShapeClass: classes MemoryPressureClass: memory IntensityNeedClass: intensity TileSuitabilityClass: tile OccupancySensitivityClass: occupancy}
+    return M45TableShapeClass { ShapeName: names ShapeClass: classes MemoryPressureClass: memory IntensityNeedClass: intensity TileSuitabilityClass: tile OccupancySensitivityClass: occupancy }
 }
 
 fn M45VariantVocabularyTable() -> M45TableVariantVocabulary {
@@ -486,7 +486,7 @@ fn M45VariantVocabularyTable() -> M45TableVariantVocabulary {
     var intensity = [variants[0].IntensityClass]
     var occupancy = [variants[0].OccupancyClass]
     var complexity = [variants[0].ComplexityScore]
-    for i in 1 .. Len(variants) {
+    for i in 1..Len(variants) {
         names = Append(names, variants[i].Name)
         registerTile = Append(registerTile, variants[i].RegisterTileClass)
         accum = Append(accum, variants[i].AccumulatorCount)
@@ -497,7 +497,7 @@ fn M45VariantVocabularyTable() -> M45TableVariantVocabulary {
         occupancy = Append(occupancy, variants[i].OccupancyClass)
         complexity = Append(complexity, variants[i].ComplexityScore)
     }
-    return M45TableVariantVocabulary {Variant: names RegisterTileClass: registerTile AccumulatorCount: accum SharedTileClass: sharedTile RegisterPressureClass: regPressure SharedPressureClass: sharedPressure IntensityClass: intensity OccupancyClass: occupancy ComplexityScore: complexity}
+    return M45TableVariantVocabulary { Variant: names RegisterTileClass: registerTile AccumulatorCount: accum SharedTileClass: sharedTile RegisterPressureClass: regPressure SharedPressureClass: sharedPressure IntensityClass: intensity OccupancyClass: occupancy ComplexityScore: complexity }
 }
 
 fn M45StrategyComparisonTable() -> M45TableStrategyComparison {
@@ -511,7 +511,7 @@ fn M45StrategyComparisonTable() -> M45TableStrategyComparison {
     var complexity = [rows[0].ImplementationComplexity]
     var maintenance = [rows[0].MaintenanceCost]
     var product = [rows[0].ProductScore]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         strategy = Append(strategy, rows[i].Strategy)
         variant = Append(variant, rows[i].Variant)
         throughput = Append(throughput, rows[i].ThroughputScore)
@@ -522,7 +522,7 @@ fn M45StrategyComparisonTable() -> M45TableStrategyComparison {
         maintenance = Append(maintenance, rows[i].MaintenanceCost)
         product = Append(product, rows[i].ProductScore)
     }
-    return M45TableStrategyComparison {Strategy: strategy Variant: variant ThroughputScore: throughput OccupancyRisk: occupancyRisk TuningCost: tuning PortabilityRisk: portability Complexity: complexity MaintenanceCost: maintenance ProductScore: product}
+    return M45TableStrategyComparison { Strategy: strategy Variant: variant ThroughputScore: throughput OccupancyRisk: occupancyRisk TuningCost: tuning PortabilityRisk: portability Complexity: complexity MaintenanceCost: maintenance ProductScore: product }
 }
 
 fn M45BandVariantMatrixTable() -> M45TableBandVariantMatrix {
@@ -532,12 +532,12 @@ fn M45BandVariantMatrixTable() -> M45TableBandVariantMatrix {
     var variants = [rows[0].Variant]
     var profileJustified = [rows[0].ExactProfileImprovementJustified]
     var overrideUseful = [rows[0].ManualOverrideUseful]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         bands = Append(bands, rows[i].DeviceBand)
         shapeClasses = Append(shapeClasses, rows[i].ShapeClass)
         variants = Append(variants, rows[i].Variant)
         profileJustified = Append(profileJustified, rows[i].ExactProfileImprovementJustified)
         overrideUseful = Append(overrideUseful, rows[i].ManualOverrideUseful)
     }
-    return M45TableBandVariantMatrix {DeviceBand: bands ShapeClass: shapeClasses Variant: variants ExactProfileImprovementJustified: profileJustified ManualOverrideUseful: overrideUseful}
+    return M45TableBandVariantMatrix { DeviceBand: bands ShapeClass: shapeClasses Variant: variants ExactProfileImprovementJustified: profileJustified ManualOverrideUseful: overrideUseful }
 }

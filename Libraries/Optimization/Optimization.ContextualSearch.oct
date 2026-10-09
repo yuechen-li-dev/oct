@@ -8,11 +8,11 @@ package Optimization
 /// argument through every Nelder-Mead objective call. New code should construct
 /// a captured fn(Float[]) -> Float and call NelderMead directly.
 fn NelderMeadWithContext(
-    f:       fn(Float[], Float[]) -> Float,
+    f: fn(Float[], Float[]) -> Float,
     context: Float[],
-    x0:      Float[],
-    xTol:    Float,
-    fTol:    Float,
+    x0: Float[],
+    xTol: Float,
+    fTol: Float,
     maxIter: Int
 ) -> OptimizationResultND ! Error {
     let objective = fn(x: Float[]) -> Float with {
@@ -27,9 +27,9 @@ fn NelderMeadWithContext(
 /// Single-coordinate perturbation search with a shrinking step size.
 /// Only entries where active[i] is true are perturbed.
 fn CoordinateDescent(
-    f:           fn(Float[]) -> Float,
-    x0:          Float[],
-    active:      Bool[],
+    f: fn(Float[]) -> Float,
+    x0: Float[],
+    active: Bool[],
     initialStep: Float,
     outerRounds: Int
 ) -> OptimizationResultND ! Error {
@@ -52,11 +52,11 @@ fn CoordinateDescent(
     var stepSize = initialStep
     var totalIter = 0
 
-    for round in 0 .. outerRounds {
+    for round in 0..outerRounds {
         var improved = true
         while improved {
             improved = false
-            for j in 0 .. n {
+            for j in 0..n {
                 if active[j] {
                     let original = x[j]
                     x[j] = original + stepSize
@@ -83,20 +83,20 @@ fn CoordinateDescent(
     }
 
     return OptimizationResultND {
-        Point:      x
-        FMin:       bestLoss
+        Point: x
+        FMin: bestLoss
         Iterations: totalIter
-        Converged:  true
-        GradNorm:   0.0
+        Converged: true
+        GradNorm: 0.0
     }
 }
 
 /// Compatibility adapter for the former context-threading workaround.
 fn CoordinateDescentWithContext(
-    f:           fn(Float[], Float[]) -> Float,
-    context:     Float[],
-    x0:          Float[],
-    active:      Bool[],
+    f: fn(Float[], Float[]) -> Float,
+    context: Float[],
+    x0: Float[],
+    active: Bool[],
     initialStep: Float,
     outerRounds: Int
 ) -> OptimizationResultND ! Error {

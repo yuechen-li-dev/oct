@@ -18,10 +18,10 @@ package Octomata
 /// A candidate set represented as parallel arrays of equal length.
 /// Ids[i], Scores[i], Active[i] describe candidate i.
 record CandidateSet {
-    Ids:    Int[]
+    Ids: Int[]
     Scores: Int[]
     Active: Bool[]
-    Count:  Int
+    Count: Int
 }
 
 /// Result of a one-shot arbitration selection.
@@ -29,11 +29,11 @@ record SelectionResult {
     /// Index into the CandidateSet of the winner, or -1 if no active candidates.
     WinnerIndex: Int
     /// Id of the winning candidate, or -1 if none.
-    WinnerId:    Int
+    WinnerId: Int
     /// Score of the winner, or 0 if none.
     WinnerScore: Int
     /// True if at least one candidate was active.
-    HasWinner:   Bool
+    HasWinner: Bool
 }
 
 /// Persistent state for commitment-aware arbitration.
@@ -41,13 +41,13 @@ record SelectionResult {
 /// expressed as an explicit record for use outside flows.
 record CommitmentState {
     /// Id of the currently committed candidate, or -1 if none.
-    CurrentId:    Int
+    CurrentId: Int
     /// Score at the time the current candidate was selected.
     CurrentScore: Int
     /// How many ticks the current candidate has been held.
-    CommitAge:    Int
+    CommitAge: Int
     /// Whether a current candidate is held.
-    HasCurrent:   Bool
+    HasCurrent: Bool
 }
 
 /// Result of a commitment-aware arbitration tick.
@@ -55,18 +55,18 @@ record CommitmentResult {
     /// The resolved winner after applying hysteresis and min_commit.
     Selection: SelectionResult
     /// Updated commitment state to thread into the next tick.
-    Next:      CommitmentState
+    Next: CommitmentState
     /// True if the winner changed from the previous tick.
-    Changed:   Bool
+    Changed: Bool
 }
 
 /// Build an empty commitment state — no current candidate held.
 fn NoCommitment() -> CommitmentState {
     return CommitmentState {
-        CurrentId:    -1
+        CurrentId: -1
         CurrentScore: 0
-        CommitAge:    0
-        HasCurrent:   false
+        CommitAge: 0
+        HasCurrent: false
     }
 }
 
@@ -84,10 +84,10 @@ fn MakeCandidateSet(ids: Int[], scores: Int[], active: Bool[]) -> CandidateSet !
         return error("candidate set requires active length == ids length")
     }
     return CandidateSet {
-        Ids:    ids
+        Ids: ids
         Scores: scores
         Active: active
-        Count:  n
+        Count: n
     }
 }
 
@@ -96,26 +96,26 @@ fn MakeCandidateSet(ids: Int[], scores: Int[], active: Bool[]) -> CandidateSet !
 /// Returns HasWinner=false with WinnerIndex=-1 if no candidates are active.
 fn SelectBest(cs: CandidateSet) -> SelectionResult {
     var winnerIndex = -1
-    var winnerId    = -1
+    var winnerId = -1
     var winnerScore = 0
-    var hasWinner   = false
+    var hasWinner = false
 
-    for i in 0 .. cs.Count {
+    for i in 0..cs.Count {
         if cs.Active[i] {
             if not hasWinner or cs.Scores[i] > winnerScore {
                 winnerIndex = i
-                winnerId    = cs.Ids[i]
+                winnerId = cs.Ids[i]
                 winnerScore = cs.Scores[i]
-                hasWinner   = true
+                hasWinner = true
             }
         }
     }
 
     return SelectionResult {
         WinnerIndex: winnerIndex
-        WinnerId:    winnerId
+        WinnerId: winnerId
         WinnerScore: winnerScore
-        HasWinner:   hasWinner
+        HasWinner: hasWinner
     }
 }
 
@@ -125,18 +125,18 @@ fn SelectBest(cs: CandidateSet) -> SelectionResult {
 /// hysteresis: challenger must beat current score by more than this to switch.
 /// minCommit:  current candidate is held for at least this many ticks before switching.
 fn SelectWithCommitment(
-    cs:         CandidateSet,
+    cs: CandidateSet,
     commitment: CommitmentState,
     hysteresis: Int,
-    minCommit:  Int
+    minCommit: Int
 ) -> CommitmentResult {
     let best = SelectBest(cs)
 
     if not best.HasWinner {
         return CommitmentResult {
             Selection: best
-            Next:      NoCommitment()
-            Changed:   commitment.HasCurrent
+            Next: NoCommitment()
+            Changed: commitment.HasCurrent
         }
     }
 
@@ -146,8 +146,8 @@ fn SelectWithCommitment(
     }
 
     let resolvedId = switch {
-        case not currentStillActive              => best.WinnerId
-        case commitment.CommitAge < minCommit    => commitment.CurrentId
+        case not currentStillActive => best.WinnerId
+        case commitment.CommitAge < minCommit => commitment.CurrentId
         case best.WinnerId == commitment.CurrentId => commitment.CurrentId
         case best.WinnerScore <= commitment.CurrentScore + hysteresis => commitment.CurrentId
         else => best.WinnerId
@@ -171,15 +171,15 @@ fn SelectWithCommitment(
     return CommitmentResult {
         Selection: SelectionResult {
             WinnerIndex: -1
-            WinnerId:    resolvedId
+            WinnerId: resolvedId
             WinnerScore: resolvedScore
-            HasWinner:   true
+            HasWinner: true
         }
         Next: CommitmentState {
-            CurrentId:    resolvedId
+            CurrentId: resolvedId
             CurrentScore: resolvedScore
-            CommitAge:    nextAge
-            HasCurrent:   true
+            CommitAge: nextAge
+            HasCurrent: true
         }
         Changed: changed
     }
@@ -187,7 +187,7 @@ fn SelectWithCommitment(
 
 /// Check whether a candidate with the given id is active in the set.
 fn IdIsActive(cs: CandidateSet, id: Int) -> Bool {
-    for i in 0 .. cs.Count {
+    for i in 0..cs.Count {
         if cs.Ids[i] == id and cs.Active[i] {
             return true
         }
@@ -201,7 +201,7 @@ fn IdIsActive(cs: CandidateSet, id: Int) -> Bool {
 /// Returns a Float score. Clamps if input is out of range.
 /// Useful for converting physical measurements (distance, urgency, load) into scores.
 fn LinearScore(
-    value:    Float,
+    value: Float,
     inputMin: Float,
     inputMax: Float,
     scoreMin: Int,

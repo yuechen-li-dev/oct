@@ -164,6 +164,8 @@ fn FailArtifact() -> Int ! Error {
 }
 ```
 
+Expectation text decodes `\"` as a quote and `\\` as a backslash; other backslashes are retained. Existing expectation lines with raw interior quotes remain accepted.
+
 ### Several expectation lines
 
 A file may state several expectation lines. They come first, one after another with no blank line between them, and all name the same kind of failure. The one failure must contain every text. Use this when a diagnostic has to carry several facts that are not adjacent in the message:

@@ -12,7 +12,7 @@ fn ResolveEventValue(event: String, table: EventValueDispatch) -> String ! Error
     }
     if count == 0 { return "" }
 
-    for i in 0 .. count {
+    for i in 0..count {
         if event == table.Events[i] {
             return table.Values[i]
         }
@@ -22,7 +22,7 @@ fn ResolveEventValue(event: String, table: EventValueDispatch) -> String ! Error
 }
 
 fn ContainsAllowed(value: String, allowed: String[]) -> Bool {
-    for i in 0 .. Len(allowed) {
+    for i in 0..Len(allowed) {
         if value == allowed[i] { return true }
     }
     return false
@@ -34,7 +34,7 @@ fn MatchEventPrefix(event: String, prefix: String, allowedSuffixes: String[]) ->
     }
     if Len(allowedSuffixes) == 0 { return "" }
 
-    for i in 0 .. Len(allowedSuffixes) {
+    for i in 0..Len(allowedSuffixes) {
         let suffix = allowedSuffixes[i]
         if event == prefix + suffix {
             return suffix
@@ -45,9 +45,9 @@ fn MatchEventPrefix(event: String, prefix: String, allowedSuffixes: String[]) ->
 }
 
 fn ResolveEventTokenValue(event: EventToken, table: EventValueDispatch) -> String ! Error {
-    return ResolveEventValue(EventTokenValue(event), table) !
+    return ResolveEventValue(EventTokenValue(event), table)!
 }
 
 fn MatchEventTokenPrefix(event: EventToken, prefix: EventToken, allowedSuffixes: String[]) -> String ! Error {
-    return MatchEventPrefix(EventTokenValue(event), EventTokenValue(prefix), allowedSuffixes) !
+    return MatchEventPrefix(EventTokenValue(event), EventTokenValue(prefix), allowedSuffixes)!
 }

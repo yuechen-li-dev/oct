@@ -77,7 +77,7 @@ fn SelectBestSingleInactiveCandidateHasNoWinner() -> Void {
 fn SelectWithCommitmentFirstCallPicksBest() -> Void {
     let cs = TwoCandidates(1, 60, true, 2, 80, true)
     let result = SelectWithCommitment(cs, NoCommitment(), 0, 1)
-    let sel  = result.Selection
+    let sel = result.Selection
     let next = result.Next
     Assert.True(sel.HasWinner, "should have winner")
     Assert.Equal(2, sel.WinnerId, "best candidate wins on first call")
@@ -91,10 +91,10 @@ fn SelectWithCommitmentHysteresisBlocksSmallGain() -> Void {
     // Gain = 5 <= 8, so current holds.
     let cs = TwoCandidates(1, 60, true, 2, 65, true)
     let held = CommitmentState {
-        CurrentId:    1
+        CurrentId: 1
         CurrentScore: 60
-        CommitAge:    3
-        HasCurrent:   true
+        CommitAge: 3
+        HasCurrent: true
     }
     let result = SelectWithCommitment(cs, held, 8, 1)
     let sel = result.Selection
@@ -108,10 +108,10 @@ fn SelectWithCommitmentHysteresisAllowsClearWin() -> Void {
     // Gain = 20 > 8, challenger wins.
     let cs = TwoCandidates(1, 60, true, 2, 80, true)
     let held = CommitmentState {
-        CurrentId:    1
+        CurrentId: 1
         CurrentScore: 60
-        CommitAge:    3
-        HasCurrent:   true
+        CommitAge: 3
+        HasCurrent: true
     }
     let result = SelectWithCommitment(cs, held, 8, 1)
     let sel = result.Selection
@@ -124,10 +124,10 @@ fn SelectWithCommitmentMinCommitBlocksEarlySwitch() -> Void {
     // Held for 1 tick, minCommit = 3. Higher scorer cannot win yet.
     let cs = TwoCandidates(1, 50, true, 2, 90, true)
     let held = CommitmentState {
-        CurrentId:    1
+        CurrentId: 1
         CurrentScore: 50
-        CommitAge:    1
-        HasCurrent:   true
+        CommitAge: 1
+        HasCurrent: true
     }
     let result = SelectWithCommitment(cs, held, 0, 3)
     let sel = result.Selection
@@ -140,10 +140,10 @@ fn SelectWithCommitmentMinCommitExpiryAllowsSwitch() -> Void {
     // CommitAge == minCommit: lock expired, switch is now allowed.
     let cs = TwoCandidates(1, 50, true, 2, 90, true)
     let held = CommitmentState {
-        CurrentId:    1
+        CurrentId: 1
         CurrentScore: 50
-        CommitAge:    3
-        HasCurrent:   true
+        CommitAge: 3
+        HasCurrent: true
     }
     let result = SelectWithCommitment(cs, held, 0, 3)
     let sel = result.Selection
@@ -156,10 +156,10 @@ fn SelectWithCommitmentCurrentBecomesInactiveForcesSwitchToNext() -> Void {
     // Current candidate becomes inactive — must switch even through hysteresis/commit.
     let cs = TwoCandidates(1, 50, false, 2, 40, true)
     let held = CommitmentState {
-        CurrentId:    1
+        CurrentId: 1
         CurrentScore: 50
-        CommitAge:    1
-        HasCurrent:   true
+        CommitAge: 1
+        HasCurrent: true
     }
     let result = SelectWithCommitment(cs, held, 10, 10)
     let sel = result.Selection
@@ -171,13 +171,13 @@ fn SelectWithCommitmentCurrentBecomesInactiveForcesSwitchToNext() -> Void {
 fn SelectWithCommitmentNoActiveCandidatesClearsState() -> Void {
     let cs = TwoCandidates(1, 100, false, 2, 200, false)
     let held = CommitmentState {
-        CurrentId:    1
+        CurrentId: 1
         CurrentScore: 100
-        CommitAge:    5
-        HasCurrent:   true
+        CommitAge: 5
+        HasCurrent: true
     }
     let result = SelectWithCommitment(cs, held, 0, 1)
-    let sel  = result.Selection
+    let sel = result.Selection
     let next = result.Next
     Assert.False(sel.HasWinner, "no winner when all inactive")
     Assert.False(next.HasCurrent, "commitment cleared when no candidates active")
@@ -188,13 +188,13 @@ fn SelectWithCommitmentNoActiveCandidatesClearsState() -> Void {
 fn SelectWithCommitmentCommitAgeIncrementsWhenSameWinner() -> Void {
     let cs = MakeCandidateSet([1], [60], [true])!
     let held = CommitmentState {
-        CurrentId:    1
+        CurrentId: 1
         CurrentScore: 60
-        CommitAge:    4
-        HasCurrent:   true
+        CommitAge: 4
+        HasCurrent: true
     }
     let result = SelectWithCommitment(cs, held, 0, 1)
-    let sel  = result.Selection
+    let sel = result.Selection
     let next = result.Next
     Assert.Equal(1, sel.WinnerId, "same winner")
     Assert.Equal(5, next.CommitAge, "commit age increments")
@@ -205,13 +205,13 @@ fn SelectWithCommitmentCommitAgeIncrementsWhenSameWinner() -> Void {
 fn SelectWithCommitmentCommitAgeResetsOnSwitch() -> Void {
     let cs = TwoCandidates(1, 50, true, 2, 90, true)
     let held = CommitmentState {
-        CurrentId:    1
+        CurrentId: 1
         CurrentScore: 50
-        CommitAge:    5
-        HasCurrent:   true
+        CommitAge: 5
+        HasCurrent: true
     }
     let result = SelectWithCommitment(cs, held, 0, 1)
-    let sel  = result.Selection
+    let sel = result.Selection
     let next = result.Next
     Assert.Equal(2, sel.WinnerId, "winner switches")
     Assert.Equal(1, next.CommitAge, "commit age resets to 1 on switch")
@@ -231,19 +231,19 @@ fn IdIsActiveReturnsTrueForActiveId() -> Void {
 
 [Fact]
 fn LinearScoreMapsEndpointsCorrectly() -> Void {
-    let lo  = LinearScore(0.0, 0.0, 1.0, 0, 100)!
-    let hi  = LinearScore(1.0, 0.0, 1.0, 0, 100)!
+    let lo = LinearScore(0.0, 0.0, 1.0, 0, 100)!
+    let hi = LinearScore(1.0, 0.0, 1.0, 0, 100)!
     let mid = LinearScore(0.5, 0.0, 1.0, 0, 100)!
-    Assert.Near(0.0,   lo,  0.001, "min input maps to scoreMin")
-    Assert.Near(100.0, hi,  0.001, "max input maps to scoreMax")
-    Assert.Near(50.0,  mid, 0.001, "midpoint maps to mid score")
+    Assert.Near(0.0, lo, 0.001, "min input maps to scoreMin")
+    Assert.Near(100.0, hi, 0.001, "max input maps to scoreMax")
+    Assert.Near(50.0, mid, 0.001, "midpoint maps to mid score")
 }
 
 [Fact]
 fn LinearScoreClampsOutOfRange() -> Void {
     let below = LinearScore(-1.0, 0.0, 1.0, 0, 100)!
-    let above = LinearScore(2.0,  0.0, 1.0, 0, 100)!
-    Assert.Near(0.0,   below, 0.001, "below input min clamps to scoreMin")
+    let above = LinearScore(2.0, 0.0, 1.0, 0, 100)!
+    Assert.Near(0.0, below, 0.001, "below input min clamps to scoreMin")
     Assert.Near(100.0, above, 0.001, "above input max clamps to scoreMax")
 }
 
@@ -256,9 +256,9 @@ fn LinearScoreRejectsInvalidInputRange() -> Void {
 
 [Fact]
 fn InvertScoreFlipsRelativeOrder() -> Void {
-    Assert.Equal(20,  InvertScore(80, 100)!, "high input -> low inverted score")
-    Assert.Equal(80,  InvertScore(20, 100)!, "low input -> high inverted score")
-    Assert.Equal(0,   InvertScore(100, 100)!, "max input -> 0")
+    Assert.Equal(20, InvertScore(80, 100)!, "high input -> low inverted score")
+    Assert.Equal(80, InvertScore(20, 100)!, "low input -> high inverted score")
+    Assert.Equal(0, InvertScore(100, 100)!, "max input -> 0")
     Assert.Equal(100, InvertScore(0, 100)!, "0 input -> max")
 }
 
@@ -306,7 +306,7 @@ fn ArbitrationPersistsCorrectlyAcrossMultipleTicks() -> Void {
     // Tick 2: both active, challenger within hysteresis -> holds 1
     // Tick 3: challenger breaks hysteresis -> switches to 2
     let hysteresis = 10
-    let minCommit  = 1
+    let minCommit = 1
 
     let t1 = SelectWithCommitment(
         TwoCandidates(1, 60, true, 2, 0, false),

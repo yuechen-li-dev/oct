@@ -28,7 +28,7 @@ fn PathLossSeriesGeneralizesShapeAndElementwiseBehavior() -> Void {
     Assert.Near(FreeSpacePathLossLinear(1m, 2400000000Hz), fspl1[0], 0.000001, "length-1 fspl equals scalar")
 
     var distances = [1m]
-    for _ in 1 .. 100 {
+    for _ in 1..100 {
         distances = Append(distances, 1m)
     }
 

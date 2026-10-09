@@ -2,8 +2,8 @@ expect error: "expects fn(WrongPredicateInventoryItem) -> Bool, got fn(WrongPred
 
 package DatabaseTemplates
 
-record WrongPredicateJob {Ready: Bool}
-record WrongPredicateInventoryItem {Available: Int}
+record WrongPredicateJob { Ready: Bool }
+record WrongPredicateInventoryItem { Available: Int }
 
 template record RebuildPublication<Record> {
     SourceName: String
@@ -22,11 +22,11 @@ template record MaterializedFilter<Record> {
     Limit: Int
 }
 
-fn JobIsReady(job: WrongPredicateJob) -> Bool {return job.Ready}
-fn RebuildWrongPredicateItems(source: WrongPredicateInventoryItem[]) -> WrongPredicateInventoryItem[] {return source}
+fn JobIsReady(job: WrongPredicateJob) -> Bool { return job.Ready }
+fn RebuildWrongPredicateItems(source: WrongPredicateInventoryItem[]) -> WrongPredicateInventoryItem[] { return source }
 
 fn Main() -> Void {
-    let publication = RebuildPublication<WrongPredicateInventoryItem> {SourceName: "Inventory" SourceVersion: 1 Rebuild: RebuildWrongPredicateItems}
-    let access = ReadMostlyDataset<WrongPredicateInventoryItem> {Publication: publication ExpectedReadsPerPublish: 10}
-    let invalid = MaterializedFilter<WrongPredicateInventoryItem> {Access: access Predicate: JobIsReady Limit: 5}
+    let publication = RebuildPublication<WrongPredicateInventoryItem> { SourceName: "Inventory" SourceVersion: 1 Rebuild: RebuildWrongPredicateItems }
+    let access = ReadMostlyDataset<WrongPredicateInventoryItem> { Publication: publication ExpectedReadsPerPublish: 10 }
+    let invalid = MaterializedFilter<WrongPredicateInventoryItem> { Access: access Predicate: JobIsReady Limit: 5 }
 }

@@ -90,7 +90,7 @@ fn BrentRootRequiresSignChange() -> Void {
 
 [Fact]
 fn BrentRootFasterThanBisection() -> Void {
-    let brent  = BrentRoot(fSqrt3, 1.0, 2.0, 0.000001, 100)!
+    let brent = BrentRoot(fSqrt3, 1.0, 2.0, 0.000001, 100)!
     let bisect = BisectionRoot(fSqrt3, 1.0, 2.0, 0.000001, 100)!
     Assert.True(brent.Iterations <= bisect.Iterations,
         "Brent uses fewer or equal iterations than bisection")

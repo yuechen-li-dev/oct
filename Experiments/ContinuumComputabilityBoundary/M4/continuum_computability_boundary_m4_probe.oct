@@ -109,11 +109,11 @@ fn BuildLatticeFluxStructure(lattice: Lattice2D, mask: LatticeMask2D) -> Lattice
             let idx = LatticeIndex(lattice, i, j)
             if mask.IsActive[idx] {
                 if i + 1 < lattice.Nx {
-                let right = LatticeIndex(lattice, i + 1, j)
-                if mask.IsActive[right] {
-                    fluxRight[idx] = 1.0 + 0.1 * Float(i) + 0.2 * Float(j)
+                    let right = LatticeIndex(lattice, i + 1, j)
+                    if mask.IsActive[right] {
+                        fluxRight[idx] = 1.0 + 0.1 * Float(i) + 0.2 * Float(j)
+                    }
                 }
-            }
 
                 if j + 1 < lattice.Ny {
                     let up = LatticeIndex(lattice, i, j + 1)
@@ -143,17 +143,17 @@ fn AccumulateLatticeFluxBalance(lattice: Lattice2D, mask: LatticeMask2D, flux: L
             let idx = LatticeIndex(lattice, i, j)
             if mask.IsActive[idx] {
                 if i + 1 < lattice.Nx {
-                let right = LatticeIndex(lattice, i + 1, j)
-                if mask.IsActive[right] {
-                    let amount = flux.FluxRight[idx]
-                    outgoingAmount[idx] = outgoingAmount[idx] + amount
-                    incomingAmount[right] = incomingAmount[right] + amount
-                    netAmount[idx] = netAmount[idx] + amount
-                    netAmount[right] = netAmount[right] - amount
-                    netVectorX[idx] = netVectorX[idx] + amount
-                    netVectorX[right] = netVectorX[right] - amount
+                    let right = LatticeIndex(lattice, i + 1, j)
+                    if mask.IsActive[right] {
+                        let amount = flux.FluxRight[idx]
+                        outgoingAmount[idx] = outgoingAmount[idx] + amount
+                        incomingAmount[right] = incomingAmount[right] + amount
+                        netAmount[idx] = netAmount[idx] + amount
+                        netAmount[right] = netAmount[right] - amount
+                        netVectorX[idx] = netVectorX[idx] + amount
+                        netVectorX[right] = netVectorX[right] - amount
+                    }
                 }
-            }
 
                 if j + 1 < lattice.Ny {
                     let up = LatticeIndex(lattice, i, j + 1)

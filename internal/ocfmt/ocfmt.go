@@ -157,7 +157,7 @@ func formatRegularSource(path string, src string, resolved settings) (string, De
 	if err != nil {
 		return "", DecisionDiagnostics{}, fmt.Errorf("%w: %w", errSourceRejected, err)
 	}
-	out, err := formatLayout(src, lexed.Tokens, file.MarkupSpans, resolved)
+	out, err := formatLayout(src, lexed.Tokens, file.MarkupSpans, resolved, file.ContextualExpressionStarts)
 	return out, DecisionDiagnostics{}, err
 }
 

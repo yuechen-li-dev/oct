@@ -6,15 +6,15 @@ concept PublicationSource = String {
     Require(Self != "", "publication source identity must not be empty")
 }
 
-record InvalidPublicationJob {ID: String}
+record InvalidPublicationJob { ID: String }
 
 template record RebuildPublication<Record> {
     SourceName: PublicationSource
     Rebuild: fn(Record[]) -> Record[]
 }
 
-fn Rebuild(source: InvalidPublicationJob[]) -> InvalidPublicationJob[] {return source}
+fn Rebuild(source: InvalidPublicationJob[]) -> InvalidPublicationJob[] { return source }
 
 fn Main() -> Void {
-    let invalid = RebuildPublication<InvalidPublicationJob> {SourceName: "" Rebuild: Rebuild}
+    let invalid = RebuildPublication<InvalidPublicationJob> { SourceName: "" Rebuild: Rebuild }
 }

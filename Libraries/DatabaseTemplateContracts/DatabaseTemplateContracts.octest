@@ -1,14 +1,14 @@
 package DatabaseTemplateContracts
 
-fn RuntimeZero() -> Int {return 0}
-fn RuntimeEmpty() -> String {return ""}
-fn RuntimeNegative() -> Int {return - 1}
+fn RuntimeZero() -> Int { return 0 }
+fn RuntimeEmpty() -> String { return "" }
+fn RuntimeNegative() -> Int { return -1 }
 
 [Fact]
 fn RuntimeAdmissionUsesOrdinaryFallibleConceptConstruction() -> Void ! Error {
-    let count = AdmitPositiveCount(7) ?
-    let source = AdmitPublicationSource("jobs") ?
-    let version = AdmitPublicationVersion(0) ?
+    let count = AdmitPositiveCount(7)?
+    let source = AdmitPublicationSource("jobs")?
+    let version = AdmitPublicationVersion(0)?
     Assert.True(count == 7, "positive count admitted")
     Assert.True(source == "jobs", "source admitted")
     Assert.True(version == 0, "version admitted")

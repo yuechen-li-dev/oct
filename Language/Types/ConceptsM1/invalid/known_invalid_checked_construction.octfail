@@ -6,5 +6,5 @@ concept ColorChannel = Int {
     Require(Self <= 255, "a color channel must be at most 255")
 }
 fn Main() -> Void ! Error {
-    let bad = ColorChannel(300) ?
+    let bad = ColorChannel(300)?
 }

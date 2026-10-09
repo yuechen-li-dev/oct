@@ -16,6 +16,7 @@ func TestSplitReadsTheExpectationBlock(t *testing.T) {
 		{"expect error: \"a\"\nbody\n", Compile, "a", "body\n", ""},
 		{"\n\nexpect runtime error: \"b c\"\nbody\n", Runtime, "b c", "body\n", ""},
 		{"expect artifact error: \"d\"\n\nbody\n", Artifact, "d", "\nbody\n", ""},
+		{`expect artifact error: "read \"data/tickets.json\"; path \\cache"` + "\nbody\n", Artifact, `read "data/tickets.json"; path \cache`, "body\n", ""},
 		{"expect error: \"a\"\nexpect error: \"b \"quoted\"\"\n\nbody\n", Compile, "a|b \"quoted\"", "\nbody\n", ""},
 		{"expect runtime error: \"a\"\n  expect runtime error: \"b\"  \nbody\n", Runtime, "a|b", "body\n", ""},
 		{"expect runtime error: \"\"\nbody\n", "", "", "", "non-empty"},

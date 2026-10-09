@@ -2,10 +2,10 @@ expect error: "possible infinite type-growth specialization"
 
 package TemplateTortureGrowthInvalid
 
-template record Box<T> {Value: T}
+template record Box<T> { Value: T }
 
 template fn Grow<T>(value: T) -> T {
-    return Grow<Box<T>>(Box<T> {Value: value}).Value
+    return Grow<Box<T>>(Box<T> { Value: value }).Value
 }
 
 fn Main() -> Int {

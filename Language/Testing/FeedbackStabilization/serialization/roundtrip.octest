@@ -1,0 +1,24 @@
+package Main
+
+record Reading {
+    Dt: Float<s>
+    Samples: Float<m>[]
+    Levels: Vector<Float>
+    Grid: Matrix<Float>
+}
+
+[Fact]
+fn WholeFloatsDimensionsAndContainersRoundTrip() -> Void ! Error {
+    let path = "feedback_roundtrip.octagon"
+    let reading = Reading { Dt: 0.5s Samples: [1.0m, 2.0m] Levels: vector[1.0, 2.0] Grid: matrix[[1.0, 2.0] [3.0, 4.0]] }
+    WriteOctagon(path, reading)
+    let loaded = LoadOctagon<Reading>(path)?
+    Assert.Equal(0.5s, loaded.Dt, "dimensioned Float")
+    Assert.Equal(2.0m, loaded.Samples[1], "whole Float stays Float")
+    Assert.Equal(2.0, loaded.Levels[1], "vector")
+    Assert.Equal(3.0, loaded.Grid[1, 0], "matrix")
+    WriteOctagon("feedback_vector.octagon", reading.Levels)
+    Assert.Equal(1.0, LoadOctagon<Vector<Float>>("feedback_vector.octagon")?[0], "vector root")
+    FileDelete(path)?
+    FileDelete("feedback_vector.octagon")?
+}

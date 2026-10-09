@@ -49,7 +49,7 @@ fn M103MountEmitDrainAndMissingEventError() -> Void {
         Button("Save", Token("evt.save"), true)
     ]))
 
-    Assert.Equal(0, Emit(mounted, "evt.save") !, "known event should emit")
+    Assert.Equal(0, Emit(mounted, "evt.save")!, "known event should emit")
     let events = DrainEvents(mounted)
     Assert.Equal(1, Len(events), "drain should capture emitted event")
     Assert.Equal("evt.save", events[0], "event token should be preserved")

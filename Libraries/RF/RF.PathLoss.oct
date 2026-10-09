@@ -37,7 +37,7 @@ fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float<Hz>) -
     }
 
     var out = [FreeSpacePathLossLinear(distance[0], frequencyHz)]
-    for i in 1 .. Len(distance) {
+    for i in 1..Len(distance) {
         out = Append(out, FreeSpacePathLossLinear(distance[i], frequencyHz))
     }
     return out
@@ -73,7 +73,7 @@ fn LogDistancePathLossLinearSeries(distance: Float<m>[], referenceDistance: Floa
     }
 
     var out = [LogDistancePathLossLinear(distance[0], referenceDistance, referencePathLossLinear, pathLossExponent)]
-    for i in 1 .. Len(distance) {
+    for i in 1..Len(distance) {
         out = Append(out, LogDistancePathLossLinear(distance[i], referenceDistance, referencePathLossLinear, pathLossExponent))
     }
     return out
@@ -92,7 +92,7 @@ fn ShadowingLinearFromDbSeries(shadowingDb: Float[]) -> Float[] {
     }
 
     var out = [ShadowingLinearFromDb(shadowingDb[0])]
-    for i in 1 .. Len(shadowingDb) {
+    for i in 1..Len(shadowingDb) {
         out = Append(out, ShadowingLinearFromDb(shadowingDb[i]))
     }
     return out
@@ -120,7 +120,7 @@ fn ApplyShadowingToPathLossSeries(pathLossLinear: Float[], shadowingDb: Float[])
     }
 
     var out = [ApplyShadowingToPathLoss(pathLossLinear[0], shadowingDb[0])]
-    for i in 1 .. Len(pathLossLinear) {
+    for i in 1..Len(pathLossLinear) {
         out = Append(out, ApplyShadowingToPathLoss(pathLossLinear[i], shadowingDb[i]))
     }
     return out
@@ -149,7 +149,7 @@ fn ApplyShadowingToReceivedPowerSeries(receivedPower: Float<kg*m^2/s^3>[], shado
     }
 
     var out = [ApplyShadowingToReceivedPower(receivedPower[0], shadowingDb[0])]
-    for i in 1 .. Len(receivedPower) {
+    for i in 1..Len(receivedPower) {
         out = Append(out, ApplyShadowingToReceivedPower(receivedPower[i], shadowingDb[i]))
     }
     return out

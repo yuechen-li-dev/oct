@@ -31,7 +31,7 @@ fn DimensionsArePreservedByConcreteSpecialization() -> Void {
     Assert.Equal(3.0s, Mean<Float<s>>([2.0s, 4.0s]), "array mean preserves time")
     let positive: PositiveLength = 2.0m
     Assert.True(Preserve<PositiveLength>(positive) == positive, "refinement and dimension survive")
-    let boxed = Box<PositiveLength> {Value: positive}
+    let boxed = Box<PositiveLength> { Value: positive }
     Assert.True(boxed.Value == positive, "template record field retains Concept admission")
     let conceptMachine = ConceptBoardMachine<PositiveLength>(positive)
     Step(conceptMachine)
@@ -53,9 +53,9 @@ fn ScientificCompositionFindsTheTypedBoundary() -> Void {
         let residual = candidate.X - target
         return residual * residual
     }
-    Assert.Equal(4.0, EvaluateObjective<Candidate>(Candidate {X: 5.0}, objective), "captured optimization objective")
+    Assert.Equal(4.0, EvaluateObjective<Candidate>(Candidate { X: 5.0 }, objective), "captured optimization objective")
 
-    let initial = LengthStatistics {Count: 0 Total: 0.0m}
+    let initial = LengthStatistics { Count: 0 Total: 0.0m }
     let statistics = FoldWith<Float<m>, LengthStatistics>([1.0m, 2.0m, 3.0m], initial, AddLength)
     Assert.Equal(3, statistics.Count, "record accumulator count")
     Assert.Equal(6.0m, statistics.Total, "record accumulator preserves dimension")

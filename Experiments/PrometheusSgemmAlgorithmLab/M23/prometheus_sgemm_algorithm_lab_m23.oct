@@ -240,7 +240,7 @@ fn M23Scenarios() -> M23Scenario[] {
 fn M23DecisionRows() -> M23DecisionResult[] {
     let scenarios = M23Scenarios()
     var rows = [M23DecisionForScenario(scenarios[0])]
-    for i in 1 .. Len(scenarios) {
+    for i in 1..Len(scenarios) {
         rows = Append(rows, M23DecisionForScenario(scenarios[i]))
     }
     return rows
@@ -254,7 +254,7 @@ fn M23PolicyDecisionTableFrom(rows: M23DecisionResult[]) -> M23PolicyDecisionTab
     var selected = [rows[0].SelectedCandidate]
     var reason = [rows[0].FallbackReason]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         shapeClass = Append(shapeClass, scenarios[i].ShapeClass)
         controllerMode = Append(controllerMode, scenarios[i].ControllerMode)
@@ -282,7 +282,7 @@ fn M23GateMatrixTableFrom(rows: M23DecisionResult[]) -> M23GateMatrixTable {
     var fallbackPass = [gate0.FallbackAvailableGatePass]
     var eligible = [gate0.FP16Eligible]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         let gate = rows[i].GateResults
         caseName = Append(caseName, rows[i].CaseName)
         strictPass = Append(strictPass, gate.StrictFP32GatePass)
@@ -318,7 +318,7 @@ fn M23CandidateSelectionTableFrom(rows: M23DecisionResult[]) -> M23CandidateSele
     }]
     var selected = [rows[0].SelectedCandidate]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         let s = scenarios[i]
         let gates = rows[i].GateResults
         caseName = Append(caseName, rows[i].CaseName)
@@ -344,7 +344,7 @@ fn M23FallbackReasonTableFrom(rows: M23DecisionResult[]) -> M23FallbackReasonTab
     var caseName = [rows[0].CaseName]
     var reason = [rows[0].FallbackReason]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         reason = Append(reason, rows[i].FallbackReason)
     }
@@ -368,7 +368,7 @@ fn M23DiagnosticPayloadTableFrom(rows: M23DecisionResult[]) -> M23DiagnosticPayl
     var reason = [diag0.FallbackReason]
     var selected = [diag0.SelectedCandidate]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         let diag = rows[i].DiagnosticPayload
         caseName = Append(caseName, rows[i].CaseName)
         maxAbs = Append(maxAbs, diag.MaxAbsoluteError)
