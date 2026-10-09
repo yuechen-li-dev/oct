@@ -8,7 +8,7 @@ fn M19ExhaustiveTailCombinationsCovered() -> Void {
     var singleTail = 0
     var dualTail = 0
     var tripleTail = 0
-    for i in 0 .. Len(rows) {
+    for i in 0..Len(rows) {
         if rows[i].TailCount == 1 { singleTail = singleTail + 1 }
         if rows[i].TailCount == 2 { dualTail = dualTail + 1 }
         if rows[i].TailCount == 3 { tripleTail = tripleTail + 1 }
@@ -24,7 +24,7 @@ fn M19ExhaustiveTailCombinationsCovered() -> Void {
 [Fact]
 fn M19PaddingContaminationCannotChangeOutput() -> Void {
     let rows = M19TailExhaustiveRows()
-    for i in 0 .. Len(rows) {
+    for i in 0..Len(rows) {
         Assert.True(rows[i].ContaminationCheckPass, "padding contamination must not perturb result")
     }
 }
@@ -32,7 +32,7 @@ fn M19PaddingContaminationCannotChangeOutput() -> Void {
 [Fact]
 fn M19RowMajorOracleHasZeroMismatches() -> Void {
     let rows = M19TailExhaustiveRows()
-    for i in 0 .. Len(rows) {
+    for i in 0..Len(rows) {
         Assert.Equal(rows[i].MismatchCount, 0, "packed4 model must exactly match scalar oracle")
         Assert.Equal(rows[i].FirstMismatchLocation, "none", "mismatch location should remain none")
     }
@@ -41,7 +41,7 @@ fn M19RowMajorOracleHasZeroMismatches() -> Void {
 [Fact]
 fn M19PackUnpackInvariantsHold() -> Void {
     let rows = M19PackUnpackRows()
-    for i in 0 .. Len(rows) {
+    for i in 0..Len(rows) {
         Assert.True(rows[i].RoundTripPass, "unpack(pack(X)) must equal X")
         Assert.True(rows[i].CanonicalRowMajorPass, "pack/unpack must preserve canonical row-major layout")
     }
@@ -50,7 +50,7 @@ fn M19PackUnpackInvariantsHold() -> Void {
 [Fact]
 fn M19RectangularStressHoldsIndexingInvariants() -> Void {
     let rows = M19RectangularStressRows()
-    for i in 0 .. Len(rows) {
+    for i in 0..Len(rows) {
         Assert.True(rows[i].RowMajorCheckPass, "row-major check must hold for rectangular stress")
         Assert.True(rows[i].ContaminationCheckPass, "contamination check must hold for rectangular stress")
     }
@@ -59,7 +59,7 @@ fn M19RectangularStressHoldsIndexingInvariants() -> Void {
 [Fact]
 fn M19TinyShapeAlwaysRejectsPacked4() -> Void {
     let rows = M19TinyShapeRows()
-    for i in 0 .. Len(rows) {
+    for i in 0..Len(rows) {
         Assert.False(rows[i].PackedEligible, "tiny shape must reject Packed4")
         Assert.Equal(rows[i].FallbackReason, "PACKED4_SMALL_SHAPE", "tiny rejection reason must be explicit")
     }

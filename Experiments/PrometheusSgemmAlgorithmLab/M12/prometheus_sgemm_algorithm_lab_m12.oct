@@ -190,7 +190,7 @@ fn SimulatePolicy(
     var overlapCarry = 0
     var predictionCursor = 0
 
-    for _step in 0 .. 4096 {
+    for _step in 0..4096 {
         if remaining > 0 {
             currentChunk = ClampInt(currentChunk, adaptiveMinChunk, adaptiveMaxChunk)
             let stepChunk = MinInt(currentChunk, remaining)
@@ -234,7 +234,7 @@ fn SimulatePolicy(
                 var toIssue = MinInt(planned, CeilDiv(remaining, MaxInt(stepChunk, 1)))
                 var prefetchActive = true
 
-                for _prefetch in 0 .. 64 {
+                for _prefetch in 0..64 {
                     if prefetchActive {
                         let speculativeChunk = MinInt(stepChunk, remaining)
                         let tx = TransferTime(speculativeChunk, regime)

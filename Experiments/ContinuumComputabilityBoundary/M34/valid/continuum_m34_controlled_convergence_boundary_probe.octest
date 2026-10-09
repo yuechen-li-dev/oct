@@ -421,7 +421,7 @@ fn CompareIterationPolicies() -> EarlyExitExecutionSummary {
     let maxIterations = MaxInt(earlyH.IterationsUsedEarlyExit, MaxInt(earlyV.IterationsUsedEarlyExit, MaxInt(earlyD.IterationsUsedEarlyExit, earlyOD.IterationsUsedEarlyExit)))
     let minIterations = MinInt(earlyH.IterationsUsedEarlyExit, MinInt(earlyV.IterationsUsedEarlyExit, MinInt(earlyD.IterationsUsedEarlyExit, earlyOD.IterationsUsedEarlyExit)))
 
-    
+
     return EarlyExitExecutionSummary {
         IterationCap: 8
         EarlyExitRule: "Bounded early exit: for each probe stop at smallest k in [6..8] where Delta(k) < 0.5 * Delta(1); cap 8 remains hard"

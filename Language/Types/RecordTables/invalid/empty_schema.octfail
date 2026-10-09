@@ -4,4 +4,4 @@ package MainInvalid
 
 record table Empty {}
 
-fn Main() -> Int {return 0}
+fn Main() -> Int { return 0 }

@@ -244,7 +244,7 @@ fn M25Simulate(strategy: M25StrategyConfig, regime: M25WorkloadRegime) -> M25Sim
     var ready = [false]
     var readySince = [0]
     var chunkStarveCounted = [false]
-    for i in 1 .. n {
+    for i in 1..n {
         ready = Append(ready, false)
         readySince = Append(readySince, 0)
         chunkStarveCounted = Append(chunkStarveCounted, false)
@@ -426,7 +426,7 @@ fn M25StrategyComparisonTableFrom(rows: M25SimulationResult[]) -> M25StrategyCom
     var peak = [rows[0].PeakWipDepth]
     var score = [rows[0].ProductScore]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         regime = Append(regime, rows[i].Regime)
         strategy = Append(strategy, rows[i].Strategy)
         total = Append(total, rows[i].TotalCompletionTime)
@@ -456,7 +456,7 @@ fn M25WipInventoryTableFrom(rows: M25SimulationResult[]) -> M25WipInventoryTable
     var memory = [rows[0].MemoryPressureProxy]
     var early = [rows[0].StageTooEarlyCount]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         regime = Append(regime, rows[i].Regime)
         strategy = Append(strategy, rows[i].Strategy)
         totalWip = Append(totalWip, rows[i].TotalWipTime)
@@ -485,7 +485,7 @@ fn M25StarvationTableFrom(rows: M25SimulationResult[]) -> M25StarvationTable {
     var idle = [rows[0].TransferIdleTime]
     var penalty = [rows[0].StarvationPenaltyScore]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         regime = Append(regime, rows[i].Regime)
         strategy = Append(strategy, rows[i].Strategy)
         starvation = Append(starvation, rows[i].ComputeStarvationTime)
@@ -533,7 +533,7 @@ fn M25JitterStressTableFrom(rows: M25SimulationResult[]) -> M25JitterStressTable
     var margin = [stressRows[0].SafetyMarginUsed]
     var score = [stressRows[0].ProductScore]
 
-    for i in 1 .. Len(stressRows) {
+    for i in 1..Len(stressRows) {
         regime = Append(regime, stressRows[i].Regime)
         strategy = Append(strategy, stressRows[i].Strategy)
         starvation = Append(starvation, stressRows[i].ComputeStarvationTime)
@@ -590,7 +590,7 @@ fn M25AdaptiveKanbanTableFrom(rows: M25SimulationResult[]) -> M25AdaptiveKanbanT
     var starve = [M25MetricFor(rows, regimes[0].Name, "F-adaptive-kanban", "starvation")]
     var readyIdle = [M25MetricFor(rows, regimes[0].Name, "F-adaptive-kanban", "ready_idle")]
 
-    for i in 1 .. Len(regimes) {
+    for i in 1..Len(regimes) {
         regime = Append(regime, regimes[i].Name)
         adaptiveScore = Append(adaptiveScore, M25ScoreFor(rows, regimes[i].Name, "F-adaptive-kanban"))
         pullScore = Append(pullScore, M25ScoreFor(rows, regimes[i].Name, "E-pull-lag-comp"))

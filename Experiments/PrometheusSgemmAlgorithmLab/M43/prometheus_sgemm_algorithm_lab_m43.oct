@@ -142,34 +142,34 @@ record M43FinalContract {
     RecommendationComputed: Bool
 }
 
-fn M43Min(a: Int, b: Int) -> Int {return switch {case a < b -> a else -> b}}
-fn M43Max(a: Int, b: Int) -> Int {return switch {case a > b -> a else -> b}}
+fn M43Min(a: Int, b: Int) -> Int { return switch { case a < b -> a else -> b } }
+fn M43Max(a: Int, b: Int) -> Int { return switch { case a > b -> a else -> b } }
 
 fn M43JoinInts(values: Int[]) -> String {
     var out = ""
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         out = out + ToString(values[i])
-        if i + 1 < Len(values) {out = out + ","}
+        if i + 1 < Len(values) { out = out + "," }
     }
     return out
 }
 
 fn M43JoinStrings(values: String[]) -> String {
     var out = ""
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         out = out + values[i]
-        if i + 1 < Len(values) {out = out + "|"}
+        if i + 1 < Len(values) { out = out + "|" }
     }
     return out
 }
 
 fn M43TopologyClass(s: M43Scenario) -> String {
-    if s.Topology == "single-compute" {return "single-compute-queue"}
-    if s.Topology == "independent-two-queue" {return "same-family-independent"}
-    if s.Topology == "pseudo-shared-two-queue" {return "same-family-pseudo-shared"}
-    if s.Topology == "separate-compute-families" {return "separate-compute-families"}
-    if s.Topology == "compute-plus-transfer" {return "compute-plus-transfer"}
-    if s.Topology == "memory-capped" {return "memory-capped"}
+    if s.Topology == "single-compute" { return "single-compute-queue" }
+    if s.Topology == "independent-two-queue" { return "same-family-independent" }
+    if s.Topology == "pseudo-shared-two-queue" { return "same-family-pseudo-shared" }
+    if s.Topology == "separate-compute-families" { return "separate-compute-families" }
+    if s.Topology == "compute-plus-transfer" { return "compute-plus-transfer" }
+    if s.Topology == "memory-capped" { return "memory-capped" }
     return "custom"
 }
 
@@ -201,11 +201,11 @@ fn M43BaseScenario(candidate: String, topology: String) -> M43Scenario {
         BatchSize: 24
         ComputeQueueCountReported: reportedQueues
         IndependentComputeQueueCount: independentQueues
-        TransferQueueCount: switch {case topology == "compute-plus-transfer" -> 1 else -> 0}
+        TransferQueueCount: switch { case topology == "compute-plus-transfer" -> 1 else -> 0 }
         PseudoSharedQueue: topology == "pseudo-shared-two-queue"
         SeparateComputeFamilies: topology == "separate-compute-families"
         OwnershipHandoffDefined: topology != "separate-compute-families"
-        MemoryBudgetBytes: switch {case topology == "memory-capped" -> 268435456 else -> 1073741824}
+        MemoryBudgetBytes: switch { case topology == "memory-capped" -> 268435456 else -> 1073741824 }
         PerWorkerMemoryBytes: 268435456
         PerWorkerCommandResourcesValid: true
         PerWorkerFencesValid: true
@@ -221,25 +221,25 @@ fn M43BaseScenario(candidate: String, topology: String) -> M43Scenario {
 }
 
 fn M43CandidateComplexity(candidate: String) -> Int {
-    if candidate == "A-serialized-bridge-baseline" {return 190}
-    if candidate == "B-true-multi-queue-static" {return 470}
-    if candidate == "C-hybrid-topology-gated" {return 360}
-    if candidate == "D-multi-queue-plus-transfer" {return 520}
-    if candidate == "E-nslot-reference-only" {return 760}
+    if candidate == "A-serialized-bridge-baseline" { return 190 }
+    if candidate == "B-true-multi-queue-static" { return 470 }
+    if candidate == "C-hybrid-topology-gated" { return 360 }
+    if candidate == "D-multi-queue-plus-transfer" { return 520 }
+    if candidate == "E-nslot-reference-only" { return 760 }
     return 500
 }
 
 fn M43CandidateRisk(candidate: String) -> Int {
-    if candidate == "A-serialized-bridge-baseline" {return 210}
-    if candidate == "B-true-multi-queue-static" {return 410}
-    if candidate == "C-hybrid-topology-gated" {return 280}
-    if candidate == "D-multi-queue-plus-transfer" {return 430}
-    if candidate == "E-nslot-reference-only" {return 690}
+    if candidate == "A-serialized-bridge-baseline" { return 210 }
+    if candidate == "B-true-multi-queue-static" { return 410 }
+    if candidate == "C-hybrid-topology-gated" { return 280 }
+    if candidate == "D-multi-queue-plus-transfer" { return 430 }
+    if candidate == "E-nslot-reference-only" { return 690 }
     return 500
 }
 
 fn M43RunScenario(s: M43Scenario) -> M43Result {
-    let memoryWorkers = switch {case s.PerWorkerMemoryBytes <= 0 -> 1 else -> M43Max(s.MemoryBudgetBytes / s.PerWorkerMemoryBytes, 1)}
+    let memoryWorkers = switch { case s.PerWorkerMemoryBytes <= 0 -> 1 else -> M43Max(s.MemoryBudgetBytes / s.PerWorkerMemoryBytes, 1) }
     let requestedWorkers = M43Min(s.WorkerRequest, memoryWorkers)
     let computeCap = M43Max(s.IndependentComputeQueueCount, 1)
 
@@ -253,7 +253,7 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
     let gateMemory = memoryWorkers >= 2
     let gatePseudoShared = not s.PseudoSharedQueue
     let gateForcedSerialized = not s.ForcedSerializedFlag
-    let gateFamilyOwnership = switch {case s.SeparateComputeFamilies -> s.OwnershipHandoffDefined else -> true}
+    let gateFamilyOwnership = switch { case s.SeparateComputeFamilies -> s.OwnershipHandoffDefined else -> true }
 
     let allGates = gateIndependentQueues and gateWorkers and gateResources and gateFences and gateMapping and gateMemory and gatePseudoShared and gateForcedSerialized and gateFamilyOwnership
 
@@ -284,9 +284,9 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
     }
 
     let claimedHardwareParallelism = executionMode != "serialized-submit-bridge"
-    let serializedFallbackCount = switch {case executionMode == "serialized-submit-bridge" -> 1 else -> 0}
+    let serializedFallbackCount = switch { case executionMode == "serialized-submit-bridge" -> 1 else -> 0 }
 
-    var workerQueue =[0]
+    var workerQueue = [0]
     var workerQueueFamily = ["compute-family-0"]
     var workerPool = ["pool-w0"]
     var workerBuffer = ["cmd-w0"]
@@ -296,7 +296,7 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
     var workerSubmits = [0]
     var workerFinish = [0]
 
-    for w in 1 .. effectiveWorkers {
+    for w in 1..effectiveWorkers {
         workerQueue = Append(workerQueue, 0)
         workerQueueFamily = Append(workerQueueFamily, "compute-family-0")
         workerPool = Append(workerPool, "pool-w" + ToString(w))
@@ -308,22 +308,22 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
         workerFinish = Append(workerFinish, 0)
     }
 
-    for w in 0 .. effectiveWorkers {
+    for w in 0..effectiveWorkers {
         workerQueue[w] = switch {
             case executionMode == "serialized-submit-bridge" -> 0
             else -> w % M43Max(computeCap, 1)
         }
-        if s.SeparateComputeFamilies {workerQueueFamily[w] = "compute-family-" + ToString(w % M43Max(computeCap, 1))}
+        if s.SeparateComputeFamilies { workerQueueFamily[w] = "compute-family-" + ToString(w % M43Max(computeCap, 1)) }
     }
 
     var queueBusy = [0]
-    for q in 1 .. M43Max(computeCap, 1) {queueBusy = Append(queueBusy, 0)}
+    for q in 1..M43Max(computeCap, 1) { queueBusy = Append(queueBusy, 0) }
 
     var transferWaitCount = 0
     var ownershipHandoffCount = 0
     var transferOverlapBenefit = 0
 
-    for i in 0 .. s.BatchSize {
+    for i in 0..s.BatchSize {
         let w = i % M43Max(effectiveWorkers, 1)
         let q = workerQueue[w]
         let duration = 8 + ((i * 3) % 7)
@@ -352,8 +352,8 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
 
     var completion = 0
     var workerBusyTotal = 0
-    for w in 0 .. effectiveWorkers {
-        if workerFinish[w] > completion {completion = workerFinish[w]}
+    for w in 0..effectiveWorkers {
+        if workerFinish[w] > completion { completion = workerFinish[w] }
         workerBusyTotal = workerBusyTotal + workerFinish[w]
         workerInFlight[w] = "drained"
         workerFenceState[w] = "signaled"
@@ -427,8 +427,8 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
     let hasFailure = firstFailureDetail != "none"
     if hasFailure {
         failurePropagationLatency = M43Max(effectiveWorkers, 1) + M43Max(computeCap, 1)
-        for w in 0 .. effectiveWorkers {
-            workerInFlight[w] = switch {case s.FailureMode == "queue-hang" or s.FailureMode == "drain-timeout" -> "stuck" else -> "drained"}
+        for w in 0..effectiveWorkers {
+            workerInFlight[w] = switch { case s.FailureMode == "queue-hang" or s.FailureMode == "drain-timeout" -> "stuck" else -> "drained" }
         }
     }
 
@@ -437,9 +437,9 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
 
     var queueBusyTotal = 0
     var queueBusyMax = 0
-    for q in 0 .. M43Max(computeCap, 1) {
+    for q in 0..M43Max(computeCap, 1) {
         queueBusyTotal = queueBusyTotal + queueBusy[q]
-        if queueBusy[q] > queueBusyMax {queueBusyMax = queueBusy[q]}
+        if queueBusy[q] > queueBusyMax { queueBusyMax = queueBusy[q] }
     }
 
     let queueUtilization = switch {
@@ -448,16 +448,16 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
     }
     let queueIdle = M43Max(1000 - queueUtilization, 0)
 
-    let synchronizationOverhead = ownershipHandoffCount + transferWaitCount + switch {case executionMode == "serialized-submit-bridge" -> s.BatchSize * 2 else -> s.BatchSize}
+    let synchronizationOverhead = ownershipHandoffCount + transferWaitCount + switch { case executionMode == "serialized-submit-bridge" -> s.BatchSize * 2 else -> s.BatchSize }
 
     let memoryPressure = ((effectiveWorkers * s.PerWorkerMemoryBytes) * 1000) / M43Max(s.MemoryBudgetBytes, 1)
 
     let completionTime = completion + synchronizationOverhead - transferOverlapBenefit + serializedFallbackCount * 24
 
     let complexity = M43CandidateComplexity(s.Candidate)
-    let risk = M43CandidateRisk(s.Candidate) + switch {case hasFailure -> 180 else -> 0} + switch {case not gatePseudoShared and wantsMultiQueue -> 120 else -> 0} + switch {case fallbackReason == "missing_queue_family_ownership_handoff" -> 120 else -> 0}
+    let risk = M43CandidateRisk(s.Candidate) + switch { case hasFailure -> 180 else -> 0 } + switch { case not gatePseudoShared and wantsMultiQueue -> 120 else -> 0 } + switch { case fallbackReason == "missing_queue_family_ownership_handoff" -> 120 else -> 0 }
 
-    let productScore = (2200 - completionTime) - memoryPressure - risk - complexity + switch {case executionMode == "true-multi-queue-submit" -> 80 else -> 0} + switch {case executionMode == "serialized-submit-bridge" -> 90 else -> 0}
+    let productScore = (2200 - completionTime) - memoryPressure - risk - complexity + switch { case executionMode == "true-multi-queue-submit" -> 80 else -> 0 } + switch { case executionMode == "serialized-submit-bridge" -> 90 else -> 0 }
 
     return M43Result {
         Candidate: s.Candidate
@@ -490,7 +490,7 @@ fn M43RunScenario(s: M43Scenario) -> M43Result {
         FailurePropagationLatency: failurePropagationLatency
         UnsafeToReuse: unsafeToReuse
         OutputCommitted: outputCommitted
-        CleanupAction: switch {case hasFailure -> "drain-and-reset-or-destroy" else -> "none"}
+        CleanupAction: switch { case hasFailure -> "drain-and-reset-or-destroy" else -> "none" }
         CompletionTime: completionTime
         EffectiveQueueUtilizationMilli: queueUtilization
         QueueIdleMilli: queueIdle

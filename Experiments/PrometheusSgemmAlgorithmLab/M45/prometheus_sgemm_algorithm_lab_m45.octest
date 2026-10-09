@@ -72,8 +72,8 @@ fn M45BandBeatsNoSelectionBaselineAcrossMatrix() -> Void {
     var baselineTotal = 0
     var bandTotal = 0
 
-    for di in 0 .. Len(devices) {
-        for si in 0 .. Len(shapes) {
+    for di in 0..Len(devices) {
+        for si in 0..Len(shapes) {
             baselineTotal = baselineTotal + M45EvaluateNoSelection(devices[di], shapes[si]).ProductScore
             bandTotal = bandTotal + M45EvaluateDeviceBand(devices[di], shapes[si]).ProductScore
         }

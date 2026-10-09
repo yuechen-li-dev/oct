@@ -28,7 +28,7 @@ template flow ConceptBoardMachine<T>(value: T) -> T {
     }
 
     state Run {
-        board.State = Box<T> {Value: value}
+        board.State = Box<T> { Value: value }
         return board.State.Value
     }
 }

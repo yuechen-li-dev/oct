@@ -1,21 +1,21 @@
 package Geometry
 
-fn CylinderVolume(radius: NonNegativeLength, height: NonNegativeLength) -> Float < m ^ 3 >! Error {
+fn CylinderVolume(radius: NonNegativeLength, height: NonNegativeLength) -> Float<m^3> ! Error {
     return Pi() * radius * radius * height
 }
 
-fn CylinderSurfaceArea(radius: NonNegativeLength, height: NonNegativeLength) -> Float < m ^ 2 >! Error {
-    return 2.0 * Pi() * radius *(radius + height)
+fn CylinderSurfaceArea(radius: NonNegativeLength, height: NonNegativeLength) -> Float<m^2> ! Error {
+    return 2.0 * Pi() * radius * (radius + height)
 }
 
-fn SphereVolume(radius: NonNegativeLength) -> Float < m ^ 3 >! Error {
-    return(4.0 / 3.0) * Pi() * radius * radius * radius
+fn SphereVolume(radius: NonNegativeLength) -> Float<m^3> ! Error {
+    return (4.0 / 3.0) * Pi() * radius * radius * radius
 }
 
-fn SphereSurfaceArea(radius: NonNegativeLength) -> Float < m ^ 2 >! Error {
+fn SphereSurfaceArea(radius: NonNegativeLength) -> Float<m^2> ! Error {
     return 4.0 * Pi() * radius * radius
 }
 
-fn ConeVolume(radius: NonNegativeLength, height: NonNegativeLength) -> Float < m ^ 3 >! Error {
-    return(1.0 / 3.0) * Pi() * radius * radius * height
+fn ConeVolume(radius: NonNegativeLength, height: NonNegativeLength) -> Float<m^3> ! Error {
+    return (1.0 / 3.0) * Pi() * radius * radius * height
 }

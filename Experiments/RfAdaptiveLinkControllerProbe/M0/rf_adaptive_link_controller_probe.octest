@@ -21,11 +21,11 @@ fn RfTraceBuildIsDeterministicAndMonotonic() -> Void {
     Assert.Equal(Len(traceA.DistanceMeters), Len(traceA.PathLossLinear), "path-loss shape should align with distance schedule")
     Assert.Equal(Len(traceA.DistanceMeters), Len(traceA.ReceivedPower), "received-power shape should align with distance schedule")
 
-    for i in 0 .. Len(traceA.DistanceMeters) {
+    for i in 0..Len(traceA.DistanceMeters) {
         Assert.Near(traceA.PathLossLinear[i], traceB.PathLossLinear[i], 0.0000001, "deterministic path-loss build should repeat exactly")
     }
 
-    for i in 1 .. Len(traceA.DistanceMeters) {
+    for i in 1..Len(traceA.DistanceMeters) {
         Assert.True(traceA.PathLossLinear[i] > traceA.PathLossLinear[i - 1], "path loss should increase with distance in this setup")
     }
 }
@@ -64,7 +64,7 @@ fn AdaptiveControllerRunsOnRfBuiltTrace() -> Void {
     let trace = BuildRfConditionTrace()
     let f = RunAdaptiveLinkController(trace)
 
-    for _ in 0 .. Len(trace.QualityScore) {
+    for _ in 0..Len(trace.QualityScore) {
         Step(f)
     }
 
@@ -84,7 +84,7 @@ fn UtilityPolicyReducesFlappingVersusNaiveThresholding() -> Void {
     let adaptive = RunAdaptiveLinkController(trace)
     let naive = RunNaiveController(trace)
 
-    for _ in 0 .. Len(trace.QualityScore) {
+    for _ in 0..Len(trace.QualityScore) {
         Step(adaptive)
         Step(naive)
     }

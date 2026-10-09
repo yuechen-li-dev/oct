@@ -48,7 +48,7 @@ fn Summarize(xs: Float[]) -> StatSummary {
     var skewness = 0.0
     if sd > 0.0 {
         var skewAccum = 0.0
-        for i in 0 .. n {
+        for i in 0..n {
             let d = (xs[i] - mean) / sd
             skewAccum = skewAccum + d * d * d
         }
@@ -97,7 +97,7 @@ fn MinOf(xs: Float[]) -> Float {
     Assert.True(n > 0, "MinOf requires at least one value")
 
     var mn = xs[0]
-    for i in 1 .. n {
+    for i in 1..n {
         if xs[i] < mn {
             mn = xs[i]
         }
@@ -112,7 +112,7 @@ fn MaxOf(xs: Float[]) -> Float {
     Assert.True(n > 0, "MaxOf requires at least one value")
 
     var mx = xs[0]
-    for i in 1 .. n {
+    for i in 1..n {
         if xs[i] > mx {
             mx = xs[i]
         }

@@ -19,8 +19,8 @@ fn Manifest() -> PackageManifest {
         Name: "Atlas"
         Version: "0.1.0"
         Description: "Domain-neutral semantic provenance and traceability authoring records"
-        Authors:["Codex"]
+        Authors: ["Codex"]
         Date: "2026-08-30"
-        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

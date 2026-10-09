@@ -157,18 +157,18 @@ fn M0AllMitigations() -> M0Mitigation[] {
 
 fn M0BuildCases() -> M0PlantCase[] {
     return [
-        M0PlantCase {CaseName: "id-conventional-random" Path: M0Path.Conventional Family: M0Family.BoundedRandom Split: M0Split.Identification InitialError: 0.018 Injection: 0.012 Gain: 1.08},
-        M0PlantCase {CaseName: "id-conventional-cancel" Path: M0Path.Conventional Family: M0Family.AlternatingCancellation Split: M0Split.Identification InitialError: 0.024 Injection: -0.016 Gain: 1.18},
-        M0PlantCase {CaseName: "id-cooperative-outlier" Path: M0Path.Cooperative Family: M0Family.SparseOutlier Split: M0Split.Identification InitialError: 0.036 Injection: 0.030 Gain: 1.31},
-        M0PlantCase {CaseName: "id-a2x4-near-zero" Path: M0Path.A2x4 Family: M0Family.NearZero Split: M0Split.Identification InitialError: 0.010 Injection: 0.009 Gain: 1.44},
-        M0PlantCase {CaseName: "id-a2x4-cancel" Path: M0Path.A2x4 Family: M0Family.AlternatingCancellation Split: M0Split.Identification InitialError: -0.021 Injection: 0.017 Gain: 1.37},
-        M0PlantCase {CaseName: "id-cooperative-random" Path: M0Path.Cooperative Family: M0Family.BoundedRandom Split: M0Split.Identification InitialError: 0.020 Injection: 0.015 Gain: 1.22},
-        M0PlantCase {CaseName: "hold-conventional-outlier" Path: M0Path.Conventional Family: M0Family.SparseOutlier Split: M0Split.HeldOut InitialError: -0.031 Injection: 0.026 Gain: 1.14},
-        M0PlantCase {CaseName: "hold-conventional-near-zero" Path: M0Path.Conventional Family: M0Family.NearZero Split: M0Split.HeldOut InitialError: 0.008 Injection: -0.010 Gain: 1.11},
-        M0PlantCase {CaseName: "hold-cooperative-cancel" Path: M0Path.Cooperative Family: M0Family.AlternatingCancellation Split: M0Split.HeldOut InitialError: 0.028 Injection: -0.021 Gain: 1.29},
-        M0PlantCase {CaseName: "hold-cooperative-near-zero" Path: M0Path.Cooperative Family: M0Family.NearZero Split: M0Split.HeldOut InitialError: -0.012 Injection: 0.011 Gain: 1.34},
-        M0PlantCase {CaseName: "hold-a2x4-random" Path: M0Path.A2x4 Family: M0Family.BoundedRandom Split: M0Split.HeldOut InitialError: 0.025 Injection: 0.019 Gain: 1.42},
-        M0PlantCase {CaseName: "hold-a2x4-outlier" Path: M0Path.A2x4 Family: M0Family.SparseOutlier Split: M0Split.HeldOut InitialError: -0.040 Injection: 0.034 Gain: 1.51}
+        M0PlantCase { CaseName: "id-conventional-random" Path: M0Path.Conventional Family: M0Family.BoundedRandom Split: M0Split.Identification InitialError: 0.018 Injection: 0.012 Gain: 1.08 },
+        M0PlantCase { CaseName: "id-conventional-cancel" Path: M0Path.Conventional Family: M0Family.AlternatingCancellation Split: M0Split.Identification InitialError: 0.024 Injection: -0.016 Gain: 1.18 },
+        M0PlantCase { CaseName: "id-cooperative-outlier" Path: M0Path.Cooperative Family: M0Family.SparseOutlier Split: M0Split.Identification InitialError: 0.036 Injection: 0.030 Gain: 1.31 },
+        M0PlantCase { CaseName: "id-a2x4-near-zero" Path: M0Path.A2x4 Family: M0Family.NearZero Split: M0Split.Identification InitialError: 0.010 Injection: 0.009 Gain: 1.44 },
+        M0PlantCase { CaseName: "id-a2x4-cancel" Path: M0Path.A2x4 Family: M0Family.AlternatingCancellation Split: M0Split.Identification InitialError: -0.021 Injection: 0.017 Gain: 1.37 },
+        M0PlantCase { CaseName: "id-cooperative-random" Path: M0Path.Cooperative Family: M0Family.BoundedRandom Split: M0Split.Identification InitialError: 0.020 Injection: 0.015 Gain: 1.22 },
+        M0PlantCase { CaseName: "hold-conventional-outlier" Path: M0Path.Conventional Family: M0Family.SparseOutlier Split: M0Split.HeldOut InitialError: -0.031 Injection: 0.026 Gain: 1.14 },
+        M0PlantCase { CaseName: "hold-conventional-near-zero" Path: M0Path.Conventional Family: M0Family.NearZero Split: M0Split.HeldOut InitialError: 0.008 Injection: -0.010 Gain: 1.11 },
+        M0PlantCase { CaseName: "hold-cooperative-cancel" Path: M0Path.Cooperative Family: M0Family.AlternatingCancellation Split: M0Split.HeldOut InitialError: 0.028 Injection: -0.021 Gain: 1.29 },
+        M0PlantCase { CaseName: "hold-cooperative-near-zero" Path: M0Path.Cooperative Family: M0Family.NearZero Split: M0Split.HeldOut InitialError: -0.012 Injection: 0.011 Gain: 1.34 },
+        M0PlantCase { CaseName: "hold-a2x4-random" Path: M0Path.A2x4 Family: M0Family.BoundedRandom Split: M0Split.HeldOut InitialError: 0.025 Injection: 0.019 Gain: 1.42 },
+        M0PlantCase { CaseName: "hold-a2x4-outlier" Path: M0Path.A2x4 Family: M0Family.SparseOutlier Split: M0Split.HeldOut InitialError: -0.040 Injection: 0.034 Gain: 1.51 }
     ]
 }
 
@@ -474,7 +474,7 @@ fn M0RunSimulation() -> M0SimulationReport {
     let uniformSelected = M0SelectUniformMitigation(aggregates)
     let baselineHeld = aggregates[0].HeldOutMeanError
     let improvement = (baselineHeld - selected.HeldOutMeanError) * 100.0 / baselineHeld
-    let decision = M0SelectShadowAction(M0ShadowEvidence {Deterministic: true ReferenceSuspect: false ErrorMilli: 6703 GainMilli: 1420 Repeats: 100})
+    let decision = M0SelectShadowAction(M0ShadowEvidence { Deterministic: true ReferenceSuspect: false ErrorMilli: 6703 GainMilli: 1420 Repeats: 100 })
     return M0SimulationReport {
         Cases: cases
         Trajectories: rows
@@ -495,12 +495,12 @@ fn M0RunSimulation() -> M0SimulationReport {
 }
 
 fn M0RowsCsv(report: M0SimulationReport) -> String[][] {
-    var csv = [["case","path","family","split","mitigation","depth","error","finalAbsError","rmsError","latencyCostPct","memoryCostMiB"]]
+    var csv = [["case", "path", "family", "split", "mitigation", "depth", "error", "finalAbsError", "rmsError", "latencyCostPct", "memoryCostMiB"]]
     for i in 0..Len(report.Trajectories) {
         let row = report.Trajectories[i]
         for j in 0..Len(row.Trace) {
             let point = row.Trace[j]
-            csv = Append(csv, [row.CaseName,row.Path,row.Family,row.Split,row.Mitigation,String.From<Float>(point.Depth),String.From<Float>(point.Error),String.From<Float>(row.FinalAbsError),String.From<Float>(row.RmsError),String.From<Float>(row.LatencyCostPct),String.From<Float>(row.MemoryCostMiB)])
+            csv = Append(csv, [row.CaseName, row.Path, row.Family, row.Split, row.Mitigation, String.From<Float>(point.Depth), String.From<Float>(point.Error), String.From<Float>(row.FinalAbsError), String.From<Float>(row.RmsError), String.From<Float>(row.LatencyCostPct), String.From<Float>(row.MemoryCostMiB)])
         }
     }
     return csv
@@ -564,10 +564,10 @@ fn M0WriteArtifacts() -> Int {
     let md = Markdown.Report([
         Markdown.Title("Prometheus M49 numerical heterogeneity synthetic lab"),
         Markdown.Section("Authority", [Markdown.Paragraph("This Oct experiment is a deterministic design simulation. It does not replace native matched-input CPU/GPU evidence and cannot authorize a product-path change.")]),
-        Markdown.Section("Corpus", [Markdown.KeyValueTable(["cases","splits","families","paths"],[String.From<Int>(Len(report.Cases)),"identification + held-out","bounded-random, cancellation, sparse-outlier, near-zero","conventional, cooperative, A2x4"])]),
-        Markdown.Section("Selected bounded intervention", [Markdown.KeyValueTable(["mitigation","baseline held-out mean error","selected held-out mean error","held-out improvement percent","shadow action","product authority changed"],[report.SelectedMitigation,String.From<Float>(report.BaselineHeldOutMeanError),String.From<Float>(report.SelectedHeldOutMeanError),String.From<Float>(report.HeldOutImprovementPct),report.ShadowDecision.ActionName,String.From<Bool>(report.ProductAuthorityChanged)])]),
-        Markdown.Section("Evidence-fitted utility policy", [Markdown.KeyValueTable(["algorithm","training rows","held-out rows","training MSE","held-out MSE","authored baseline held-out MSE","uniform baseline held-out MSE","learned selection","authored selection","uniform selection","weight: initial error","weight: effective gain","weight: effective injection","weight: latency","weight: memory","certified"],[report.LearnedPolicy.Algorithm,String.From<Int>(report.LearnedPolicy.Training.Rows),String.From<Int>(report.LearnedPolicy.HeldOut.Rows),String.From<Float>(report.LearnedPolicy.Training.MeanSquaredError),String.From<Float>(report.LearnedPolicy.HeldOut.MeanSquaredError),String.From<Float>(report.AuthoredBaselineHeldOut.MeanSquaredError),String.From<Float>(report.UniformBaselineHeldOut.MeanSquaredError),report.SelectedMitigation,report.AuthoredSelectedMitigation,report.UniformSelectedMitigation,String.From<Float>(report.LearnedPolicy.Weights[0]),String.From<Float>(report.LearnedPolicy.Weights[1]),String.From<Float>(report.LearnedPolicy.Weights[2]),String.From<Float>(report.LearnedPolicy.Weights[3]),String.From<Float>(report.LearnedPolicy.Weights[4]),String.From<Bool>(report.LearnedPolicy.Certified)])]),
-        Markdown.Section("Interpretation", [Markdown.Paragraph(report.Interpretation),Markdown.Paragraph("M48 EVT remains postponed until the real hardware matrix and held-out source-side mitigation evidence converge.")])
+        Markdown.Section("Corpus", [Markdown.KeyValueTable(["cases", "splits", "families", "paths"], [String.From<Int>(Len(report.Cases)), "identification + held-out", "bounded-random, cancellation, sparse-outlier, near-zero", "conventional, cooperative, A2x4"])]),
+        Markdown.Section("Selected bounded intervention", [Markdown.KeyValueTable(["mitigation", "baseline held-out mean error", "selected held-out mean error", "held-out improvement percent", "shadow action", "product authority changed"], [report.SelectedMitigation, String.From<Float>(report.BaselineHeldOutMeanError), String.From<Float>(report.SelectedHeldOutMeanError), String.From<Float>(report.HeldOutImprovementPct), report.ShadowDecision.ActionName, String.From<Bool>(report.ProductAuthorityChanged)])]),
+        Markdown.Section("Evidence-fitted utility policy", [Markdown.KeyValueTable(["algorithm", "training rows", "held-out rows", "training MSE", "held-out MSE", "authored baseline held-out MSE", "uniform baseline held-out MSE", "learned selection", "authored selection", "uniform selection", "weight: initial error", "weight: effective gain", "weight: effective injection", "weight: latency", "weight: memory", "certified"], [report.LearnedPolicy.Algorithm, String.From<Int>(report.LearnedPolicy.Training.Rows), String.From<Int>(report.LearnedPolicy.HeldOut.Rows), String.From<Float>(report.LearnedPolicy.Training.MeanSquaredError), String.From<Float>(report.LearnedPolicy.HeldOut.MeanSquaredError), String.From<Float>(report.AuthoredBaselineHeldOut.MeanSquaredError), String.From<Float>(report.UniformBaselineHeldOut.MeanSquaredError), report.SelectedMitigation, report.AuthoredSelectedMitigation, report.UniformSelectedMitigation, String.From<Float>(report.LearnedPolicy.Weights[0]), String.From<Float>(report.LearnedPolicy.Weights[1]), String.From<Float>(report.LearnedPolicy.Weights[2]), String.From<Float>(report.LearnedPolicy.Weights[3]), String.From<Float>(report.LearnedPolicy.Weights[4]), String.From<Bool>(report.LearnedPolicy.Certified)])]),
+        Markdown.Section("Interpretation", [Markdown.Paragraph(report.Interpretation), Markdown.Paragraph("M48 EVT remains postponed until the real hardware matrix and held-out source-side mitigation evidence converge.")])
     ])
     Artifact.WriteOctagon(root + "M0.synthetic_report.octagon", report)
     Artifact.WriteCsv(root + "synthetic_trajectories.csv", M0RowsCsv(report))

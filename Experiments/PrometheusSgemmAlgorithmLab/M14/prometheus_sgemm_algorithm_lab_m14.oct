@@ -268,7 +268,7 @@ fn SimulateM14Candidate(regime: M14Regime, candidate: M14Candidate) -> M14Metric
     var speculativeBudgetRemaining = candidate.WasteBudgetUnits
     var hysteresisHold = 0
 
-    for _step in 0 .. 4096 {
+    for _step in 0..4096 {
         if remaining <= 0 {
             if readyPool > 0 {
                 wastedTransferWork = wastedTransferWork + (readyPool * chunk)
@@ -409,7 +409,7 @@ fn SimulateM14Candidate(regime: M14Regime, candidate: M14Candidate) -> M14Metric
         var transferBudget = computeNow + overlapCarry
         var slots = M14MinInt(lookahead, depth)
 
-        for _prefetch in 0 .. 8 {
+        for _prefetch in 0..8 {
             if slots > 0 and remaining > 0 {
                 let speculativeChunk = M14MinInt(chunk, remaining)
                 let tx = M14TransferTime(speculativeChunk, regime)
@@ -524,8 +524,8 @@ fn M14StudyRows() -> M14CaseResult[] {
 
     var rows = [EvaluateM14Case(regimes[0], candidates[0])]
 
-    for i in 0 .. Len(regimes) {
-        for j in 0 .. Len(candidates) {
+    for i in 0..Len(regimes) {
+        for j in 0..Len(candidates) {
             if i != 0 or j != 0 {
                 rows = Append(rows, EvaluateM14Case(regimes[i], candidates[j]))
             }
@@ -546,13 +546,13 @@ fn M14RegimeWinners() -> M14RegimeWinner[] {
         BestWaste: 0
     }]
 
-    for i in 0 .. Len(regimes) {
+    for i in 0..Len(regimes) {
         let regime = regimes[i]
         var best = EvaluateM14Case(regime, candidates[0])
         var bestTime = best.TotalCompletionTime
         var bestWaste = best.WastedTransferWork
 
-        for j in 1 .. Len(candidates) {
+        for j in 1..Len(candidates) {
             let row = EvaluateM14Case(regime, candidates[j])
             if row.ProductScore < best.ProductScore { best = row }
             if row.TotalCompletionTime < bestTime { bestTime = row.TotalCompletionTime }
@@ -581,10 +581,10 @@ fn M14OverallWinner() -> String {
     var winner = candidates[0].Name
     var bestAggregate = 2000000000
 
-    for i in 0 .. Len(candidates) {
+    for i in 0..Len(candidates) {
         let c = candidates[i]
         var total = 0
-        for j in 0 .. Len(regimes) {
+        for j in 0..Len(regimes) {
             let row = EvaluateM14Case(regimes[j], c)
             total = total + row.ProductScore
         }

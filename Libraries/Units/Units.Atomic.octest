@@ -33,7 +33,7 @@ fn ElectronVoltToJouleIsCorrect() -> Void {
 [Fact]
 fn KeVIs1000eV() -> Void {
     let j1000ev = ElectronVoltToJoule(ElectronVolt { Value: 1000.0 })
-    let j1kev   = KeVToJoule(KeV { Value: 1.0 })
+    let j1kev = KeVToJoule(KeV { Value: 1.0 })
     Assert.Near(j1000ev / 1.0kg*m^2/s^2, j1kev / 1.0kg*m^2/s^2, 1e-25,
         "1 keV = 1000 eV in joules")
 }

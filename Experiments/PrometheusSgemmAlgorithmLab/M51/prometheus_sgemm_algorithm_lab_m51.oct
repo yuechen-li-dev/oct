@@ -124,7 +124,7 @@ fn M51Evaluate(c: M51ActuatorCandidate, ctx: M51Context) -> M51Eval {
     if not allowed { safety = safety - 35 confidence = confidence - 20 latency = 0 }
 
     let score = safety + confidence + rollback + latency + batchScore + singleScore + mem + diag + ext - complexity
-    return M51Eval {Candidate: c ScenarioName: ctx.ScenarioName Allowed: allowed ReasonCode: reason SafetyScore: safety CorrectnessConfidence: confidence ComplexityCost: complexity RollbackSimplicity: rollback LatencyHidingPotential: latency BatchApplicability: batchScore SingleApplicability: singleScore MemoryPressureScore: mem DiagnosticClarity: diag Extensibility: ext ProductScore: score}
+    return M51Eval { Candidate: c ScenarioName: ctx.ScenarioName Allowed: allowed ReasonCode: reason SafetyScore: safety CorrectnessConfidence: confidence ComplexityCost: complexity RollbackSimplicity: rollback LatencyHidingPotential: latency BatchApplicability: batchScore SingleApplicability: singleScore MemoryPressureScore: mem DiagnosticClarity: diag Extensibility: ext ProductScore: score }
 }
 
 fn M51Recommend(ctx: M51Context) -> M51Recommendation {
@@ -143,9 +143,9 @@ fn M51Recommend(ctx: M51Context) -> M51Recommendation {
     if e4.ProductScore > best.ProductScore { best = e4 }
     if e5.ProductScore > best.ProductScore { best = e5 }
 
-    return M51Recommendation {Candidate: best.Candidate Score: best.ProductScore Reason: "computed_from_contextual_product_score"}
+    return M51Recommendation { Candidate: best.Candidate Score: best.ProductScore Reason: "computed_from_contextual_product_score" }
 }
 
 fn M51PrimaryBatchContext() -> M51Context {
-    return M51Context {ScenarioName: "batch_s2_transfer_available" ContextKind: M51ContextKind.Batch FutureEntryKnown: true WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: true MemoryPressureHigh: false ShapeLayoutChurn: false UnsafeRuntime: false SlotFailed: false SlotInvalidated: false OutstandingDepth: 1 OutstandingLimit: 3 MemoryBudgetExceeded: false}
+    return M51Context { ScenarioName: "batch_s2_transfer_available" ContextKind: M51ContextKind.Batch FutureEntryKnown: true WorkerSlots: 2 LookaheadDepthRequested: 1 TransferQueueAvailable: true MemoryPressureHigh: false ShapeLayoutChurn: false UnsafeRuntime: false SlotFailed: false SlotInvalidated: false OutstandingDepth: 1 OutstandingLimit: 3 MemoryBudgetExceeded: false }
 }

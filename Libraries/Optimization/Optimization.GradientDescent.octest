@@ -2,18 +2,18 @@ package Optimization
 
 // f(x,y) = (x-1)² + (y-2)², min at [1,2]
 fn fGD(v: Float[]) -> Float {
-    return (v[0]-1.0)*(v[0]-1.0) + (v[1]-2.0)*(v[1]-2.0)
+    return (v[0] - 1.0) * (v[0] - 1.0) + (v[1] - 2.0) * (v[1] - 2.0)
 }
 fn gradGD(v: Float[]) -> Float[] {
-    return [2.0*(v[0]-1.0), 2.0*(v[1]-2.0)]
+    return [2.0 * (v[0] - 1.0), 2.0 * (v[1] - 2.0)]
 }
 
 // f(x,y) = x² + 10y², min at [0,0] (ill-conditioned — tests momentum benefit)
 fn fElliptic(v: Float[]) -> Float {
-    return v[0]*v[0] + 10.0*v[1]*v[1]
+    return v[0] * v[0] + 10.0 * v[1] * v[1]
 }
 fn gradElliptic(v: Float[]) -> Float[] {
-    return [2.0*v[0], 20.0*v[1]]
+    return [2.0 * v[0], 20.0 * v[1]]
 }
 
 [Fact]

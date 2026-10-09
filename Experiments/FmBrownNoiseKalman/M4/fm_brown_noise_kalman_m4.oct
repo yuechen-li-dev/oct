@@ -191,11 +191,11 @@ fn RunM4Adaptive(c: M4Case) -> M4Run ! Error {
     let science = M4ScienceSummary { FixedOutputSNRDb: metrics[2].OutputSNRDb AdaptiveOutputSNRDb: metrics[1].OutputSNRDb DeltaOutputSNRDb: delta FixedWhitenessCost: metrics[2].WhitenessCost AdaptiveWhitenessCost: metrics[1].WhitenessCost WhitenessRatio: ratio Label: label }
     let trace = M4TraceSummary {
         RepresentationKind: "RealOctomataScalarBoardAdaptiveAR1" TickCount: Len(history) InitializeCount: M4CountState(history, "Initialize") PredictCount: M4CountState(history, "Predict") ObserveCount: M4CountState(history, "Observe") ComputeGainCount: M4CountState(history, "ComputeGain") CorrectCount: M4CountState(history, "Correct") AdaptNoiseModelCount: M4CountState(history, "AdaptNoiseModel") RecordCount: M4CountState(history, "Record") AdvanceCount: M4CountState(history, "Advance") DoneCount: M4CountState(history, "Done")
-        DoneReached: finalSnapshot.DoneFlag FirstState: if Len(history) > 0 { history[0] } else { "" } LastState: if Len(history) > 0 { history[Len(history)-1] } else { "" }
+        DoneReached: finalSnapshot.DoneFlag FirstState: if Len(history) > 0 { history[0] } else { "" } LastState: if Len(history) > 0 { history[Len(history) - 1] } else { "" }
         SampleCount: Len(clean) RecoveredCount: Len(recovered) InnovationCount: Len(innovation) ATraceCount: Len(aTrace)
-        FirstRecovered: if Len(recovered)>0 { recovered[0] } else { 0.0 } LastRecovered: if Len(recovered)>0 { recovered[Len(recovered)-1] } else { 0.0 }
-        FirstInnovation: if Len(innovation)>0 { innovation[0] } else { 0.0 } LastInnovation: if Len(innovation)>0 { innovation[Len(innovation)-1] } else { 0.0 }
-        FirstA: if Len(aTrace)>0 { aTrace[0] } else { 0.0 } FinalA: oct.FinalA ClampCount: oct.ClampCount
+        FirstRecovered: if Len(recovered) > 0 { recovered[0] } else { 0.0 } LastRecovered: if Len(recovered) > 0 { recovered[Len(recovered) - 1] } else { 0.0 }
+        FirstInnovation: if Len(innovation) > 0 { innovation[0] } else { 0.0 } LastInnovation: if Len(innovation) > 0 { innovation[Len(innovation) - 1] } else { 0.0 }
+        FirstA: if Len(aTrace) > 0 { aTrace[0] } else { 0.0 } FinalA: oct.FinalA ClampCount: oct.ClampCount
     }
     return M4Run { Case: c Clean: clean Observed: observed ProceduralAdaptive: procedural OctomataAdaptive: oct FixedBaseline: fixed Trace: trace Metrics: metrics Science: science MaxRecoveredDiff: M4MaxAbsDiff(procedural.Recovered, oct.Recovered) MaxInnovationDiff: M4MaxAbsDiff(procedural.Innovation, oct.Innovation) MaxADiff: M4MaxAbsDiff(procedural.ATrace, oct.ATrace) FinalADiff: Abs(procedural.FinalA - oct.FinalA) ToleranceUsed: tol }
 }

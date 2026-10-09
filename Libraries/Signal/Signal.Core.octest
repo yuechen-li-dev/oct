@@ -50,7 +50,7 @@ fn ConvolveWithIdentityKernelPreservesSignal() -> Void {
     let x = [2.0, (0.0 - 1.5), 4.25]
     let y = Convolve(x, [1.0])!
     Assert.Equal(Len(x), Len(y), "identity kernel preserves length")
-    for i in 0 .. Len(x) {
+    for i in 0..Len(x) {
         Assert.Near(x[i], y[i], 0.000001, "identity kernel preserves samples")
     }
 }
@@ -62,7 +62,7 @@ fn ConvolveIsCommutativeForEqualLengthInputs() -> Void {
     let ab = Convolve(a, b)!
     let ba = Convolve(b, a)!
     Assert.Equal(Len(ab), Len(ba), "commutative: equal lengths")
-    for i in 0 .. Len(ab) {
+    for i in 0..Len(ab) {
         Assert.Near(ab[i], ba[i], 0.000001, "commutative: equal values")
     }
 }
@@ -75,9 +75,9 @@ fn ConvolveIsCommutativeForEqualLengthInputs() -> Void {
 fn CorrelateMatchesHandComputedValues() -> Void {
     let r = Correlate([1.0, 2.0], [3.0, 4.0])!
     Assert.Equal(3, Len(r), "output length = Len(x)+Len(y)-1")
-    Assert.Near(4.0,  r[0], 0.000001, "lag -1")
+    Assert.Near(4.0, r[0], 0.000001, "lag -1")
     Assert.Near(11.0, r[1], 0.000001, "lag 0")
-    Assert.Near(6.0,  r[2], 0.000001, "lag +1")
+    Assert.Near(6.0, r[2], 0.000001, "lag +1")
 }
 
 [Fact]
@@ -104,7 +104,7 @@ fn NormalizedAutoCorrelateIsSymmetric() -> Void {
     let x = [1.0, 2.0, 3.0, 2.0, 1.0]
     let r = NormalizedAutoCorrelate(x)!
     let n = Len(r)
-    for i in 0 .. n / 2 {
+    for i in 0..n / 2 {
         Assert.Near(r[i], r[n - 1 - i], 0.000001, "normalized autocorrelation is symmetric")
     }
 }
@@ -127,7 +127,7 @@ fn MovingAverageWindowOneIsIdentity() -> Void {
     let x = [2.0, 4.0, 6.0]
     let out = MovingAverage(x, 1)!
     Assert.Equal(3, Len(out), "window=1 preserves length")
-    for i in 0 .. Len(x) {
+    for i in 0..Len(x) {
         Assert.Near(x[i], out[i], 0.000001, "window=1 preserves values")
     }
 }
@@ -154,7 +154,7 @@ fn MovingAverageRejectsInvalidInputs() -> Void {
 fn RectangularWindowIsAllOnes() -> Void {
     let w = RectangularWindow(5)!
     Assert.Equal(5, Len(w), "length correct")
-    for i in 0 .. 5 {
+    for i in 0..5 {
         Assert.Near(1.0, w[i], 0.000001, "rectangular = 1 everywhere")
     }
 }
@@ -198,7 +198,7 @@ fn BlackmanWindowHasLowerSidelobeEnergyThanHann() -> Void {
     // Blackman's advantage is lower sidelobe energy — the tails fall off faster.
     // Test: Blackman edge values are smaller than Hann edge values.
     let n = 9
-    let hann     = HannWindow(n)!
+    let hann = HannWindow(n)!
     let blackman = BlackmanWindow(n)!
     // At position 1 (near edge), Blackman should be smaller than Hann.
     Assert.True(blackman[1] < hann[1], "Blackman falls off faster than Hann near edges")
@@ -208,12 +208,12 @@ fn BlackmanWindowHasLowerSidelobeEnergyThanHann() -> Void {
 [Fact]
 fn WindowFunctionsAreSymmetric() -> Void {
     let n = 9
-    let hann    = HannWindow(n)!
+    let hann = HannWindow(n)!
     let hamming = HammingWindow(n)!
     let blackman = BlackmanWindow(n)!
-    for i in 0 .. n / 2 {
-        Assert.Near(hann[i],    hann[n - 1 - i],    0.000001, "Hann is symmetric")
-        Assert.Near(hamming[i], hamming[n - 1 - i],  0.000001, "Hamming is symmetric")
+    for i in 0..n / 2 {
+        Assert.Near(hann[i], hann[n - 1 - i], 0.000001, "Hann is symmetric")
+        Assert.Near(hamming[i], hamming[n - 1 - i], 0.000001, "Hamming is symmetric")
         Assert.Near(blackman[i], blackman[n - 1 - i], 0.000001, "Blackman is symmetric")
     }
 }
@@ -222,8 +222,8 @@ fn WindowFunctionsAreSymmetric() -> Void {
 fn ApplyWindowScalesSignalByWindowCoefficients() -> Void {
     let signal = [1.0, 1.0, 1.0, 1.0, 1.0]
     let window = HannWindow(5)!
-    let out    = ApplyWindow(signal, window)!
-    for i in 0 .. 5 {
+    let out = ApplyWindow(signal, window)!
+    for i in 0..5 {
         Assert.Near(window[i], out[i], 0.000001, "unit signal * window = window")
     }
 }
@@ -245,7 +245,7 @@ fn LowpassFIRHasCenterPeakAndIsSymmetric() -> Void {
     let center = (n - 1) / 2
     Assert.Equal(n, Len(h), "filter length correct")
     // Symmetric about center
-    for i in 0 .. center {
+    for i in 0..center {
         Assert.Near(h[i], h[n - 1 - i], 0.000001, "FIR kernel is symmetric")
     }
     // Center tap is the largest
@@ -259,7 +259,7 @@ fn LowpassFIRSumsToOne() -> Void {
     let w = HannWindow(n)!
     let h = LowpassFIR(0.4, n, w)!
     var sum = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         sum = sum + h[i]
     }
     Assert.Near(1.0, sum, 0.000001, "normalized lowpass FIR sums to 1")
@@ -292,10 +292,10 @@ fn BandpassFIRIsLowpassDifference() -> Void {
     // BP(lo, hi) = LP(hi) - LP(lo).
     let n = 9
     let w = HannWindow(n)!
-    let bp  = BandpassFIR(0.1, 0.4, n, w)!
+    let bp = BandpassFIR(0.1, 0.4, n, w)!
     let lph = LowpassFIR(0.4, n, w)!
     let lpl = LowpassFIR(0.1, n, w)!
-    for i in 0 .. n {
+    for i in 0..n {
         Assert.Near(lph[i] - lpl[i], bp[i], 0.000001, "bandpass = LP(hi) - LP(lo)")
     }
 }
@@ -318,7 +318,7 @@ fn LowpassFIRConvolvesCorrectlyWithTestSignal() -> Void {
     // DC signal long enough to settle: needs at least n samples before steady state.
     // Use 32 samples; check at index n+5 (well past transient).
     var dc = [1.0]
-    for i in 1 .. 32 {
+    for i in 1..32 {
         dc = Append(dc, 1.0)
     }
     let dcOut = Convolve(dc, h)!
@@ -328,7 +328,7 @@ fn LowpassFIRConvolvesCorrectlyWithTestSignal() -> Void {
 
     // High-frequency [1,-1,...] — 32 samples
     var hf = [1.0]
-    for i in 1 .. 32 {
+    for i in 1..32 {
         let sign = switch { case i / 2 * 2 == i => 1.0 else => (0.0 - 1.0) }
         hf = Append(hf, sign)
     }
@@ -360,12 +360,12 @@ fn MagnitudeSpectrumOfRealConstantIsCorrect() -> Void {
 [Fact]
 fn PowerSpectrumIsMagnitudeSquared() -> Void {
     let spectrum = [Complex(3.0, 4.0), Complex(1.0, 0.0)]
-    let mag  = MagnitudeSpectrum(spectrum)!
-    let pwr  = PowerSpectrum(spectrum)!
+    let mag = MagnitudeSpectrum(spectrum)!
+    let pwr = PowerSpectrum(spectrum)!
     Assert.Equal(Len(mag), Len(pwr), "same length")
     // mag[0] = sqrt(9+16) = 5, pwr[0] = 25
     Assert.Near(25.0, pwr[0], 0.000001, "power = magnitude squared: 3^2+4^2=25")
-    Assert.Near(1.0,  pwr[1], 0.000001, "power = 1^2+0^2=1")
+    Assert.Near(1.0, pwr[1], 0.000001, "power = 1^2+0^2=1")
 }
 
 [Fact]

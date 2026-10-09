@@ -33,11 +33,11 @@ package ChemistryNmr
 /// Integration: relative integration (Float, dimensionless ratio).
 ///   Normalized to the number of contributing protons by convention.
 record Peak {
-    ChemicalShift:  Float         // δ in ppm (dimensionless by convention)
-    Coupling:       Float<Hz>[]   // J values in Hz (dimensioned ✓)
-    Integration:    Float         // relative proton count (dimensionless)
-    Multiplicity:   String        // "s", "d", "t", "q", "dd", "dt", "m" etc.
-    Assignment:     String        // e.g. "H-3", "NH", "OMe", "" if unknown
+    ChemicalShift: Float // δ in ppm (dimensionless by convention)
+    Coupling: Float<Hz>[] // J values in Hz (dimensioned ✓)
+    Integration: Float // relative proton count (dimensionless)
+    Multiplicity: String // "s", "d", "t", "q", "dd", "dt", "m" etc.
+    Assignment: String // e.g. "H-3", "NH", "OMe", "" if unknown
 }
 
 /// Construct a singlet peak (no coupling).
@@ -126,10 +126,10 @@ fn DoubletOfDoublets(shift: Float, j1: Float<Hz>, j2: Float<Hz>, integration: Fl
 /// Solvent: affects residual solvent peak and some shift values.
 ///   Common values: "CDCl3", "DMSO-d6", "D2O", "MeOD", "CD3OD"
 record Spectrum {
-    Peaks:                  Peak[]
-    SpectrometerFrequency:  Float<Hz>    // ¹H channel frequency (dimensioned ✓)
-    Nucleus:                String       // "1H", "13C", "19F", "31P"
-    Solvent:                String       // "CDCl3", "DMSO-d6", etc.
+    Peaks: Peak[]
+    SpectrometerFrequency: Float<Hz> // ¹H channel frequency (dimensioned ✓)
+    Nucleus: String // "1H", "13C", "19F", "31P"
+    Solvent: String // "CDCl3", "DMSO-d6", etc.
 }
 
 // ============================================================
@@ -145,7 +145,7 @@ fn PeakCount(spectrum: Spectrum) -> Int {
 /// For a correctly normalized ¹H spectrum this equals the proton count.
 fn TotalIntegration(spectrum: Spectrum) -> Float {
     var total = 0.0
-    for i in 0 .. Len(spectrum.Peaks) {
+    for i in 0..Len(spectrum.Peaks) {
         total = total + spectrum.Peaks[i].Integration
     }
     return total
@@ -158,7 +158,7 @@ fn MostDownfieldPeakIndex(spectrum: Spectrum) -> Int {
         return -1
     }
     var best = 0
-    for i in 1 .. Len(spectrum.Peaks) {
+    for i in 1..Len(spectrum.Peaks) {
         if spectrum.Peaks[i].ChemicalShift > spectrum.Peaks[best].ChemicalShift {
             best = i
         }
@@ -172,7 +172,7 @@ fn MostUpfieldPeakIndex(spectrum: Spectrum) -> Int {
         return -1
     }
     var best = 0
-    for i in 1 .. Len(spectrum.Peaks) {
+    for i in 1..Len(spectrum.Peaks) {
         if spectrum.Peaks[i].ChemicalShift < spectrum.Peaks[best].ChemicalShift {
             best = i
         }
@@ -187,13 +187,13 @@ fn ShiftRange(spectrum: Spectrum) -> Float ! Error {
         return error("ShiftRange: empty spectrum")
     }
     let down = MostDownfieldPeakIndex(spectrum)
-    let up   = MostUpfieldPeakIndex(spectrum)
+    let up = MostUpfieldPeakIndex(spectrum)
     return spectrum.Peaks[down].ChemicalShift - spectrum.Peaks[up].ChemicalShift
 }
 
 /// Find a peak by assignment label. Returns peak index or -1 if not found.
 fn FindByAssignment(spectrum: Spectrum, label: String) -> Int {
-    for i in 0 .. Len(spectrum.Peaks) {
+    for i in 0..Len(spectrum.Peaks) {
         if spectrum.Peaks[i].Assignment == label {
             return i
         }
@@ -215,13 +215,13 @@ fn ShiftToHz(spectrum: Spectrum, deltaPpm: Float) -> Float<Hz> {
 fn PeakInWindow(peak: Peak, windowCenter: Float, windowWidth: Float) -> Bool {
     let halfWidth = windowWidth / 2.0
     return peak.ChemicalShift >= windowCenter - halfWidth and
-           peak.ChemicalShift <= windowCenter + halfWidth
+        peak.ChemicalShift <= windowCenter + halfWidth
 }
 
 /// Count how many peaks fall within a chemical shift window.
 fn PeaksInWindow(spectrum: Spectrum, windowCenter: Float, windowWidth: Float) -> Int {
     var count = 0
-    for i in 0 .. Len(spectrum.Peaks) {
+    for i in 0..Len(spectrum.Peaks) {
         if PeakInWindow(spectrum.Peaks[i], windowCenter, windowWidth) {
             count = count + 1
         }

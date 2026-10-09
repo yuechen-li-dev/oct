@@ -9,7 +9,7 @@ concept PositiveCount = Int {
 concept ArtifactModel {
     Name: String
     Count: PositiveCount
-    Samples: Float < m >[]
+    Samples: Float<m>[]
     Mode: RenderMode
 }
 
@@ -36,11 +36,11 @@ fn AsInt(value: Count) -> Int {
 }
 
 fn BuildModel() -> ArtifactModel ! Error {
-    let count = PositiveCount(RuntimeCount()) ?
+    let count = PositiveCount(RuntimeCount())?
     return ArtifactModel {
         Name: "typed-artifact"
         Count: count
-        Samples:[1.0m, 2.0m, 3.0m]
+        Samples: [1.0m, 2.0m, 3.0m]
         Mode: RenderMode.Detailed("records-enums-units-arrays-concepts")
     }
 }
@@ -54,18 +54,18 @@ fn RenderModeName(mode: RenderMode) -> String {
 
 [Artifact]
 fn GenerateTypedArtifacts() -> Void ! Error {
-    let model = BuildModel() ?
+    let model = BuildModel()?
     let mode = RenderModeName(model.Mode)
     Artifact.WriteText("nested/model.txt", model.Name + ":" + mode)
-    Artifact.WriteLines("nested/model.lines.txt",[model.Name, mode])
-    Artifact.WriteCsv("nested/model.csv",[["name", "count"],[model.Name, ToString(AsInt(model.Count))]])
+    Artifact.WriteLines("nested/model.lines.txt", [model.Name, mode])
+    Artifact.WriteCsv("nested/model.csv", [["name", "count"], [model.Name, ToString(AsInt(model.Count))]])
     Artifact.WriteJson("nested/model.json", ModelSummary { Name: model.Name Count: model.Count })
     Artifact.WriteOctagon("nested/model.octagon", model)
 
     var handled = ""
     match PositiveCount(RuntimeInvalidCount()) {
-        ok(value) -> {handled = ToString(AsInt(value))}
-        err(problem) -> {handled = "invalid-count-handled"}
+        ok(value) -> { handled = ToString(AsInt(value)) }
+        err(problem) -> { handled = "invalid-count-handled" }
     }
     Artifact.WriteText("nested/fallibility.txt", handled)
 }

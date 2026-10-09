@@ -100,7 +100,7 @@ fn BinomialPmf(k: Int, n: NonNegativeCount, probability: Probability) -> Float {
 
     let symmetricK = if k < trials - k { k } else { trials - k }
     var coefficient = 1.0
-    for i in 1 .. symmetricK + 1 {
+    for i in 1..symmetricK + 1 {
         coefficient = coefficient * Float(trials - symmetricK + i) / Float(i)
     }
     return coefficient * Pow(p, Float(k)) * Pow(1.0 - p, Float(trials - k))
@@ -114,7 +114,7 @@ fn PoissonPmf(k: Int, lambda: PositiveDistributionScale) -> Float {
     }
 
     var probability = Exp(0.0 - lambda)
-    for i in 1 .. k + 1 {
+    for i in 1..k + 1 {
         probability = probability * lambda / Float(i)
     }
     return probability
@@ -123,7 +123,7 @@ fn PoissonPmf(k: Int, lambda: PositiveDistributionScale) -> Float {
 /// log(n!) computed as a sum of logarithms, avoiding factorial overflow.
 fn LogFactorial(n: NonNegativeCount) -> Float {
     var result = 0.0
-    for i in 2 .. n + 1 {
+    for i in 2..n + 1 {
         result = result + Ln(Float(i))
     }
     return result

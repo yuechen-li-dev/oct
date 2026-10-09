@@ -106,7 +106,7 @@ fn CelsiusToGasMark(c: Float) -> Int {
         case c < 211.0 => 6
         case c < 226.0 => 7
         case c < 238.0 => 8
-        else           => 9
+        else => 9
     }
 }
 
@@ -118,38 +118,38 @@ fn CelsiusToGasMark(c: Float) -> Int {
 /// Returns the stage name used in confectionery.
 fn SugarStage(tempC: Float) -> String {
     return switch {
-        case tempC < 112.0  => "below thread"
-        case tempC < 116.0  => "thread (112-115 C)"
-        case tempC < 121.0  => "soft ball (116-120 C)"
-        case tempC < 130.0  => "firm ball (121-129 C)"
-        case tempC < 138.0  => "hard ball (130-137 C)"
-        case tempC < 149.0  => "soft crack (138-148 C)"
-        case tempC < 166.0  => "hard crack (149-165 C)"
-        case tempC < 180.0  => "clear caramel (166-179 C)"
-        else                => "dark caramel / burnt (180+ C)"
+        case tempC < 112.0 => "below thread"
+        case tempC < 116.0 => "thread (112-115 C)"
+        case tempC < 121.0 => "soft ball (116-120 C)"
+        case tempC < 130.0 => "firm ball (121-129 C)"
+        case tempC < 138.0 => "hard ball (130-137 C)"
+        case tempC < 149.0 => "soft crack (138-148 C)"
+        case tempC < 166.0 => "hard crack (149-165 C)"
+        case tempC < 180.0 => "clear caramel (166-179 C)"
+        else => "dark caramel / burnt (180+ C)"
     }
 }
 
 /// Meat doneness stage for beef/lamb at a given core temperature in Celsius.
 fn BeefDoneness(tempC: Float) -> String {
     return switch {
-        case tempC < 50.0  => "rare (below 50 C)"
-        case tempC < 55.0  => "medium-rare (50-54 C)"
-        case tempC < 60.0  => "medium (55-59 C)"
-        case tempC < 65.0  => "medium-well (60-64 C)"
-        else               => "well done (65+ C)"
+        case tempC < 50.0 => "rare (below 50 C)"
+        case tempC < 55.0 => "medium-rare (50-54 C)"
+        case tempC < 60.0 => "medium (55-59 C)"
+        case tempC < 65.0 => "medium-well (60-64 C)"
+        else => "well done (65+ C)"
     }
 }
 
 /// Safe minimum internal temperature check for common proteins.
 /// Returns true if the temperature meets food safety guidelines.
 fn IsSafeTemperature(protein: String, tempC: Float) -> Bool ! Error {
-    if protein == "beef_steak"  { return tempC >= 63.0 }
+    if protein == "beef_steak" { return tempC >= 63.0 }
     if protein == "beef_ground" { return tempC >= 71.0 }
-    if protein == "pork"        { return tempC >= 63.0 }
-    if protein == "poultry"     { return tempC >= 74.0 }
-    if protein == "fish"        { return tempC >= 63.0 }
-    if protein == "egg"         { return tempC >= 71.0 }
+    if protein == "pork" { return tempC >= 63.0 }
+    if protein == "poultry" { return tempC >= 74.0 }
+    if protein == "fish" { return tempC >= 63.0 }
+    if protein == "egg" { return tempC >= 71.0 }
     return error("unknown protein — use: beef_steak, beef_ground, pork, poultry, fish, egg")
 }
 
@@ -160,21 +160,21 @@ fn IsSafeTemperature(protein: String, tempC: Float) -> Bool ! Error {
 /// Weight in grams of one US cup of a common ingredient.
 /// Based on standard culinary measurement references.
 fn GramsPerCup(ingredient: String) -> Float ! Error {
-    if ingredient == "all_purpose_flour"  { return 125.0 }
-    if ingredient == "bread_flour"        { return 130.0 }
-    if ingredient == "cake_flour"         { return 100.0 }
-    if ingredient == "whole_wheat_flour"  { return 120.0 }
-    if ingredient == "cocoa_powder"       { return 85.0 }
-    if ingredient == "granulated_sugar"   { return 200.0 }
-    if ingredient == "powdered_sugar"     { return 120.0 }
+    if ingredient == "all_purpose_flour" { return 125.0 }
+    if ingredient == "bread_flour" { return 130.0 }
+    if ingredient == "cake_flour" { return 100.0 }
+    if ingredient == "whole_wheat_flour" { return 120.0 }
+    if ingredient == "cocoa_powder" { return 85.0 }
+    if ingredient == "granulated_sugar" { return 200.0 }
+    if ingredient == "powdered_sugar" { return 120.0 }
     if ingredient == "brown_sugar_packed" { return 220.0 }
-    if ingredient == "salt"               { return 288.0 }
-    if ingredient == "butter"             { return 227.0 }
-    if ingredient == "honey"              { return 340.0 }
-    if ingredient == "milk"               { return 244.0 }
-    if ingredient == "water"              { return 237.0 }
-    if ingredient == "rice_uncooked"      { return 185.0 }
-    if ingredient == "rolled_oats"        { return 90.0 }
+    if ingredient == "salt" { return 288.0 }
+    if ingredient == "butter" { return 227.0 }
+    if ingredient == "honey" { return 340.0 }
+    if ingredient == "milk" { return 244.0 }
+    if ingredient == "water" { return 237.0 }
+    if ingredient == "rice_uncooked" { return 185.0 }
+    if ingredient == "rolled_oats" { return 90.0 }
     return error("unknown ingredient — see GramsPerCup for supported keys")
 }
 
@@ -219,7 +219,7 @@ fn TotalDoughWeight(percentages: Float[], flourGrams: Float) -> Float {
         Assert.True(Len(percentages) > 0, "TotalDoughWeight requires at least one percentage")
     }
     var total = 0.0
-    for i in 0 .. Len(percentages) {
+    for i in 0..Len(percentages) {
         total = total + (percentages[i] / 100.0) * flourGrams
     }
     return total
@@ -258,8 +258,8 @@ fn ScaleLeavening(amount: Float, scaleFactor: Float) -> Float {
     if scaleFactor <= 3.0 {
         return amount * scaleFactor
     }
-    let linearPart     = amount * 3.0
-    let excessFactor   = scaleFactor - 3.0
+    let linearPart = amount * 3.0
+    let excessFactor = scaleFactor - 3.0
     let correctedExtra = amount * excessFactor * 0.75
     return linearPart + correctedExtra
 }
@@ -279,8 +279,8 @@ fn ScaleSalt(amount: Float, scaleFactor: Float) -> Float {
     if scaleFactor <= 2.0 {
         return amount * scaleFactor
     }
-    let linearPart     = amount * 2.0
-    let excessFactor   = scaleFactor - 2.0
+    let linearPart = amount * 2.0
+    let excessFactor = scaleFactor - 2.0
     let correctedExtra = amount * excessFactor * 0.90
     return linearPart + correctedExtra
 }

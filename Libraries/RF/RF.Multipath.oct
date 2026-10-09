@@ -8,7 +8,7 @@ fn MaxDelaySamples(delaySamples: Int[]) -> Int {
     }
 
     var maxDelay = delaySamples[0]
-    for i in 1 .. Len(delaySamples) {
+    for i in 1..Len(delaySamples) {
         if delaySamples[i] > maxDelay {
             maxDelay = delaySamples[i]
         }
@@ -49,7 +49,7 @@ fn ApplyTappedDelayLinePowerSeries(samples: Float<kg*m^2/s^3>[], delaySamples: I
         return [0.0kg*m^2/s^3]
     }
 
-    for i in 0 .. Len(delaySamples) {
+    for i in 0..Len(delaySamples) {
         if delaySamples[i] < 0 {
             return [0.0kg*m^2/s^3]
         }
@@ -60,16 +60,16 @@ fn ApplyTappedDelayLinePowerSeries(samples: Float<kg*m^2/s^3>[], delaySamples: I
 
     let outLen = Len(samples) + MaxDelaySamples(delaySamples)
     var out = [0.0kg*m^2/s^3]
-    for _ in 1 .. outLen {
+    for _ in 1..outLen {
         out = Append(out, 0.0kg*m^2/s^3)
     }
 
-    for tap in 0 .. Len(delaySamples) {
+    for tap in 0..Len(delaySamples) {
         let delay = delaySamples[tap]
         let gain = powerGain[tap]
 
         var contribution = [TapContributionAt(samples, delay, gain, 0)]
-        for i in 1 .. outLen {
+        for i in 1..outLen {
             contribution = Append(contribution, TapContributionAt(samples, delay, gain, i))
         }
 

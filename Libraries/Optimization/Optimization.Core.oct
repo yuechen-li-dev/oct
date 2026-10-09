@@ -36,28 +36,28 @@ package Optimization
 
 /// Result of a 1D optimization.
 record OptimizationResult1D {
-    XMin:       Float
-    FMin:       Float
+    XMin: Float
+    FMin: Float
     Iterations: Int
-    Converged:  Bool
+    Converged: Bool
 }
 
 /// Result of a multivariate optimization.
 record OptimizationResultND {
-    Point:      Float[]
-    FMin:       Float
+    Point: Float[]
+    FMin: Float
     Iterations: Int
-    Converged:  Bool
-    GradNorm:   Float
+    Converged: Bool
+    GradNorm: Float
 }
 
 /// Result of a least-squares fitting problem.
 record LeastSquaresResult {
-    Params:     Float[]
-    Residuals:  Float[]
-    RSS:        Float
+    Params: Float[]
+    Residuals: Float[]
+    RSS: Float
     Iterations: Int
-    Converged:  Bool
+    Converged: Bool
 }
 
 // ============================================================
@@ -71,7 +71,7 @@ fn LInfNorm(v: Float[]) -> Float ! Error {
         return error("LInfNorm: empty vector")
     }
     var best = Abs(v[0])
-    for i in 1 .. Len(v) {
+    for i in 1..Len(v) {
         let a = Abs(v[i])
         if a > best {
             best = a
@@ -86,7 +86,7 @@ fn L2Norm(v: Float[]) -> Float ! Error {
         return error("L2Norm: empty vector")
     }
     var sum = 0.0
-    for i in 0 .. Len(v) {
+    for i in 0..Len(v) {
         sum = sum + v[i] * v[i]
     }
     return Sqrt(sum)
@@ -98,7 +98,7 @@ fn Dot(a: Float[], b: Float[]) -> Float ! Error {
         return error("Dot: vectors must have equal length")
     }
     var sum = 0.0
-    for i in 0 .. Len(a) {
+    for i in 0..Len(a) {
         sum = sum + a[i] * b[i]
     }
     return sum
@@ -111,7 +111,7 @@ fn Scale(v: Float[], s: Float) -> Float[] {
         return v
     }
     var out = [v[0] * s]
-    for i in 1 .. Len(v) {
+    for i in 1..Len(v) {
         out = Append(out, v[i] * s)
     }
     return out
@@ -127,7 +127,7 @@ fn VecAdd(a: Float[], b: Float[]) -> Float[] ! Error {
         return a
     }
     var out = [a[0] + b[0]]
-    for i in 1 .. Len(a) {
+    for i in 1..Len(a) {
         out = Append(out, a[i] + b[i])
     }
     return out
@@ -143,7 +143,7 @@ fn VecSub(a: Float[], b: Float[]) -> Float[] ! Error {
         return a
     }
     var out = [a[0] - b[0]]
-    for i in 1 .. Len(a) {
+    for i in 1..Len(a) {
         out = Append(out, a[i] - b[i])
     }
     return out
@@ -152,7 +152,7 @@ fn VecSub(a: Float[], b: Float[]) -> Float[] ! Error {
 /// Residual sum of squares from a Float[] of residuals.
 fn RSS(residuals: Float[]) -> Float {
     var sum = 0.0
-    for i in 0 .. Len(residuals) {
+    for i in 0..Len(residuals) {
         sum = sum + residuals[i] * residuals[i]
     }
     return sum
@@ -164,7 +164,7 @@ fn ZeroVec(n: Int) -> Float[] ! Error {
         return error("ZeroVec: n must be > 0")
     }
     var out = [0.0]
-    for i in 1 .. n {
+    for i in 1..n {
         out = Append(out, 0.0)
     }
     return out

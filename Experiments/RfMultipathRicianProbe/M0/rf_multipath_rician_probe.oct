@@ -23,7 +23,7 @@ fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float) -> Fl
     }
 
     var out = [FreeSpacePathLossLinear(distance[0], frequencyHz)]
-    for i in 1 .. Len(distance) {
+    for i in 1..Len(distance) {
         out = Append(out, FreeSpacePathLossLinear(distance[i], frequencyHz))
     }
     return out
@@ -55,7 +55,7 @@ fn SNRLinearSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/
     }
 
     var out = [SNRLinear(receivedPower[0], noisePower[0])]
-    for i in 1 .. Len(receivedPower) {
+    for i in 1..Len(receivedPower) {
         out = Append(out, SNRLinear(receivedPower[i], noisePower[i]))
     }
     return out
@@ -88,7 +88,7 @@ fn ThermalNoisePowerWithNoiseFigureSeries(bandwidthHz: Float[], temperatureKelvi
     }
 
     var out = [ThermalNoisePowerWithNoiseFigure(bandwidthHz[0], temperatureKelvin[0], noiseFigureLinear[0])]
-    for i in 1 .. Len(bandwidthHz) {
+    for i in 1..Len(bandwidthHz) {
         out = Append(out, ThermalNoisePowerWithNoiseFigure(bandwidthHz[i], temperatureKelvin[i], noiseFigureLinear[i]))
     }
     return out
@@ -115,7 +115,7 @@ fn ApplyShadowingToReceivedPowerSeries(receivedPower: Float<kg*m^2/s^3>[], shado
     }
 
     var out = [ApplyShadowingToReceivedPower(receivedPower[0], shadowingDb[0])]
-    for i in 1 .. Len(receivedPower) {
+    for i in 1..Len(receivedPower) {
         out = Append(out, ApplyShadowingToReceivedPower(receivedPower[i], shadowingDb[i]))
     }
     return out
@@ -134,7 +134,7 @@ fn RayleighPowerGainSeries(inPhase: Float[], quadrature: Float[]) -> Float[] {
     }
 
     var out = [RayleighPowerGainFromComponents(inPhase[0], quadrature[0])]
-    for i in 1 .. Len(inPhase) {
+    for i in 1..Len(inPhase) {
         out = Append(out, RayleighPowerGainFromComponents(inPhase[i], quadrature[i]))
     }
     return out
@@ -163,7 +163,7 @@ fn RicianPowerGainSeries(kFactorLinear: Float, scatterInPhase: Float[], scatterQ
     }
 
     var out = [RicianPowerGainFromComponents(kFactorLinear, scatterInPhase[0], scatterQuadrature[0])]
-    for i in 1 .. Len(scatterInPhase) {
+    for i in 1..Len(scatterInPhase) {
         out = Append(out, RicianPowerGainFromComponents(kFactorLinear, scatterInPhase[i], scatterQuadrature[i]))
     }
 
@@ -183,7 +183,7 @@ fn ApplyPowerGainSeries(samples: Float<kg*m^2/s^3>[], gain: Float[]) -> Float<kg
     }
 
     var out = [ApplyPowerGain(samples[0], gain[0])]
-    for i in 1 .. Len(samples) {
+    for i in 1..Len(samples) {
         out = Append(out, ApplyPowerGain(samples[i], gain[i]))
     }
     return out
@@ -210,7 +210,7 @@ fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> 
     }
 
     var out = [ApplyAdditiveNoise(signal[0], noise[0])]
-    for i in 1 .. Len(signal) {
+    for i in 1..Len(signal) {
         out = Append(out, ApplyAdditiveNoise(signal[i], noise[i]))
     }
 
@@ -223,7 +223,7 @@ fn MaxDelaySamples(delaySamples: Int[]) -> Int {
     }
 
     var maxDelay = delaySamples[0]
-    for i in 1 .. Len(delaySamples) {
+    for i in 1..Len(delaySamples) {
         if delaySamples[i] > maxDelay {
             maxDelay = delaySamples[i]
         }
@@ -257,16 +257,16 @@ fn ApplyTappedDelayLinePowerSeries(samples: Float<kg*m^2/s^3>[], delaySamples: I
 
     let outLen = Len(samples) + MaxDelaySamples(delaySamples)
     var out = [0.0kg*m^2/s^3]
-    for _ in 1 .. outLen {
+    for _ in 1..outLen {
         out = Append(out, 0.0kg*m^2/s^3)
     }
 
-    for tap in 0 .. Len(delaySamples) {
+    for tap in 0..Len(delaySamples) {
         let delay = delaySamples[tap]
         let gain = powerGain[tap]
 
         var contribution = [TapContributionAt(samples, delay, gain, 0)]
-        for i in 1 .. outLen {
+        for i in 1..outLen {
             contribution = Append(contribution, TapContributionAt(samples, delay, gain, i))
         }
 
@@ -322,7 +322,7 @@ fn BuildDistanceSweep16() -> Float<m>[] {
 
 fn BuildConstantFloatSeries16(value: Float) -> Float[] {
     var out = [value]
-    for _ in 1 .. 16 {
+    for _ in 1..16 {
         out = Append(out, value)
     }
     return out
@@ -366,7 +366,7 @@ fn BuildBaselineChannel() -> BaselineChannel {
     let pathLoss = FreeSpacePathLossLinearSeries(distances, frequencyHz)
 
     var received = [ReceivedPower(txPower, txGain, rxGain, pathLoss[0], systemLoss)]
-    for i in 1 .. Len(pathLoss) {
+    for i in 1..Len(pathLoss) {
         received = Append(received, ReceivedPower(txPower, txGain, rxGain, pathLoss[i], systemLoss))
     }
 

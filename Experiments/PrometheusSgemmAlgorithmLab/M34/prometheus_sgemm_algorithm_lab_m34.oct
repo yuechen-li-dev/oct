@@ -229,7 +229,7 @@ fn M34PullLagTimingRakeTableFrom(rows: M34PullLagTimingRow[]) -> M34PullLagTimin
     var transitionReason = [rows[0].TransitionReason]
     var fallbackReason = [rows[0].FallbackReason]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         predictedDemandTimeMs = Append(predictedDemandTimeMs, rows[i].PredictedDemandTimeMs)
         estimatedTransferLeadTimeMs = Append(estimatedTransferLeadTimeMs, rows[i].EstimatedTransferLeadTimeMs)
@@ -284,7 +284,7 @@ fn M34PullLagMemoryEdgeTableFrom(rows: M34PullLagMemoryEdgeRow[]) -> M34PullLagM
     var feasibilityTruthful = [rows[0].FeasibilityTruthful]
     var fallbackReason = [rows[0].FallbackReason]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         memoryBudgetSlots = Append(memoryBudgetSlots, rows[i].MemoryBudgetSlots)
         pullLagPeakRequirementSlots = Append(pullLagPeakRequirementSlots, rows[i].PullLagPeakRequirementSlots)
@@ -323,7 +323,7 @@ fn M34PullLagVarianceMissTableFrom(rows: M34PullLagVarianceMissRow[]) -> M34Pull
     var retreatedToMode = [rows[0].RetreatedToMode]
     var fallbackReason = [rows[0].FallbackReason]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         classifiedVariance = Append(classifiedVariance, rows[i].ClassifiedVariance)
         actualVariance = Append(actualVariance, rows[i].ActualVariance)
@@ -365,7 +365,7 @@ fn M34SerialJitContractTableFrom(rows: M34SerialJitContractRow[]) -> M34SerialJi
     var capacityChecksApplied = [rows[0].CapacityChecksApplied]
     var result = [rows[0].Result]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         activeSlotCount = Append(activeSlotCount, rows[i].ActiveSlotCount)
         wipDepth = Append(wipDepth, rows[i].WipDepth)
@@ -411,7 +411,7 @@ fn M34CrossModeTransitionTableFrom(rows: M34CrossModeTransitionRow[]) -> M34Cros
     var transitionReason = [rows[0].TransitionReason]
     var hardFailureReason = [rows[0].HardFailureReason]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         entryMode = Append(entryMode, rows[i].EntryMode)
         exitMode = Append(exitMode, rows[i].ExitMode)

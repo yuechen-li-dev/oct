@@ -263,7 +263,7 @@ fn M15Scenarios() -> M15Scenario[] {
         RecoveryPredictability: table.RecoveryPredictability[0]
         HistoryBias: table.HistoryBias[0]
     }]
-    for i in 1 .. Len(table.Name) {
+    for i in 1..Len(table.Name) {
         out = Append(out, M15Scenario {
             Name: table.Name[i]
             Family: table.Family[i]
@@ -345,7 +345,7 @@ fn SimulateM15Scenario(controller: M15ControllerUnderTest, scenario: M15Scenario
     var recentGood = 0
     var recentTotal = 0
 
-    for _step in 0 .. 4096 {
+    for _step in 0..4096 {
         if remaining <= 0 {
             if readyPool > 0 {
                 let stranded = readyPool * chunk
@@ -542,7 +542,7 @@ fn SimulateM15Scenario(controller: M15ControllerUnderTest, scenario: M15Scenario
         var slots = M15MinInt(lookahead, depth)
         var transferBudget = computeNow + overlapCarry
 
-        for _prefetch in 0 .. 4 {
+        for _prefetch in 0..4 {
             if slots > 0 and remaining > 0 {
                 let speculativeChunk = M15MinInt(chunk, remaining)
                 let tx = M15TransferTime(speculativeChunk, setup, txPer)
@@ -630,7 +630,7 @@ fn M15ScenarioResults() -> M15ScenarioResult[] {
     let controller = M15ControllerC()
 
     var rows = [SimulateM15Scenario(controller, scenarios[0])]
-    for i in 1 .. Len(scenarios) {
+    for i in 1..Len(scenarios) {
         rows = Append(rows, SimulateM15Scenario(controller, scenarios[i]))
     }
 
@@ -656,7 +656,7 @@ fn M15FailureModeFindings() -> M15FailureModeSummary[] {
         BrokeOrQuestionable: table.BrokeOrQuestionable[0]
         Severity: table.Severity[0]
     }]
-    for i in 1 .. Len(table.FailureMode) {
+    for i in 1..Len(table.FailureMode) {
         out = Append(out, M15FailureModeSummary {
             FailureMode: table.FailureMode[i]
             ScenariosAttacked: table.ScenariosAttacked[i]

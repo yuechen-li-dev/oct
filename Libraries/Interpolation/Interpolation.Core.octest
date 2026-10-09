@@ -14,7 +14,7 @@ fn LerpHandlesBoundariesAndMidpoint() -> Void {
 [Fact]
 fn LerpExtrapolatesBeyondRange() -> Void {
     Assert.Near(25.0, Lerp(10.0, 20.0, 1.5), 0.000001, "t=1.5 extrapolates beyond b")
-    Assert.Near(5.0,  Lerp(10.0, 20.0, (0.0 - 0.5)), 0.000001, "t=-0.5 extrapolates before a")
+    Assert.Near(5.0, Lerp(10.0, 20.0, (0.0 - 0.5)), 0.000001, "t=-0.5 extrapolates before a")
 }
 
 [Fact]
@@ -59,9 +59,9 @@ fn RemapTranslatesBetweenRanges() -> Void {
 
 [Fact]
 fn LinearInterpolateBasicCasesAndSlope() -> Void {
-    Assert.Near(5.0,  LinearInterpolate(0.0, 0.0, 10.0, 10.0, 5.0)!, 0.000001, "midpoint")
-    Assert.Near(7.0,  LinearInterpolate(1.0, 3.0, 5.0, 11.0, 3.0)!,  0.000001, "nontrivial slope")
-    Assert.Near(11.0, LinearInterpolate(1.0, 3.0, 5.0, 11.0, 5.0)!,  0.000001, "at upper knot")
+    Assert.Near(5.0, LinearInterpolate(0.0, 0.0, 10.0, 10.0, 5.0)!, 0.000001, "midpoint")
+    Assert.Near(7.0, LinearInterpolate(1.0, 3.0, 5.0, 11.0, 3.0)!, 0.000001, "nontrivial slope")
+    Assert.Near(11.0, LinearInterpolate(1.0, 3.0, 5.0, 11.0, 5.0)!, 0.000001, "at upper knot")
 }
 
 [Fact]
@@ -77,9 +77,9 @@ fn LinearInterpolateRejectsDegenerateInterval() -> Void {
 fn PiecewiseLinearSupportsInteriorAndKnotQueries() -> Void {
     let xs = [0.0, 1.0, 3.0, 4.0]
     let ys = [0.0, 2.0, 6.0, 10.0]
-    Assert.Near(0.0,  PiecewiseLinear(xs, ys, 0.0)!, 0.000001, "first knot")
-    Assert.Near(6.0,  PiecewiseLinear(xs, ys, 3.0)!, 0.000001, "interior knot")
-    Assert.Near(4.0,  PiecewiseLinear(xs, ys, 2.0)!, 0.000001, "interior point")
+    Assert.Near(0.0, PiecewiseLinear(xs, ys, 0.0)!, 0.000001, "first knot")
+    Assert.Near(6.0, PiecewiseLinear(xs, ys, 3.0)!, 0.000001, "interior knot")
+    Assert.Near(4.0, PiecewiseLinear(xs, ys, 2.0)!, 0.000001, "interior point")
     Assert.Near(10.0, PiecewiseLinear(xs, ys, 4.0)!, 0.000001, "last knot")
 }
 
@@ -159,10 +159,10 @@ fn CubicSplineIsSmoothAcrossSegments() -> Void {
     let xs = [0.0, 1.0, 2.0, 3.0]
     let ys = [0.0, 3.0, 1.0, 4.0]
     let sp = BuildCubicSpline(xs, ys)!
-    let leftOf1  = EvalCubicSpline(sp, 0.9999)!
+    let leftOf1 = EvalCubicSpline(sp, 0.9999)!
     let rightOf1 = EvalCubicSpline(sp, 1.0001)!
     Assert.Near(leftOf1, rightOf1, 0.01, "smooth at interior knot x=1")
-    let leftOf2  = EvalCubicSpline(sp, 1.9999)!
+    let leftOf2 = EvalCubicSpline(sp, 1.9999)!
     let rightOf2 = EvalCubicSpline(sp, 2.0001)!
     Assert.Near(leftOf2, rightOf2, 0.01, "smooth at interior knot x=2")
 }
@@ -297,7 +297,7 @@ fn SplineAndPiecewiseAgreeAtKnots() -> Void {
     let xs = [0.0, 1.0, 2.0, 3.0]
     let ys = [1.0, 4.0, 2.0, 5.0]
     let sp = BuildCubicSpline(xs, ys)!
-    for i in 0 .. 4 {
+    for i in 0..4 {
         let pw = PiecewiseLinear(xs, ys, xs[i])!
         let sv = EvalCubicSpline(sp, xs[i])!
         Assert.Near(pw, sv, 0.0001, "spline and piecewise agree at knots")

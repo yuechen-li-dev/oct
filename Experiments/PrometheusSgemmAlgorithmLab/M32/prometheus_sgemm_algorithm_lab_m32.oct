@@ -274,7 +274,7 @@ fn M32Simulate(strategy: M32StrategyConfig, regime: M32WorkloadRegime, budget: M
 
     var ready = [false]
     var readySince = [0]
-    for i in 1 .. n {
+    for i in 1..n {
         ready = Append(ready, false)
         readySince = Append(readySince, 0)
     }
@@ -516,7 +516,7 @@ fn M32BudgetSweepTableFrom(rows: M32SimulationResult[]) -> M32BudgetSweepTable {
     var reason = [rows[0].FirstInfeasibleReason]
     var largestFit = [M32LargestFit(rows, rows[0].Regime, rows[0].Strategy, rows[0].Budget)]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         regime = Append(regime, rows[i].Regime)
         budget = Append(budget, rows[i].Budget)
         strategy = Append(strategy, rows[i].Strategy)
@@ -543,7 +543,7 @@ fn M32StrategyFeasibilityTableFrom(rows: M32SimulationResult[]) -> M32StrategyFe
     var completion = [rows[0].TotalCompletionTime]
     var score = [rows[0].ProductScore]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         regime = Append(regime, rows[i].Regime)
         strategy = Append(strategy, rows[i].Strategy)
         budget = Append(budget, rows[i].Budget)
@@ -572,7 +572,7 @@ fn M32MemoryInventoryTableFrom(rows: M32SimulationResult[]) -> M32MemoryInventor
     var readyUnused = [rows[0].ReadyUnusedMemoryTimeMilli]
     var peakWip = [rows[0].PeakWipDepth]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         regime = Append(regime, rows[i].Regime)
         strategy = Append(strategy, rows[i].Strategy)
         budget = Append(budget, rows[i].Budget)
@@ -624,7 +624,7 @@ fn M32SequentialWorkloadTableFrom(rows: M32SimulationResult[]) -> M32SequentialW
     var transferIdle = [seqRows[0].TransferIdleTime]
     var leadMiss = [seqRows[0].LeadTimeMissCount]
 
-    for i in 1 .. Len(seqRows) {
+    for i in 1..Len(seqRows) {
         strategy = Append(strategy, seqRows[i].Strategy)
         budget = Append(budget, seqRows[i].Budget)
         feasible = Append(feasible, seqRows[i].Feasible)
@@ -675,7 +675,7 @@ fn M32VarianceSensitivityTableFrom(rows: M32SimulationResult[]) -> M32VarianceSe
     var misses = [selected[0].LeadTimeMissCount]
     var allocFail = [selected[0].AllocationFailureCount]
 
-    for i in 1 .. Len(selected) {
+    for i in 1..Len(selected) {
         regime = Append(regime, selected[i].Regime)
         strategy = Append(strategy, selected[i].Strategy)
         budget = Append(budget, selected[i].Budget)

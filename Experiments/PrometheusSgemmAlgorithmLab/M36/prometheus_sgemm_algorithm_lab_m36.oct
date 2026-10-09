@@ -135,81 +135,81 @@ fn M36JudgmentDependencyTableFrom() -> M36JudgmentDependencyTable {
 fn M36SelectorCacheRakeTableFrom() -> M36SelectorCacheRakeTable {
     return M36SelectorCacheRakeTable {
         Selector: [
-            "M35","Transfer","LayoutPrecision","PathCompute",
-            "M35","Transfer","LayoutPrecision","PathCompute",
-            "M35","Transfer","LayoutPrecision","PathCompute",
-            "M35","Transfer","LayoutPrecision","PathCompute",
-            "M35","Transfer","LayoutPrecision","PathCompute",
-            "M35","Transfer","LayoutPrecision","PathCompute",
-            "M35","Transfer","LayoutPrecision","PathCompute",
-            "M35","Transfer","LayoutPrecision","PathCompute",
-            "M35","Transfer","LayoutPrecision","PathCompute"
+            "M35", "Transfer", "LayoutPrecision", "PathCompute",
+            "M35", "Transfer", "LayoutPrecision", "PathCompute",
+            "M35", "Transfer", "LayoutPrecision", "PathCompute",
+            "M35", "Transfer", "LayoutPrecision", "PathCompute",
+            "M35", "Transfer", "LayoutPrecision", "PathCompute",
+            "M35", "Transfer", "LayoutPrecision", "PathCompute",
+            "M35", "Transfer", "LayoutPrecision", "PathCompute",
+            "M35", "Transfer", "LayoutPrecision", "PathCompute",
+            "M35", "Transfer", "LayoutPrecision", "PathCompute"
         ]
         Scenario: [
-            "unrelated-slot-key-change","unrelated-slot-key-change","unrelated-slot-key-change","unrelated-slot-key-change",
-            "queue-fact-change","queue-fact-change","queue-fact-change","queue-fact-change",
-            "memory-budget-change","memory-budget-change","memory-budget-change","memory-budget-change",
-            "shape-change","shape-change","shape-change","shape-change",
-            "layout-precision-fact-change","layout-precision-fact-change","layout-precision-fact-change","layout-precision-fact-change",
-            "policy-mode-change","policy-mode-change","policy-mode-change","policy-mode-change",
-            "same-value-write","same-value-write","same-value-write","same-value-write",
-            "multiple-commits-in-one-step","multiple-commits-in-one-step","multiple-commits-in-one-step","multiple-commits-in-one-step",
-            "generation-change-with-no-relevant-dirty-key","generation-change-with-no-relevant-dirty-key","generation-change-with-no-relevant-dirty-key","generation-change-with-no-relevant-dirty-key"
+            "unrelated-slot-key-change", "unrelated-slot-key-change", "unrelated-slot-key-change", "unrelated-slot-key-change",
+            "queue-fact-change", "queue-fact-change", "queue-fact-change", "queue-fact-change",
+            "memory-budget-change", "memory-budget-change", "memory-budget-change", "memory-budget-change",
+            "shape-change", "shape-change", "shape-change", "shape-change",
+            "layout-precision-fact-change", "layout-precision-fact-change", "layout-precision-fact-change", "layout-precision-fact-change",
+            "policy-mode-change", "policy-mode-change", "policy-mode-change", "policy-mode-change",
+            "same-value-write", "same-value-write", "same-value-write", "same-value-write",
+            "multiple-commits-in-one-step", "multiple-commits-in-one-step", "multiple-commits-in-one-step", "multiple-commits-in-one-step",
+            "generation-change-with-no-relevant-dirty-key", "generation-change-with-no-relevant-dirty-key", "generation-change-with-no-relevant-dirty-key", "generation-change-with-no-relevant-dirty-key"
         ]
         DependentDirtyMask: [
-            "0","0","0","0",
-            "0","queue.*","0","queue.*",
-            "m35.memory.*","0","0","memory.*",
-            "0","0","shape.*","shape.*",
-            "0","0","layout|precision.*","layout|precision.*",
-            "0","queue.policy-mode","layout.policy-mode","policy-mode|composed-slice",
-            "0","0","0","0",
-            "depends-on-last-commit-mask","depends-on-last-commit-mask","depends-on-last-commit-mask","depends-on-last-commit-mask",
-            "0","0","0","0"
+            "0", "0", "0", "0",
+            "0", "queue.*", "0", "queue.*",
+            "m35.memory.*", "0", "0", "memory.*",
+            "0", "0", "shape.*", "shape.*",
+            "0", "0", "layout|precision.*", "layout|precision.*",
+            "0", "queue.policy-mode", "layout.policy-mode", "policy-mode|composed-slice",
+            "0", "0", "0", "0",
+            "depends-on-last-commit-mask", "depends-on-last-commit-mask", "depends-on-last-commit-mask", "depends-on-last-commit-mask",
+            "0", "0", "0", "0"
         ]
         RecomputeOrReuse: [
-            "reuse","reuse","reuse","reuse",
-            "reuse","recompute","reuse","recompute",
-            "recompute","reuse","reuse","recompute",
-            "reuse","reuse","recompute","recompute",
-            "reuse","reuse","recompute","recompute",
-            "reuse","recompute","recompute","recompute",
-            "reuse","reuse","reuse","reuse",
-            "recompute-if-mask-nonzero-else-reuse","recompute-if-mask-nonzero-else-reuse","recompute-if-mask-nonzero-else-reuse","recompute-if-mask-nonzero-else-reuse",
-            "reuse","reuse","reuse","reuse"
+            "reuse", "reuse", "reuse", "reuse",
+            "reuse", "recompute", "reuse", "recompute",
+            "recompute", "reuse", "reuse", "recompute",
+            "reuse", "reuse", "recompute", "recompute",
+            "reuse", "reuse", "recompute", "recompute",
+            "reuse", "recompute", "recompute", "recompute",
+            "reuse", "reuse", "reuse", "reuse",
+            "recompute-if-mask-nonzero-else-reuse", "recompute-if-mask-nonzero-else-reuse", "recompute-if-mask-nonzero-else-reuse", "recompute-if-mask-nonzero-else-reuse",
+            "reuse", "reuse", "reuse", "reuse"
         ]
         ExpectedCachedValidity: [
-            "valid","valid","valid","valid",
-            "valid","valid","valid","valid",
-            "valid","valid","valid","valid",
-            "valid","valid","valid","valid",
-            "valid","valid","valid","valid",
-            "valid","valid","valid","valid",
-            "valid","valid","valid","valid",
-            "valid-if-dirty-mask-accurate","valid-if-dirty-mask-accurate","valid-if-dirty-mask-accurate","valid-if-dirty-mask-accurate",
-            "valid","valid","valid","valid"
+            "valid", "valid", "valid", "valid",
+            "valid", "valid", "valid", "valid",
+            "valid", "valid", "valid", "valid",
+            "valid", "valid", "valid", "valid",
+            "valid", "valid", "valid", "valid",
+            "valid", "valid", "valid", "valid",
+            "valid", "valid", "valid", "valid",
+            "valid-if-dirty-mask-accurate", "valid-if-dirty-mask-accurate", "valid-if-dirty-mask-accurate", "valid-if-dirty-mask-accurate",
+            "valid", "valid", "valid", "valid"
         ]
         StaleDecisionHazard: [
-            "low","low","medium","high",
-            "low","medium","low","high",
-            "high","low","low","high",
-            "low","low","high","high",
-            "low","low","high","high",
-            "low","medium","high","high",
-            "low","low","low","medium",
-            "medium","medium","high","high",
-            "low","low","low","medium"
+            "low", "low", "medium", "high",
+            "low", "medium", "low", "high",
+            "high", "low", "low", "high",
+            "low", "low", "high", "high",
+            "low", "low", "high", "high",
+            "low", "medium", "high", "high",
+            "low", "low", "low", "medium",
+            "medium", "medium", "high", "high",
+            "low", "low", "low", "medium"
         ]
         RecommendedCacheStatus: [
-            "already-safe","already-safe","safe-next","defer",
-            "already-safe","already-safe","safe-next","defer",
-            "already-safe","already-safe","safe-next","defer",
-            "already-safe","already-safe","safe-next","defer",
-            "already-safe","already-safe","safe-next","defer",
-            "already-safe","already-safe","safe-next","defer",
-            "already-safe","already-safe","safe-next","defer",
-            "already-safe","already-safe","safe-next","defer",
-            "already-safe","already-safe","safe-next","defer"
+            "already-safe", "already-safe", "safe-next", "defer",
+            "already-safe", "already-safe", "safe-next", "defer",
+            "already-safe", "already-safe", "safe-next", "defer",
+            "already-safe", "already-safe", "safe-next", "defer",
+            "already-safe", "already-safe", "safe-next", "defer",
+            "already-safe", "already-safe", "safe-next", "defer",
+            "already-safe", "already-safe", "safe-next", "defer",
+            "already-safe", "already-safe", "safe-next", "defer",
+            "already-safe", "already-safe", "safe-next", "defer"
         ]
     }
 }
@@ -238,10 +238,10 @@ fn M36SlotReadinessTableFrom() -> M36SlotReadinessTable {
             "overflow-flag + spill-list:{9,10}",
             "coalesced-mask:0b0101"
         ]
-        ReadySlotSet: ["{0}","{1,2}","{2}","{}","{}","{1}","{2,7,11}","{0..7}","{0,2}"]
-        FailedSlotSet: ["{}","{}","{0}","{1}","{}","{}","{}","{}","{}"]
-        SchedulerAttentionSlots: ["{0}","{1,2}","{0,2}","{1}","{}","{}","{2,7,11}","{spill-list}","{0,2}"]
-        PollingWorkAvoided: [1,0,1,1,2,2,13,6,2]
+        ReadySlotSet: ["{0}", "{1,2}", "{2}", "{}", "{}", "{1}", "{2,7,11}", "{0..7}", "{0,2}"]
+        FailedSlotSet: ["{}", "{}", "{0}", "{1}", "{}", "{}", "{}", "{}", "{}"]
+        SchedulerAttentionSlots: ["{0}", "{1,2}", "{0,2}", "{1}", "{}", "{}", "{2,7,11}", "{spill-list}", "{0,2}"]
+        PollingWorkAvoided: [1, 0, 1, 1, 2, 2, 13, 6, 2]
         MissedReadinessHazard: [
             "if ready transition not marked slot can starve",
             "if one bit dropped scheduler underutilizes available work",

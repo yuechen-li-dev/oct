@@ -36,7 +36,7 @@ fn ThermalNoiseSeriesGeneralizesShapeAndElementwiseBehavior() -> Void {
     var bandwidth: Float<Hz>[] = [1000000.0Hz]
     var temperature: Float<K>[] = [290.0K]
     var figure = [2.0]
-    for _ in 1 .. 10 {
+    for _ in 1..10 {
         bandwidth = Append(bandwidth, 1000000.0Hz)
         temperature = Append(temperature, 290.0K)
         figure = Append(figure, 2.0)

@@ -39,7 +39,7 @@ fn FFTWithDirection(valuesIn: Complex[], inverse: Bool) -> Complex[] ! Error {
     let n = Len(valuesIn)
     var values = CopyComplexArray(valuesIn)
 
-    for i in 0 .. n {
+    for i in 0..n {
         let j = ReverseBits(i, n)
         if j > i {
             let tmp = values[i]
@@ -60,7 +60,7 @@ fn FFTWithDirection(valuesIn: Complex[], inverse: Bool) -> Complex[] ! Error {
 
         var blockStart = 0
         while blockStart < n {
-            for j in 0 .. halfSpan {
+            for j in 0..halfSpan {
                 let angle = phaseStep * j
                 let twiddle = Complex(Cos(angle), Sin(angle))
 
@@ -82,7 +82,7 @@ fn FFTWithDirection(valuesIn: Complex[], inverse: Bool) -> Complex[] ! Error {
     if inverse {
         let scale = 1.0 / n
 
-        for k in 0 .. n {
+        for k in 0..n {
             values[k] = values[k] * scale
         }
     }
@@ -145,7 +145,7 @@ fn ReverseBits(index: Int, width: Int) -> Int {
 fn CopyComplexArray(values: Complex[]) -> Complex[] {
     var out = [values[0]]
 
-    for i in 1 .. Len(values) {
+    for i in 1..Len(values) {
         out = Append(out, values[i])
     }
 

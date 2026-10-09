@@ -26,7 +26,7 @@ fn M49HybridStabilizesWipAndFlow() -> Void {
 [Fact]
 fn M49HybridNeverWorseThanFeedforwardNominal() -> Void {
     let shapes = M49AllShapes()
-    for i in 0 .. Len(shapes) {
+    for i in 0..Len(shapes) {
         let ff = M49Evaluate(M49Approach.FeedforwardOnly, shapes[i], M49Scenario.NominalBand)
         let hybrid = M49Evaluate(M49Approach.Hybrid, shapes[i], M49Scenario.NominalBand)
         Assert.True(hybrid.ProductScore >= ff.ProductScore, "hybrid must not be worse than feedforward-only in nominal case")

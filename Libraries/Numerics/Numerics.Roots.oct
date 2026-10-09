@@ -253,14 +253,14 @@ fn BrentRoot(
     }
 
     if fa == 0.0 {
-        return RootResult { Root: a  Value: fa  Iterations: 0  Converged: true }
+        return RootResult { Root: a Value: fa Iterations: 0 Converged: true }
     }
     if fb == 0.0 {
-        return RootResult { Root: b  Value: fb  Iterations: 0  Converged: true }
+        return RootResult { Root: b Value: fb Iterations: 0 Converged: true }
     }
 
-    var lo  = a
-    var hi  = b
+    var lo = a
+    var hi = b
     var flo = fa
     var fhi = fb
 

@@ -6,7 +6,7 @@ fn RunTrial(seed: Int) -> Int ! Error {
     }
 
     var score = seed * 3 + 5
-    for i in 0 .. 4 {
+    for i in 0..4 {
         score = score + seed + i
     }
     return score

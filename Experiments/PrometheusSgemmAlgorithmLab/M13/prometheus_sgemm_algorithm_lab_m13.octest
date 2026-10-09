@@ -24,7 +24,7 @@ fn M13Summaries() -> M13RegimeSummary[] {
         BestWaste: 0
     }]
 
-    for i in 0 .. Len(regimes) {
+    for i in 0..Len(regimes) {
         let regime = regimes[i]
         let none = EvaluateM13Case(regime, M13PredictorNoPrediction(), 16, 2, 2)
         let fixed = EvaluateM13Case(regime, M13PredictorFixedHeuristic(), 16, 2, 2)

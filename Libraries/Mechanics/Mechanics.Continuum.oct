@@ -99,7 +99,7 @@ fn LeftCauchyGreen2D(F: Matrix<Float>) -> Matrix<Float> {
 /// Reduces to the small-strain tensor eps when displacements are small.
 /// Measures stretch relative to the reference configuration.
 fn GreenLagrangeStrain2D(F: Matrix<Float>) -> Matrix<Float> {
-    let C    = RightCauchyGreen2D(F)
+    let C = RightCauchyGreen2D(F)
     let half = 0.5
     return matrix[[
         half * (C[0, 0] - 1.0),
@@ -134,12 +134,12 @@ fn SecondInvariantI2(T: Matrix<Float>) -> Float {
 /// sigma_vm = sqrt(3/2 * s_ij * s_ij) where the double contraction
 /// includes the out-of-plane term.
 fn VonMisesStress2D(sigma: Matrix<Float>) -> Float {
-    let p   = Trace(sigma) / 3.0
+    let p = Trace(sigma) / 3.0
     let sxx = sigma[0, 0] - p
     let syy = sigma[1, 1] - p
     let sxy = sigma[0, 1]
     let szz = 0.0 - sxx - syy
-    let contraction = sxx*sxx + syy*syy + szz*szz + 2.0*sxy*sxy
+    let contraction = sxx * sxx + syy * syy + szz * szz + 2.0 * sxy * sxy
     return Sqrt(1.5 * contraction)
 }
 
@@ -151,7 +151,7 @@ fn VonMisesStress2D(sigma: Matrix<Float>) -> Float {
 /// sigma = lambda * tr(eps) * I + 2 * mu * eps
 /// Valid for both plane strain (full lambda) and plane stress (effective lambda*).
 fn LinearIsotropicStress2D(strain: Matrix<Float>, lambda: Float, mu: Float) -> Matrix<Float> {
-    let vol      = FirstInvariantI1(strain)
+    let vol = FirstInvariantI1(strain)
     let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
     return (lambda * vol) * identity + (2.0 * mu) * strain
 }
@@ -171,13 +171,13 @@ fn LinearIsotropicStressPlaneStress2D(strain: Matrix<Float>, lambda: Float, mu: 
 /// Plane strain constitutive relation from Young's modulus and Poisson's ratio.
 fn LinearIsotropicStressPlaneStrain2DFromYoungPoisson(strain: Matrix<Float>, E: Float, nu: Float) -> Matrix<Float> {
     let lambda = LameLambdaFromYoungPoisson(E, nu)
-    let mu     = MuFromYoungPoisson(E, nu)
+    let mu = MuFromYoungPoisson(E, nu)
     return LinearIsotropicStressPlaneStrain2D(strain, lambda, mu)
 }
 
 /// Plane stress constitutive relation from Young's modulus and Poisson's ratio.
 fn LinearIsotropicStressPlaneStress2DFromYoungPoisson(strain: Matrix<Float>, E: Float, nu: Float) -> Matrix<Float> {
     let lambda = LameLambdaFromYoungPoisson(E, nu)
-    let mu     = MuFromYoungPoisson(E, nu)
+    let mu = MuFromYoungPoisson(E, nu)
     return LinearIsotropicStressPlaneStress2D(strain, lambda, mu)
 }

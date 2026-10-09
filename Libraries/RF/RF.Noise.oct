@@ -35,7 +35,7 @@ fn ThermalNoisePowerSeries(bandwidthHz: Float<Hz>[], temperatureKelvin: Float<K>
     }
 
     var out = [ThermalNoisePower(bandwidthHz[0], temperatureKelvin[0])]
-    for i in 1 .. Len(bandwidthHz) {
+    for i in 1..Len(bandwidthHz) {
         out = Append(out, ThermalNoisePower(bandwidthHz[i], temperatureKelvin[i]))
     }
     return out
@@ -65,7 +65,7 @@ fn ThermalNoisePowerWithNoiseFigureSeries(bandwidthHz: Float<Hz>[], temperatureK
     }
 
     var out = [ThermalNoisePowerWithNoiseFigure(bandwidthHz[0], temperatureKelvin[0], noiseFigureLinear[0])]
-    for i in 1 .. Len(bandwidthHz) {
+    for i in 1..Len(bandwidthHz) {
         out = Append(out, ThermalNoisePowerWithNoiseFigure(bandwidthHz[i], temperatureKelvin[i], noiseFigureLinear[i]))
     }
     return out

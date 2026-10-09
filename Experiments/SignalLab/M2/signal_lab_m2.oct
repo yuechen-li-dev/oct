@@ -188,7 +188,7 @@ fn View(model: SignalState) -> UI {
             Text("SignalLab M2"),
             Text("Signal: " + SignalLabel(model.SelectedSignal)),
             Text("Running: " + RunningLabel(model.Running)),
-            Text("Samples in buffer" )
+            Text("Samples in buffer")
         ])),
         Place(AnchoredBox(0.01, ControlsTop, ControlsRight, ControlsBottom), Column([
             Text("Control Panel"),

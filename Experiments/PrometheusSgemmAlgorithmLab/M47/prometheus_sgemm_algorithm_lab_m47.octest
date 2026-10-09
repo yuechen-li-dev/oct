@@ -2,7 +2,7 @@ package PrometheusSgemmAlgorithmLab
 
 fn M47ResultFor(results: M47StrategyResult[], strategy: M47CandidateStrategy) -> M47StrategyResult {
     var out = results[0]
-    for i in 0 .. Len(results) {
+    for i in 0..Len(results) {
         if results[i].Strategy == strategy {
             out = results[i]
         }
@@ -86,7 +86,7 @@ fn M47RecommendationIsComputedFromScores() -> Void {
     var topScore = -100000
     var topStrategy = M47CandidateStrategy.NoVariantYet
 
-    for i in 0 .. Len(results) {
+    for i in 0..Len(results) {
         if results[i].FinalRecommendation {
             recommendedCount = recommendedCount + 1
         }

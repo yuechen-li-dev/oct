@@ -14,11 +14,11 @@ record MetricsRow {
 fn ArtifactWritesWithoutLetBinding() -> Void {
     let root = "out/test-artifacts/library_artifact"
     Artifact.WriteText(IO.JoinPath([root, "text.txt"]), "hello")
-    Artifact.WriteLines(IO.JoinPath([root, "lines.txt"]),["alpha", "beta"])
-    Artifact.WriteMarkdown(IO.JoinPath([root, "report.md"]),["# Report", "ok"])
-    Artifact.WriteCsv(IO.JoinPath([root, "metrics.csv"]),[["name", "score"],["ada", "42"]])
-    Artifact.WriteJson(IO.JoinPath([root, "metrics.json"]), MetricsRow {Name: "ada" Score: "42"})
-    Artifact.WriteOctagon(IO.JoinPath([root, "snapshot.octagon"]), MetricsRow {Name: "ada" Score: "42"})
+    Artifact.WriteLines(IO.JoinPath([root, "lines.txt"]), ["alpha", "beta"])
+    Artifact.WriteMarkdown(IO.JoinPath([root, "report.md"]), ["# Report", "ok"])
+    Artifact.WriteCsv(IO.JoinPath([root, "metrics.csv"]), [["name", "score"], ["ada", "42"]])
+    Artifact.WriteJson(IO.JoinPath([root, "metrics.json"]), MetricsRow { Name: "ada" Score: "42" })
+    Artifact.WriteOctagon(IO.JoinPath([root, "snapshot.octagon"]), MetricsRow { Name: "ada" Score: "42" })
 }
 
 [Fact]
@@ -27,14 +27,14 @@ fn CsvAndJsonWriteTheSameTextEveryTime() -> Void {
     let csvPath = IO.JoinPath([root, "compact.csv"])
     let jsonPath = IO.JoinPath([root, "compact.json"])
 
-    Csv.Write(csvPath,[["a", "b"],["1", "2"]]) !
-    Json.Save(jsonPath, MetricsRow {Name: "ada" Score: "42"}) !
+    Csv.Write(csvPath, [["a", "b"], ["1", "2"]])!
+    Json.Save(jsonPath, MetricsRow { Name: "ada" Score: "42" })!
 
-    let csvText = IO.ReadText(csvPath) !
-    let jsonText = IO.ReadText(jsonPath) !
+    let csvText = IO.ReadText(csvPath)!
+    let jsonText = IO.ReadText(jsonPath)!
     Assert.Equal("a,b\n1,2\n", csvText, "csv writes compact deterministic output")
     Assert.Equal("{\n  \"Name\": \"ada\",\n  \"Score\": \"42\"\n}\n", jsonText, "json writes a record in one layout")
-    let _rm = IO.RemoveAll(root) !
+    let _rm = IO.RemoveAll(root)!
 }
 
 [Fact]

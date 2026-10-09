@@ -7,7 +7,7 @@ concept ColorChannel = Int {
 
 concept ChannelAlias = ColorChannel
 
-concept NonNegativeLength = Float < m > {
+concept NonNegativeLength = Float<m> {
     Require(Self >= 0.0m, "length must be non-negative")
 }
 
@@ -24,7 +24,7 @@ fn AsInt(value: Int) -> Int {
 }
 
 fn Admit(value: Int) -> ColorChannel ! Error {
-    return ColorChannel(value) ?
+    return ColorChannel(value)?
 }
 
 fn InvalidRuntimeChannel() -> Int {
@@ -40,8 +40,8 @@ fn KnownValuesPreserveProofWithoutChecks() -> Void {
     let low: ColorChannel = 0
     let high: ChannelAlias = 250 + 5
     let copied = Same(high)
-    let pixel = Pixel {Channel: copied}
-    let channels: ColorChannel[] =[low, 255]
+    let pixel = Pixel { Channel: copied }
+    let channels: ColorChannel[] = [low, 255]
     let indexed = channels[1]
     let computed = indexed + 1
     let length: NonNegativeLength = 2.5m
@@ -54,12 +54,12 @@ fn KnownValuesPreserveProofWithoutChecks() -> Void {
 
 [Fact]
 fn CheckedConstructionSupportsQuestionBangAndMatch() -> Void ! Error {
-    let viaQuestion = Admit(42) ?
-    let viaBang = ColorChannel(RuntimeChannel(7)) !
+    let viaQuestion = Admit(42)?
+    let viaBang = ColorChannel(RuntimeChannel(7))!
     var matched = 0
     match ColorChannel(RuntimeChannel(9)) {
-        ok(value) -> {matched = AsInt(value)}
-        err(problem) -> {matched = - 1}
+        ok(value) -> { matched = AsInt(value) }
+        err(problem) -> { matched = -1 }
     }
     Assert.True(viaQuestion == 42, "question propagation admits once")
     Assert.True(viaBang == 7, "unwrap admits once")

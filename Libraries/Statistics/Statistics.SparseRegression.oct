@@ -43,17 +43,17 @@ fn SequentialThresholdedLeastSquares(theta: Float[], nSamples: Int, nFeatures: I
     }
 
     var active = [true]
-    for k in 1 .. nFeatures { active = Append(active, true) }
+    for k in 1..nFeatures { active = Append(active, true) }
 
     var coeffs = [0.0]
-    for k in 1 .. nFeatures { coeffs = Append(coeffs, 0.0) }
+    for k in 1..nFeatures { coeffs = Append(coeffs, 0.0) }
 
     var iter = 0
     var changed = true
     while iter < maxIter and changed {
         var activeIdx = [0]
         var first = true
-        for j in 0 .. nFeatures {
+        for j in 0..nFeatures {
             if active[j] {
                 if first {
                     activeIdx = [j]
@@ -69,9 +69,9 @@ fn SequentialThresholdedLeastSquares(theta: Float[], nSamples: Int, nFeatures: I
         }
         if nActive > 0 {
             var thetaR = [0.0]
-            for k in 1 .. nSamples * nActive { thetaR = Append(thetaR, 0.0) }
-            for i in 0 .. nSamples {
-                for jj in 0 .. nActive {
+            for k in 1..nSamples * nActive { thetaR = Append(thetaR, 0.0) }
+            for i in 0..nSamples {
+                for jj in 0..nActive {
                     thetaR[i * nActive + jj] = theta[i * nFeatures + activeIdx[jj]]
                 }
             }
@@ -82,15 +82,15 @@ fn SequentialThresholdedLeastSquares(theta: Float[], nSamples: Int, nFeatures: I
             let cReduced = LinearAlgebra.SolveLinearSystem(AtA, nActive, nActive, Atb)?
 
             var newCoeffs = [0.0]
-            for k in 1 .. nFeatures { newCoeffs = Append(newCoeffs, 0.0) }
-            for jj in 0 .. nActive {
+            for k in 1..nFeatures { newCoeffs = Append(newCoeffs, 0.0) }
+            for jj in 0..nActive {
                 newCoeffs[activeIdx[jj]] = cReduced[jj]
             }
 
             var newActive = [false]
-            for k in 1 .. nFeatures { newActive = Append(newActive, false) }
+            for k in 1..nFeatures { newActive = Append(newActive, false) }
             var anyChange = false
-            for j in 0 .. nFeatures {
+            for j in 0..nFeatures {
                 let keep = Abs(newCoeffs[j]) >= threshold
                 if keep {
                     newActive[j] = true
@@ -120,7 +120,7 @@ fn PredictSparseRegressionRow(coefficients: Float[], featureRow: Float[]) -> Flo
         return error("PredictSparseRegressionRow: coefficients and featureRow must be the same length")
     }
     var sum = 0.0
-    for j in 0 .. Len(coefficients) {
+    for j in 0..Len(coefficients) {
         sum = sum + coefficients[j] * featureRow[j]
     }
     return sum

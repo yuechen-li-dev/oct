@@ -4,10 +4,10 @@ fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
-    for i in 0 .. A.rows {
-        for j in 0 .. B.cols {
+    for i in 0..A.rows {
+        for j in 0..B.cols {
             var sum = 0.0
-            for k in 0 .. A.cols {
+            for k in 0..A.cols {
                 sum = sum + A[i, k] * B[k, j]
             }
             out[i, j] = sum
@@ -21,10 +21,10 @@ fn MatMul_IKJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
-    for i in 0 .. A.rows {
-        for k in 0 .. A.cols {
+    for i in 0..A.rows {
+        for k in 0..A.cols {
             let aValue = A[i, k]
-            for j in 0 .. B.cols {
+            for j in 0..B.cols {
                 out[i, j] = out[i, j] + aValue * B[k, j]
             }
         }
@@ -37,10 +37,10 @@ fn MatMul_KIJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
-    for k in 0 .. A.cols {
-        for i in 0 .. A.rows {
+    for k in 0..A.cols {
+        for i in 0..A.rows {
             let aValue = A[i, k]
-            for j in 0 .. B.cols {
+            for j in 0..B.cols {
                 out[i, j] = out[i, j] + aValue * B[k, j]
             }
         }
@@ -55,18 +55,18 @@ fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
-    for iBlockIndex in 0 .. A.rows {
+    for iBlockIndex in 0..A.rows {
         let iBlock = iBlockIndex * blockSize
         if iBlock < A.rows {
             let iEnd = MinInt(iBlock + blockSize, A.rows)
-            for jBlockIndex in 0 .. B.cols {
+            for jBlockIndex in 0..B.cols {
                 let jBlock = jBlockIndex * blockSize
                 if jBlock < B.cols {
                     let jEnd = MinInt(jBlock + blockSize, B.cols)
-                    for i in iBlock .. iEnd {
-                        for j in jBlock .. jEnd {
+                    for i in iBlock..iEnd {
+                        for j in jBlock..jEnd {
                             var sum = 0.0
-                            for k in 0 .. A.cols {
+                            for k in 0..A.cols {
                                 sum = sum + A[i, k] * B[k, j]
                             }
                             out[i, j] = sum
@@ -86,18 +86,18 @@ fn MatMul_Blocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Mat
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
-    for iBlockIndex in 0 .. A.rows {
+    for iBlockIndex in 0..A.rows {
         let iBlock = iBlockIndex * blockSize
         if iBlock < A.rows {
             let iEnd = MinInt(iBlock + blockSize, A.rows)
-            for jBlockIndex in 0 .. B.cols {
+            for jBlockIndex in 0..B.cols {
                 let jBlock = jBlockIndex * blockSize
                 if jBlock < B.cols {
                     let jEnd = MinInt(jBlock + blockSize, B.cols)
-                    for i in iBlock .. iEnd {
-                        for k in 0 .. A.cols {
+                    for i in iBlock..iEnd {
+                        for k in 0..A.cols {
                             let aValue = A[i, k]
-                            for j in jBlock .. jEnd {
+                            for j in jBlock..jEnd {
                                 out[i, j] = out[i, j] + aValue * B[k, j]
                             }
                         }
