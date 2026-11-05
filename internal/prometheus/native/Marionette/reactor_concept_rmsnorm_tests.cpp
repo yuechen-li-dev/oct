@@ -143,7 +143,7 @@ FACT(PrometheusConceptRmsNorm_SharedDeviceWeightPublicationAndReuse)
     std::fprintf(stderr, "Concept RMSNorm worst absolute error=%g\n", worst);
 }
 
-FACT(PrometheusConceptRmsNorm_ResidentRopeFeedsLegacyAttention)
+FACT(PrometheusConceptRmsNorm_ResidentRopeFeedsConceptAttention)
 {
     const int buffers = ConceptVkTestLiveBuffers();
     void* owner{};
@@ -183,19 +183,113 @@ FACT(PrometheusConceptRmsNorm_ResidentRopeFeedsLegacyAttention)
         PrometheusGemma4E2BM1AttentionScoresResult result{};
         const int status = prometheus_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result);
         if (status != PROM_OK) std::fprintf(stderr, "resident chain order=%u detail=%d stage=%u\n", order, result.detail_code, result.stage);
-        ASSERT_EQUAL(PROM_OK, status, "resident Concept Q/K feed legacy attention in either preparation order");
+        ASSERT_EQUAL(PROM_OK, status, "resident Concept Q/K feed Concept attention in either preparation order");
         ASSERT_TRUE(max_error(expected, scores) < 1e-3, "scores match independent CPU chain");
         ASSERT_EQUAL(0u, result.host_detour_count, "Q/K have no host detour");
         ASSERT_EQUAL(1u, result.score_readback_count, "only scores are read back");
+        ASSERT_TRUE(prom_reactor_runtime_reduction_state(owner) == nullptr, "the entire normalization/RoPE/score chain avoids legacy model state");
+        ASSERT_EQUAL(1u, result.pipeline_create_count, "one lazy score pipeline persists across calls");
+        if (order != 0) {
+            ASSERT_EQUAL(0u, result.buffer_allocation_count, "warm score execution allocates no buffers");
+            ASSERT_TRUE(result.buffer_reuse_count > 0, "warm score storage is reused");
+        }
         ASSERT_TRUE(result.query_slot_id != result.key_slot_id && result.query_slot_id != result.score_slot_id && result.key_slot_id != result.score_slot_id, "independent physical owners have distinct diagnostic IDs");
         prom_device_buffer_view consumed{};
         ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_concept_norm_resident(owner, 8, &consumed), "successful attention consumes resident authority");
     }
     prom_vk_runtime_services services{}; prom_reactor_runtime_get_vk_services(owner, &services);
     ASSERT_EQUAL(0u, services.validation_error_count, "resident producer/consumer chain is validation clean");
-    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(owner), "resident owner drains both allocators");
+    float a = 2, b = 3, c{}; uint32_t stage{}; int detail{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(owner, &a, &b, &c, 1, 1, 1, &stage, &detail), "legacy SGEMM coexists with Concept scores");
+    ASSERT_EQUAL(6.0f, c, "SGEMM remains correct after resident attention");
+    std::vector<float> values(2048, 1), sum(1);
+    PrometheusReductionRequest reduction{}; reduction.struct_size = sizeof reduction;
+    reduction.input = values.data(); reduction.output = sum.data(); reduction.input_element_count = values.size(); reduction.output_element_count = sum.size();
+    reduction.row_count = 1; reduction.elements_per_row = 2048; reduction.operation = PROM_REDUCTION_OPERATION_SUM;
+    PrometheusReductionExecutionResult reduced{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction(owner, &reduction, &reduced), "Concept reductions coexist with Concept scores");
+    ASSERT_EQUAL(2048.0f, sum[0], "reduction remains correct after resident attention");
+    ASSERT_TRUE(prom_reactor_runtime_reduction_state(owner) == nullptr, "adjacent operations do not initialize legacy model state");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(owner), "resident owner drains both Concept attachments");
     ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "resident outputs do not outlive owner");
     std::fprintf(stderr, "Concept RMSNorm resident attention max error=%g\n", max_error(expected, scores));
+}
+
+FACT(PrometheusConceptAttention_FailuresRetainInputsAndRetireBeforeReuse)
+{
+    const int buffers = ConceptVkTestLiveBuffers(), pipelines = ConceptVkTestLivePipelines(), contexts = ConceptVkTestLiveContexts();
+    void* owner{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &owner), "score failure owner creates");
+    if (!owner) return;
+    std::vector<float> q(15 * 8 * 256, 1), k(15 * 256, 1), weight(256, 1), cosine(15 * 256, 1), sine(15 * 256, 0), scores(1800, -99);
+    PrometheusGemma4E2BM1AttentionScoresRequest request{}; request.struct_size = sizeof request;
+    request.tokens = 15; request.query_heads = 8; request.key_heads = 1; request.head_width = 256; request.scale = 0.0625f;
+    request.scores = scores.data(); request.score_element_count = scores.size();
+    PrometheusGemma4E2BM1AttentionScoresResult result{};
+    ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result), "scores require completed resident producers");
+    ASSERT_EQUAL(PROM_M46_DETAIL_STALE_WEIGHT_GENERATION, result.detail_code, "missing resident authority has an explicit reason");
+    ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "missing producers do not attach another executor");
+    ++request.score_element_count;
+    ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result), "malformed score extent is rejected");
+    ASSERT_EQUAL(PROM_M46_DETAIL_INVALID_REQUEST, result.detail_code, "malformed packet is diagnosed before GPU work");
+    --request.score_element_count;
+    uint64_t generation{};
+    const auto prepare = [&](unsigned heads) {
+        PrometheusGemma4E2BM1HeadRmsNormRopeRequest r{}; r.struct_size = sizeof r;
+        r.input = heads == 8 ? q.data() : k.data(); r.input_element_count = heads == 8 ? q.size() : k.size();
+        r.weight = weight.data(); r.weight_element_count = weight.size(); r.cosine = cosine.data(); r.sine = sine.data();
+        r.cosine_element_count = cosine.size(); r.sine_element_count = sine.size();
+        r.tokens = 15; r.heads = heads; r.head_width = 256; r.epsilon = 1e-6f;
+        r.input_generation = 1; r.weight_generation = ++generation; r.table_generation = 1; r.exact_source_hash = heads;
+        PrometheusGemma4E2BM1HeadRmsNormRopeResult out{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(owner, &r, &out), "resident producer executes without readback");
+    };
+    prepare(8); prepare(1);
+    std::vector<float> positionalInput(q.size(), 3), positionalOutput(q.size());
+    PrometheusGemma4E2BM1RopeRequest positionalRequest{}; positionalRequest.struct_size = sizeof positionalRequest;
+    positionalRequest.source = positionalInput.data(); positionalRequest.cosine = cosine.data(); positionalRequest.sine = sine.data(); positionalRequest.output = positionalOutput.data();
+    positionalRequest.source_element_count = positionalInput.size(); positionalRequest.output_element_count = positionalOutput.size();
+    positionalRequest.cosine_element_count = cosine.size(); positionalRequest.sine_element_count = sine.size();
+    positionalRequest.tokens = 15; positionalRequest.heads = 8; positionalRequest.head_width = 256; positionalRequest.source_generation = 1; positionalRequest.table_generation = 1;
+    PrometheusGemma4E2BM1RopeResult positionalResult{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &positionalRequest, &positionalResult), "standalone RoPE can run while Q/K are resident");
+    ASSERT_TRUE(std::all_of(positionalOutput.begin(), positionalOutput.end(), [](float value) { return value == 3; }), "standalone output uses its own input");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_test_score_flags(owner, 7), "arm one-shot record, submit and observation failures");
+    for (const int detail : {PROM_M46_DETAIL_COMMAND, PROM_M46_DETAIL_SUBMIT, PROM_M46_DETAIL_COMPLETION_UNCERTAIN}) {
+        ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result), "score failures are explicit");
+        ASSERT_EQUAL(detail, result.detail_code, "failure reason survives the native boundary");
+        ASSERT_EQUAL(0u, result.score_written, "a failed call never claims fresh output");
+        ASSERT_TRUE(std::all_of(scores.begin(), scores.end(), [](float value) { return value == -99; }), "failed or uncertain work leaves output untouched");
+        prom_device_buffer_view retained{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_resident(owner, 8, &retained), "failure retains resident Q for retry");
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_resident(owner, 1, &retained), "failure retains resident K for retry");
+    }
+    ASSERT_TRUE(ConceptVkTestPendingSubmissions() > 0, "uncertain score work remains owned");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result), "retry drains prior score work and reuses Q/K");
+    ASSERT_TRUE(std::all_of(scores.begin(), scores.end(), [](float value) { return value == 16; }), "recovery produces the independent constant-vector dot product");
+    ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "retry retires both submitted fences");
+    ASSERT_EQUAL(0u, result.buffer_allocation_count, "retry reuses score storage");
+    ASSERT_EQUAL(1u, result.pipeline_create_count, "failures never duplicate the score pipeline");
+    ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result), "successful readback consumes resident authority");
+    prepare(8); prepare(1);
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_test_score_flags(owner, 4), "arm producer-reuse uncertainty");
+    ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result), "score submission remains pending");
+    float a = 2, b = 3, c{}; uint32_t stage{}; int detail{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(owner, &a, &b, &c, 1, 1, 1, &stage, &detail), "SGEMM coexists while Concept retains an uncertain score submission");
+    ASSERT_EQUAL(6.0f, c, "legacy SGEMM output is correct");
+    prepare(8);
+    ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "producer reuse observes score completion before overwriting Q");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_test_score_flags(owner, 4), "arm direct-detach uncertainty");
+    ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result), "detach has a real retained score submission");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_detach(owner), "detach drains score work before Q/K and output destruction");
+    ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "detach retires retained work");
+    ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "detach releases every score and producer allocation");
+    ASSERT_EQUAL(pipelines, ConceptVkTestLivePipelines(), "detach releases the lazy score pipeline");
+    ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "detach releases the shared borrowed context");
+    ASSERT_TRUE(prom_reactor_runtime_reduction_state(owner) == nullptr, "no legacy model executor is created along any score path");
+    prom_vk_runtime_services services{}; prom_reactor_runtime_get_vk_services(owner, &services);
+    ASSERT_EQUAL(0u, services.validation_error_count, "score failure/recovery/lifetime paths are validation clean");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(owner), "original device owner remains independently destroyable");
 }
 
 FACT(PrometheusConceptRmsNorm_UncertainCompletionRetainsAndDrains)
@@ -230,4 +324,78 @@ FACT(PrometheusConceptRmsNorm_UncertainCompletionRetainsAndDrains)
     ASSERT_EQUAL(6.0f, c, "legacy output is correct");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(owner), "owner destroys independently");
     ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "no retained allocations after destruction");
+}
+
+FACT(PrometheusConceptRope_StandaloneOracleReuseFailuresAndDetach)
+{
+    const int buffers = ConceptVkTestLiveBuffers(), pipelines = ConceptVkTestLivePipelines(), contexts = ConceptVkTestLiveContexts();
+    void* owner{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &owner), "standalone owner creates");
+    if (!owner) return;
+    prom_vk_runtime_services original{}; prom_reactor_runtime_get_vk_services(owner, &original);
+    std::vector<float> cosine(3840), sine(3840);
+    for (size_t i = 0; i < cosine.size(); ++i) {
+        cosine[i] = bf16(0.5f + float(i % 17) / 53); sine[i] = bf16(float(int(i % 13) - 6) / 31);
+    }
+    PrometheusGemma4E2BM1RopeRequest request{}; request.struct_size = sizeof request;
+    request.cosine = cosine.data(); request.sine = sine.data(); request.cosine_element_count = cosine.size(); request.sine_element_count = sine.size();
+    request.tokens = 15; request.head_width = 256; request.source_generation = 1; request.table_generation = 1;
+    std::vector<float> input, output, expected;
+    uint64_t lastHash{};
+    for (unsigned heads : {1u, 8u, 1u}) {
+        input.resize(15 * heads * 256); output.assign(input.size(), -99); expected.resize(input.size());
+        for (size_t i = 0; i < input.size(); ++i) input[i] = bf16(float(int((i * 17) % 83) - 41) / 79);
+        for (size_t i = 0; i < input.size(); ++i) {
+            const size_t component = i % 256, pair = component < 128 ? i + 128 : i - 128;
+            const size_t table = (i / (heads * 256)) * 256 + component % 128;
+            const float a = bf16(input[i] * cosine[table]), b = bf16(input[pair] * sine[table]);
+            expected[i] = bf16(component < 128 ? a - b : a + b);
+        }
+        request.source = input.data(); request.output = output.data(); request.heads = heads;
+        request.source_element_count = input.size(); request.output_element_count = output.size();
+        PrometheusGemma4E2BM1RopeResult result{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &request, &result), "standalone positional encoding executes");
+        ASSERT_EQUAL(0.0, max_error(expected, output), "BF16 half-pair products and sum match independent CPU oracle exactly");
+        ASSERT_EQUAL(1u, result.dispatch_count, "one positional dispatch");
+        ASSERT_TRUE(prom_reactor_runtime_reduction_state(owner) == nullptr, "standalone path never creates legacy model state");
+        PrometheusGemma4E2BM1RopeResult repeated{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &request, &repeated), "warm positional call executes");
+        ASSERT_EQUAL(result.output_hash, repeated.output_hash, "warm output hash is stable");
+        ASSERT_EQUAL(0u, repeated.buffer_allocation_count, "warm positional call allocates no buffers");
+        ASSERT_EQUAL(1u, repeated.pipeline_create_count, "existing positional pipeline is reused");
+        if (heads == 1u && lastHash) ASSERT_EQUAL(lastHash, result.output_hash, "shrinking capacity cannot publish stale tail data");
+        if (heads == 1u) lastHash = result.output_hash;
+    }
+    std::fill(output.begin(), output.end(), -99);
+    PrometheusGemma4E2BM1RopeResult result{};
+    auto malformed = request; malformed.output = const_cast<float*>(request.source);
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &malformed, &result), "in-place source alias is rejected");
+    malformed = request; --malformed.sine_element_count;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &malformed, &result), "short table is rejected");
+    const float saved = sine[0]; sine[0] = std::numeric_limits<float>::infinity();
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &request, &result), "nonfinite table is rejected before recording");
+    ASSERT_EQUAL(PROM_M46_DETAIL_NONFINITE_INPUT, result.detail_code, "nonfinite boundary is diagnosed"); sine[0] = saved;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_test_rope_flags(owner, 7), "arm one-shot positional failures");
+    for (int detail : {PROM_M46_DETAIL_COMMAND, PROM_M46_DETAIL_SUBMIT, PROM_M46_DETAIL_COMPLETION_UNCERTAIN}) {
+        ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &request, &result), "positional failure is surfaced");
+        ASSERT_EQUAL(detail, result.detail_code, "failure reason survives public boundary");
+        ASSERT_EQUAL(0u, result.output_written, "failed work never claims fresh output");
+        ASSERT_TRUE(std::all_of(output.begin(), output.end(), [](float value) { return value == -99; }), "failed work leaves output untouched");
+    }
+    ASSERT_TRUE(ConceptVkTestPendingSubmissions() > 0, "uncertain positional work remains owned");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &request, &result), "retry drains prior work before input overwrite");
+    ASSERT_EQUAL(0.0, max_error(expected, output), "retry remains numerically correct");
+    ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "retry retires fences");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_test_rope_flags(owner, 4), "arm direct teardown of uncertain positional work");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &request, &result), "detach has a real pending submission");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_detach(owner), "detach drains before positional buffer destruction");
+    ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "positional detach balances buffers");
+    ASSERT_EQUAL(pipelines, ConceptVkTestLivePipelines(), "positional detach balances pipelines");
+    ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "positional detach balances contexts");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_gemma4e2b_m1_rope(owner, &request, &result), "original device admits a fresh positional attachment");
+    prom_vk_runtime_services after{}; prom_reactor_runtime_get_vk_services(owner, &after);
+    ASSERT_TRUE(original.device == after.device && original.compute_queue == after.compute_queue, "device/queue identity survives positional detach");
+    ASSERT_EQUAL(0u, after.validation_error_count, "positional failure and lifetime paths are validation clean");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(owner), "owner automatically retires fresh positional attachment");
+    ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "automatic destruction balances positional buffers");
 }

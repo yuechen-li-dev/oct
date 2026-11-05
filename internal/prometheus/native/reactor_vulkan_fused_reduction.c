@@ -271,9 +271,6 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
     prom_vk_destroy_buffer(device, &slot->m47_up);
     prom_vk_destroy_buffer(device, &slot->m47_gate);
     prom_vk_destroy_buffer(device, &slot->m47_n_packed);
-    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_readback);
-    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_rope_input);
-    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_output);
     prom_vk_destroy_buffer(device, &slot->m45_x_readback);
     prom_vk_destroy_buffer(device, &slot->m45_output);
     prom_vk_destroy_buffer(device, &slot->m44_readback);
@@ -311,8 +308,6 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
   for (pipeline_index = 0u; pipeline_index < PROM_M42_PIPELINE_COUNT; ++pipeline_index) {
     prom_reduction_destroy_pipeline(device, &state->m42_pipelines[pipeline_index]);
   }
-  prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_rope_pipeline);
-  prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_attention_scores_pipeline);
   for (pipeline_index = 0u; pipeline_index < PROM_M47_PIPELINE_COUNT; ++pipeline_index) {
     prom_reduction_destroy_pipeline(device, &state->m47_pipelines[pipeline_index]);
   }
@@ -322,10 +317,6 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
   for (pipeline_index = 0u; pipeline_index < PROM_M44_PIPELINE_COUNT; ++pipeline_index) {
     prom_reduction_destroy_pipeline(device, &state->m44_pipelines[pipeline_index]);
   }
-  prom_vk_destroy_buffer(device, &state->gemma4e2b_m1_rope_sine);
-  prom_vk_destroy_buffer(device, &state->gemma4e2b_m1_rope_sine_upload);
-  prom_vk_destroy_buffer(device, &state->gemma4e2b_m1_rope_cosine);
-  prom_vk_destroy_buffer(device, &state->gemma4e2b_m1_rope_cosine_upload);
   for (pipeline_index = 0u; pipeline_index < 3u; ++pipeline_index) {
     prom_vk_destroy_buffer(device, &state->m42_weight_f16[pipeline_index]);
     prom_vk_destroy_buffer(device, &state->m42_weight_f32[pipeline_index]);

@@ -429,9 +429,6 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m44_readback;
   prom_vk_buffer m45_output;
   prom_vk_buffer m45_x_readback;
-  prom_vk_buffer gemma4e2b_m1_output;
-  prom_vk_buffer gemma4e2b_m1_readback;
-  prom_vk_buffer gemma4e2b_m1_rope_input;
   prom_vk_buffer m47_n_packed;
   prom_vk_buffer m47_gate;
   prom_vk_buffer m47_up;
@@ -452,7 +449,6 @@ typedef struct prom_reduction_slot {
   uint64_t m43_command_reuse_count;
   uint64_t m44_command_reuse_count;
   uint64_t m45_command_reuse_count;
-  uint64_t gemma4e2b_m1_command_reuse_count;
   uint64_t m47_command_reuse_count;
   uint64_t m48_command_reuse_count;
 } prom_reduction_slot;
@@ -593,18 +589,6 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m45_buffer_reuse_count;
   uint64_t m45_descriptor_update_count;
   uint64_t m45_pipeline_create_count;
-  prom_reduction_pipeline gemma4e2b_m1_rope_pipeline;
-  prom_reduction_pipeline gemma4e2b_m1_attention_scores_pipeline;
-  prom_vk_buffer gemma4e2b_m1_rope_cosine_upload;
-  prom_vk_buffer gemma4e2b_m1_rope_cosine;
-  prom_vk_buffer gemma4e2b_m1_rope_sine_upload;
-  prom_vk_buffer gemma4e2b_m1_rope_sine;
-  uint64_t gemma4e2b_m1_rope_buffer_grow_count;
-  uint64_t gemma4e2b_m1_rope_buffer_reuse_count;
-  uint64_t gemma4e2b_m1_rope_descriptor_update_count;
-  uint64_t gemma4e2b_m1_rope_pipeline_create_count;
-  uint64_t gemma4e2b_m1_attention_scores_descriptor_update_count;
-  uint64_t gemma4e2b_m1_attention_scores_pipeline_create_count;
   prom_reduction_pipeline m47_pipelines[PROM_M47_PIPELINE_COUNT];
   prom_vk_buffer m47_weight_upload[PROM_M47_WEIGHT_COUNT];
   prom_vk_buffer m47_weight_f32[PROM_M47_WEIGHT_COUNT];

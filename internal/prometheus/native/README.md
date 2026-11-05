@@ -31,21 +31,27 @@ Current Vulkan reactor file topology (P12 M5 baseline):
     class layouts and C11 atomics do not cross into C++.
 - `../reactors/PrometheusRmsNorm.concept`
   - RMSNorm weights, reusable buffers, FP32/BF16 normalization, and the resident
-    head-normalization → RoPE tail. Three semantic slots retain ordinary output,
-    Q, and K independently. Submitted work stays owned until completion.
+    head-normalization → RoPE → attention scores chain. Three producer slots
+    retain ordinary output, Q, and K; a lazy score slot owns its output and
+    pending submission. Independent standalone RoPE storage preserves resident
+    Q/K. Reuse and destruction drain submitted work before releasing buffers.
 - `reactor_concept_rmsnorm_abi.c` and `reactor_concept_rmsnorm.cpp`
   - C11 packet projection and C++23 boundary/package adaptation. The existing
-    pure RMSNorm planner supplies strategy and admission policy. Legacy
-    attention borrows completed Concept-owned Q/K without a host detour.
+    pure RMSNorm planner supplies strategy and admission policy. The whole
+    score chain uses the same Concept attachment without a host detour or
+    legacy model-state allocation.
 - `reactor_vulkan_queue.cpp`
   - the common host queue API synchronization boundary for all native families.
 - `reactor_vulkan_fused_reduction.c`
   - public plan serialization, ABI validation, CPU oracles, and still-live model
     resource support. Its standalone C reduction executor has been removed.
 - `reactor_vulkan_gemma4e2b.c`
-  - pure RMSNorm planning/oracles, standalone legacy RoPE, and legacy attention
-    scores. The C RMSNorm executor and its weight ownership were removed in
-    [Concept M2](../../../docs/internal/prometheus_concept_rmsnorm_m2.md). The M42-M49b
+  - pure RMSNorm planning/oracles; no GPU execution or resource ownership. The C RMSNorm
+    executor and weight ownership were removed in
+    [Concept M2](../../../docs/internal/prometheus_concept_rmsnorm_m2.md); the C
+    score executor was removed in
+    [Concept M3](../../../docs/internal/prometheus_concept_attention_m3.md), and standalone
+    RoPE in [Concept M4](../../../docs/internal/prometheus_concept_rope_m4.md). The M42-M49b
     transformer executors, the numerical-research shadow, and the
     transformer control module were removed in Phase 0, and the file was
     renamed from `reactor_vulkan_transformer.c` (see

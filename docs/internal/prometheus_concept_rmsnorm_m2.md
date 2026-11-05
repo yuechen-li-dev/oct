@@ -123,6 +123,9 @@ execution is not claimed from this Windows host.
 
 ## Next port slice
 
+Follow-up: [M3](prometheus_concept_attention_m3.md) ports the score consumer
+described below. This report preserves the M2 qualification boundary.
+
 The old C RMSNorm executor, normalization pipelines/weights, temporary buffers,
 and legacy Q/K ring pinning are removed. `reactor_vulkan_gemma4e2b.c` retains the
 pure planner/oracles, standalone legacy RoPE, and the legacy attention score

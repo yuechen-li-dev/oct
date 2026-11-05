@@ -29,6 +29,27 @@ public:
     bool resident;
 };
 
+// The score submission borrows resident Q/K from this same executor. It must
+// retire before either producer can overwrite or release its destination.
+class ScoreSlot
+{
+public:
+    owned Buffer<float> output;
+    Option<owned Submission> pending;
+    uint32 generation;
+};
+
+// Standalone positional encoding is independent of resident attention Q/K.
+class RopeSlot
+{
+public:
+    owned Buffer<float> input;
+    owned Buffer<float> cosine;
+    owned Buffer<float> sine;
+    owned Buffer<float> output;
+    Option<owned Submission> pending;
+};
+
 class NormExecutor
 {
 public:
@@ -47,6 +68,12 @@ public:
     uint32 testFlags;
     bool timed;
     bool deviceLost;
+    Option<owned Pipeline> scorePipeline;
+    Option<owned ScoreSlot> scores;
+    uint64 scoreDescriptors;
+    uint32 scoreTestFlags;
+    Option<owned RopeSlot> standaloneRope;
+    uint32 ropeTestFlags;
 };
 
 [[repr(C)]]
@@ -87,6 +114,19 @@ record struct NormTiming
     uint64 total;
 };
 
+[[repr(C)]]
+record struct ScorePush
+{
+    uint32 tokens;
+    uint32 queryHeads;
+    uint32 keyHeads;
+    uint32 width;
+    float scale;
+    uint32 reserved0;
+    uint32 reserved1;
+    uint32 reserved2;
+};
+
 bool HasSlot(ref const Option<owned NormSlot> value)
 {
     return match (ref const value) { Option::Some(slot) => true, Option::None => false, };
@@ -107,8 +147,12 @@ Result<NormExecutor, VulkanError> CreateNormExecutor(PromNormHost host, DeviceBo
     }
     Option<owned NormSlot><array>[3] slots = [Option::None ...];
     owned Buffer<float> weight = CreateBufferOn<float>(context.view, 1, Placement::Shared)?;
+    Option<owned Pipeline> scorePipeline = Option::None;
+    Option<owned ScoreSlot> scores = Option::None;
+    Option<owned RopeSlot> standaloneRope = Option::None;
     owned NormExecutor executor = NormExecutor{move context, move pipelines, move slots, move weight,
-        0, 0, 0, 1, 1, 0, 0, 0, testFlags, timed, false};
+        0, 0, 0, 1, 1, 0, 0, 0, testFlags, timed, false, move scorePipeline, move scores, 0, 0,
+        move standaloneRope, 0};
     return Result::Ok(move executor);
 }
 
@@ -140,6 +184,8 @@ Result<void, VulkanError> DrainNormSlot(ref NormSlot slot)
 
 Result<void, VulkanError> DrainNorm(ref NormExecutor executor)
 {
+    DrainScores(ref executor)?;
+    DrainRope(ref executor)?;
     for (index in 0..3) {
         if (HasSlot(ref const executor.slots[index])) {
             ref NormSlot slot = OptionValue(ref executor.slots[index]);
@@ -179,6 +225,7 @@ Result<void, VulkanError> Grow(ref NormExecutor executor, ref Buffer<float> buff
 Result<void, VulkanError> PrepareNorm(ref NormExecutor executor, uint32 index, NormJob job)
 {
     if (executor.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    if (index != 0) { DrainScores(ref executor)?; }
     if (not HasSlot(ref const executor.slots[index as int])) {
         owned NormSlot slot = CreateNormSlot(executor.context.view)?;
         Option<owned NormSlot> entry = Option::Some(move slot);
@@ -254,14 +301,8 @@ void RecordNorm(ref Recording recording, ref NormExecutor executor, ref const No
     if (executor.timed) { discard Timestamp(ref recording); }
     if (job.roundOutput != 0) { RoundBf16(ref recording, ref executor, ref const output, ref const output, job.rows * job.outputStride); }
     if (job.ropeHeads != 0) {
-        Binding<array>[4] ropeBindings = [Bind(0, ref const output, Access::Read),
-            Bind(1, ref const slot.cosine, Access::Read), Bind(2, ref const slot.sine, Access::Read),
-            Bind(3, ref const slot.rope, Access::Write)];
-        uint32<array>[8] ropePush = [15, job.ropeHeads, job.width, 0, 0, 0, 0, 0];
-        ref const Pipeline ropePipeline = OptionValue(ref const executor.pipelines[3]);
-        DispatchWith(ref recording, ref const ropePipeline, ReadOnlySpan(ropeBindings), AsBytes(ReadOnlySpan(ropePush)), (job.rows * job.width + 255u) / 256u, 1, 1);
-        executor.ropeDescriptors = executor.ropeDescriptors + 1;
-        executor.descriptors = executor.descriptors + 1;
+        RecordRope(ref recording, ref executor, ref const output, ref const slot.cosine,
+            ref const slot.sine, ref const slot.rope, job.ropeHeads);
     }
 }
 
@@ -350,6 +391,208 @@ void ConsumeResident(ref NormExecutor executor)
     }
 }
 
+bool HasScores(ref const NormExecutor executor)
+{
+    return match (ref const executor.scores) { Option::Some(slot) => true, Option::None => false, };
+}
+
+Result<void, VulkanError> DrainScores(ref NormExecutor executor)
+{
+    if (HasScores(ref const executor)) {
+        ref ScoreSlot slot = OptionValue(ref executor.scores);
+        match (ref slot.pending) {
+            Option::Some(work) => { Wait(ref work)?; }
+            Option::None => { }
+        }
+        slot.pending = Option::None;
+    }
+    return Result::Ok();
+}
+
+Result<void, VulkanError> PrepareScores(ref NormExecutor executor, PromNormHost host)
+{
+    bool hasPipeline = match (ref const executor.scorePipeline) { Option::Some(value) => true, Option::None => false, };
+    if (not hasPipeline) {
+        PipelineCreation created = PromNormLoadPipeline(host, executor.context.view.device, executor.context.view.cache, 4);
+        Check(created.code)?;
+        owned Pipeline pipeline = Pipeline{executor.context.view.device, created.shader, created.setLayout,
+            created.layout, created.pipeline, created.pushBytes};
+        Option<owned Pipeline> entry = Option::Some(move pipeline);
+        executor.scorePipeline = move entry;
+    }
+    if (not HasScores(ref const executor)) {
+        owned Buffer<float> output = CreateBufferOn<float>(executor.context.view, 1800, Placement::Shared)?;
+        Option<owned Submission> pending = Option::None;
+        owned ScoreSlot slot = ScoreSlot{move output, move pending, 0};
+        Option<owned ScoreSlot> entry = Option::Some(move slot);
+        executor.scores = move entry;
+        executor.allocations = executor.allocations + 1;
+    } else { executor.reuses = executor.reuses + 1; }
+    return Result::Ok();
+}
+
+bool TakeScoreTest(ref NormExecutor executor, uint32 flag)
+{
+    if ((executor.scoreTestFlags & flag) == 0) { return false; }
+    executor.scoreTestFlags = executor.scoreTestFlags & ~flag;
+    return true;
+}
+
+// Closed Gemma score ABI: 15 tokens, 8 query heads, one key head, width 256.
+// Masking and softmax are separate operations, just as in the shader contract.
+int ExecuteScores(ref NormExecutor executor, PromNormHost host, Span<float> output)
+{
+    if (Len(output) != 1800) { return -7401; }
+    if (executor.deviceLost) { return -7414; }
+    if (not HasSlot(ref const executor.slots[1]) or not HasSlot(ref const executor.slots[2])) { return -7406; }
+    ref NormSlot query = OptionValue(ref executor.slots[1]);
+    ref NormSlot key = OptionValue(ref executor.slots[2]);
+    if (not query.resident or not key.resident) { return -7406; }
+    if (NormCode(ref executor, DrainScores(ref executor)) != 0) { return -7414; }
+    if (NormCode(ref executor, PrepareScores(ref executor, host)) != 0) { return -7411; }
+    ref ScoreSlot slot = OptionValue(ref executor.scores);
+    slot.generation = slot.generation + 1;
+    if (TakeScoreTest(ref executor, 1)) { return -7412; }
+    Result<Recording, VulkanError> begun = BeginRecordingOn(executor.context.view, 0);
+    match (move begun) {
+        Result::Error(error) => { discard ObserveNormError(ref executor, error); return -7412; }
+        Result::Ok(recording) => {
+            // Q/K were written in earlier completed submissions on this queue.
+            // Recording's local hazard tracker has no history of those writes.
+            Stages compute = ComputeStage();
+            ConceptVkCmdBarrier(recording.device, recording.commands, compute.raw, 1, compute.raw);
+            Binding<array>[4] bindings = [Bind(0, ref const query.rope, Access::Read),
+                Bind(1, ref const key.rope, Access::Read), Bind(2, ref const key.rope, Access::Read),
+                Bind(3, ref const slot.output, Access::Write)];
+            ScorePush<array>[1] push = [ScorePush{15, 8, 1, 256, 0.0625, 0, 0, 0}];
+            ref const Pipeline pipeline = OptionValue(ref const executor.scorePipeline);
+            DispatchWith(ref recording, ref const pipeline, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 8, 1, 1);
+            executor.scoreDescriptors = executor.scoreDescriptors + 1;
+            if (TakeScoreTest(ref executor, 2)) { return -7413; }
+            Result<Submission, VulkanError> submitted = Submit(move recording);
+            match (move submitted) {
+                Result::Error(error) => { discard ObserveNormError(ref executor, error); return -7413; }
+                Result::Ok(submission) => {
+                    Option<owned Submission> pending = Option::Some(move submission);
+                    slot.pending = move pending;
+                }
+            }
+        }
+    }
+    if (TakeScoreTest(ref executor, 4)) { return -7414; }
+    ref Submission work = OptionValue(ref slot.pending);
+    if (NormCode(ref executor, Wait(ref work)) != 0) { return -7414; }
+    if (NormCode(ref executor, DownloadOn(executor.context.view, ref const slot.output, output)) != 0) { return -7416; }
+    for (index in 0..Len(output)) { if (not IsFinite(output[index])) { return -7416; } }
+    slot.pending = Option::None;
+    ConsumeResident(ref executor);
+    return 0;
+}
+
+void SetScoreTestFlags(ref NormExecutor executor, uint32 flags) { executor.scoreTestFlags = flags; }
+
+void RecordRope(ref Recording recording, ref NormExecutor executor, ref const Buffer<float> input,
+    ref const Buffer<float> cosine, ref const Buffer<float> sine, ref const Buffer<float> output, uint32 heads)
+{
+    Binding<array>[4] bindings = [Bind(0, ref const input, Access::Read),
+        Bind(1, ref const cosine, Access::Read), Bind(2, ref const sine, Access::Read),
+        Bind(3, ref const output, Access::Write)];
+    uint32<array>[8] push = [15, heads, 256, 0, 0, 0, 0, 0];
+    ref const Pipeline pipeline = OptionValue(ref const executor.pipelines[3]);
+    DispatchWith(ref recording, ref const pipeline, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 15u * heads, 1, 1);
+    executor.ropeDescriptors = executor.ropeDescriptors + 1;
+    executor.descriptors = executor.descriptors + 1;
+}
+
+bool HasRope(ref const NormExecutor executor)
+{
+    return match (ref const executor.standaloneRope) { Option::Some(slot) => true, Option::None => false, };
+}
+
+Result<void, VulkanError> DrainRope(ref NormExecutor executor)
+{
+    if (HasRope(ref const executor)) {
+        ref RopeSlot slot = OptionValue(ref executor.standaloneRope);
+        match (ref slot.pending) {
+            Option::Some(work) => { Wait(ref work)?; }
+            Option::None => { }
+        }
+        slot.pending = Option::None;
+    }
+    return Result::Ok();
+}
+
+Result<void, VulkanError> PrepareRope(ref NormExecutor executor, uint32 heads)
+{
+    usize count = (15u * heads * 256u) as usize;
+    if (not HasRope(ref const executor)) {
+        owned Buffer<float> input = CreateBufferOn<float>(executor.context.view, count, Placement::Shared)?;
+        owned Buffer<float> cosine = CreateBufferOn<float>(executor.context.view, 3840, Placement::Shared)?;
+        owned Buffer<float> sine = CreateBufferOn<float>(executor.context.view, 3840, Placement::Shared)?;
+        owned Buffer<float> output = CreateBufferOn<float>(executor.context.view, count, Placement::Shared)?;
+        Option<owned Submission> pending = Option::None;
+        owned RopeSlot slot = RopeSlot{move input, move cosine, move sine, move output, move pending};
+        Option<owned RopeSlot> entry = Option::Some(move slot);
+        executor.standaloneRope = move entry;
+        executor.allocations = executor.allocations + 4;
+    } else {
+        ref RopeSlot slot = OptionValue(ref executor.standaloneRope);
+        Grow(ref executor, ref slot.input, count)?;
+        Grow(ref executor, ref slot.output, count)?;
+        Grow(ref executor, ref slot.cosine, 3840)?;
+        Grow(ref executor, ref slot.sine, 3840)?;
+    }
+    return Result::Ok();
+}
+
+bool TakeRopeTest(ref NormExecutor executor, uint32 flag)
+{
+    if ((executor.ropeTestFlags & flag) == 0) { return false; }
+    executor.ropeTestFlags = executor.ropeTestFlags & ~flag;
+    return true;
+}
+
+int ExecuteRope(ref NormExecutor executor, uint32 heads, ReadOnlySpan<float> source,
+    ReadOnlySpan<float> cosine, ReadOnlySpan<float> sine, Span<float> output)
+{
+    if ((heads != 1 and heads != 8) or Len(source) != (15u * heads * 256u) as int or
+        Len(output) != Len(source) or Len(cosine) != 3840 or Len(sine) != 3840) { return -7401; }
+    if (executor.deviceLost) { return -7414; }
+    if (NormCode(ref executor, DrainRope(ref executor)) != 0) { return -7414; }
+    if (NormCode(ref executor, PrepareRope(ref executor, heads)) != 0) { return -7411; }
+    ref RopeSlot slot = OptionValue(ref executor.standaloneRope);
+    if (NormCode(ref executor, UploadOn(executor.context.view, ref const slot.input, source)) != 0 or
+        NormCode(ref executor, UploadOn(executor.context.view, ref const slot.cosine, cosine)) != 0 or
+        NormCode(ref executor, UploadOn(executor.context.view, ref const slot.sine, sine)) != 0) { return -7411; }
+    if (TakeRopeTest(ref executor, 1)) { return -7412; }
+    Result<Recording, VulkanError> begun = BeginRecordingOn(executor.context.view, 0);
+    match (move begun) {
+        Result::Error(error) => { discard ObserveNormError(ref executor, error); return -7412; }
+        Result::Ok(recording) => {
+            RecordRope(ref recording, ref executor, ref const slot.input, ref const slot.cosine,
+                ref const slot.sine, ref const slot.output, heads);
+            if (TakeRopeTest(ref executor, 2)) { return -7413; }
+            Result<Submission, VulkanError> submitted = Submit(move recording);
+            match (move submitted) {
+                Result::Error(error) => { discard ObserveNormError(ref executor, error); return -7413; }
+                Result::Ok(submission) => {
+                    Option<owned Submission> pending = Option::Some(move submission);
+                    slot.pending = move pending;
+                }
+            }
+        }
+    }
+    if (TakeRopeTest(ref executor, 4)) { return -7414; }
+    ref Submission work = OptionValue(ref slot.pending);
+    if (NormCode(ref executor, Wait(ref work)) != 0) { return -7414; }
+    if (NormCode(ref executor, DownloadOn(executor.context.view, ref const slot.output, output)) != 0) { return -7416; }
+    for (index in 0..Len(output)) { if (not IsFinite(output[index])) { return -7416; } }
+    slot.pending = Option::None;
+    return 0;
+}
+
+void SetRopeTestFlags(ref NormExecutor executor, uint32 flags) { executor.ropeTestFlags = flags; }
+
 void DisposeNorm(owned NormExecutor executor) { }
 
 uint64 RetainedNorm(ref const NormExecutor executor)
@@ -361,6 +604,14 @@ uint64 RetainedNorm(ref const NormExecutor executor)
             count = count + ((slot.input.count + slot.rounded.count + slot.partials.count +
                 slot.inverse.count + slot.output.count + slot.rope.count + slot.cosine.count + slot.sine.count) as uint64);
         }
+    }
+    if (HasScores(ref const executor)) {
+        ref const ScoreSlot scores = OptionValue(ref const executor.scores);
+        count = count + (scores.output.count as uint64);
+    }
+    if (HasRope(ref const executor)) {
+        ref const RopeSlot slot = OptionValue(ref const executor.standaloneRope);
+        count = count + ((slot.input.count + slot.cosine.count + slot.sine.count + slot.output.count) as uint64);
     }
     return count * 4;
 }

@@ -14,9 +14,9 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 9 |
+| Open | 7 |
 | Deferred | 11 |
-| Resolved | 92 |
+| Resolved | 95 |
 | Superseded | 1 |
 
 ## Open issues
@@ -159,32 +159,6 @@ subgroup-collective legality or qualify a replacement attention kernel.
 
 ---
 
-### FB-104 — Workspace ownership check still assumes a source-bearing native registry
-
-Date: 2026-11-04
-
-Status: Open
-
-Observation: `go run ./tools/sdslv_workspace_check` fails with
-`registry does not own manifest source internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv`.
-The checker searches `reactor_shader_registry.c` for every manifest source
-string. The current native registry explicitly describes itself as a small
-selector projection; its `META` rows omit source paths and the complete catalog
-belongs to `prometheus.core`. The same first failure was reproduced using
-HEAD `b30d64bb`'s manifest, registry, and conformance inputs with the unchanged
-checker, before assigning any modernization-specific failure to this pass.
-
-Suggestion: Reconcile the checker with package-owned provenance and the native
-projection's actual contract. Preserve source ownership and digest checks at
-their owning boundary; do not add obsolete source strings to the registry just
-to satisfy a textual scan.
-
-Scope: All 26 shaders changed by the modernization independently pass DXC and
-SPIR-V validation and emit byte-identical modules relative to their baseline.
-This does not make the complete workspace check pass.
-
----
-
 ### FB-103 — Entry function spelling differs between run and build
 
 Date: 2026-11-04
@@ -203,23 +177,6 @@ intended spelling rules with executable Language contracts.
 Scope: Entry selection is not changed by the README pass.
 
 ---
-
-### FB-102 — Source-only Go emission omits the floating-literal helper
-
-Date: 2026-11-04
-
-Status: Open
-
-Observation: Emitting `testdata/performance/scalar_loop_recon/main.oct` with
-`internal/build.EmitGoSource` succeeds, but type-checking the generated Go fails
-with `undefined: __octFloatLiteral`. The helper is emitted only after the
-`includeMain` early return in `emitGoWithOptions`. This predates the direct-branch
-loop change; ordinary `build.Compile` emits the helper and works.
-
-Suggestion: Include the floating-literal runtime helper in source-only output
-and add an embeddable floating-point specimen to that seam's boundary tests.
-
-Scope: The ordinary executable compiler works; this concerns source-only host emission.
 
 ## Deferred issues
 
@@ -398,6 +355,80 @@ Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. 
 ## Resolved issues
 
 Recorded fixes and their evidence. Each entry states its qualification scope.
+
+### FB-104 — Workspace ownership check still assumes a source-bearing native registry
+
+Date: 2026-11-04
+
+Status: Resolved 2026-11-05
+
+Observation: The workspace command rejected the native registry's binary-free
+selector projection because its `META` rows no longer carry every shader source
+path. The package catalog owns the source/provenance/object relationship.
+
+Resolution: The checker builds and validates `prometheus.core` through the
+existing shader-package authority, then checks selector IDs, names, entry points,
+languages, and production/experimental authority against it. Generated-header
+source/regeneration checks, source hashes when declared, module digests, and
+imported dependency-graph validation remain enforced at their owning boundaries.
+No obsolete source strings were added to the C projection. Historical evidence,
+benchmark identities, and production/experimental root checks remain active.
+
+Evidence: `go run ./tools/sdslv_workspace_check` passes. The CLI regression and
+negative selector tests cover missing/duplicate/malformed rows and drift in
+entry, name, language, and authority. Shader-package stale-import tests and
+SDSL-V conformance pass. The original failure is retained in
+`.tmp/rope-m4-workspace-baseline.log`.
+
+---
+
+### FB-102 — Source-only Go emission omits the floating-literal helper
+
+Date: 2026-11-04
+
+Status: Resolved 2026-11-05
+
+Observation: `EmitGoSource` accepted the scalar-loop recon specimen, but Go
+reported `undefined: __octFloatLiteral` because the source-only return preceded
+that helper's declaration.
+
+Resolution: Emit the shared floating-literal helper before the source-only
+return. Process entry and its diagnostic wrapper remain executable-only. The
+host boundary test reads the exact existing specimen, type-checks its emitted
+Go, and rejects an accidental process entrypoint. It does not duplicate Oct's
+float semantics in Go or embed a new Oct program.
+
+Evidence: The regression fails before the fix and passes after it; the full
+`internal/build` Go test package and compiled FloatClamp01 facts pass, with no
+interpreted fallback. The failed baseline is retained in
+`.tmp/rope-m4-fb102-baseline.log`. Entry spelling (FB-103) remains separate.
+
+---
+
+### FB-114 — Concept cleanup conflates owners with the same source name
+
+Date: 2026-11-05
+
+Status: Resolved in the Concept working tree; attention consumer qualification here.
+
+Observation: Lazy attention initialization uses an owning `entry` in each of two
+independent branches. Valid Concept source rejected with
+`CV4516: MIR cleanup for PrepareScores is not a unique ordered drop obligation`.
+The cleanup collector keyed types and move states by bare source name. A smaller
+nested-shadow witness also showed the C lowerer omitting the outer owner's drop:
+its live-owner table used a shadowable C variable name as storage identity.
+
+Resolution: Concept tracks lexical declaration identities in cleanup collection
+and gives shadowed C storage a distinct name. Repeated MIR names gain stable
+identities and an optional source-name link; unique-name artifacts keep their
+existing form. The planner retains replacement lookup through that link. The
+MIR uniqueness check remains enforced. The runtime contract is Concept's
+`tests/runtime/scoped_cleanup.concept_test`, with Normal/Verify, strict C11,
+native execution, and three fresh deterministic emissions. See
+[the M3 report](docs/internal/prometheus_concept_attention_m3.md) for the consumer
+and broader validation results.
+
+---
 
 ### FB-113 — Shared Concept attachments expose callback and destruction-order defects
 
@@ -1838,13 +1869,13 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-114**. Put a new open issue at
+Use the next unused identifier, currently **FB-115**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.
 
 ```markdown
-### FB-110 — Short, specific title
+### FB-NNN — Short, specific title
 
 Date: YYYY-MM-DD
 

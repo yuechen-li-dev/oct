@@ -8,6 +8,8 @@
 
 _Static_assert(sizeof(concept_norm_reduce_push) == 32, "RMSNorm push size");
 _Static_assert(offsetof(concept_norm_reduce_push, epsilon) == 28, "RMSNorm epsilon offset");
+_Static_assert(sizeof(concept_score_push) == 32, "attention score push size");
+_Static_assert(offsetof(concept_score_push, scale) == 16, "attention scale offset");
 
 static uint64_t hash_u64(uint64_t hash, uint64_t value) {
     for (unsigned i = 0; i < 8; ++i) { hash ^= (uint8_t)(value >> (i * 8)); hash *= 1099511628211ull; }
@@ -153,6 +155,62 @@ int prom_concept_norm_resident(void* opaque, uint32_t heads, prom_device_buffer_
         15 * heads, 256, 256, slot->generation, index);
     return PROM_OK;
 }
-void prom_concept_norm_consume(void* opaque) {
-    concept_prometheus_rms_norm_consume_resident(opaque);
+int prom_concept_norm_scores(void* opaque, void* host,
+    const PrometheusGemma4E2BM1AttentionScoresRequest* request,
+    PrometheusGemma4E2BM1AttentionScoresResult* out) {
+    concept_norm_executor* e = opaque;
+    const uint64_t allocations = e->allocations, reuses = e->reuses;
+    const concept_span_float output = {request->scores, (size_t)request->score_element_count};
+    const int detail = concept_prometheus_rms_norm_execute_scores(e, host, output);
+    out->buffer_allocation_count = e->allocations - allocations;
+    out->buffer_reuse_count = e->reuses - reuses;
+    out->descriptor_update_count = e->scoreDescriptors;
+    out->pipeline_create_count = e->scorePipeline.tag == 0;
+    out->detail_code = detail;
+    if (detail) {
+        out->stage = detail == PROM_M46_DETAIL_READBACK ? PROM_STAGE_TRANSFER_OUT :
+            detail == PROM_M46_DETAIL_RESOURCE || detail == PROM_M46_DETAIL_STALE_WEIGHT_GENERATION ||
+            detail == PROM_M46_DETAIL_INVALID_REQUEST ? PROM_STAGE_INIT : PROM_STAGE_SUBMIT;
+        return PROM_ERROR;
+    }
+    const concept_score_slot* slot = &e->scores.payload.some.value;
+    out->score_written = 1u; out->score_dispatch_count = 1u; out->score_readback_count = 1u;
+    out->query_slot_id = 0x40000001u; out->key_slot_id = 0x40000002u; out->score_slot_id = 0x40000003u;
+    out->query_slot_generation = slot_at(e, 1u)->generation;
+    out->key_slot_generation = slot_at(e, 2u)->generation;
+    out->score_slot_generation = slot->generation;
+    out->query_byte_range = 15u * 8u * 256u * sizeof(float);
+    out->key_byte_range = 15u * 256u * sizeof(float);
+    out->score_byte_range = 1800u * sizeof(float);
+    out->score_hash = prom_num_hash_float_bits(request->scores, request->score_element_count);
+    return PROM_OK;
+}
+void prom_concept_norm_set_score_test_flags(void* opaque, uint32_t flags) {
+    concept_prometheus_rms_norm_set_score_test_flags(opaque, flags);
+}
+int prom_concept_norm_rope(void* opaque, const PrometheusGemma4E2BM1RopeRequest* request,
+    PrometheusGemma4E2BM1RopeResult* out) {
+    concept_norm_executor* e = opaque;
+    const uint64_t allocations = e->allocations, reuses = e->reuses;
+    const concept_readonly_span_float source = {request->source, (size_t)request->source_element_count};
+    const concept_readonly_span_float cosine = {request->cosine, (size_t)request->cosine_element_count};
+    const concept_readonly_span_float sine = {request->sine, (size_t)request->sine_element_count};
+    const concept_span_float output = {request->output, (size_t)request->output_element_count};
+    const int detail = concept_prometheus_rms_norm_execute_rope(e, request->heads, source, cosine, sine, output);
+    out->buffer_allocation_count = e->allocations - allocations;
+    out->buffer_reuse_count = e->reuses - reuses;
+    out->descriptor_update_count = e->ropeDescriptors;
+    out->pipeline_create_count = 1u;
+    out->detail_code = detail;
+    if (detail) {
+        out->stage = detail == PROM_M46_DETAIL_READBACK ? PROM_STAGE_TRANSFER_OUT :
+            detail == PROM_M46_DETAIL_RESOURCE || detail == PROM_M46_DETAIL_INVALID_REQUEST
+                ? PROM_STAGE_INIT : PROM_STAGE_SUBMIT;
+        return PROM_ERROR;
+    }
+    out->output_written = 1u; out->dispatch_count = 1u;
+    return PROM_OK;
+}
+void prom_concept_norm_set_rope_test_flags(void* opaque, uint32_t flags) {
+    concept_prometheus_rms_norm_set_rope_test_flags(opaque, flags);
 }

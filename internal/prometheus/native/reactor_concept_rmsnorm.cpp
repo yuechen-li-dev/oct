@@ -71,8 +71,8 @@ bool valid(const prom_m49a_m46_request& r) {
 
 extern "C" PipelineCreation PromNormLoadPipeline(void* host, VkDevice device, VkPipelineCache cache, uint32_t role) {
     PipelineCreation failed{}; failed.code = VK_ERROR_INITIALIZATION_FAILED;
-    constexpr uint32_t kernels[] = {63, 64, 67, 68};
-    if (role >= 4) return failed;
+    constexpr uint32_t kernels[] = {63, 64, 67, 68, 69};
+    if (role >= 5) return failed;
     char variant[32]{}; std::snprintf(variant, sizeof variant, "kernel-%u-default", kernels[role]);
     VkShaderModule shader{}; const char* entry{}; prom_shader_package_diagnostic diagnostic{};
     prom_shader_package* package{};
@@ -126,13 +126,6 @@ extern "C" int prom_reactor_runtime_m49a_execute_m46(void* host, const prom_m49a
         auto state = attach(host, services);
         if (!state) { out->detail_code = PROM_M46_DETAIL_RESOURCE; return PROM_ERROR; }
         const std::lock_guard lock{(*state)->mutex};
-        // A legacy consumer can retain these borrows after an uncertain wait.
-        // Before replacing a published resident buffer, establish its completion.
-        prom_device_buffer_view prior{};
-        if (r->direct_rope && prom_concept_norm_resident((*state)->executor, r->rope_heads, &prior) == PROM_OK &&
-            prom_vk_device_wait_idle(services.device) != VK_SUCCESS) {
-            out->detail_code = PROM_M46_DETAIL_COMPLETION_UNCERTAIN; return PROM_ERROR;
-        }
         if (ConceptVkSetQueueSubmit(services.device, host, prom_vk_concept_queue_submit) != 0) { out->detail_code = PROM_M46_DETAIL_RESOURCE; return PROM_ERROR; }
         out->detail_code = 0;
         const int status = prom_concept_norm_execute((*state)->executor, r, out);
@@ -161,14 +154,85 @@ extern "C" int prom_reactor_runtime_concept_norm_resident(void* host, uint32_t h
         return prom_concept_norm_resident(state->executor, heads, view);
     } catch (const std::system_error&) { return PROM_ERROR; }
 }
-extern "C" void prom_reactor_runtime_concept_norm_consume(void* host) {
+extern "C" int prom_reactor_runtime_gemma4e2b_m1_rope(void* host,
+    const PrometheusGemma4E2BM1RopeRequest* r, PrometheusGemma4E2BM1RopeResult* out) {
+    if (!out) return PROM_ERROR;
+    *out = {}; out->struct_size = sizeof(*out);
+    out->stage = PROM_STAGE_INIT; out->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    if (!prom_reactor_runtime_validate_handle(host)) return PROM_INVALID_HANDLE;
+    if (!r || r->struct_size < sizeof(*r) || !r->source || !r->cosine || !r->sine || !r->output ||
+        r->source == r->output || r->cosine == r->output || r->sine == r->output || r->cosine == r->sine ||
+        r->tokens != 15u || (r->heads != 1u && r->heads != 8u) || r->head_width != 256u ||
+        !r->source_generation || !r->table_generation || r->source_element_count != uint64_t{15u * r->heads * 256u} ||
+        r->output_element_count != r->source_element_count || r->cosine_element_count != 3840u || r->sine_element_count != 3840u) return PROM_ERROR;
+    if (!finite(r->source, r->source_element_count) || !finite(r->cosine, r->cosine_element_count) || !finite(r->sine, r->sine_element_count)) {
+        out->detail_code = PROM_M46_DETAIL_NONFINITE_INPUT; return PROM_ERROR;
+    }
+    // Retain the public RoPE boundary's existing FNV-u32 bit serialization.
+    out->source_hash = weight_hash(r->source, r->source_element_count);
+    out->cosine_hash = weight_hash(r->cosine, r->cosine_element_count);
+    out->sine_hash = weight_hash(r->sine, r->sine_element_count);
+    prom_vk_runtime_services services{};
+    if (prom_reactor_runtime_get_vk_services(host, &services) != PROM_OK || !services.backend_available) { out->detail_code = PROM_M46_DETAIL_RESOURCE; return PROM_ERROR; }
+    try {
+        auto state = attach(host, services);
+        if (!state) { out->detail_code = PROM_M46_DETAIL_RESOURCE; return PROM_ERROR; }
+        const std::lock_guard lock{(*state)->mutex};
+        if (ConceptVkSetQueueSubmit(services.device, host, prom_vk_concept_queue_submit) != 0) { out->detail_code = PROM_M46_DETAIL_RESOURCE; return PROM_ERROR; }
+        out->stage = 0; out->detail_code = 0;
+        const int status = prom_concept_norm_rope((*state)->executor, r, out);
+        if (status != PROM_OK) return status;
+        out->output_hash = weight_hash(r->output, r->output_element_count);
+        return PROM_OK;
+    } catch (const std::bad_alloc&) { out->detail_code = PROM_M46_DETAIL_RESOURCE; }
+      catch (const std::system_error&) { out->detail_code = PROM_M46_DETAIL_RESOURCE; }
+    out->stage = PROM_STAGE_INIT; return PROM_ERROR;
+}
+extern "C" int prom_reactor_runtime_gemma4e2b_m1_attention_scores(void* host,
+    const PrometheusGemma4E2BM1AttentionScoresRequest* request,
+    PrometheusGemma4E2BM1AttentionScoresResult* out) {
+    if (!out) return PROM_ERROR;
+    *out = {}; out->struct_size = sizeof(*out);
+    out->stage = PROM_STAGE_INIT; out->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    if (!prom_reactor_runtime_validate_handle(host)) return PROM_INVALID_HANDLE;
+    if (!request || request->struct_size < sizeof(*request) || !request->scores ||
+        request->tokens != 15u || request->query_heads != 8u || request->key_heads != 1u ||
+        request->head_width != 256u || request->scale != 0.0625f || request->score_element_count != 1800u) return PROM_ERROR;
+    try {
+        Attachment* state{};
+        {
+            const std::lock_guard registry{attachments};
+            state = static_cast<Attachment*>(prom_reactor_runtime_concept_norm_state(host));
+        }
+        if (!state) { out->detail_code = PROM_M46_DETAIL_STALE_WEIGHT_GENERATION; return PROM_ERROR; }
+        const std::lock_guard lock{state->mutex};
+        out->stage = 0;
+        return prom_concept_norm_scores(state->executor, host, request, out);
+    } catch (const std::system_error&) { out->detail_code = PROM_M46_DETAIL_RESOURCE; return PROM_ERROR; }
+}
+extern "C" int prom_reactor_runtime_concept_norm_test_score_flags(void* host, uint32_t flags) {
+    if (!prom_reactor_runtime_validate_handle(host)) return PROM_INVALID_HANDLE;
+    if (flags > 7u) return PROM_ERROR;
     try {
         const std::lock_guard registry{attachments};
         auto* state = static_cast<Attachment*>(prom_reactor_runtime_concept_norm_state(host));
-        if (!state) return;
+        if (!state) return PROM_ERROR;
         const std::lock_guard lock{state->mutex};
-        prom_concept_norm_consume(state->executor);
-    } catch (const std::system_error&) { /* Retaining borrows is conservative. */ }
+        prom_concept_norm_set_score_test_flags(state->executor, flags);
+        return PROM_OK;
+    } catch (const std::system_error&) { return PROM_ERROR; }
+}
+extern "C" int prom_reactor_runtime_concept_norm_test_rope_flags(void* host, uint32_t flags) {
+    if (!prom_reactor_runtime_validate_handle(host)) return PROM_INVALID_HANDLE;
+    if (flags > 7u) return PROM_ERROR;
+    try {
+        const std::lock_guard registry{attachments};
+        auto* state = static_cast<Attachment*>(prom_reactor_runtime_concept_norm_state(host));
+        if (!state) return PROM_ERROR;
+        const std::lock_guard lock{state->mutex};
+        prom_concept_norm_set_rope_test_flags(state->executor, flags);
+        return PROM_OK;
+    } catch (const std::system_error&) { return PROM_ERROR; }
 }
 extern "C" int prom_reactor_runtime_concept_norm_detach(void* host) {
     try {
@@ -177,10 +241,6 @@ extern "C" int prom_reactor_runtime_concept_norm_detach(void* host) {
         if (!state) return PROM_OK;
         {
             const std::lock_guard lock{state->mutex};
-            prom_vk_runtime_services services{};
-            if (prom_reactor_runtime_get_vk_services(host, &services) != PROM_OK) return PROM_ERROR;
-            const auto idle = prom_vk_device_wait_idle(services.device);
-            if (idle != VK_SUCCESS && idle != VK_ERROR_DEVICE_LOST) return PROM_ERROR;
             if (prom_concept_norm_destroy(state->executor) != PROM_OK) return PROM_ERROR;
         }
         prom_reactor_runtime_set_concept_norm_state(host, nullptr);
