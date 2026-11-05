@@ -62,8 +62,8 @@ fn ChemicalShiftOfReferenceIsZero() -> Void {
 fn ChemicalShiftOneMillionthUpIsOnePpm() -> Void {
     // A sample 400 Hz higher than reference at 400 MHz gives exactly 1.000 ppm.
     // 400 Hz / 400,000,000 Hz × 10^6 = 1.000 ppm.
-    let vRef  = 400000000.0Hz
-    let vSamp = 400000400.0Hz   // 400 Hz higher
+    let vRef = 400000000.0Hz
+    let vSamp = 400000400.0Hz // 400 Hz higher
     let delta = ChemicalShift(vSamp, vRef)
     Assert.True(delta > 0.999, "ppm arithmetic lower")
     Assert.True(delta < 1.001, "ppm arithmetic upper")
@@ -72,9 +72,9 @@ fn ChemicalShiftOneMillionthUpIsOnePpm() -> Void {
 [Fact]
 fn PpmToHzRoundTrip() -> Void {
     // PpmToHz and HzToPpm should be exact inverses.
-    let vRef   = 400000000.0Hz
-    let ppm    = 7.26      // CDCl3 residual solvent peak
-    let hz     = PpmToHz(ppm, vRef)
+    let vRef = 400000000.0Hz
+    let ppm = 7.26 // CDCl3 residual solvent peak
+    let hz = PpmToHz(ppm, vRef)
     let ppmOut = HzToPpm(hz, vRef)
     // Should round-trip to within floating point error
     Assert.True(ppmOut > ppm - 0.00001, "ppm-hz round trip")
@@ -84,10 +84,10 @@ fn PpmToHzRoundTrip() -> Void {
 [Fact]
 fn ChemicalShiftToFrequencyRoundTrip() -> Void {
     // ChemicalShift and ChemicalShiftToFrequency are inverses.
-    let vRef  = 500000000.0Hz
-    let delta = 3.5           // arbitrary shift
+    let vRef = 500000000.0Hz
+    let delta = 3.5 // arbitrary shift
     let vSamp = ChemicalShiftToFrequency(delta, vRef)
-    let back  = ChemicalShift(vSamp, vRef)
+    let back = ChemicalShift(vSamp, vRef)
     Assert.True(back > delta - 0.00001, "shift round trip")
     Assert.True(back < delta + 0.00001, "shift round trip exact")
 }
@@ -107,10 +107,10 @@ fn ProtonGammaIsLargest() -> Void {
 fn Carbon13FrequencyIsQuarterProtonFrequency() -> Void {
     // ¹³C Larmor frequency ≈ 25.15% of ¹H frequency at the same field.
     // This is the practical consequence of γ(¹³C) ≈ γ(¹H)/4.
-    let b0   = Field400MHz()
-    let fH   = ProtonLarmorFrequency(b0)
+    let b0 = Field400MHz()
+    let fH = ProtonLarmorFrequency(b0)
     let fC13 = Carbon13LarmorFrequency(b0)
-    let ratio = fC13 / fH   // Float<Hz>/Float<Hz> = Float ✓
+    let ratio = fC13 / fH // Float<Hz>/Float<Hz> = Float ✓
     Assert.True(ratio > 0.249, "C13 quarter ratio lower")
     Assert.True(ratio < 0.254, "C13 quarter ratio upper")
 }

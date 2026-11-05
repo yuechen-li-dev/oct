@@ -1,8 +1,8 @@
 package MainValid
 
-enum StageKind {Input Compute Output}
+enum StageKind { Input Compute Output }
 
-record Meta {Native: Bool}
+record Meta { Native: Bool }
 
 record table Measurements {
     Stage: String
@@ -37,11 +37,11 @@ fn Bundle(table: Measurements) -> MeasurementBundle {
 [Fact]
 fn RecordTableConstructionAccessLengthAndRows() -> Void {
     let table = Measurements {
-        Stage:["Attention", "RMSNorm", "FFN"]
-        Kind:[StageKind.Input, StageKind.Compute, StageKind.Output]
-        Latency:[2.4, 0.008, 0.96]
-        Count:[1, 2, 3]
-        Meta:[Meta {Native: true}, Meta {Native: false}, Meta {Native: true}]
+        Stage: ["Attention", "RMSNorm", "FFN"]
+        Kind: [StageKind.Input, StageKind.Compute, StageKind.Output]
+        Latency: [2.4, 0.008, 0.96]
+        Count: [1, 2, 3]
+        Meta: [Meta { Native: true }, Meta { Native: false }, Meta { Native: true }]
     }
     Assert.Equal(3, Len(table), "table length is the shared row count")
     Assert.Equal(0.008, table.Latency[1], "column access returns a typed array")
@@ -56,14 +56,14 @@ fn RecordTableConstructionAccessLengthAndRows() -> Void {
 [Fact]
 fn RecordTableZeroAndDynamicRows() -> Void {
     let empty = Measurements {
-        Stage:[]
-        Kind:[]
-        Latency:[]
-        Count:[]
-        Meta:[]
+        Stage: []
+        Kind: []
+        Latency: []
+        Count: []
+        Meta: []
     }
     Assert.Equal(0, Len(empty), "zero-row tables are valid")
-    let dynamic = Build(["Only"],[StageKind.Compute],[1.25],[7],[Meta {Native: true}])
+    let dynamic = Build(["Only"], [StageKind.Compute], [1.25], [7], [Meta { Native: true }])
     Assert.Equal(1, Len(dynamic), "dynamic equal-length construction validates once")
     Assert.Equal(StageKind.Compute, dynamic[0].Kind, "enum-valued cells work")
     let nested = ArrayCells { Samples: [[1.0, 2.0], [3.0]] }
@@ -73,15 +73,15 @@ fn RecordTableZeroAndDynamicRows() -> Void {
 [Fact]
 fn RecordTableWithReplacesColumnsImmutably() -> Void {
     let original = Measurements {
-        Stage:["A", "B"]
-        Kind:[StageKind.Input, StageKind.Output]
-        Latency:[1.0, 2.0]
-        Count:[3, 4]
-        Meta:[Meta {Native: false}, Meta {Native: true}]
+        Stage: ["A", "B"]
+        Kind: [StageKind.Input, StageKind.Output]
+        Latency: [1.0, 2.0]
+        Count: [3, 4]
+        Meta: [Meta { Native: false }, Meta { Native: true }]
     }
     let updated = original with {
-        Latency:[10.0, 20.0]
-        Count:[30, 40]
+        Latency: [10.0, 20.0]
+        Count: [30, 40]
     }
     Assert.Equal(1.0, original.Latency[0], "with leaves the source table unchanged")
     Assert.Equal(10.0, updated.Latency[0], "with replaces a complete column")

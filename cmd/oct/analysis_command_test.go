@@ -74,17 +74,11 @@ func TestAnalysisPackageIntegrationRunAndBuild(t *testing.T) {
 	}
 
 	buildStdout, buildStderr, buildErr := executeCLI("build", entry)
-	if buildErr == nil {
-		t.Fatalf("expected build failure for unsupported compiled feature, got success with stdout %q", buildStdout)
+	if buildErr != nil {
+		t.Fatalf("expected compiled build success, err=%v stdout=%q stderr=%q", buildErr, buildStdout, buildStderr)
 	}
-	if buildStdout != "" {
-		t.Fatalf("expected empty build stdout, got %q", buildStdout)
-	}
-	if !strings.Contains(buildStderr, "compiled mode does not yet support builtin PlotLine") {
-		t.Fatalf("expected unsupported builtin PlotLine diagnostic, got %q", buildStderr)
-	}
-	if _, statErr := os.Stat(nativeArtifactPath(entry)); !os.IsNotExist(statErr) {
-		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
+	if _, statErr := os.Stat(nativeArtifactPath(entry)); statErr != nil {
+		t.Fatalf("expected built artifact: %v", statErr)
 	}
 }
 
@@ -153,5 +147,15 @@ func setupM22cFixture(t *testing.T) string {
 	root := t.TempDir()
 	copyDir(t, filepath.Join("..", "..", "Libraries", "Analysis"), filepath.Join(root, "Analysis"))
 	copyDir(t, filepath.Join("..", "..", "testdata", "m22c", "valid", "Main"), filepath.Join(root, "Main"))
+	entry := filepath.Join(root, "Main", "main.oct")
+	source, err := os.ReadFile(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.ToSlash(filepath.Join(root, "analysis_output.png"))
+	source = []byte(strings.ReplaceAll(string(source), "analysis_output.png", output))
+	if err := os.WriteFile(entry, source, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return root
 }

@@ -123,13 +123,13 @@ record M44FinalContract {
     RecommendationComputed: Bool
 }
 
-fn M44Min(a: Int, b: Int) -> Int {return switch {case a < b -> a else -> b}}
-fn M44Max(a: Int, b: Int) -> Int {return switch {case a > b -> a else -> b}}
+fn M44Min(a: Int, b: Int) -> Int { return switch { case a < b -> a else -> b } }
+fn M44Max(a: Int, b: Int) -> Int { return switch { case a > b -> a else -> b } }
 
 fn M44Pow2(exp: Int) -> Int {
-    if exp <= 0 {return 1}
+    if exp <= 0 { return 1 }
     var value = 1
-    for _i in 0 .. exp {value = value * 2}
+    for _i in 0..exp { value = value * 2 }
     return value
 }
 
@@ -139,22 +139,22 @@ fn M44MaskHas(mask: Int, bit: Int) -> Bool {
 }
 
 fn M44MaskSet(mask: Int, bit: Int) -> Int {
-    if M44MaskHas(mask, bit) {return mask}
+    if M44MaskHas(mask, bit) { return mask }
     return mask + M44Pow2(bit)
 }
 
 fn M44MaskUnion(a: Int, b: Int, bits: Int) -> Int {
     var out = 0
-    for i in 0 .. bits {
-        if M44MaskHas(a, i) or M44MaskHas(b, i) {out = M44MaskSet(out, i)}
+    for i in 0..bits {
+        if M44MaskHas(a, i) or M44MaskHas(b, i) { out = M44MaskSet(out, i) }
     }
     return out
 }
 
 fn M44MaskCount(mask: Int, bits: Int) -> Int {
     var count = 0
-    for i in 0 .. bits {
-        if M44MaskHas(mask, i) {count = count + 1}
+    for i in 0..bits {
+        if M44MaskHas(mask, i) { count = count + 1 }
     }
     return count
 }
@@ -273,12 +273,12 @@ fn M44BoundaryClear(rs: M44ReadinessState, totalSlots: Int) -> M44ReadinessState
 }
 
 fn M44CanWorkerUseSlot(workerId: Int, slotOwnerWorkerId: Int, sharedPool: Bool) -> Bool {
-    if sharedPool {return true}
+    if sharedPool { return true }
     return workerId == slotOwnerWorkerId
 }
 
 fn M44QueueCount(s: M44Scenario) -> Int {
-    if s.MultiQueueEligible and s.HardwareQueueCount > 1 {return M44Min(s.HardwareQueueCount, s.WorkerCount)}
+    if s.MultiQueueEligible and s.HardwareQueueCount > 1 { return M44Min(s.HardwareQueueCount, s.WorkerCount) }
     return 1
 }
 
@@ -308,21 +308,21 @@ fn M44RunScenario(s: M44Scenario) -> M44Result {
     let queueCount = M44QueueCount(s)
 
     var queueCursor = [0]
-    for _q in 1 .. queueCount {queueCursor = Append(queueCursor, 0)}
+    for _q in 1..queueCount { queueCursor = Append(queueCursor, 0) }
 
     var workerSlotCursor = [0]
-    for _i in 1 .. totalSlots {workerSlotCursor = Append(workerSlotCursor, 0)}
+    for _i in 1..totalSlots { workerSlotCursor = Append(workerSlotCursor, 0) }
 
     var queueBusy = [0]
-    for _q in 1 .. queueCount {queueBusy = Append(queueBusy, 0)}
+    for _q in 1..queueCount { queueBusy = Append(queueBusy, 0) }
 
     var workerBusy = [0]
-    for _w in 1 .. workers {workerBusy = Append(workerBusy, 0)}
+    for _w in 1..workers { workerBusy = Append(workerBusy, 0) }
 
     var completion = [0]
     var entryOwnerWorker = [0]
     var entryOwnerSlot = [0]
-    for i in 1 .. s.BatchSize {
+    for i in 1..s.BatchSize {
         completion = Append(completion, 0)
         entryOwnerWorker = Append(entryOwnerWorker, 0)
         entryOwnerSlot = Append(entryOwnerSlot, 0)
@@ -336,103 +336,103 @@ fn M44RunScenario(s: M44Scenario) -> M44Result {
     var drainSlotCount = 0
     var unsafeToReuse = false
 
-    for i in 0 .. s.BatchSize {
+    for i in 0..s.BatchSize {
         if not failureSeen {
             let worker = i % workers
             entryOwnerWorker[i] = worker
 
-        var bestSlot = worker * effectiveSlots
-        var bestTime = workerSlotCursor[bestSlot]
-        for localSlot in 0 .. effectiveSlots {
-            let globalSlot = worker * effectiveSlots + localSlot
-            if workerSlotCursor[globalSlot] < bestTime {
-                bestTime = workerSlotCursor[globalSlot]
-                bestSlot = globalSlot
+            var bestSlot = worker * effectiveSlots
+            var bestTime = workerSlotCursor[bestSlot]
+            for localSlot in 0..effectiveSlots {
+                let globalSlot = worker * effectiveSlots + localSlot
+                if workerSlotCursor[globalSlot] < bestTime {
+                    bestTime = workerSlotCursor[globalSlot]
+                    bestSlot = globalSlot
+                }
             }
-        }
 
-        let queueId = worker % queueCount
-        let start = M44Max(workerSlotCursor[bestSlot], queueCursor[queueId])
-        let duration = M44Duration(i)
-        let end = start + duration
+            let queueId = worker % queueCount
+            let start = M44Max(workerSlotCursor[bestSlot], queueCursor[queueId])
+            let duration = M44Duration(i)
+            let end = start + duration
 
-        workerSlotCursor[bestSlot] = end
-        queueCursor[queueId] = end
-        queueBusy[queueId] = queueBusy[queueId] + duration
-        workerBusy[worker] = workerBusy[worker] + duration
+            workerSlotCursor[bestSlot] = end
+            queueCursor[queueId] = end
+            queueBusy[queueId] = queueBusy[queueId] + duration
+            workerBusy[worker] = workerBusy[worker] + duration
 
-        completion[i] = end
-        entryOwnerSlot[i] = bestSlot
-        refillCount = refillCount + 1
+            completion[i] = end
+            entryOwnerSlot[i] = bestSlot
+            refillCount = refillCount + 1
 
-        if s.FailureMode == "before-submit" and i == s.FailureEntryId {
-            failureSeen = true
-            firstFailureEntry = i
-            firstFailureDetail = "before-submit"
-            slotFailureCount = slotFailureCount + 1
-            unsafeToReuse = true
-        }
-        if s.FailureMode == "after-submit" and i == s.FailureEntryId {
-            failureSeen = true
-            firstFailureEntry = i
-            firstFailureDetail = "after-submit"
-            slotFailureCount = slotFailureCount + 1
-            unsafeToReuse = true
-            drainSlotCount = drainSlotCount + 1
-        }
-        if s.FailureMode == "dual" and (i == s.FailureEntryId or i == s.SecondaryFailureEntryId) {
-            slotFailureCount = slotFailureCount + 1
-            if not failureSeen {
+            if s.FailureMode == "before-submit" and i == s.FailureEntryId {
                 failureSeen = true
                 firstFailureEntry = i
-                firstFailureDetail = "first-failure-wins"
+                firstFailureDetail = "before-submit"
+                slotFailureCount = slotFailureCount + 1
+                unsafeToReuse = true
             }
-            unsafeToReuse = true
-        }
-        if s.FailureMode == "queue-failure" and i == s.FailureEntryId {
-            failureSeen = true
-            firstFailureEntry = i
-            firstFailureDetail = "queue-failure"
-            slotFailureCount = slotFailureCount + 1
-            drainSlotCount = drainSlotCount + effectiveSlots
-            unsafeToReuse = true
-        }
-        if s.FailureMode == "invalidate-ready" and i == s.InvalidateEntryId {
-            failureSeen = true
-            firstFailureEntry = i
-            firstFailureDetail = "invalidated-ready-not-dispatched"
-            slotFailureCount = slotFailureCount + 1
-            unsafeToReuse = true
-        }
-        if s.FailureMode == "drain-timeout" and i == s.FailureEntryId {
-            failureSeen = true
-            firstFailureEntry = i
-            firstFailureDetail = "drain-timeout"
-            slotFailureCount = slotFailureCount + 1
-            drainSlotCount = drainSlotCount + effectiveSlots
-            unsafeToReuse = true
-        }
-        if s.FailureMode == "device-failure" and i == s.FailureEntryId {
-            failureSeen = true
-            firstFailureEntry = i
-            firstFailureDetail = "device-global-failure"
-            slotFailureCount = slotFailureCount + totalSlots
-            drainSlotCount = drainSlotCount + totalSlots
-            unsafeToReuse = true
-        }
+            if s.FailureMode == "after-submit" and i == s.FailureEntryId {
+                failureSeen = true
+                firstFailureEntry = i
+                firstFailureDetail = "after-submit"
+                slotFailureCount = slotFailureCount + 1
+                unsafeToReuse = true
+                drainSlotCount = drainSlotCount + 1
+            }
+            if s.FailureMode == "dual" and (i == s.FailureEntryId or i == s.SecondaryFailureEntryId) {
+                slotFailureCount = slotFailureCount + 1
+                if not failureSeen {
+                    failureSeen = true
+                    firstFailureEntry = i
+                    firstFailureDetail = "first-failure-wins"
+                }
+                unsafeToReuse = true
+            }
+            if s.FailureMode == "queue-failure" and i == s.FailureEntryId {
+                failureSeen = true
+                firstFailureEntry = i
+                firstFailureDetail = "queue-failure"
+                slotFailureCount = slotFailureCount + 1
+                drainSlotCount = drainSlotCount + effectiveSlots
+                unsafeToReuse = true
+            }
+            if s.FailureMode == "invalidate-ready" and i == s.InvalidateEntryId {
+                failureSeen = true
+                firstFailureEntry = i
+                firstFailureDetail = "invalidated-ready-not-dispatched"
+                slotFailureCount = slotFailureCount + 1
+                unsafeToReuse = true
+            }
+            if s.FailureMode == "drain-timeout" and i == s.FailureEntryId {
+                failureSeen = true
+                firstFailureEntry = i
+                firstFailureDetail = "drain-timeout"
+                slotFailureCount = slotFailureCount + 1
+                drainSlotCount = drainSlotCount + effectiveSlots
+                unsafeToReuse = true
+            }
+            if s.FailureMode == "device-failure" and i == s.FailureEntryId {
+                failureSeen = true
+                firstFailureEntry = i
+                firstFailureDetail = "device-global-failure"
+                slotFailureCount = slotFailureCount + totalSlots
+                drainSlotCount = drainSlotCount + totalSlots
+                unsafeToReuse = true
+            }
         }
     }
 
     var completionTime = 0
-    for i in 0 .. s.BatchSize {
+    for i in 0..s.BatchSize {
         completionTime = M44Max(completionTime, completion[i])
     }
 
     var totalQueueBusy = 0
-    for q in 0 .. queueCount {totalQueueBusy = totalQueueBusy + queueBusy[q]}
+    for q in 0..queueCount { totalQueueBusy = totalQueueBusy + queueBusy[q] }
 
     var totalWorkerBusy = 0
-    for w in 0 .. workers {totalWorkerBusy = totalWorkerBusy + workerBusy[w]}
+    for w in 0..workers { totalWorkerBusy = totalWorkerBusy + workerBusy[w] }
 
     let queueCap = M44Max(1, completionTime * queueCount)
     let queueUtil = (totalQueueBusy * 1000) / queueCap
@@ -468,7 +468,7 @@ fn M44RunScenario(s: M44Scenario) -> M44Result {
         case s.FailureMode == "device-failure" -> 6
         else -> 4 + drainSlotCount
     }
-    if failureSeen and drainSlotCount == 0 {drainSlotCount = effectiveSlots}
+    if failureSeen and drainSlotCount == 0 { drainSlotCount = effectiveSlots }
 
     let outputCommit = switch {
         case failureSeen -> "uncommitted-on-failure"
@@ -556,7 +556,7 @@ fn M44DefaultCandidates() -> String[] {
 fn M44ResultsForComparison() -> M44Result[] {
     var out = [M44RunScenario(M44ScenarioBase("A-1-slot-baseline"))]
     let c = M44DefaultCandidates()
-    for i in 1 .. Len(c) {out = Append(out, M44RunScenario(M44ScenarioBase(c[i])))}
+    for i in 1..Len(c) { out = Append(out, M44RunScenario(M44ScenarioBase(c[i]))) }
     return out
 }
 
@@ -564,9 +564,9 @@ fn M44RecommendationFromModel() -> M44Result {
     let results = M44ResultsForComparison()
     var best = results[0]
     var bResult = results[0]
-    for i in 1 .. Len(results) {
-        if results[i].Candidate == "B-2-slots-worker-local" {bResult = results[i]}
-        if results[i].ProductScore > best.ProductScore {best = results[i]}
+    for i in 1..Len(results) {
+        if results[i].Candidate == "B-2-slots-worker-local" { bResult = results[i] }
+        if results[i].ProductScore > best.ProductScore { best = results[i] }
     }
     if best.Candidate != "B-2-slots-worker-local" and bResult.ProductScore >= best.ProductScore - 20 {
         return bResult
@@ -587,7 +587,7 @@ fn M44SlotCountComparisonFrom() -> M44SlotCountComparison {
     let best = M44RecommendationFromModel().Candidate
     var rec = [r[0].Candidate == best]
 
-    for i in 1 .. Len(r) {
+    for i in 1..Len(r) {
         candidate = Append(candidate, r[i].Candidate)
         req = Append(req, r[i].SlotsPerWorkerRequested)
         eff = Append(eff, r[i].SlotsPerWorkerEffective)
@@ -614,13 +614,13 @@ fn M44ReadinessDirtyTrackingFrom() -> M44ReadinessDirtyTrackingTable {
     let totalSlots = 8
     var rstate = M44BaseReadiness()
 
-    var steps =["start"]
-    var dirty =[rstate.DirtySlotMask]
-    var ready =[rstate.ReadySlotMask]
-    var failed =[rstate.FailedSlotMask]
-    var invalidated =[rstate.InvalidatedSlotMask]
-    var attention =[rstate.AttentionSlotMask]
-    var generation =[rstate.BoundaryGeneration]
+    var steps = ["start"]
+    var dirty = [rstate.DirtySlotMask]
+    var ready = [rstate.ReadySlotMask]
+    var failed = [rstate.FailedSlotMask]
+    var invalidated = [rstate.InvalidatedSlotMask]
+    var attention = [rstate.AttentionSlotMask]
+    var generation = [rstate.BoundaryGeneration]
 
     rstate = M44ApplyReady(rstate, 1, totalSlots)
     steps = Append(steps, "ready-slot-1")
@@ -686,7 +686,7 @@ fn M44MemoryPressureTableFrom() -> M44MemoryPressureTable {
     var slots = [r[0].SlotsPerWorkerEffective]
     var reason = [r[0].MemoryBudgetSlotCapReason]
 
-    for i in 1 .. Len(r) {
+    for i in 1..Len(r) {
         candidate = Append(candidate, r[i].Candidate)
         peakMiB = Append(peakMiB, r[i].PeakCommittedMemoryBytes / (1024 * 1024))
         pressure = Append(pressure, r[i].MemoryPressurePermille)
@@ -707,7 +707,7 @@ fn M44FailureDrainTableFrom() -> M44FailureDrainTable {
     let base = M44ScenarioBase("B-2-slots-worker-local")
     let modes = ["before-submit", "after-submit", "dual", "queue-failure", "invalidate-ready", "drain-timeout", "device-failure"]
 
-    var scenario =[modes[0]]
+    var scenario = [modes[0]]
     let r0 = M44RunScenario(M44Scenario {
         Name: base.Name
         Candidate: base.Candidate
@@ -725,14 +725,14 @@ fn M44FailureDrainTableFrom() -> M44FailureDrainTable {
         DrainTimeoutBudget: base.DrainTimeoutBudget
     })
 
-    var failCount =[r0.SlotFailureCount]
-    var first =[r0.FirstFailureEntryId]
-    var latency =[r0.FailurePropagationLatency]
-    var drain =[r0.DrainLatency]
-    var drainSlots =[r0.DrainSlotCount]
-    var output =[r0.OutputCommitStatus]
+    var failCount = [r0.SlotFailureCount]
+    var first = [r0.FirstFailureEntryId]
+    var latency = [r0.FailurePropagationLatency]
+    var drain = [r0.DrainLatency]
+    var drainSlots = [r0.DrainSlotCount]
+    var output = [r0.OutputCommitStatus]
 
-    for i in 1 .. Len(modes) {
+    for i in 1..Len(modes) {
         let ri = M44RunScenario(M44Scenario {
             Name: base.Name
             Candidate: base.Candidate
@@ -778,7 +778,7 @@ fn M44QueueUtilizationTableFrom() -> M44QueueUtilizationTable {
     var idle = [r[0].QueueIdleTime]
     var completion = [r[0].CompletionTime]
 
-    for i in 1 .. Len(r) {
+    for i in 1..Len(r) {
         candidate = Append(candidate, r[i].Candidate)
         queueCount = Append(queueCount, M44QueueCount(M44ScenarioBase(r[i].Candidate)))
         util = Append(util, r[i].QueueUtilizationPermille)

@@ -10,8 +10,8 @@ enum Status {
     Active
 }
 
-record SamplePayload {Value: Float}
-record MessagePayload {Value: String}
+record SamplePayload { Value: Float }
+record MessagePayload { Value: String }
 
 enum MixedPayload {
     Sample(SamplePayload)
@@ -55,6 +55,6 @@ fn NonPayloadEnumMatch() -> Void {
 
 [Fact]
 fn MatchBindingsMayReuseOneSourceNameAcrossPayloadTypes() -> Void {
-    Assert.Equal("2", DescribeMixed(MixedPayload.Sample(SamplePayload {Value: 2.0})), "record payload")
-    Assert.Equal("ready", DescribeMixed(MixedPayload.Message(MessagePayload {Value: "ready"})), "different record payload")
+    Assert.Equal("2", DescribeMixed(MixedPayload.Sample(SamplePayload { Value: 2.0 })), "record payload")
+    Assert.Equal("ready", DescribeMixed(MixedPayload.Message(MessagePayload { Value: "ready" })), "different record payload")
 }

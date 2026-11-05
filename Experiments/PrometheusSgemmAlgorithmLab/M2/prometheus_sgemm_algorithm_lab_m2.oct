@@ -15,10 +15,10 @@ fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
-    for i in 0 .. A.rows {
-        for j in 0 .. B.cols {
+    for i in 0..A.rows {
+        for j in 0..B.cols {
             var sum = 0.0
-            for k in 0 .. A.cols {
+            for k in 0..A.cols {
                 sum = sum + A[i, k] * B[k, j]
             }
             out[i, j] = sum
@@ -32,10 +32,10 @@ fn MatMul_IKJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
-    for i in 0 .. A.rows {
-        for k in 0 .. A.cols {
+    for i in 0..A.rows {
+        for k in 0..A.cols {
             let aValue = A[i, k]
-            for j in 0 .. B.cols {
+            for j in 0..B.cols {
                 out[i, j] = out[i, j] + aValue * B[k, j]
             }
         }
@@ -48,10 +48,10 @@ fn MatMul_KIJ(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
-    for k in 0 .. A.cols {
-        for i in 0 .. A.rows {
+    for k in 0..A.cols {
+        for i in 0..A.rows {
             let aValue = A[i, k]
-            for j in 0 .. B.cols {
+            for j in 0..B.cols {
                 out[i, j] = out[i, j] + aValue * B[k, j]
             }
         }
@@ -66,18 +66,18 @@ fn MatMul_Blocked(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Matrix<
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
-    for iBlockIndex in 0 .. A.rows {
+    for iBlockIndex in 0..A.rows {
         let iBlock = iBlockIndex * blockSize
         if iBlock < A.rows {
             let iEnd = MinInt(iBlock + blockSize, A.rows)
-            for jBlockIndex in 0 .. B.cols {
+            for jBlockIndex in 0..B.cols {
                 let jBlock = jBlockIndex * blockSize
                 if jBlock < B.cols {
                     let jEnd = MinInt(jBlock + blockSize, B.cols)
-                    for i in iBlock .. iEnd {
-                        for j in jBlock .. jEnd {
+                    for i in iBlock..iEnd {
+                        for j in jBlock..jEnd {
                             var sum = 0.0
-                            for k in 0 .. A.cols {
+                            for k in 0..A.cols {
                                 sum = sum + A[i, k] * B[k, j]
                             }
                             out[i, j] = sum
@@ -97,18 +97,18 @@ fn MatMul_Blocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, blockSize: Int) -> Mat
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
-    for iBlockIndex in 0 .. A.rows {
+    for iBlockIndex in 0..A.rows {
         let iBlock = iBlockIndex * blockSize
         if iBlock < A.rows {
             let iEnd = MinInt(iBlock + blockSize, A.rows)
-            for jBlockIndex in 0 .. B.cols {
+            for jBlockIndex in 0..B.cols {
                 let jBlock = jBlockIndex * blockSize
                 if jBlock < B.cols {
                     let jEnd = MinInt(jBlock + blockSize, B.cols)
-                    for i in iBlock .. iEnd {
-                        for k in 0 .. A.cols {
+                    for i in iBlock..iEnd {
+                        for k in 0..A.cols {
                             let aValue = A[i, k]
-                            for j in jBlock .. jEnd {
+                            for j in jBlock..jEnd {
                                 out[i, j] = out[i, j] + aValue * B[k, j]
                             }
                         }
@@ -127,14 +127,14 @@ fn MatMul_KBlocked(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<Fl
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
-    for kBlockIndex in 0 .. A.cols {
+    for kBlockIndex in 0..A.cols {
         let kStart = kBlockIndex * kBlock
         if kStart < A.cols {
             let kEnd = MinInt(kStart + kBlock, A.cols)
-            for i in 0 .. A.rows {
-                for j in 0 .. B.cols {
+            for i in 0..A.rows {
+                for j in 0..B.cols {
                     var partial = 0.0
-                    for k in kStart .. kEnd {
+                    for k in kStart..kEnd {
                         partial = partial + A[i, k] * B[k, j]
                     }
                     out[i, j] = out[i, j] + partial
@@ -152,14 +152,14 @@ fn MatMul_KBlocked_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matri
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
-    for kBlockIndex in 0 .. A.cols {
+    for kBlockIndex in 0..A.cols {
         let kStart = kBlockIndex * kBlock
         if kStart < A.cols {
             let kEnd = MinInt(kStart + kBlock, A.cols)
-            for i in 0 .. A.rows {
-                for k in kStart .. kEnd {
+            for i in 0..A.rows {
+                for k in kStart..kEnd {
                     let aValue = A[i, k]
-                    for j in 0 .. B.cols {
+                    for j in 0..B.cols {
                         out[i, j] = out[i, j] + aValue * B[k, j]
                     }
                 }
@@ -176,7 +176,7 @@ fn MatMul_Staged_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
 
-    for kBlockIndex in 0 .. A.cols {
+    for kBlockIndex in 0..A.cols {
         let kStart = kBlockIndex * kBlock
         if kStart < A.cols {
             let kEnd = MinInt(kStart + kBlock, A.cols)
@@ -186,17 +186,17 @@ fn MatMul_Staged_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<
             let stagedB = StageBChunk(B, kStart, kChunkLen)
 
             var partialOut = Matrix.zeros<Float>(A.rows, B.cols)
-            for i in 0 .. A.rows {
-                for kLocal in 0 .. kChunkLen {
+            for i in 0..A.rows {
+                for kLocal in 0..kChunkLen {
                     let aValue = stagedA[i, kLocal]
-                    for j in 0 .. B.cols {
+                    for j in 0..B.cols {
                         partialOut[i, j] = partialOut[i, j] + aValue * stagedB[kLocal, j]
                     }
                 }
             }
 
-            for i in 0 .. A.rows {
-                for j in 0 .. B.cols {
+            for i in 0..A.rows {
+                for j in 0..B.cols {
                     out[i, j] = out[i, j] + partialOut[i, j]
                 }
             }
@@ -209,8 +209,8 @@ fn MatMul_Staged_IKJ(A: Matrix<Float>, B: Matrix<Float>, kBlock: Int) -> Matrix<
 fn StageAChunk(A: Matrix<Float>, kStart: Int, kChunkLen: Int) -> Matrix<Float> {
     var staged = Matrix.zeros<Float>(A.rows, kChunkLen)
 
-    for i in 0 .. A.rows {
-        for kLocal in 0 .. kChunkLen {
+    for i in 0..A.rows {
+        for kLocal in 0..kChunkLen {
             staged[i, kLocal] = A[i, kStart + kLocal]
         }
     }
@@ -221,8 +221,8 @@ fn StageAChunk(A: Matrix<Float>, kStart: Int, kChunkLen: Int) -> Matrix<Float> {
 fn StageBChunk(B: Matrix<Float>, kStart: Int, kChunkLen: Int) -> Matrix<Float> {
     var staged = Matrix.zeros<Float>(kChunkLen, B.cols)
 
-    for kLocal in 0 .. kChunkLen {
-        for j in 0 .. B.cols {
+    for kLocal in 0..kChunkLen {
+        for j in 0..B.cols {
             staged[kLocal, j] = B[kStart + kLocal, j]
         }
     }

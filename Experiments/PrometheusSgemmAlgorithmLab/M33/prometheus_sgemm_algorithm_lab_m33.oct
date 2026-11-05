@@ -270,7 +270,7 @@ fn M33Scenarios() -> M33Scenario[] {
 fn M33DecisionRows() -> M33DecisionResult[] {
     let scenarios = M33Scenarios()
     var rows = [M33DecisionForScenario(scenarios[0])]
-    for i in 1 .. Len(scenarios) {
+    for i in 1..Len(scenarios) {
         rows = Append(rows, M33DecisionForScenario(scenarios[i]))
     }
     return rows
@@ -296,7 +296,7 @@ fn M33PolicyScenarioTableFrom(rows: M33DecisionResult[]) -> M33PolicyScenarioTab
     var serialJitFeasible = [rows[0].FeasibilityFlags.SerialJitFeasible]
     var selectedMode = [rows[0].SelectedMode]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         memoryBudgetSlots = Append(memoryBudgetSlots, scenarios[i].MemoryBudgetSlots)
         requiredDoubleSlots = Append(requiredDoubleSlots, scenarios[i].RequiredDoubleSlots)
@@ -343,7 +343,7 @@ fn M33ModeScoreTableFrom(rows: M33DecisionResult[]) -> M33ModeScoreTable {
     var selectedMode = [rows[0].SelectedMode]
     var rationale = [rows[0].DecisionRationale]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         fixedDoubleScore = Append(fixedDoubleScore, rows[i].Scores.FixedDoubleDefault)
         pullLagScore = Append(pullLagScore, rows[i].Scores.PullLagPressure)
@@ -367,7 +367,7 @@ fn M33FallbackReasonTableFrom(rows: M33DecisionResult[]) -> M33FallbackReasonTab
     var rejectedModes = [rows[0].RejectedModes]
     var fallbackReason = [rows[0].FallbackReason]
 
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         caseName = Append(caseName, rows[i].CaseName)
         rejectedModes = Append(rejectedModes, rows[i].RejectedModes)
         fallbackReason = Append(fallbackReason, rows[i].FallbackReason)

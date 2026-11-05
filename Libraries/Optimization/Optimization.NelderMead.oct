@@ -32,7 +32,7 @@ package Optimization
 /// Index of minimum in Float[].
 fn ArgMin(v: Float[]) -> Int {
     var best = 0
-    for i in 1 .. Len(v) {
+    for i in 1..Len(v) {
         if v[i] < v[best] {
             best = i
         }
@@ -43,7 +43,7 @@ fn ArgMin(v: Float[]) -> Int {
 /// Index of maximum in Float[].
 fn ArgMax(v: Float[]) -> Int {
     var best = 0
-    for i in 1 .. Len(v) {
+    for i in 1..Len(v) {
         if v[i] > v[best] {
             best = i
         }
@@ -54,7 +54,7 @@ fn ArgMax(v: Float[]) -> Int {
 /// Index of second-maximum in Float[] (index of second-worst vertex).
 fn ArgSecondMax(v: Float[], worstIdx: Int) -> Int {
     var best = if worstIdx == 0 { 1 } else { 0 }
-    for i in 0 .. Len(v) {
+    for i in 0..Len(v) {
         if i != worstIdx and v[i] > v[best] {
             best = i
         }
@@ -64,23 +64,23 @@ fn ArgSecondMax(v: Float[], worstIdx: Int) -> Int {
 
 /// Centroid of all vertices except worstIdx.
 fn Centroid(simplex: Float[][], worstIdx: Int) -> Float[] ! Error {
-    let n  = Len(simplex[0])
+    let n = Len(simplex[0])
     let ns = Len(simplex)
-    var c  = [0.0]
-    for j in 1 .. n {
+    var c = [0.0]
+    for j in 1..n {
         c = Append(c, 0.0)
     }
-    for i in 0 .. ns {
+    for i in 0..ns {
         if i != worstIdx {
             let row = simplex[i]
-            for j in 0 .. n {
+            for j in 0..n {
                 c[j] = c[j] + row[j]
             }
         }
     }
-    let denom  = Float(ns - 1)
+    let denom = Float(ns - 1)
     var result = [c[0] / denom]
-    for j in 1 .. n {
+    for j in 1..n {
         result = Append(result, c[j] / denom)
     }
     return result
@@ -90,10 +90,10 @@ fn Centroid(simplex: Float[][], worstIdx: Int) -> Float[] ! Error {
 fn InitialSimplex(x0: Float[]) -> Float[][] {
     let n = Len(x0)
     var s = [x0]
-    for i in 0 .. n {
+    for i in 0..n {
         // Build a fresh copy of x0 via Append to avoid aliasing
         var v = [x0[0]]
-        for k in 1 .. n {
+        for k in 1..n {
             v = Append(v, x0[k])
         }
         if Abs(x0[i]) > 0.0001 {
@@ -118,7 +118,7 @@ fn SimplexCombine(base: Float[], a: Float[], b: Float[], scale: Float) -> Float[
         return error("SimplexCombine: vector length mismatch")
     }
     var result = [base[0] + scale * (a[0] - b[0])]
-    for j in 1 .. Len(base) {
+    for j in 1..Len(base) {
         result = Append(result, base[j] + scale * (a[j] - b[j]))
     }
     return result
@@ -140,10 +140,10 @@ fn SimplexCombine(base: Float[], a: Float[], b: Float[], scale: Float) -> Float[
 /// For 1D: use Numerics.Optimization.Brent instead.
 /// For problems with analytic gradient: use GradientDescent.
 fn NelderMead(
-    f:       fn(Float[]) -> Float,
-    x0:      Float[],
-    xTol:    Float,
-    fTol:    Float,
+    f: fn(Float[]) -> Float,
+    x0: Float[],
+    xTol: Float,
+    fTol: Float,
     maxIter: Int
 ) -> OptimizationResultND ! Error {
     if Len(x0) == 0 {
@@ -163,23 +163,23 @@ fn NelderMead(
 
     // Build initial simplex and evaluate f at each vertex
     var simplex = InitialSimplex(x0)
-    var fvals   = [f(simplex[0])]
-    for i in 1 .. n + 1 {
+    var fvals = [f(simplex[0])]
+    for i in 1..n + 1 {
         fvals = Append(fvals, f(simplex[i]))
     }
 
-    var iter      = 0
+    var iter = 0
     var converged = false
 
     while iter < maxIter and not converged {
-        let bestIdx    = ArgMin(fvals)
-        let worstIdx   = ArgMax(fvals)
+        let bestIdx = ArgMin(fvals)
+        let worstIdx = ArgMax(fvals)
         let sndWorstIdx = ArgSecondMax(fvals, worstIdx)
 
         // Convergence check
         let fRange = fvals[worstIdx] - fvals[bestIdx]
         let edgeDiff = VecSub(simplex[worstIdx], simplex[bestIdx])?
-        let edgeLen  = L2Norm(edgeDiff)?
+        let edgeLen = L2Norm(edgeDiff)?
 
         if fRange <= fTol and edgeLen <= xTol {
             converged = true
@@ -198,18 +198,18 @@ fn NelderMead(
                 let fe = f(xe)
                 if fe < fr {
                     simplex[worstIdx] = xe
-                    fvals[worstIdx]   = fe
+                    fvals[worstIdx] = fe
                 }
                 if fe >= fr {
                     simplex[worstIdx] = xr
-                    fvals[worstIdx]   = fr
+                    fvals[worstIdx] = fr
                 }
             }
 
             if fr >= fvals[bestIdx] and fr < fvals[sndWorstIdx] {
                 // Accept reflection
                 simplex[worstIdx] = xr
-                fvals[worstIdx]   = fr
+                fvals[worstIdx] = fr
             }
 
             if fr >= fvals[sndWorstIdx] {
@@ -219,16 +219,16 @@ fn NelderMead(
 
                 if fc < fvals[worstIdx] {
                     simplex[worstIdx] = xc
-                    fvals[worstIdx]   = fc
+                    fvals[worstIdx] = fc
                 }
                 if fc >= fvals[worstIdx] {
                     // Shrink toward best
                     let xBest = simplex[bestIdx]
-                    for i in 0 .. n + 1 {
+                    for i in 0..n + 1 {
                         if i != bestIdx {
                             let xs = SimplexCombine(xBest, simplex[i], xBest, 0.5)?
                             simplex[i] = xs
-                            fvals[i]   = f(xs)
+                            fvals[i] = f(xs)
                         }
                     }
                 }
@@ -240,10 +240,10 @@ fn NelderMead(
 
     let bestIdx = ArgMin(fvals)
     return OptimizationResultND {
-        Point:      simplex[bestIdx]
-        FMin:       fvals[bestIdx]
+        Point: simplex[bestIdx]
+        FMin: fvals[bestIdx]
         Iterations: iter
-        Converged:  converged
-        GradNorm:   0.0
+        Converged: converged
+        GradNorm: 0.0
     }
 }

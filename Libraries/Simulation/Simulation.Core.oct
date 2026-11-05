@@ -78,7 +78,7 @@ fn RunFixedStep(
     var state = initialState
     var trace = InitializeTrace(time, state, observe(time, state))
     let stepCount = config.Steps + 0
-    for i in 0 .. stepCount {
+    for i in 0..stepCount {
         let nextState = transition(time, state, config.Dt)
         time = time + config.Dt
         state = nextState
@@ -114,7 +114,7 @@ fn OutputIntegral(trace: SimulationTrace) -> Float ! Error {
     }
 
     var integral = 0.0
-    for i in 0 .. Len(trace.Times) - 1 {
+    for i in 0..Len(trace.Times) - 1 {
         let dt = trace.Times[i + 1] - trace.Times[i]
         if dt <= 0.0 {
             return error("output integral requires strictly increasing times")

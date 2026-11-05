@@ -119,8 +119,8 @@ fn TimesOut() -> Void {
 		if readErr != nil {
 			t.Fatalf("read retained generated source: %v", readErr)
 		}
-		if !strings.Contains(string(generatedGo), "__oct_internal_pc") {
-			t.Fatalf("generated state machine did not use centralized internal pc name:\n%s", generatedGo)
+		if !strings.Contains(string(generatedGo), "__oct_internal_block_0:") {
+			t.Fatalf("retained generated runner did not use centralized internal block labels:\n%s", generatedGo)
 		}
 		if removeErr := os.RemoveAll(retained[0]); removeErr != nil {
 			t.Fatalf("remove retained test scope: %v", removeErr)

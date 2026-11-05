@@ -97,7 +97,7 @@ fn BinomialPmfMatchesExactTextbookCases() -> Void {
     Assert.Error(NonNegativeCount(InvalidRuntimeCount()), "negative trial count must fail at admission")
 
     var total = 0.0
-    for k in 0 .. 7 {
+    for k in 0..7 {
         total = total + BinomialPmf(k, 6, 0.25)
     }
     Assert.Near(1.0, total, 0.0000001, "finite binomial support should sum to one")

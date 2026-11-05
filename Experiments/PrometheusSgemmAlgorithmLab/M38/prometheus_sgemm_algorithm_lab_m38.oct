@@ -449,63 +449,63 @@ fn M38GenerateWorkload(scenario: String, slotCount: Int, budgetMiB: Int) -> M38A
     var rows = [M38Request("A", 64, 64, 64, "scalar", "fp32", 0, budgetMiB, false)]
 
     if scenario == "steady-same-shape" {
-        for epoch in 0 .. 12 {
+        for epoch in 0..12 {
             rows = M38AppendEpoch(rows, 128, 128, 128, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
         }
     }
     if scenario == "m-only-churn" {
-        for epoch in 0 .. 12 {
+        for epoch in 0..12 {
             let m = 96 + (epoch % 4) * 16
             rows = M38AppendEpoch(rows, m, 128, 128, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
         }
     }
     if scenario == "n-only-churn" {
-        for epoch in 0 .. 12 {
+        for epoch in 0..12 {
             let n = 96 + (epoch % 4) * 16
             rows = M38AppendEpoch(rows, 128, n, 128, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
         }
     }
     if scenario == "k-only-churn" {
-        for epoch in 0 .. 12 {
+        for epoch in 0..12 {
             let k = 96 + (epoch % 4) * 16
             rows = M38AppendEpoch(rows, 128, 128, k, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
         }
     }
     if scenario == "layout-churn" {
-        for epoch in 0 .. 10 {
+        for epoch in 0..10 {
             let layout = switch { case epoch % 2 == 0 => "scalar" else => "packed4" }
             rows = M38AppendEpoch(rows, 128, 128, 128, layout, "fp32", epoch % slotCount, budgetMiB, false)
         }
     }
     if scenario == "precision-churn" {
-        for epoch in 0 .. 10 {
+        for epoch in 0..10 {
             let precision = switch { case epoch % 2 == 0 => "fp32" else => "fp16-storage" }
             rows = M38AppendEpoch(rows, 128, 128, 128, "scalar", precision, epoch % slotCount, budgetMiB, false)
         }
     }
     if scenario == "capacity-growth-then-shrink" {
-        for epoch in 0 .. 8 {
+        for epoch in 0..8 {
             rows = M38AppendEpoch(rows, 256 + epoch * 32, 256 + epoch * 32, 256, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
         }
-        for epoch in 0 .. 10 {
+        for epoch in 0..10 {
             rows = M38AppendEpoch(rows, 64, 64, 64, "scalar", "fp32", epoch % slotCount, budgetMiB, false)
         }
     }
     if scenario == "fixed-double-two-slot" {
-        for epoch in 0 .. 12 {
+        for epoch in 0..12 {
             let slot = epoch % M38Min(slotCount, 2)
             let inFlightB = slot == 0 and epoch % 3 == 0
             rows = M38AppendEpoch(rows, 128, 128, 128, "scalar", "fp32", slot, budgetMiB, inFlightB)
         }
     }
     if scenario == "future-n-slot-preview" {
-        for epoch in 0 .. 16 {
+        for epoch in 0..16 {
             let slot = epoch % slotCount
             rows = M38AppendEpoch(rows, 96 + (slot % 3) * 16, 96 + ((slot + 1) % 3) * 16, 128, "scalar", "fp32", slot, budgetMiB, false)
         }
     }
     if scenario == "budget-pressure-failure" {
-        for epoch in 0 .. 16 {
+        for epoch in 0..16 {
             let m = 1024 + (epoch % 4) * 256
             let n = 1024 + ((epoch + 1) % 4) * 256
             let k = 1024 + ((epoch + 2) % 4) * 256
@@ -541,7 +541,7 @@ fn M38RunScenario(policy: String, scenario: String, slotCount: Int, budgetMiB: I
     var reuseLegalCount = 0
     var growOrRebuildRequiredCount = 0
 
-    for i in 0 .. Len(requests) {
+    for i in 0..Len(requests) {
         if i > 0 {
             let request = requests[i]
             let idx = M38RoleIndex(request.Role)
@@ -569,7 +569,7 @@ fn M38RunScenario(policy: String, scenario: String, slotCount: Int, budgetMiB: I
             if decision.Grow or decision.Rebuild { growOrRebuildRequiredCount = growOrRebuildRequiredCount + 1 }
 
             var live = 0
-            for j in 0 .. Len(arenas) {
+            for j in 0..Len(arenas) {
                 live = live + arenas[j].LiveBytes
             }
             let slack = M38Max(0, totalCommitted - live)
@@ -642,7 +642,7 @@ fn M38AggregatePolicy(policy: String) -> M38Metrics {
     var reuseLegal = 0
     var growOrRebuild = 0
 
-    for i in 0 .. Len(scenarios) {
+    for i in 0..Len(scenarios) {
         let budget = switch { case scenarios[i] == "budget-pressure-failure" => 256 else => 8192 }
         let slots = switch { case scenarios[i] == "future-n-slot-preview" => 8 else => 2 }
         let r = M38RunScenario(policy, scenarios[i], slots, budget).Metrics
@@ -733,7 +733,7 @@ fn M38ArenaPolicyComparisonFrom() -> M38ArenaPolicyComparison {
     var missed = [0, 0, 0, 0]
     var rec = ["", "", "", ""]
 
-    for i in 0 .. Len(policies) {
+    for i in 0..Len(policies) {
         let m = M38AggregatePolicy(policies[i])
         peak[i] = M38MiB(m.PeakCommittedBytes)
         average[i] = M38MiB(m.AverageCommittedBytes)
@@ -789,8 +789,8 @@ fn M38ArtifactDependencyRakeFrom() -> M38ArtifactDependencyRake {
     var outC = [0]
     var notes = [""]
 
-    for si in 0 .. Len(scenarios) {
-        for pi in 0 .. Len(policies) {
+    for si in 0..Len(scenarios) {
+        for pi in 0..Len(policies) {
             let rows = M38GenerateWorkload(scenarios[si], 2, 8192)
             var prevA = ""
             var prevB = ""
@@ -798,7 +798,7 @@ fn M38ArtifactDependencyRakeFrom() -> M38ArtifactDependencyRake {
             var aInv = 0
             var bInv = 0
             var cInv = 0
-            for i in 0 .. Len(rows) {
+            for i in 0..Len(rows) {
                 if i > 0 {
                     if rows[i].Role == "A" {
                         if prevA != "" and prevA != rows[i].ArtifactDependencyKey { aInv = aInv + 1 }
@@ -840,7 +840,7 @@ fn M38GrowthShrinkTableFrom() -> M38GrowthShrinkTable {
     var slack = [0, 0, 0, 0]
     var notes = ["", "", "", ""]
 
-    for i in 0 .. Len(policies) {
+    for i in 0..Len(policies) {
         let m = M38RunScenario(policies[i], "capacity-growth-then-shrink", 2, 8192).Metrics
         grow[i] = m.GrowCount
         shrink[i] = m.ShrinkCount
@@ -863,7 +863,7 @@ fn M38LayoutPrecisionChurnTableFrom() -> M38LayoutPrecisionChurnTable {
     var rebuild = [0, 0, 0, 0]
     var hazard = [0, 0, 0, 0]
 
-    for i in 0 .. Len(policies) {
+    for i in 0..Len(policies) {
         let layout = M38RunScenario(policies[i], "layout-churn", 2, 8192).Metrics
         let precision = M38RunScenario(policies[i], "precision-churn", 2, 8192).Metrics
         mismatch[i] = layout.LayoutPrecisionMismatchRejectionCount + precision.LayoutPrecisionMismatchRejectionCount
@@ -886,7 +886,7 @@ fn M38BudgetFailureTableFrom() -> M38BudgetFailureTable {
     var recovery = [0, 0, 0, 0]
     var notes = ["", "", "", ""]
 
-    for i in 0 .. Len(policies) {
+    for i in 0..Len(policies) {
         let m = M38RunScenario(policies[i], "budget-pressure-failure", 2, 256).Metrics
         reject[i] = m.BudgetRejectionCount
         failure[i] = m.FailureCount
@@ -911,7 +911,7 @@ fn M38NSlotPreviewTableFrom() -> M38NSlotPreviewTable {
     var own = [0]
     var budget = [0]
 
-    for i in 0 .. Len(policies) {
+    for i in 0..Len(policies) {
         let m4 = M38RunScenario(policies[i], "future-n-slot-preview", 4, 1024).Metrics
         p = Append(p, policies[i])
         slots = Append(slots, 4)

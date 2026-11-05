@@ -6,6 +6,12 @@ Use a turn input for new information supplied by a caller, a board for private
 state that must persist, and a yield for one observable result before completion.
 A state local belongs only to its current activation.
 
+A top-level yield resumes at the next state statement. A yield or suspend
+nested inside a branch or loop resumes after the containing top-level state
+statement, rather than retaining the nested execution position. See the
+[FLOW rules](flows-and-state-machines.md#rules-and-contextual-keywords) for
+the associated scope and unreachable-statement checks.
+
 
 ```oct
 flow Counter(start: Int) accepts amount: Int yields Int -> String {

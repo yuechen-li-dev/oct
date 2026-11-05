@@ -15,6 +15,6 @@ fn Consume(channel: ColorChannel) -> Int {
 
 fn Main() -> Int {
     let known: ColorChannel = 255
-    let checked = ColorChannel(RuntimeSource()) !
+    let checked = ColorChannel(RuntimeSource())!
     return Consume(known) + Consume(checked) - 383
 }

@@ -1,0 +1,3 @@
+expect runtime error: "Sqrt expects non-negative input, got -1"
+package Main
+fn Main() -> Float { return Sqrt(0.0 - 1.0) }

@@ -102,15 +102,15 @@ record Document {
 // Columnar authoring is optional. It is useful for larger homogeneous sets and
 // preserves ordinary record-table validation, row access, and immutable `with`
 // column updates. Document remains the row-oriented alternative.
-record table AuthorityTable {ID: String Title: String URI: String Version: String Digest: String}
-record table CitationTable {ID: String Authority: String Locator: String}
-record table RequirementTable {ID: String Text: String}
-record table InterpretationTable {ID: String Text: String}
-record table ClaimTable {ID: String Text: String}
-record table SymbolRefTable {ID: String Symbol: String Kind: SymbolKind}
-record table EvidenceRefTable {ID: String Evidence: String Kind: EvidenceKind}
-record table ArtifactRefTable {ID: String Artifact: String Output: String}
-record table LinkTable {From: String Relation: Relation To: String}
+record table AuthorityTable { ID: String Title: String URI: String Version: String Digest: String }
+record table CitationTable { ID: String Authority: String Locator: String }
+record table RequirementTable { ID: String Text: String }
+record table InterpretationTable { ID: String Text: String }
+record table ClaimTable { ID: String Text: String }
+record table SymbolRefTable { ID: String Symbol: String Kind: SymbolKind }
+record table EvidenceRefTable { ID: String Evidence: String Kind: EvidenceKind }
+record table ArtifactRefTable { ID: String Artifact: String Output: String }
+record table LinkTable { From: String Relation: Relation To: String }
 
 record TableDocument {
     Authorities: AuthorityTable

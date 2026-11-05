@@ -1,24 +1,24 @@
 package Geometry
 
-fn Distance2D(x1: Float < m >, y1: Float < m >, x2: Float < m >, y2: Float < m >) -> Float < m > {
+fn Distance2D(x1: Float<m>, y1: Float<m>, x2: Float<m>, y2: Float<m>) -> Float<m> {
     let dx = x2 - x1
     let dy = y2 - y1
     return Sqrt(dx * dx + dy * dy)
 }
 
-fn CircleArea(radius: NonNegativeLength) -> Float < m ^ 2 >! Error {
+fn CircleArea(radius: NonNegativeLength) -> Float<m^2> ! Error {
     return Pi() * radius * radius
 }
 
-fn CircleCircumference(radius: NonNegativeLength) -> Float < m >! Error {
+fn CircleCircumference(radius: NonNegativeLength) -> Float<m> ! Error {
     return 2.0 * Pi() * radius
 }
 
-fn RectangleArea(width: NonNegativeLength, height: NonNegativeLength) -> Float < m ^ 2 >! Error {
+fn RectangleArea(width: NonNegativeLength, height: NonNegativeLength) -> Float<m^2> ! Error {
     return width * height
 }
 
-fn TriangleArea(base: NonNegativeLength, height: NonNegativeLength) -> Float < m ^ 2 >! Error {
+fn TriangleArea(base: NonNegativeLength, height: NonNegativeLength) -> Float<m^2> ! Error {
     return 0.5 * base * height
 }
 
@@ -65,7 +65,7 @@ fn PolygonCentroid(xs: Float<m>[], ys: Float<m>[]) -> Point2D ! Error {
     var xWeighted = 0.0m^3
     var yWeighted = 0.0m^3
     let n = Len(xs)
-    for i in 0 .. n {
+    for i in 0..n {
         let next = if i + 1 == n { 0 } else { i + 1 }
         let cross = xs[i] * ys[next] - xs[next] * ys[i]
         xWeighted = xWeighted + (xs[i] + xs[next]) * cross
@@ -88,7 +88,7 @@ fn PolygonTwiceSignedArea(xs: Float<m>[], ys: Float<m>[]) -> Float<m^2> ! Error 
 
     var sum = 0.0m^2
     let n = Len(xs)
-    for i in 0 .. n {
+    for i in 0..n {
         let next = if i + 1 == n { 0 } else { i + 1 }
         sum = sum + xs[i] * ys[next] - xs[next] * ys[i]
     }

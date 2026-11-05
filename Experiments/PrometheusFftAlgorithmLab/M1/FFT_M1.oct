@@ -190,7 +190,7 @@ fn BuildDeterministicCase(name: String, n: Int, family: String, src: String, mod
 
 fn BuildCases() -> FftCase[] {
     var cases: FftCase[] = []
-    let ns = [1,2,4,8,16]
+    let ns = [1, 2, 4, 8, 16]
     for idx in 0..Len(ns) {
         let n = ns[idx]
         cases = Append(cases, BuildDeterministicCase("impulse_n" + String.From<Int>(n), n, "impulse", "known impulse spectrum", 0))
@@ -228,7 +228,7 @@ fn PrometheusFftAlgorithmLabM1ArtifactWriteAll() -> Int {
         if pass { passed = passed + 1 }
         results = Append(results, FftResult { CaseName: c.CaseName N: c.N ForwardMaxReError: fwd.Re ForwardMaxImError: fwd.Im ForwardMaxAbsError: fwd.Abs RoundtripMaxReError: rte.Re RoundtripMaxImError: rte.Im RoundtripMaxAbsError: rte.Abs Pass: pass Notes: "" })
     }
-    let summary = FftSummary { Total: Len(results) Passed: passed Failed: Len(results)-passed Tolerance: tol }
+    let summary = FftSummary { Total: Len(results) Passed: passed Failed: Len(results) - passed Tolerance: tol }
     let casesPath = M1ArtifactPath("m1_fft_cases.octagon")
     let resultsPath = M1ArtifactPath("m1_fft_results.octagon")
     let tracesPath = M1ArtifactPath("m1_fft_plan_traces.octagon")
@@ -249,7 +249,7 @@ fn PrometheusFftAlgorithmLabM1ArtifactWriteAll() -> Int {
         Markdown.Title("Prometheus FFT Algorithm Lab M1 (Oct correctness tapeout)"),
         Markdown.Section("Representation + Semantics", [Markdown.Paragraph("Complex values use explicit parallel arrays (Re/Im). Forward FFT is unnormalized; inverse FFT divides by N.")]),
         Markdown.Section("Test Matrix", [Markdown.Paragraph("N in {1,2,4,8,16}; families: impulse, constant, alternating sign, single-bin tone, optional two-bin tone (N>=4), deterministic arbitrary. Non-power-of-two and N=0 are explicit rejection checks.")]),
-        Markdown.Section("Summary", [Markdown.KeyValueTable(["total","passed","failed","tolerance","rejectN0","rejectN3"],[String.From<Int>(summary.Total),String.From<Int>(summary.Passed),String.From<Int>(summary.Failed),String.From<Float>(summary.Tolerance),String.From<Bool>(not badN0),String.From<Bool>(not badN3)])]),
+        Markdown.Section("Summary", [Markdown.KeyValueTable(["total", "passed", "failed", "tolerance", "rejectN0", "rejectN3"], [String.From<Int>(summary.Total), String.From<Int>(summary.Passed), String.From<Int>(summary.Failed), String.From<Float>(summary.Tolerance), String.From<Bool>(not badN0), String.From<Bool>(not badN3)])]),
         Markdown.Section("Limitations", [Markdown.Paragraph("Reference path prioritizes determinism and clarity over performance. Twiddle and stage traces are captured for representative N=8/N=16 cases only.")])
     ])
     Artifact.Checkpoint("beforeEmitReport")

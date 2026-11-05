@@ -4,8 +4,8 @@ fn InvalidRuntimeChannel() -> Int {
     return 300
 }
 
-fn InvalidRuntimePx() -> Int < px > {
-    return - 1px
+fn InvalidRuntimePx() -> Int<px> {
+    return -1px
 }
 
 [Fact]
@@ -20,7 +20,7 @@ fn RefinedColorChannelsPreserveAcceptedColorBehavior() -> Void {
 [Fact]
 fn RuntimeColorChannelConstructionChecksOnce() -> Void ! Error {
     let raw = 128
-    let channel = ColorChannel(raw) ?
+    let channel = ColorChannel(raw)?
     let color = Rgba(channel, channel, channel, 255)
     Assert.Equal(128, color.R, "admitted channel is reusable")
     Assert.Error(ColorChannel(InvalidRuntimeChannel()), "out-of-range runtime construction fails")
@@ -29,7 +29,7 @@ fn RuntimeColorChannelConstructionChecksOnce() -> Void ! Error {
 [Fact]
 fn DimensionalPixelRefinementChecksRuntimeValues() -> Void ! Error {
     let raw = 4px
-    let inset = NonNegativePx(raw) ?
+    let inset = NonNegativePx(raw)?
     let all = InsetsAll(inset)
     Assert.Equal(4px, all.Left, "admitted dimensional value is reusable")
     Assert.Error(NonNegativePx(InvalidRuntimePx()), "negative runtime pixel construction fails")

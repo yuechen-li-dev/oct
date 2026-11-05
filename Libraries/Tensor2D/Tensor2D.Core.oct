@@ -41,9 +41,9 @@ fn Gradient(f: fn(Vector<Float>) -> Float, point: Vector<Float>, h: Float) -> Ve
     let y = point[1]
     let denom = 2.0 * h
 
-    let fxPlus  = f(vector[x + h, y])
+    let fxPlus = f(vector[x + h, y])
     let fxMinus = f(vector[x - h, y])
-    let fyPlus  = f(vector[x, y + h])
+    let fyPlus = f(vector[x, y + h])
     let fyMinus = f(vector[x, y - h])
 
     return vector[
@@ -62,14 +62,14 @@ fn Jacobian(u: fn(Vector<Float>) -> Vector<Float>, point: Vector<Float>, h: Floa
     let y = point[1]
     let denom = 2.0 * h
 
-    let uxPlus  = u(vector[x + h, y])
+    let uxPlus = u(vector[x + h, y])
     let uxMinus = u(vector[x - h, y])
-    let uyPlus  = u(vector[x, y + h])
+    let uyPlus = u(vector[x, y + h])
     let uyMinus = u(vector[x, y - h])
 
-    let xPlusOk  = ValidateVectorFieldOutput(uxPlus)?
+    let xPlusOk = ValidateVectorFieldOutput(uxPlus)?
     let xMinusOk = ValidateVectorFieldOutput(uxMinus)?
-    let yPlusOk  = ValidateVectorFieldOutput(uyPlus)?
+    let yPlusOk = ValidateVectorFieldOutput(uyPlus)?
     let yMinusOk = ValidateVectorFieldOutput(uyMinus)?
 
     return matrix[[

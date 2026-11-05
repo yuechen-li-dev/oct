@@ -33,7 +33,7 @@ fn EndToEndFitAndRolloutRecoversKnownSystem() -> Void ! Error {
     // Central-difference derivative estimates (noiseless data, so a
     // plain finite difference is fine here -- this test is about the
     // fit/rollout pipeline, not denoising).
-    for i in 1 .. steps {
+    for i in 1..steps {
         let prev = solution.States[i - 1]
         let next = solution.States[i + 1]
         let cur = solution.States[i]

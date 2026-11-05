@@ -18,7 +18,7 @@ fn Dot(a: Float[], b: Float[]) -> Float ! Error {
     }
 
     var sum = 0.0
-    for i in 0 .. Len(a) {
+    for i in 0..Len(a) {
         sum = sum + a[i] * b[i]
     }
     return sum
@@ -28,7 +28,7 @@ fn Norm(a: Float[]) -> Float ! Error {
     let vok = ValidateVector(a)?
 
     var sumSquares = 0.0
-    for i in 0 .. Len(a) {
+    for i in 0..Len(a) {
         sumSquares = sumSquares + a[i] * a[i]
     }
 
@@ -44,14 +44,14 @@ fn MatMul(A: Float[], aRows: Int, aCols: Int, B: Float[], bRows: Int, bCols: Int
     }
 
     var out = [0.0]
-    for i in 1 .. aRows * bCols {
+    for i in 1..aRows * bCols {
         out = Append(out, 0.0)
     }
 
-    for r in 0 .. aRows {
-        for c in 0 .. bCols {
+    for r in 0..aRows {
+        for c in 0..bCols {
             var sum = 0.0
-            for k in 0 .. aCols {
+            for k in 0..aCols {
                 sum = sum + A[FlatIndex(r, k, aCols)] * B[FlatIndex(k, c, bCols)]
             }
             out[FlatIndex(r, c, bCols)] = sum
@@ -70,13 +70,13 @@ fn MatVecMul(A: Float[], rows: Int, cols: Int, x: Float[]) -> Float[] ! Error {
     }
 
     var out = [0.0]
-    for oi in 1 .. rows {
+    for oi in 1..rows {
         out = Append(out, 0.0)
     }
 
-    for r in 0 .. rows {
+    for r in 0..rows {
         var sum = 0.0
-        for c in 0 .. cols {
+        for c in 0..cols {
             sum = sum + A[FlatIndex(r, c, cols)] * x[c]
         }
         out[r] = sum
@@ -94,13 +94,13 @@ fn VecMatMul(x: Float[], A: Float[], rows: Int, cols: Int) -> Float[] ! Error {
     }
 
     var out = [0.0]
-    for oi in 1 .. cols {
+    for oi in 1..cols {
         out = Append(out, 0.0)
     }
 
-    for c in 0 .. cols {
+    for c in 0..cols {
         var sum = 0.0
-        for r in 0 .. rows {
+        for r in 0..rows {
             sum = sum + x[r] * A[FlatIndex(r, c, cols)]
         }
         out[c] = sum

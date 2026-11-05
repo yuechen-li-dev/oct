@@ -29,9 +29,9 @@ fn GradientOfLinearScalarFieldMatchesExactDerivative() -> Void ! Error {
 [Fact]
 fn JacobianOfLinearVectorFieldMatchesExactDerivative() -> Void ! Error {
     let J = Jacobian(U, vector[1.25, -2.0], 0.01)?
-    Assert.Near(2.0,  J[0, 0], 0.000001, "du0/dx")
-    Assert.Near(3.0,  J[0, 1], 0.000001, "du0/dy")
-    Assert.Near(4.0,  J[1, 0], 0.000001, "du1/dx")
+    Assert.Near(2.0, J[0, 0], 0.000001, "du0/dx")
+    Assert.Near(3.0, J[0, 1], 0.000001, "du0/dy")
+    Assert.Near(4.0, J[1, 0], 0.000001, "du1/dx")
     Assert.Near(-1.0, J[1, 1], 0.000001, "du1/dy")
 }
 
@@ -44,9 +44,9 @@ fn DivergenceOfLinearVectorFieldMatchesTraceOfJacobian() -> Void ! Error {
 [Fact]
 fn SymmetricGradientOfLinearVectorFieldMatchesExpectedStrain() -> Void ! Error {
     let eps = SymmetricGradient(U, vector[1.25, -2.0], 0.01)?
-    Assert.Near(2.0,  eps[0, 0], 0.000001, "eps00")
-    Assert.Near(3.5,  eps[0, 1], 0.000001, "eps01")
-    Assert.Near(3.5,  eps[1, 0], 0.000001, "eps10")
+    Assert.Near(2.0, eps[0, 0], 0.000001, "eps00")
+    Assert.Near(3.5, eps[0, 1], 0.000001, "eps01")
+    Assert.Near(3.5, eps[1, 0], 0.000001, "eps10")
     Assert.Near(-1.0, eps[1, 1], 0.000001, "eps11")
 }
 

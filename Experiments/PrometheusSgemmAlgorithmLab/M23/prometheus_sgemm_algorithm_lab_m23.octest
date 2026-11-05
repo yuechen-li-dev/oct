@@ -1,7 +1,7 @@
 package PrometheusSgemmAlgorithmLab
 
 fn M23Find(rows: M23DecisionResult[], caseName: String) -> M23DecisionResult {
-    for i in 0 .. Len(rows) {
+    for i in 0..Len(rows) {
         if rows[i].CaseName == caseName {
             return rows[i]
         }

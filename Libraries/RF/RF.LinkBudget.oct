@@ -37,7 +37,7 @@ fn SNRLinearSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/
     }
 
     var out = [SNRLinear(receivedPower[0], noisePower[0])]
-    for i in 1 .. Len(receivedPower) {
+    for i in 1..Len(receivedPower) {
         out = Append(out, SNRLinear(receivedPower[i], noisePower[i]))
     }
     return out
@@ -73,7 +73,7 @@ fn SNRDbSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/s^3>
     }
 
     var out = [SNRDb(receivedPower[0], noisePower[0])]
-    for i in 1 .. Len(receivedPower) {
+    for i in 1..Len(receivedPower) {
         out = Append(out, SNRDb(receivedPower[i], noisePower[i]))
     }
     return out

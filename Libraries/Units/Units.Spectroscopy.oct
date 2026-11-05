@@ -99,8 +99,8 @@ fn WavenumberToReciprocalMeter(w: Wavenumber) -> Float<m^-1> {
 /// Convert frequency (Hz) to wavenumber (cm⁻¹).
 /// ν̃ = ν / c, where c = speed of light in cm/s.
 fn FrequencyToWavenumber(freq: Float<Hz>) -> Wavenumber {
-    let cCmPerS = 29979245800.0   // speed of light in cm/s
-    let freqHz = freq / 1.0Hz     // dimensionless frequency in Hz
+    let cCmPerS = 29979245800.0 // speed of light in cm/s
+    let freqHz = freq / 1.0Hz // dimensionless frequency in Hz
     return Wavenumber { Value: freqHz / cCmPerS }
 }
 

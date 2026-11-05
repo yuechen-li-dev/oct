@@ -188,7 +188,7 @@ fn ShiftToHzAt400MHz() -> Void {
         Nucleus: "1H"
         Solvent: "CDCl3"
     }
-    let hz = ShiftToHz(spec, 1.0)  // 1 ppm → Hz
+    let hz = ShiftToHz(spec, 1.0) // 1 ppm → Hz
     Assert.True(hz > 399.9Hz, "ppm-to-hz lower")
     Assert.True(hz < 400.1Hz, "ppm-to-hz upper")
 }

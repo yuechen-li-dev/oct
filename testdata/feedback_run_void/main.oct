@@ -1,0 +1,2 @@
+package Main
+fn Main() -> Void ! Error { return }

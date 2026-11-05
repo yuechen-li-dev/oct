@@ -1109,6 +1109,12 @@ func (e *parametricElaborator) rewriteExpr(pkgName string, expr ast.Expr, expect
 			return nil, err
 		}
 		for i := range x.Cases {
+			if x.Cases[i].Label != nil {
+				x.Cases[i].Label, err = e.rewriteExpr(pkgName, x.Cases[i].Label, nil, subst)
+				if err != nil {
+					return nil, err
+				}
+			}
 			x.Cases[i].Value, err = e.rewriteExpr(pkgName, x.Cases[i].Value, expected, subst)
 			if err != nil {
 				return nil, err

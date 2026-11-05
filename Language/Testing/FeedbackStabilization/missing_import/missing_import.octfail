@@ -1,0 +1,4 @@
+expect error: "import FeedbackFieldNet to read the fields of FeedbackFieldNet.Address"
+package Main
+import FeedbackFieldConfig
+fn Main() -> String { return FeedbackFieldConfig.Default().Listen.Host }

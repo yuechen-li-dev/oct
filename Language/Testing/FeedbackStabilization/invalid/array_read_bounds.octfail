@@ -1,0 +1,7 @@
+expect runtime error: "runtime error: index 5 out of bounds for array of length 2"
+package Main
+fn Main() -> Int {
+    let values = [1, 1]
+    let index = 5
+    return values[index]
+}

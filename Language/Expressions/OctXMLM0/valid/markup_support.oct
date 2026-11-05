@@ -8,15 +8,15 @@ record UiNode {
 }
 
 fn MarkupTextUiNode(value: String) -> UiNode {
-    return UiNode {Text: value Enabled: true Count: 0 Children:[]}
+    return UiNode { Text: value Enabled: true Count: 0 Children: [] }
 }
 
 fn Label(text: String) -> UiNode {
-    return UiNode {Text: text Enabled: true Count: 0 Children:[]}
+    return UiNode { Text: text Enabled: true Count: 0 Children: [] }
 }
 
 fn Panel(enabled: Bool, count: Int, children: UiNode[]) -> UiNode {
-    return UiNode {Text: "panel" Enabled: enabled Count: count Children: children}
+    return UiNode { Text: "panel" Enabled: enabled Count: count Children: children }
 }
 
 fn MarkupTree() -> UiNode {
@@ -24,5 +24,5 @@ fn MarkupTree() -> UiNode {
 }
 
 fn OrdinaryTree() -> UiNode {
-    return Panel(true, 2,[MarkupTextUiNode("Hello "), Label("world")])
+    return Panel(true, 2, [MarkupTextUiNode("Hello "), Label("world")])
 }

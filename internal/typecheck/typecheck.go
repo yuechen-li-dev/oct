@@ -166,6 +166,8 @@ type functionContext struct {
 	isMakePure              bool
 	inFlow                  bool
 	inState                 bool
+	stateBase               *scope
+	stateDepth              int
 	states                  map[string]struct{}
 	boardType               Type
 	board                   map[string]Type
@@ -420,6 +422,7 @@ type scope struct {
 	parent    *scope
 	values    map[string]binding
 	constants map[string]constantValue
+	expired   map[string]bool
 }
 
 type binding struct {
@@ -440,6 +443,9 @@ func (s *scope) lookupConstant(name string) (constantValue, bool) {
 		if ok {
 			return value, true
 		}
+		if current.expired[name] {
+			return constantValue{}, false
+		}
 	}
 	return constantValue{}, false
 }
@@ -457,6 +463,9 @@ func (s *scope) lookup(name string) (binding, bool) {
 		value, ok := current.values[name]
 		if ok {
 			return value, true
+		}
+		if current.expired[name] {
+			return binding{}, false
 		}
 	}
 	return binding{}, false
@@ -476,7 +485,7 @@ func (c checker) checkFile(file ast.File) error {
 }
 
 func (c checker) registerPackageDeclarations(file ast.File) error {
-	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeBytes), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI), string(BaseTypeIndex)} {
+	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeBytes), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI), string(BaseTypeIndex), string(BaseTypeRange)} {
 		c.typeNames[builtinTypeName] = struct{}{}
 	}
 	for _, conceptDecl := range file.Concepts {
@@ -938,6 +947,7 @@ func (c checker) checkFlow(flow ast.FlowDecl) error {
 	for _, state := range flow.States {
 		stateCtx := ctx
 		stateCtx.inState = true
+		stateCtx.stateBase = flowScope
 		if _, err := c.checkBlock(flowScope, state.Body, stateCtx); err != nil {
 			return err
 		}
@@ -1045,8 +1055,11 @@ func (c checker) checkInlineDataExpr(expr ast.Expr) (Type, error) {
 
 func (c checker) checkBlock(parent *scope, block ast.Block, ctx functionContext) (bool, error) {
 	blockScope := newScope(parent)
+	if ctx.inState {
+		ctx.stateDepth++
+	}
 	hasReturn := false
-	for _, statement := range block.Statements {
+	for index, statement := range block.Statements {
 		returned, err := c.checkStmt(blockScope, statement, ctx)
 		if err != nil {
 			return false, err
@@ -1054,51 +1067,76 @@ func (c checker) checkBlock(parent *scope, block ast.Block, ctx functionContext)
 		if returned {
 			hasReturn = true
 		}
-		if stmtContainsYield(statement) {
-			// A yield is a durable turn boundary. State-local bindings are
-			// deliberately not continuation state; persistent values belong on board.
-			blockScope = newScope(parent)
+		if ctx.inState && stmtContainsTurnBoundary(statement) {
+			// Conservatively expire activation locals after any possible turn
+			// boundary, including enclosing blocks. Never mutate sibling scopes.
+			expired := make(map[string]bool)
+			for current := blockScope; current != nil && current != ctx.stateBase; current = current.parent {
+				for name := range current.values {
+					expired[name] = true
+				}
+				for name := range current.expired {
+					expired[name] = true
+				}
+			}
+			blockScope = newScope(ctx.stateBase)
+			blockScope.expired = expired
+			if ctx.stateDepth > 1 && index+1 < len(block.Statements) {
+				switch statement.(type) {
+				case ast.YieldStmt, ast.SuspendStmt:
+					return false, fmt.Errorf("function %s: statement after nested turn boundary is unreachable; continuation resumes after the containing state statement", ctx.name)
+				}
+			}
 		}
 	}
 	return hasReturn, nil
 }
 
-func stmtContainsYield(stmt ast.Stmt) bool {
+func stmtContainsTurnBoundary(stmt ast.Stmt) bool {
 	switch node := stmt.(type) {
-	case ast.YieldStmt:
+	case ast.YieldStmt, ast.SuspendStmt:
 		return true
+	case ast.ForStmt:
+		return blockContainsTurnBoundary(node.Body)
+	case ast.WhileStmt:
+		return blockContainsTurnBoundary(node.Body)
+	case ast.MatchStmt:
+		return blockContainsTurnBoundary(node.OkBody) || blockContainsTurnBoundary(node.ErrBody)
 	case ast.IfStmt:
-		if blockContainsYield(node.ThenBody) {
+		if blockContainsTurnBoundary(node.ThenBody) {
 			return true
 		}
-		return node.ElseBody != nil && blockContainsYield(*node.ElseBody)
+		return node.ElseBody != nil && blockContainsTurnBoundary(*node.ElseBody)
 	case ast.WhenStmt:
 		for _, c := range node.Cases {
-			if whenActionContainsYield(c.Action) {
+			if whenActionContainsTurnBoundary(c.Action) {
 				return true
 			}
 		}
-		return whenActionContainsYield(node.Else)
+		return whenActionContainsTurnBoundary(node.Else)
 	default:
 		return false
 	}
 }
 
-func blockContainsYield(block ast.Block) bool {
+func blockContainsTurnBoundary(block ast.Block) bool {
 	for _, stmt := range block.Statements {
-		if stmtContainsYield(stmt) {
+		if stmtContainsTurnBoundary(stmt) {
 			return true
 		}
 	}
 	return false
 }
 
-func whenActionContainsYield(action ast.WhenAction) bool {
+func whenActionContainsTurnBoundary(action ast.WhenAction) bool {
+	if _, ok := action.(ast.WhenSuspendAction); ok {
+		return true
+	}
 	block, ok := action.(ast.WhenBlockAction)
 	if !ok {
 		return false
 	}
-	return blockContainsYield(ast.Block{Statements: block.Statements})
+	return blockContainsTurnBoundary(ast.Block{Statements: block.Statements})
 }
 
 func genericUnhandledFallibleMessage() string {
@@ -1361,7 +1399,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			}
 			return true, nil
 		}
-		if ctx.returnType.Base == BaseTypeVoid {
+		if ctx.returnType.Base == BaseTypeVoid && !ctx.isFallible {
 			return false, fmt.Errorf("function %s: Void function cannot return a value", ctx.name)
 		}
 		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, c.optionExpected(&ctx.returnType))
@@ -1370,6 +1408,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		if valueType.Fallible {
 			return false, fmt.Errorf("function %s: return value must not be fallible; handle it with '?', '!', or match", ctx.name)
+		}
+		if ctx.returnType.Base == BaseTypeVoid && valueType.ValueType != (Type{Base: BaseTypeError}) {
+			return false, fmt.Errorf("function %s: Void function cannot return a value", ctx.name)
 		}
 		if ctx.isFallible {
 			if ctx.isRefinementConstructor && valueType.ValueType != (Type{Base: BaseTypeError}) {
@@ -1851,6 +1892,11 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 		if node.Name == ast.OptionNoneVariant || node.Name == ast.OptionSomeVariant {
 			return ExprType{}, fmt.Errorf("undefined variable: %s; the variants of an Option are written `Option.None` and `Option.Some(value)`", node.Name)
 		}
+		for current := scope; current != nil; current = current.parent {
+			if current.expired[node.Name] {
+				return ExprType{}, fmt.Errorf("state local '%s' expired at a turn boundary; persist its value on board", node.Name)
+			}
+		}
 		return ExprType{}, fmt.Errorf("undefined variable: %s", node.Name)
 	case ast.FunctionExpr:
 		return c.checkFunctionExpr(scope, node, ctx)
@@ -1880,6 +1926,9 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 		}
 		if targetType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if refinement, ok := c.lookupRefinement(targetType.ValueType.Name); ok && targetType.ValueType.ArrayDepth == refinement.base.ArrayDepth {
+			targetType.ValueType = refinement.base
 		}
 		indexTypes := make([]Type, 0, len(node.Indices))
 		for _, idxExpr := range node.Indices {
@@ -2004,6 +2053,13 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 				}
 			}
 			recordDecl, ok := c.lookupRecord(targetType.ValueType.Name)
+			if !ok {
+				if owner, _, qualified := splitQualifiedTypeName(targetType.ValueType.Name); qualified {
+					if _, imported := c.importedPackages[owner]; !imported {
+						return ExprType{}, fmt.Errorf("import %s to read the fields of %s", owner, targetType.ValueType.Name)
+					}
+				}
+			}
 			if !ok || targetType.ValueType.IsArray || targetType.ValueType.Base != "" {
 				if !chainOK || strings.Count(chain, ".") < 2 {
 					return ExprType{}, missingTypeFieldError(fmt.Sprint(targetType.ValueType), node.Field, chain, chainOK)
@@ -3086,6 +3142,13 @@ func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functi
 	var resultType Type
 	hasResultType := false
 	for index, matchCase := range expr.Cases {
+		if label, ok := matchCase.Label.(ast.FieldAccessExpr); ok {
+			enumName, _, valid := flattenEnumValueExpr(label)
+			matches := enumName == subjectType.ValueType.Name || (enumName == ast.OptionTypeName && isOptionTypeName(subjectType.ValueType.Name))
+			if !valid || !matches {
+				return ExprType{}, fmt.Errorf("match case %d: enum label '%s' does not match subject type %s", index+1, enumName, subjectType.ValueType.Name)
+			}
+		}
 		variantInfo, ok := enumDecl.variants[matchCase.Variant]
 		if !ok {
 			return ExprType{}, fmt.Errorf("match case %d: enum '%s' has no variant '%s'", index+1, subjectType.ValueType.Name, matchCase.Variant)
@@ -3860,7 +3923,10 @@ func (c checker) checkAssertCallExpr(scope *scope, callee string, arguments []as
 }
 
 func supportsAssertEqualType(valueType Type) bool {
-	if valueType.IsArray || valueType.IsVector || valueType.IsMatrix {
+	if valueType.IsArray {
+		return supportsAssertEqualType(peelArrayType(valueType))
+	}
+	if valueType.IsVector || valueType.IsMatrix {
 		return false
 	}
 	if valueType.Name != "" {
@@ -6531,7 +6597,7 @@ func (c checker) checkLoadOctagonBuiltinCallExpr(scope *scope, callee string, ty
 	if err != nil {
 		return ExprType{}, err
 	}
-	if !isOctagonRepresentableType(expectedType) {
+	if !c.isOctagonRepresentableType(expectedType) {
 		return ExprType{}, fmt.Errorf("function 'LoadOctagon' type argument expects .octagon-representable type, got %s", expectedType)
 	}
 
@@ -6578,7 +6644,7 @@ func (c checker) checkWriteOctagonBuiltinCallExpr(scope *scope, callee string, a
 	if valueType.Fallible {
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
-	if !isOctagonRepresentableType(valueType.ValueType) {
+	if !c.isOctagonRepresentableType(valueType.ValueType) {
 		return ExprType{}, fmt.Errorf("function 'WriteOctagon' argument 2 expects .octagon-representable value, got %s", valueType.ValueType)
 	}
 	return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
@@ -6640,7 +6706,7 @@ func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, argum
 		if err != nil {
 			return ExprType{}, err
 		}
-		if valueType.Fallible || !isOctagonRepresentableType(valueType.ValueType) {
+		if valueType.Fallible || !c.isOctagonRepresentableType(valueType.ValueType) {
 			return ExprType{}, fmt.Errorf("function 'Artifact.WriteCompiledData' argument 3 expects typed immutable data, got %s", valueType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
@@ -6721,24 +6787,57 @@ func (c checker) checkArtifactBuiltinCallExpr(scope *scope, callee string, argum
 	return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
 }
 
-func isOctagonRepresentableType(valueType Type) bool {
-	if valueType.IsVector || valueType.IsMatrix || valueType.IsFunction {
-		return false
+func (c checker) isOctagonRepresentableType(valueType Type) bool {
+	visiting := map[string]bool{}
+	var check func(Type) bool
+	check = func(t Type) bool {
+		if t.IsFunction || t.IsFlowInstance || t.Tuple != nil {
+			return false
+		}
+		if refinement, ok := c.lookupRefinement(t.Name); ok {
+			return check(refinement.base)
+		}
+		if t.IsArray {
+			return check(peelArrayType(t))
+		}
+		if t.IsVector || t.IsMatrix {
+			return check(Type{Base: t.Base, Dimension: t.Dimension})
+		}
+		if payload, option := c.optionPayload(t); option {
+			return check(payload)
+		}
+		if t.Name != "" {
+			if visiting[t.Name] {
+				return true
+			}
+			visiting[t.Name] = true
+			defer delete(visiting, t.Name)
+			if record, ok := c.lookupRecord(t.Name); ok {
+				for _, field := range record.fields {
+					if !check(field) {
+						return false
+					}
+				}
+				return true
+			}
+			if enum, ok := c.lookupEnum(t.Name); ok {
+				for _, variant := range enum.variants {
+					if variant.payload != nil && !check(*variant.payload) {
+						return false
+					}
+				}
+				return true
+			}
+			return false
+		}
+		switch t.Base {
+		case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeString, BaseTypeBytes:
+			return true
+		default:
+			return false
+		}
 	}
-	if valueType.IsArray {
-		elementType := valueType
-		elementType = peelArrayType(elementType)
-		return isOctagonRepresentableType(elementType)
-	}
-	if valueType.Name != "" {
-		return true
-	}
-	switch valueType.Base {
-	case BaseTypeInt, BaseTypeFloat, BaseTypeBool, BaseTypeString, BaseTypeBytes:
-		return true
-	default:
-		return false
-	}
+	return check(valueType)
 }
 
 func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {

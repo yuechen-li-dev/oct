@@ -489,7 +489,7 @@ fn CardSlots() -> CardSlotTable {
 fn CardSlotPlacements(model: StoreState, slots: CardSlotTable) -> UI[] {
     let firstFrame = AbsoluteBox(slots.X[0], slots.Y[0], slots.Width[0], slots.Height[0])
     var out = [Place(firstFrame, ProductCardSlot(ProductById(slots.ProductIds[0]), model))]
-    for i in 1 .. Len(slots.ProductIds) {
+    for i in 1..Len(slots.ProductIds) {
         let frame = AbsoluteBox(slots.X[i], slots.Y[i], slots.Width[i], slots.Height[i])
         let product = ProductById(slots.ProductIds[i])
         out = Append(out, Place(frame, ProductCardSlot(product, model)))
@@ -525,7 +525,7 @@ fn View(model: StoreState) -> UI {
         Place(AnchoredBox(0.01 ui, FooterTop, 0.99 ui, 0.99 ui), Footer(model))
     ]
 
-    for i in 0 .. Len(cardPlacements) {
+    for i in 0..Len(cardPlacements) {
         nodes = Append(nodes, cardPlacements[i])
     }
 

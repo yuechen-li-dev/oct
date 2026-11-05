@@ -18,7 +18,7 @@ Bounded template applications are monomorphized to ordinary exact types before t
 - `UI` is not a browser object and not a normal record you can reshape with fields.
 - `Bytes` is a narrow binary transport/storage boundary type intended for wrapper-backed compatibility APIs (for example file byte I/O).
 - `Bytes` is not a dynamic object container and does not imply `Dynamic` semantics.
-- `Range` is a compiler-owned immutable value produced by range expressions; see `03-expressions.md`.
+- `Range` is a compiler-owned immutable value produced by [range expressions](expressions.md#range-expressions).
 - `Option<T>` is the builtin enum `None | Some(T)` for a value that may be absent. `Option<A>` and `Option<B>` are different types when `A` and `B` differ. See [Enums](enums-and-options.md).
 - Only `Int` and `Float` may carry dimensions (`Int<m>`, `Float<m/s>`). `Complex` is always dimensionless in M0/M0a.
 - Arrays are homogeneous containers (`T[]`, `T[][]`, ...).
@@ -76,6 +76,19 @@ element type from its arguments: `Append(xs, 1)` on a `Float[]` is an error.
 
 The interpreter and compiled execution convert at the same places and give
 the same values.
+
+## Numeric promotion in expressions
+
+Mixed `Int` and `Float` scalar arithmetic uses `Float`: `1.5 + 1` is `2.5`,
+and `5 / 2.0` is `2.5`. Mixed comparisons use the same promotion and return
+`Bool`. Dimensions still follow the operator's rules: addition, subtraction,
+and comparisons require compatible dimensions; multiplication and division
+compose them. `%` remains dimensionless `Int`-only modulo.
+
+This is separate from declared-destination admission above. It does not allow
+`Float` to become `Int`, change nominal identity, or make an untyped mixed
+array literal homogeneous. See [expressions](expressions.md) for container
+operations and operator-specific restrictions.
 
 ## Examples
 

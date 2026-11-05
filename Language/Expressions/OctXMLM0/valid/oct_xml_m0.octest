@@ -6,7 +6,7 @@ fn TypedMarkupLowersToOrdinaryCalls() -> Void {
     let actual = <Panel Enabled={true} Count={4}>
         Hello & <Label Text="world" />{suffix}
     </Panel>
-    let expected = Panel(true, 4,[MarkupTextUiNode("Hello & "), Label("world"), suffix])
+    let expected = Panel(true, 4, [MarkupTextUiNode("Hello & "), Label("world"), suffix])
     Assert.Equal(expected, actual, "Oct-XML is ordinary typed construction")
     Assert.Equal(OrdinaryTree(), MarkupTree(), "ordinary and markup construction are equivalent")
 }

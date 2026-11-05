@@ -203,13 +203,13 @@ fn ScientificNormalizationUsesCapturedScale() -> Void {
     Assert.Near(1.0, normalized[0] * normalized[0] + normalized[1] * normalized[1], 0.000001, "normalized magnitude")
 }
 
-fn IsEven(value: Int) -> Bool {return value % 2 == 0}
-fn IsLong(value: String) -> Bool {return Len(value) > 3}
+fn IsEven(value: Int) -> Bool { return value % 2 == 0 }
+fn IsLong(value: String) -> Bool { return Len(value) > 3 }
 
 [Fact]
 fn FirstWhereSpecializesWithoutErasingPredicateType() -> Void {
-    Assert.Equal(4, FirstWhere<Int>([1, 3, 4, 6], IsEven) !, "Int specialization")
-    Assert.Equal("delta", FirstWhere<String>(["a", "delta"], IsLong) !, "String specialization")
+    Assert.Equal(4, FirstWhere<Int>([1, 3, 4, 6], IsEven)!, "Int specialization")
+    Assert.Equal("delta", FirstWhere<String>(["a", "delta"], IsLong)!, "String specialization")
     Assert.Error(FirstWhere<Int>([1, 3, 5], IsEven), "missing match remains fallible")
 }
 

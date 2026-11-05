@@ -14,7 +14,7 @@ fn StabilizeValueFirstCallAcceptsAnyValue() -> Void {
 
 [Fact]
 fn StabilizeValueSameValueIncrementsAge() -> Void {
-    let held = ValueCommitment { Current: 3  CommitAge: 2  HasValue: true }
+    let held = ValueCommitment { Current: 3 CommitAge: 2 HasValue: true }
     let r = StabilizeValue(3, held, 0, 1)!
     let next = r.Next
     Assert.Equal(3, r.Value, "same value held")
@@ -25,7 +25,7 @@ fn StabilizeValueSameValueIncrementsAge() -> Void {
 [Fact]
 fn StabilizeValueMinCommitBlocksEarlyChange() -> Void {
     // Held for 1 tick, minCommit=3. New value must not win yet.
-    let held = ValueCommitment { Current: 10  CommitAge: 1  HasValue: true }
+    let held = ValueCommitment { Current: 10 CommitAge: 1 HasValue: true }
     let r = StabilizeValue(20, held, 0, 3)!
     Assert.Equal(10, r.Value, "min_commit blocks early change")
     Assert.False(r.Changed, "no change while committed")
@@ -34,7 +34,7 @@ fn StabilizeValueMinCommitBlocksEarlyChange() -> Void {
 [Fact]
 fn StabilizeValueMinCommitExpiryAllowsChange() -> Void {
     // CommitAge == minCommit: lock expired.
-    let held = ValueCommitment { Current: 10  CommitAge: 3  HasValue: true }
+    let held = ValueCommitment { Current: 10 CommitAge: 3 HasValue: true }
     let r = StabilizeValue(20, held, 0, 3)!
     Assert.Equal(20, r.Value, "change allowed after min_commit expires")
     Assert.True(r.Changed, "changed reported")
@@ -44,7 +44,7 @@ fn StabilizeValueMinCommitExpiryAllowsChange() -> Void {
 fn StabilizeValueHysteresisBlocksSmallChange() -> Void {
     // hysteresis=5: new value must differ by more than 5 to switch.
     // current=10, next=13, diff=3 <= 5 -> hold.
-    let held = ValueCommitment { Current: 10  CommitAge: 5  HasValue: true }
+    let held = ValueCommitment { Current: 10 CommitAge: 5 HasValue: true }
     let r = StabilizeValue(13, held, 5, 1)!
     Assert.Equal(10, r.Value, "hysteresis blocks small change")
     Assert.False(r.Changed, "no change within hysteresis band")
@@ -53,7 +53,7 @@ fn StabilizeValueHysteresisBlocksSmallChange() -> Void {
 [Fact]
 fn StabilizeValueHysteresisAllowsLargeChange() -> Void {
     // current=10, next=20, diff=10 > hysteresis=5 -> switch.
-    let held = ValueCommitment { Current: 10  CommitAge: 5  HasValue: true }
+    let held = ValueCommitment { Current: 10 CommitAge: 5 HasValue: true }
     let r = StabilizeValue(20, held, 5, 1)!
     Assert.Equal(20, r.Value, "large change beats hysteresis")
     Assert.True(r.Changed, "change reported")
@@ -62,7 +62,7 @@ fn StabilizeValueHysteresisAllowsLargeChange() -> Void {
 [Fact]
 fn StabilizeValueHysteresisIsSymmetric() -> Void {
     // Decrease: current=10, next=4, diff=6 > hysteresis=5 -> switch.
-    let held = ValueCommitment { Current: 10  CommitAge: 5  HasValue: true }
+    let held = ValueCommitment { Current: 10 CommitAge: 5 HasValue: true }
     let r = StabilizeValue(4, held, 5, 1)!
     Assert.Equal(4, r.Value, "hysteresis is symmetric for decreases")
     Assert.True(r.Changed, "decrease beats hysteresis")
@@ -70,7 +70,7 @@ fn StabilizeValueHysteresisIsSymmetric() -> Void {
 
 [Fact]
 fn StabilizeValueCommitAgeResetsOnChange() -> Void {
-    let held = ValueCommitment { Current: 10  CommitAge: 8  HasValue: true }
+    let held = ValueCommitment { Current: 10 CommitAge: 8 HasValue: true }
     let r = StabilizeValue(99, held, 0, 1)!
     let next = r.Next
     Assert.Equal(99, r.Value, "new value accepted")
@@ -192,8 +192,8 @@ fn DetectEdgeNoEdgeWhenSignalHeld() -> Void {
 [Fact]
 fn DetectEdgeOnlyFiresOneTick() -> Void {
     // Edge detection only fires on the transition tick, not on sustained hold.
-    let first  = DetectEdge(true, false)  // rising edge tick
-    let second = DetectEdge(true, true)   // held high
+    let first = DetectEdge(true, false) // rising edge tick
+    let second = DetectEdge(true, true) // held high
     Assert.True(first.Rising, "rising fires on transition tick")
     Assert.False(second.Rising, "rising does not fire on hold")
 }
@@ -230,11 +230,11 @@ fn UpdateLatchResetTakesPriorityOverSet() -> Void {
 [Fact]
 fn UpdateLatchFaultPatternHoldsUntilAck() -> Void {
     // Simulate a fault latch: set on fault, clear on ack.
-    let r1 = UpdateLatch(false, true,  false)  // fault fires
+    let r1 = UpdateLatch(false, true, false) // fault fires
     let r2 = UpdateLatch(r1.Next, false, false) // fault gone, latch holds
-    let r3 = UpdateLatch(r2.Next, false, true)  // ack received
-    Assert.True(r1.Latched,  "latch sets on fault")
-    Assert.True(r2.Latched,  "latch holds after fault clears")
+    let r3 = UpdateLatch(r2.Next, false, true) // ack received
+    Assert.True(r1.Latched, "latch sets on fault")
+    Assert.True(r2.Latched, "latch holds after fault clears")
     Assert.False(r3.Latched, "latch clears on ack")
 }
 
@@ -246,7 +246,7 @@ fn CommitmentAndEdgeComposeForModeChangeDetection() -> Void {
     // This is a pattern for generating one-shot events from stabilized decisions.
     var commitment = NoValueCommitment()
     var prevValue = 0
-    var edgeSeen  = false
+    var edgeSeen = false
 
     // Ticks 1-2: mode = 1 (first call + hold)
     let t1 = StabilizeValue(1, commitment, 0, 2)!

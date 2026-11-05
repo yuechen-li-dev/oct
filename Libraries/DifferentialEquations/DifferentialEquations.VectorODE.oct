@@ -31,28 +31,28 @@ fn VectorRK4Step(f: fn(Float, Float[]) -> Float[], t: Float, y: Float[], dt: ODE
     }
 
     var y2 = y
-    for i in 0 .. n { y2[i] = y[i] + halfDt * k1[i] }
+    for i in 0..n { y2[i] = y[i] + halfDt * k1[i] }
     let k2 = f(t + halfDt, y2)
     if Len(k2) != n {
         return error("VectorRK4Step: f(t, y) must return a vector the same length as y")
     }
 
     var y3 = y
-    for i in 0 .. n { y3[i] = y[i] + halfDt * k2[i] }
+    for i in 0..n { y3[i] = y[i] + halfDt * k2[i] }
     let k3 = f(t + halfDt, y3)
     if Len(k3) != n {
         return error("VectorRK4Step: f(t, y) must return a vector the same length as y")
     }
 
     var y4 = y
-    for i in 0 .. n { y4[i] = y[i] + dt * k3[i] }
+    for i in 0..n { y4[i] = y[i] + dt * k3[i] }
     let k4 = f(t + dt, y4)
     if Len(k4) != n {
         return error("VectorRK4Step: f(t, y) must return a vector the same length as y")
     }
 
     var out = y
-    for i in 0 .. n {
+    for i in 0..n {
         out[i] = y[i] + (dt / 6.0) * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i])
     }
     return out
@@ -89,7 +89,7 @@ fn VectorEulerStep(f: fn(Float, Float[]) -> Float[], t: Float, y: Float[], dt: O
         return error("VectorEulerStep: f(t, y) must return a vector the same length as y")
     }
     var out = y
-    for i in 0 .. n { out[i] = y[i] + dt * k1[i] }
+    for i in 0..n { out[i] = y[i] + dt * k1[i] }
     return out
 }
 

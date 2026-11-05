@@ -2,6 +2,6 @@ package Main
 
 [Artifact]
 fn UnauthorizedNativeCall() -> Void ! Error {
-    let result = EchoStringRaw("no request") ?
+    let result = EchoStringRaw("no request")?
     Artifact.WriteText("must-not-publish.txt", result)
 }

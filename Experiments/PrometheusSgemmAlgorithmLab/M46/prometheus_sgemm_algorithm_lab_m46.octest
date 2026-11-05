@@ -1,16 +1,16 @@
 package PrometheusSgemmAlgorithmLab
 
 fn M46DefaultDevice(timestampAvailable: Bool) -> M46DeviceInfo {
-    return M46DeviceInfo {Name: "m46-reference-gpu" VendorId: 4318 DeviceId: 101 DriverVersion: "lab" OccupancyBand: "compute-rich" RegisterFileClass: 5 SharedMemoryClass: 4 MemoryBandwidthClass: 4 Fp32ThroughputClass: 5 MaxWorkgroupClass: 4 QueueCapabilityClass: 4 TimestampQueryAvailable: timestampAvailable}
+    return M46DeviceInfo { Name: "m46-reference-gpu" VendorId: 4318 DeviceId: 101 DriverVersion: "lab" OccupancyBand: "compute-rich" RegisterFileClass: 5 SharedMemoryClass: 4 MemoryBandwidthClass: 4 Fp32ThroughputClass: 5 MaxWorkgroupClass: 4 QueueCapabilityClass: 4 TimestampQueryAvailable: timestampAvailable }
 }
 
 fn M46BaseConfig(modeName: String) -> M46RunConfig {
     let mode = M46ModeByName(modeName)
-    return M46RunConfig {ModeName: mode.Name WarmupIterations: mode.WarmupIterations MeasuredIterations: mode.MeasuredIterations RequireTimestampQuery: mode.RequireTimestampQuery AllowFallbackToBaseline: mode.AllowFallbackToBaseline ImprovementThresholdPermille: 1070.0 MaxStabilityCvPermille: 120 AbsTolerance: 0.0005 RelTolerance: 0.001}
+    return M46RunConfig { ModeName: mode.Name WarmupIterations: mode.WarmupIterations MeasuredIterations: mode.MeasuredIterations RequireTimestampQuery: mode.RequireTimestampQuery AllowFallbackToBaseline: mode.AllowFallbackToBaseline ImprovementThresholdPermille: 1070.0 MaxStabilityCvPermille: 120 AbsTolerance: 0.0005 RelTolerance: 0.001 }
 }
 
 fn M46GoodDiagnostics(device: M46DeviceInfo, shape: M46ShapeCase, variant: String) -> M46Diagnostics {
-    return M46Diagnostics {ReportedBand: device.OccupancyBand ReportedShapeClass: shape.ShapeClass ReportedSelectedVariant: variant ClampReason: "none" FallbackReason: "none"}
+    return M46Diagnostics { ReportedBand: device.OccupancyBand ReportedShapeClass: shape.ShapeClass ReportedSelectedVariant: variant ClampReason: "none" FallbackReason: "none" }
 }
 
 [Fact]
@@ -32,7 +32,7 @@ fn M46CharacterizationModeIncludesAllM45ShapeClasses() -> Void {
     var foundWide = false
     var foundKheavy = false
     var foundFfn = false
-    for i in 0 .. Len(cases) {
+    for i in 0..Len(cases) {
         if cases[i].ShapeClass == "small-square" { foundSmall = true }
         if cases[i].ShapeClass == "medium-square" { foundMedium = true }
         if cases[i].ShapeClass == "large-square" { foundLarge = true }
@@ -93,7 +93,7 @@ fn M46DiagnosticsMismatchBlocksActuation() -> Void {
     let config = M46BaseConfig("comparison")
     let device = M46DefaultDevice(true)
     let shape = M46ShapeCases()[0]
-    let badDiag = M46Diagnostics {ReportedBand: "balanced" ReportedShapeClass: shape.ShapeClass ReportedSelectedVariant: "baseline-scalar" ClampReason: "none" FallbackReason: "none"}
+    let badDiag = M46Diagnostics { ReportedBand: "balanced" ReportedShapeClass: shape.ShapeClass ReportedSelectedVariant: "baseline-scalar" ClampReason: "none" FallbackReason: "none" }
     let measurement = M46BuildCaseMeasurement(config, device, shape, "baseline-scalar", "", M46VariantAvailabilityTable(), 0.6, 1.0, 0.0, 0.0, -1, false, badDiag)
     let rec = M46EvaluateCase(config, measurement)
     Assert.True(measurement.DiagnosticsMatch == false, "mismatched diagnostics should be detected")

@@ -33,7 +33,7 @@ fn DiffCentralOnLinearDataIsExact() -> Void {
     let ys = [0.0, 3.0, 6.0, 9.0, 12.0]
     let d = DiffCentral(xs, ys)!
     Assert.Equal(3, Len(d), "central diff output length = n-2")
-    for i in 0 .. 3 {
+    for i in 0..3 {
         Assert.Near(3.0, d[i], 0.000001, "central diff on linear data")
     }
 }
@@ -45,7 +45,7 @@ fn Diff2CentralOnQuadraticIsExact() -> Void {
     let ys = [0.0, 1.0, 4.0, 9.0, 16.0]
     let d2 = Diff2Central(xs, ys)!
     Assert.Equal(3, Len(d2), "second diff output length = n-2")
-    for i in 0 .. 3 {
+    for i in 0..3 {
         Assert.Near(2.0, d2[i], 0.000001, "d2(x^2)/dx2 = 2")
     }
 }
@@ -56,7 +56,7 @@ fn Diff2CentralOnLinearDataIsZero() -> Void {
     let xs = [0.0, 1.0, 2.0, 3.0]
     let ys = [0.0, 3.0, 6.0, 9.0]
     let d2 = Diff2Central(xs, ys)!
-    for i in 0 .. Len(d2) {
+    for i in 0..Len(d2) {
         Assert.Near(0.0, d2[i], 0.000001, "second diff of linear = 0")
     }
 }
@@ -124,7 +124,7 @@ fn CumulativeIntegralFirstElementIsZero() -> Void {
 fn CumulativeIntegralFinalElementMatchesTotalIntegral() -> Void {
     let xs = [0.0, 1.0, 2.0, 3.0]
     let ys = [0.0, 1.0, 2.0, 3.0]
-    let ci    = CumulativeIntegral(xs, ys)!
+    let ci = CumulativeIntegral(xs, ys)!
     let total = IntegrateTrapezoidal(xs, ys)!
     Assert.Near(total, ci[Len(ci) - 1], 0.000001, "last element = total integral")
 }
@@ -134,7 +134,7 @@ fn CumulativeIntegralIsMonotonicForPositiveSignal() -> Void {
     let xs = [0.0, 1.0, 2.0, 3.0, 4.0]
     let ys = [1.0, 2.0, 3.0, 1.0, 2.0]
     let ci = CumulativeIntegral(xs, ys)!
-    for i in 0 .. Len(ci) - 1 {
+    for i in 0..Len(ci) - 1 {
         Assert.True(ci[i + 1] >= ci[i], "cumulative integral is non-decreasing for positive signal")
     }
 }
@@ -148,9 +148,9 @@ fn CumulativeSumMatchesHandComputed() -> Void {
     let ys = [1.0, 2.0, 3.0, 4.0]
     let cs = CumulativeSum(ys)!
     Assert.Equal(4, Len(cs), "cumulative sum length = n")
-    Assert.Near(1.0,  cs[0], 0.000001, "cs[0]")
-    Assert.Near(3.0,  cs[1], 0.000001, "cs[1]")
-    Assert.Near(6.0,  cs[2], 0.000001, "cs[2]")
+    Assert.Near(1.0, cs[0], 0.000001, "cs[0]")
+    Assert.Near(3.0, cs[1], 0.000001, "cs[1]")
+    Assert.Near(6.0, cs[2], 0.000001, "cs[2]")
     Assert.Near(10.0, cs[3], 0.000001, "cs[3]")
 }
 
@@ -184,7 +184,7 @@ fn RunningMaxIsNonDecreasing() -> Void {
 [Fact]
 fn NormalizeProducesZeroToOneRange() -> Void {
     let ys = [2.0, 5.0, 8.0, 3.0, 10.0]
-    let n  = Normalize(ys)!
+    let n = Normalize(ys)!
     Assert.Equal(5, Len(n), "length preserved")
     Assert.Near(0.0, n[0], 0.000001, "min maps to 0")
     Assert.Near(1.0, n[4], 0.000001, "max maps to 1")
@@ -194,7 +194,7 @@ fn NormalizeProducesZeroToOneRange() -> Void {
 [Fact]
 fn NormalizePreservesRelativeOrder() -> Void {
     let ys = [1.0, 3.0, 2.0, 5.0, 4.0]
-    let n  = Normalize(ys)!
+    let n = Normalize(ys)!
     // Order should be preserved after normalization.
     Assert.True(n[1] > n[2], "n[1] > n[2] since 3 > 2")
     Assert.True(n[3] > n[4], "n[3] > n[4] since 5 > 4")
@@ -208,9 +208,9 @@ fn NormalizeRejectsConstantSeries() -> Void {
 [Fact]
 fn CenterProducesZeroMean() -> Void {
     let ys = [1.0, 2.0, 3.0, 4.0, 5.0]
-    let c  = Center(ys)!
+    let c = Center(ys)!
     var sum = 0.0
-    for i in 0 .. Len(c) {
+    for i in 0..Len(c) {
         sum = sum + c[i]
     }
     Assert.Near(0.0, sum, 0.000001, "centered series has zero mean")
@@ -219,7 +219,7 @@ fn CenterProducesZeroMean() -> Void {
 [Fact]
 fn CenterPreservesRelativeDifferences() -> Void {
     let ys = [10.0, 20.0, 30.0]
-    let c  = Center(ys)!
+    let c = Center(ys)!
     // Differences should be unchanged: c[1]-c[0] = ys[1]-ys[0] = 10
     Assert.Near(10.0, c[1] - c[0], 0.000001, "centering preserves differences")
     Assert.Near(10.0, c[2] - c[1], 0.000001, "centering preserves differences")
@@ -228,17 +228,17 @@ fn CenterPreservesRelativeDifferences() -> Void {
 [Fact]
 fn StandardizeProducesZeroMeanUnitVariance() -> Void {
     let ys = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
-    let s  = Standardize(ys)!
+    let s = Standardize(ys)!
 
     var sum = 0.0
-    for i in 0 .. Len(s) {
+    for i in 0..Len(s) {
         sum = sum + s[i]
     }
     let mean = sum / Float(Len(s))
     Assert.Near(0.0, mean, 0.000001, "standardized mean = 0")
 
     var sumSq = 0.0
-    for i in 0 .. Len(s) {
+    for i in 0..Len(s) {
         sumSq = sumSq + s[i] * s[i]
     }
     let variance = sumSq / Float(Len(s))
@@ -282,11 +282,11 @@ fn LocalMaximaDoesNotIncludeEndpoints() -> Void {
         ok(peaks) => {
             Assert.Equal(1, Len(peaks), "only the interior local maximum should be returned")
             Assert.Equal(2, peaks[0], "interior local maximum at index 2")
-            for i in 0 .. Len(peaks) {
+            for i in 0..Len(peaks) {
                 Assert.True(peaks[i] != 0 and peaks[i] != 4, "endpoints not returned as peaks")
             }
         }
-        err(e) => { }  // No interior peaks is fine
+        err(e) => {} // No interior peaks is fine
     }
 }
 
@@ -327,7 +327,7 @@ fn RMSEIsZeroForIdenticalSeries() -> Void {
 [Fact]
 fn RMSEMatchesHandComputed() -> Void {
     // actual=[0,0], predicted=[3,4]: errors=[3,4], sq=[9,16], mean=12.5, rmse=sqrt(12.5)
-    let actual    = [0.0, 0.0]
+    let actual = [0.0, 0.0]
     let predicted = [3.0, 4.0]
     Assert.Near(Sqrt(12.5), RMSE(actual, predicted)!, 0.000001, "RMSE matches hand computation")
 }
@@ -341,7 +341,7 @@ fn MAEIsZeroForIdenticalSeries() -> Void {
 [Fact]
 fn MAEMatchesHandComputed() -> Void {
     // errors=[1, 2, 3], mean = 2
-    let actual    = [0.0, 0.0, 0.0]
+    let actual = [0.0, 0.0, 0.0]
     let predicted = [1.0, 2.0, 3.0]
     Assert.Near(2.0, MAE(actual, predicted)!, 0.000001, "MAE matches hand computation")
 }
@@ -349,10 +349,10 @@ fn MAEMatchesHandComputed() -> Void {
 [Fact]
 fn RMSEIsAlwaysGreaterOrEqualToMAE() -> Void {
     // RMSE >= MAE always (by Cauchy-Schwarz / power mean inequality)
-    let actual    = [0.0, 0.0, 0.0, 0.0]
+    let actual = [0.0, 0.0, 0.0, 0.0]
     let predicted = [1.0, 3.0, 0.5, 2.0]
     let rmse = RMSE(actual, predicted)!
-    let mae  = MAE(actual, predicted)!
+    let mae = MAE(actual, predicted)!
     Assert.True(rmse >= mae, "RMSE >= MAE always")
 }
 
@@ -379,9 +379,9 @@ fn DiffAndIntegrateAreApproximatelyInverse() -> Void {
 [Fact]
 fn NormalizeAndCenterComposeDeterministically() -> Void {
     let ys = [10.0, 20.0, 30.0, 40.0, 50.0]
-    let n  = Normalize(ys)!   // now in [0,1]
-    let c  = Center(n)!       // now zero-mean
+    let n = Normalize(ys)! // now in [0,1]
+    let c = Center(n)! // now zero-mean
     // Mean of [0, 0.25, 0.5, 0.75, 1.0] = 0.5, so centered = [-0.5,-0.25,0,0.25,0.5]
     Assert.Near((0.0 - 0.5), c[0], 0.000001, "normalize then center: first element")
-    Assert.Near(0.5,          c[4], 0.000001, "normalize then center: last element")
+    Assert.Near(0.5, c[4], 0.000001, "normalize then center: last element")
 }

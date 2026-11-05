@@ -26,17 +26,19 @@ func BuildFile(result lex.Result) (ast.File, error) {
 		return ast.File{}, fmt.Errorf("parse %s: %w", result.Source.Path, err)
 	}
 	file.MarkupSpans = parser.markupSpans
+	file.ContextualExpressionStarts = parser.contextualExpressionStarts
 	return file, nil
 }
 
 type parser struct {
-	sourcePath            string
-	sourceText            string
-	tokens                []lex.Token
-	position              int
-	nextUtilityWhenSiteID int
-	docByLine             map[int]ast.DocComment
-	markupSpans           []ast.MarkupSpan
+	sourcePath                 string
+	sourceText                 string
+	tokens                     []lex.Token
+	position                   int
+	nextUtilityWhenSiteID      int
+	docByLine                  map[int]ast.DocComment
+	markupSpans                []ast.MarkupSpan
+	contextualExpressionStarts []int
 	// literalNameBindings records, innermost last, each binding in scope of
 	// a name that also begins a literal. See literalNameIsBound.
 	literalNameBindings []string
@@ -3081,6 +3083,7 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 			if scoreToken.Lexeme != "score" {
 				return nil, p.errorAtToken(scoreToken, "expected 'score' after utility case condition")
 			}
+			p.contextualExpressionStarts = append(p.contextualExpressionStarts, p.current().Offset)
 			score, err := p.parseExpression()
 			if err != nil {
 				return nil, err
@@ -3404,7 +3407,7 @@ func (p *parser) parseMatchExpr() (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		cases = append(cases, ast.MatchCase{Variant: variant, Binding: binding, Value: value})
+		cases = append(cases, ast.MatchCase{Label: caseLabel, Variant: variant, Binding: binding, Value: value})
 	}
 	p.advance()
 	return ast.MatchExpr{Subject: subject, Cases: cases}, nil

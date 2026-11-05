@@ -17,10 +17,10 @@ package Numerics
 // ============================================================
 
 record OptimizationResult {
-    XMin:       Float   // x value at minimum
-    FMin:       Float   // f(XMin)
+    XMin: Float // x value at minimum
+    FMin: Float // f(XMin)
     Iterations: Int
-    Converged:  Bool
+    Converged: Bool
 }
 
 // ============================================================
@@ -70,15 +70,15 @@ fn GoldenSection(
     while iterations < maxIterations and not converged {
         if fc < fd {
             hi = d
-            d  = c
+            d = c
             fd = fc
-            c  = hi - phi * (hi - lo)
+            c = hi - phi * (hi - lo)
             fc = f(c)
         } else {
             lo = c
-            c  = d
+            c = d
             fc = fd
-            d  = lo + phi * (hi - lo)
+            d = lo + phi * (hi - lo)
             fd = f(d)
         }
         iterations = iterations + 1
@@ -119,54 +119,54 @@ flow BrentFlow(
     maxIterations: Int
 ) -> OptimizationResult {
     board {
-        X:    Float    // current best x
-        W:    Float    // second best x
-        V:    Float    // third best x
-        FX:   Float    // f(X)
-        FW:   Float    // f(W)
-        FV:   Float    // f(V)
-        Lo:   Float    // bracket lower bound
-        Hi:   Float    // bracket upper bound
-        D:    Float    // step taken this iteration
-        E:    Float    // step taken previous iteration
-        U:    Float    // trial point
-        FU:   Float    // f(U)
+        X: Float // current best x
+        W: Float // second best x
+        V: Float // third best x
+        FX: Float // f(X)
+        FW: Float // f(W)
+        FV: Float // f(V)
+        Lo: Float // bracket lower bound
+        Hi: Float // bracket upper bound
+        D: Float // step taken this iteration
+        E: Float // step taken previous iteration
+        U: Float // trial point
+        FU: Float // f(U)
         Iter: Int
     }
 
     state Initialize {
-        let phi  = 0.6180339887498949
-        board.X  = a + phi * (b - a)
-        board.W  = board.X
-        board.V  = board.X
+        let phi = 0.6180339887498949
+        board.X = a + phi * (b - a)
+        board.W = board.X
+        board.V = board.X
         board.FX = f(board.X)
         board.FW = board.FX
         board.FV = board.FX
         board.Lo = a
         board.Hi = b
-        board.D  = 0.0
-        board.E  = 0.0
-        board.U  = board.X
+        board.D = 0.0
+        board.E = 0.0
+        board.U = board.X
         board.FU = board.FX
         board.Iter = 0
         goto CheckConverged
     }
 
     state CheckConverged {
-        let mid  = (board.Lo + board.Hi) / 2.0
+        let mid = (board.Lo + board.Hi) / 2.0
         let tol1 = tolerance * Abs(board.X) + 0.0000000001
         let tol2 = 2.0 * tol1
         when {
-            case board.Iter >= maxIterations                               -> goto Done
+            case board.Iter >= maxIterations -> goto Done
             case Abs(board.X - mid) <= tol2 - (board.Hi - board.Lo) / 2.0 -> goto Done
-            else                                                           -> goto TryParabolic
+            else -> goto TryParabolic
         }
     }
 
     state TryParabolic {
         let tol1 = tolerance * Abs(board.X) + 0.0000000001
         if Abs(board.E) > tol1 {
-            let r  = (board.X - board.W) * (board.FX - board.FV)
+            let r = (board.X - board.W) * (board.FX - board.FV)
             let q0 = (board.X - board.V) * (board.FX - board.FW)
             let p0 = (board.X - board.V) * q0 - (board.X - board.W) * r
             let q1 = if q0 - r > 0.0 { 2.0 * (q0 - r) } else { 0.0 - 2.0 * (q0 - r) }
@@ -176,7 +176,7 @@ flow BrentFlow(
                 and p1 < q1 * (board.Hi - board.X)
             when {
                 case parabolicOk -> goto ParabolicStep
-                else             -> goto GoldenStep
+                else -> goto GoldenStep
             }
         }
         goto GoldenStep
@@ -185,7 +185,7 @@ flow BrentFlow(
     state ParabolicStep {
         let tol1 = tolerance * Abs(board.X) + 0.0000000001
         let tol2 = 2.0 * tol1
-        let r  = (board.X - board.W) * (board.FX - board.FV)
+        let r = (board.X - board.W) * (board.FX - board.FV)
         let q0 = (board.X - board.V) * (board.FX - board.FW)
         let p0 = (board.X - board.V) * q0 - (board.X - board.W) * r
         let q1 = if q0 - r > 0.0 { 2.0 * (q0 - r) } else { 0.0 - 2.0 * (q0 - r) }
@@ -222,7 +222,7 @@ flow BrentFlow(
         board.FU = f(board.U)
         when {
             case board.FU <= board.FX -> goto AcceptU
-            else                      -> goto UpdateCandidates
+            else -> goto UpdateCandidates
         }
     }
 
@@ -230,11 +230,11 @@ flow BrentFlow(
         // U is better than X: shift X→W→V, promote U to X
         if board.U < board.X { board.Hi = board.X }
         if board.U >= board.X { board.Lo = board.X }
-        board.V  = board.W
+        board.V = board.W
         board.FV = board.FW
-        board.W  = board.X
+        board.W = board.X
         board.FW = board.FX
-        board.X  = board.U
+        board.X = board.U
         board.FX = board.FU
         board.Iter = board.Iter + 1
         goto CheckConverged
@@ -245,14 +245,14 @@ flow BrentFlow(
         if board.U < board.X { board.Lo = board.U }
         if board.U >= board.X { board.Hi = board.U }
         if board.FU <= board.FW or board.W == board.X {
-            board.V  = board.W
+            board.V = board.W
             board.FV = board.FW
-            board.W  = board.U
+            board.W = board.U
             board.FW = board.FU
         }
         if board.FU > board.FW and board.W != board.X {
             if board.FU <= board.FV or board.V == board.X or board.V == board.W {
-                board.V  = board.U
+                board.V = board.U
                 board.FV = board.FU
             }
         }

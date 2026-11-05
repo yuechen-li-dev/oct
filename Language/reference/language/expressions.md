@@ -11,7 +11,7 @@ Dimensions participate in expression typing.
 
 ## Rules
 
-- Numeric admission is contextual, as defined in [Types](types.md#declared-types-and-numeric-values). A declared Float/Complex destination accepts the documented widening; this does not introduce arbitrary operand coercion.
+- Mixed dimension-compatible `Int` and `Float` arithmetic promotes the operands to `Float`; comparisons use the same promotion and return `Bool`. Declared destinations separately admit the documented numeric widening. See [numeric promotion](types.md#numeric-promotion-in-expressions) and [declared numeric values](types.md#declared-types-and-numeric-values).
 - Truthiness is not allowed. Conditions must be `Bool`.
 - Arithmetic operators are `+`, `-`, `*`, `/`, `%`.
 - Comparison operators are `==`, `!=`, `<`, `<=`, `>`, `>=`.

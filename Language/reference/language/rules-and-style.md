@@ -10,7 +10,7 @@ They are normative for reading and writing Oct code.
 
 ## Rules
 
-- Conversions follow the explicit numeric admission rules in [Types](types.md#declared-types-and-numeric-values). Declared Float/Complex destinations admit the documented numeric widening; dimensions and nominal identity remain checked. Expressions do not gain general implicit coercion.
+- Numeric behavior follows [declared-destination admission](types.md#declared-types-and-numeric-values) and [mixed scalar promotion](types.md#numeric-promotion-in-expressions). These bounded rules preserve dimensional and nominal checks; they do not introduce unrestricted coercion.
 - Truthiness is not allowed.
 - Type checking is strict for expressions, assignments, calls, and returns.
 - Dimensions are enforced by type checking.

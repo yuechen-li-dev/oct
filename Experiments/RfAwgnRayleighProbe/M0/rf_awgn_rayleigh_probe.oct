@@ -72,7 +72,7 @@ fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> 
     if Len(signal) != Len(out) {
         return out
     }
-    for i in 0 .. Len(signal) {
+    for i in 0..Len(signal) {
         out[i] = signal[i] + noise[i]
     }
     return out
@@ -89,7 +89,7 @@ fn ApplyRayleighFadingSeries(samples: Float<kg*m^2/s^3>[], inPhase: Float[], qua
     if Len(samples) != Len(out) {
         return out
     }
-    for i in 0 .. Len(samples) {
+    for i in 0..Len(samples) {
         out[i] = samples[i] * (inPhase[i] * inPhase[i] + quadrature[i] * quadrature[i])
     }
     return out

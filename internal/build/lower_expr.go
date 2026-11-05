@@ -21,10 +21,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		return e.Value, "Int", false, nil
 	case ast.FloatLiteral:
+		literalType := "Float"
 		if e.HasUnit {
-			return e.Value, fmt.Sprintf("Float<%s>", e.Dimension.String()), false, nil
+			literalType = fmt.Sprintf("Float<%s>", e.Dimension.String())
 		}
-		return e.Value, "Float", false, nil
+		return e.Value, literalType, false, nil
 	case ast.BoolLiteral:
 		if e.Value {
 			return "true", "Bool", false, nil
@@ -353,6 +354,23 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return tmp, "Bool", false, nil
 		}
 		ret := lt
+		if e.Operator == "==" || e.Operator == "!=" {
+			pkgName, enumName, qualified := strings.Cut(lt, ".")
+			if qualified {
+				for _, declaration := range c.program.Packages[pkgName].Enums {
+					if declaration.Name != enumName {
+						continue
+					}
+					equal := fmt.Sprintf("reflect.DeepEqual(%s, %s)", l, r)
+					if e.Operator == "!=" {
+						equal = "!" + equal
+					}
+					tmp := c.temp("Bool")
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: MIRBackendValue{Backend: "go", Expression: equal, Type: "Bool", Reason: "enum-equality"}})
+					return tmp, "Bool", false, nil
+				}
+			}
+		}
 		switch e.Operator {
 		case "==", "!=", "<", "<=", ">", ">=", "and", "or":
 			ret = "Bool"
@@ -448,15 +466,17 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		}
 		if ident, ok := e.Callee.(ast.IdentifierExpr); ok && ident.Name == "WriteOctagon" {
 			args := make([]string, 0, len(e.Arguments))
+			argTypes := make([]string, 0, len(e.Arguments))
 			for _, a := range e.Arguments {
-				v, _, _, err := c.lowerExpr(a)
+				v, typ, _, err := c.lowerExpr(a)
 				if err != nil {
 					return "", "", false, err
 				}
 				args = append(args, v)
+				argTypes = append(argTypes, typ)
 			}
 			tmp := c.temp("Int")
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "WriteOctagon", Args: lowerMIRValues(args, nil), Builtin: true, RetType: "Int"})
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "WriteOctagon", Args: lowerMIRValues(args, nil), ArgTypes: argTypes, Builtin: true, RetType: "Int"})
 			return tmp, "Int", false, nil
 		}
 		if access, ok := e.Callee.(ast.FieldAccessExpr); ok {
@@ -841,6 +861,12 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			return tmp, effectiveReturn, meta.Fallible, nil
 		}
 		if builtin {
+			if callee == "PdfDrawImage" || callee == "PdfDrawImageSized" {
+				return c.lowerPdfImageHandleCall(callee, args, argTypes)
+			}
+			if callee == "PlotLine" || callee == "PlotScatter" {
+				return c.lowerShortPlotCall(callee, args, argTypes)
+			}
 			if sidecar, ok := lookupSidecarBuiltin(callee); ok {
 				return c.lowerSidecarBuiltinCall(sidecar, args, argTypes)
 			}
@@ -854,7 +880,14 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				return "", "", false, fmt.Errorf("BoardSnapshot expects FlowInstance argument")
 			}
 			snapshotType := ""
+			parts := strings.Split(strings.TrimSuffix(strings.TrimPrefix(argTypes[0], "FlowInstance<"), ">"), ";")
+			if len(parts) == 4 && parts[3] != "" {
+				snapshotType = parts[3] + "BoardSnapshot"
+			}
 			for _, flowDecl := range c.pkg.Flows {
+				if len(parts) == 4 {
+					break
+				}
 				if typeRefStringForPackage(c.pkg.Name, flowDecl.ReturnType) == flowRet && len(flowDecl.Board) > 0 {
 					if snapshotType != "" {
 						return "", "", false, fmt.Errorf("compiled BoardSnapshot requires unambiguous flow identity for return type %s", flowRet)
@@ -1019,6 +1052,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if err != nil {
 			return "", "", false, err
 		}
+		targetType = c.eraseRefinementType(targetType)
 		if matrixElem, ok := parseMatrixElemType(targetType); ok {
 			if len(e.Indices) != 2 {
 				return "", "", false, fmt.Errorf("compiled mode matrix indexing requires exactly 2 indices")
@@ -2588,7 +2622,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				if flow.YieldType != nil {
 					yieldType = typeRefStringForPackage(c.pkg.Name, *flow.YieldType)
 				}
-				return c.pkg.Name + "." + x.Name, flowInstanceTypeString(typeRefStringForPackage(c.pkg.Name, flow.ReturnType), inputType, yieldType), false, false, nil
+				return c.pkg.Name + "." + x.Name, flowInstanceTypeString(typeRefStringForPackage(c.pkg.Name, flow.ReturnType), inputType, yieldType, c.pkg.Name+"."+flow.Name), false, false, nil
 			}
 		}
 		if meta, ok := findGenericWrapperFunction(c.pkg, x.Name); ok {
@@ -2682,6 +2716,10 @@ func (c *lowerCtx) resolveCompiledBuiltinByName(normalized string) (string, stri
 		return normalized, sidecar.Result.Oct, true, sidecar.Fallible, nil
 	}
 	switch normalized {
+	case "PdfDrawImage", "PdfDrawImageSized", "CsvWriteMatrix", "CsvWriteTable":
+		return normalized, "Int", true, true, nil
+	case "PlotLine", "PlotScatter":
+		return normalized, "Int", true, false, nil
 	case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
 		ret := "String"
 		switch normalized {
@@ -2923,7 +2961,7 @@ func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (str
 		}
 		for _, declaredVariant := range enumDecl.Variants {
 			if declaredVariant.Name == variant {
-				return fmt.Sprintf("%s_%s{Tag: %s_%s_tag}", enumPkg, enumName, enumName, variant), enumPkg + "." + enumName, true, nil
+				return fmt.Sprintf("%s_%s{Tag: %s_%s_%s_tag}", enumPkg, enumName, enumPkg, enumName, variant), enumPkg + "." + enumName, true, nil
 			}
 		}
 		return "", "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
@@ -2954,7 +2992,7 @@ func (c *lowerCtx) resolveEnumVariantConstructor(enumType string, variant string
 				if len(args) != 0 {
 					return "", "", true, fmt.Errorf("enum '%s' variant '%s' does not accept a payload", enumType, variant)
 				}
-				return fmt.Sprintf("%s_%s{Tag: %s_%s_tag}", enumPkg, enumName, enumName, variant), enumPkg + "." + enumName, true, nil
+				return fmt.Sprintf("%s_%s{Tag: %s_%s_%s_tag}", enumPkg, enumName, enumPkg, enumName, variant), enumPkg + "." + enumName, true, nil
 			}
 			if len(args) != 1 {
 				return "", "", true, fmt.Errorf("enum '%s' variant '%s' requires exactly 1 payload argument", enumType, variant)
@@ -2967,7 +3005,7 @@ func (c *lowerCtx) resolveEnumVariantConstructor(enumType string, variant string
 				return "", "", true, err
 			}
 			payload = cloneCompiledValueExpr(coerceExprToType(payload, actualType, payloadType), payloadType)
-			return fmt.Sprintf("%s_%s{Tag: %s_%s_tag, Payload: %s}", enumPkg, enumName, enumName, variant, payload), enumPkg + "." + enumName, true, nil
+			return fmt.Sprintf("%s_%s{Tag: %s_%s_%s_tag, Payload: %s}", enumPkg, enumName, enumPkg, enumName, variant, payload), enumPkg + "." + enumName, true, nil
 		}
 		return "", "", true, fmt.Errorf("enum '%s' has no variant '%s'", enumType, variant)
 	}
@@ -3082,6 +3120,9 @@ func isBuiltinTypeName(name string) bool {
 }
 
 func flowInstanceTypeString(resultType string, details ...string) string {
+	if len(details) == 3 {
+		return "FlowInstance<" + resultType + ";" + strings.Join(details, ";") + ">"
+	}
 	if len(details) == 2 && (details[0] != "" || details[1] != "") {
 		return "FlowInstance<" + resultType + ";" + details[0] + ";" + details[1] + ">"
 	}
@@ -3205,7 +3246,7 @@ func parseFlowInstanceDetails(t string) (result, input, yielded string, ok bool)
 	if len(parts) == 1 {
 		return parts[0], "", "", true
 	}
-	if len(parts) != 3 {
+	if len(parts) != 3 && len(parts) != 4 {
 		return "", "", "", false
 	}
 	return parts[0], parts[1], parts[2], true

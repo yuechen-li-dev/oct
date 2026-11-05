@@ -2,17 +2,17 @@ package Atlas
 
 fn AtlasLibraryFixture() -> Document {
     return Document {
-        Authorities:[Authority {ID: "Authority.Example" Title: "Example" URI: "" Version: "1" Digest: ""}]
-        Citations:[Citation {ID: "Citation.Example.Section" Authority: "Authority.Example" Locator: "section 1"}]
-        Requirements:[Requirement {ID: "Requirement.Example" Text: "The example remains deterministic."}]
-        Interpretations:[Interpretation {ID: "Interpretation.Example" Text: "The bounded example interprets section 1."}]
-        Claims:[Claim {ID: "Claim.Example" Text: "Ordinary Oct constructs Atlas values."}]
-        Symbols:[]
-        Evidence:[]
-        Artifacts:[]
-        Links:[
-        Link {From: "Interpretation.Example" Relation: Relation.Interprets To: "Citation.Example.Section"},
-        Link {From: "Requirement.Example" Relation: Relation.Supports To: "Claim.Example"}
+        Authorities: [Authority { ID: "Authority.Example" Title: "Example" URI: "" Version: "1" Digest: "" }]
+        Citations: [Citation { ID: "Citation.Example.Section" Authority: "Authority.Example" Locator: "section 1" }]
+        Requirements: [Requirement { ID: "Requirement.Example" Text: "The example remains deterministic." }]
+        Interpretations: [Interpretation { ID: "Interpretation.Example" Text: "The bounded example interprets section 1." }]
+        Claims: [Claim { ID: "Claim.Example" Text: "Ordinary Oct constructs Atlas values." }]
+        Symbols: []
+        Evidence: []
+        Artifacts: []
+        Links: [
+            Link { From: "Interpretation.Example" Relation: Relation.Interprets To: "Citation.Example.Section" },
+            Link { From: "Requirement.Example" Relation: Relation.Supports To: "Claim.Example" }
         ]
         Policy: Policy {
             RequireRequirementImplementation: false
@@ -34,24 +34,24 @@ fn AtlasDocumentsAreOrdinaryDeterministicValues() -> Void {
 [Fact]
 fn AtlasColumnarDocumentsAndWithUpdatesRemainOrdinaryOct() -> Void {
     let authorities = AuthorityTable {
-        ID:["Authority.Example"]
-        Title:["Example"]
-        URI:[""]
-        Version:["1"]
-        Digest:[""]
+        ID: ["Authority.Example"]
+        Title: ["Example"]
+        URI: [""]
+        Version: ["1"]
+        Digest: [""]
     }
-    let updated = authorities with {Version:["2"]}
-    let policy = AdvisoryPolicy() with {RequireInterpretationCitation: true}
+    let updated = authorities with { Version: ["2"] }
+    let policy = AdvisoryPolicy() with { RequireInterpretationCitation: true }
     let document = TableDocument {
         Authorities: updated
-        Citations: CitationTable {ID:[] Authority:[] Locator:[]}
-        Requirements: RequirementTable {ID:[] Text:[]}
-        Interpretations: InterpretationTable {ID:[] Text:[]}
-        Claims: ClaimTable {ID:[] Text:[]}
-        Symbols: SymbolRefTable {ID:[] Symbol:[] Kind:[]}
-        Evidence: EvidenceRefTable {ID:[] Evidence:[] Kind:[]}
-        Artifacts: ArtifactRefTable {ID:[] Artifact:[] Output:[]}
-        Links: LinkTable {From:[] Relation:[] To:[]}
+        Citations: CitationTable { ID: [] Authority: [] Locator: [] }
+        Requirements: RequirementTable { ID: [] Text: [] }
+        Interpretations: InterpretationTable { ID: [] Text: [] }
+        Claims: ClaimTable { ID: [] Text: [] }
+        Symbols: SymbolRefTable { ID: [] Symbol: [] Kind: [] }
+        Evidence: EvidenceRefTable { ID: [] Evidence: [] Kind: [] }
+        Artifacts: ArtifactRefTable { ID: [] Artifact: [] Output: [] }
+        Links: LinkTable { From: [] Relation: [] To: [] }
         Policy: policy
     }
     Assert.Equal(Len(document.Authorities), 1, "columnar Authority extent")

@@ -39,12 +39,8 @@ func TestIOXlsxWrapper(t *testing.T) {
 		t.Fatalf("expected invalid handle save fact pass output, got %q", stdout)
 	}
 
-	info, statErr := os.Stat(outputPath)
-	if statErr != nil {
-		t.Fatalf("expected xlsx artifact at %s: %v", outputPath, statErr)
-	}
-	if info.Size() == 0 {
-		t.Fatalf("expected non-empty xlsx artifact at %s", outputPath)
+	if _, statErr := os.Stat(outputPath); !os.IsNotExist(statErr) {
+		t.Fatalf("successful XLSX contract must clean its output %s: %v", outputPath, statErr)
 	}
 }
 
@@ -55,7 +51,7 @@ func TestCompiledIOXlsxWrapper(t *testing.T) {
 	workDir := newWrapperTempProject(t)
 	outputPath := filepath.Join(workDir, "io_xlsx_m0.xlsx")
 	target := repoPath(t, "Libraries", "IO", "IO.Xlsx.octest")
-	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-xlsx")
+	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-xlsx", "octxiliary-io")
 	if err != nil {
 		t.Fatalf("compiled IO xlsx wrapper tests failed: %v\nstderr:%s\nstdout:%s", err, strings.TrimSpace(stderr), stdout)
 	}
@@ -68,10 +64,8 @@ func TestCompiledIOXlsxWrapper(t *testing.T) {
 		"PASS IO.XlsxRejectsInvalidSavePathExtension",
 		"PASS IO.XlsxRejectsSaveWithInvalidWorkbookHandle",
 	)
-	if info, statErr := os.Stat(outputPath); statErr != nil {
-		t.Fatalf("expected compiled xlsx artifact at %s: %v", outputPath, statErr)
-	} else if info.Size() == 0 {
-		t.Fatalf("expected non-empty compiled xlsx artifact at %s", outputPath)
+	if _, statErr := os.Stat(outputPath); !os.IsNotExist(statErr) {
+		t.Fatalf("successful compiled XLSX contract must clean its output %s: %v", outputPath, statErr)
 	}
 }
 

@@ -94,7 +94,7 @@ func Split(content string) (Header, string, error) {
 		} else if phase != header.Phase {
 			return Header{}, "", fmt.Errorf("expectation lines must all name the same phase: found %q after %q", trimmed, header.Lines[0])
 		}
-		header.Texts = append(header.Texts, match[2])
+		header.Texts = append(header.Texts, decodeExpectation(match[2]))
 		header.Lines = append(header.Lines, trimmed)
 		end++
 	}
@@ -107,4 +107,17 @@ func Split(content string) (Header, string, error) {
 		}
 	}
 	return header, strings.Join(lines[end:], "\n"), nil
+}
+
+// Preserve legacy unescaped quotation marks while allowing a quoted path or
+// literal backslash to be stated without including the escape in the match.
+func decodeExpectation(text string) string {
+	var b strings.Builder
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\\' && i+1 < len(text) && (text[i+1] == '\\' || text[i+1] == '"') {
+			i++
+		}
+		b.WriteByte(text[i])
+	}
+	return b.String()
 }

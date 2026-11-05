@@ -10,9 +10,9 @@ record table Measurements {
 
 fn Main() -> Int {
     let bad = Measurements {
-        Stage:["A", "B"]
-        Latency:[1.0]
-        Error:[0.1, 0.2]
+        Stage: ["A", "B"]
+        Latency: [1.0]
+        Error: [0.1, 0.2]
     }
     return Len(bad)
 }

@@ -4,10 +4,10 @@ fn MatMulBaseline(A: Matrix<Float>, B: Matrix<Float>) -> Matrix<Float> ! Error {
     let _inputsOk = ValidateMatMulInputs(A, B)?
 
     var out = Matrix.zeros<Float>(A.rows, B.cols)
-    for r in 0 .. A.rows {
-        for c in 0 .. B.cols {
+    for r in 0..A.rows {
+        for c in 0..B.cols {
             var sum = 0.0
-            for k in 0 .. A.cols {
+            for k in 0..A.cols {
                 sum = sum + A[r, k] * B[k, c]
             }
             out[r, c] = sum

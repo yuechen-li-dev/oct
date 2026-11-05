@@ -17,10 +17,10 @@ fn DispatchProducts() -> String[] {
 }
 
 fn DispatchUpdate(model: DispatchState, event: String) -> DispatchState {
-    let nav = ResolveEventValue(event, DispatchNavTable()) !
+    let nav = ResolveEventValue(event, DispatchNavTable())!
     if nav != "" { return model with { SelectedNav: nav } }
 
-    let inspect = MatchEventPrefix(event, "storefront.inspect.", DispatchProducts()) !
+    let inspect = MatchEventPrefix(event, "storefront.inspect.", DispatchProducts())!
     if inspect != "" { return model with { SelectedProduct: inspect } }
 
     return model
@@ -28,25 +28,25 @@ fn DispatchUpdate(model: DispatchState, event: String) -> DispatchState {
 
 [Fact]
 fn M111ResolveEventValueExactMatch() -> Void {
-    let resolved = ResolveEventValue("nav.support", DispatchNavTable()) !
+    let resolved = ResolveEventValue("nav.support", DispatchNavTable())!
     Assert.Equal("Support", resolved, "event should resolve to aligned value")
 }
 
 [Fact]
 fn M111ResolveEventValueFirstMatchWins() -> Void {
-    let resolved = ResolveEventValue("nav.shop", DispatchNavTable()) !
+    let resolved = ResolveEventValue("nav.shop", DispatchNavTable())!
     Assert.Equal("Shop", resolved, "first matching event should win when duplicates exist")
 }
 
 [Fact]
 fn M111ResolveEventValueNoMatchReturnsEmpty() -> Void {
-    Assert.Equal("", ResolveEventValue("nav.unknown", DispatchNavTable()) !, "unknown event should return empty")
+    Assert.Equal("", ResolveEventValue("nav.unknown", DispatchNavTable())!, "unknown event should return empty")
 }
 
 [Fact]
 fn M111ResolveEventValueEmptyTableReturnsEmpty() -> Void {
     let table = EventValueDispatch { Events: [] Values: [] }
-    Assert.Equal("", ResolveEventValue("nav.shop", table) !, "empty table should resolve empty")
+    Assert.Equal("", ResolveEventValue("nav.shop", table)!, "empty table should resolve empty")
 }
 
 
@@ -59,19 +59,19 @@ fn M111ResolveEventValueLengthMismatchFailsClearly() -> Void {
 
 [Fact]
 fn M111MatchEventPrefixReturnsAllowedSuffix() -> Void {
-    let suffix = MatchEventPrefix("storefront.inspect.harbor-board", "storefront.inspect.", DispatchProducts()) !
+    let suffix = MatchEventPrefix("storefront.inspect.harbor-board", "storefront.inspect.", DispatchProducts())!
     Assert.Equal("harbor-board", suffix, "allowed suffix should be returned")
 }
 
 [Fact]
 fn M111MatchEventPrefixDisallowedSuffixReturnsEmpty() -> Void {
-    let suffix = MatchEventPrefix("storefront.inspect.unknown", "storefront.inspect.", DispatchProducts()) !
+    let suffix = MatchEventPrefix("storefront.inspect.unknown", "storefront.inspect.", DispatchProducts())!
     Assert.Equal("", suffix, "disallowed suffix should return empty")
 }
 
 [Fact]
 fn M111MatchEventPrefixWrongPrefixReturnsEmpty() -> Void {
-    let suffix = MatchEventPrefix("storefront.cart.harbor-board", "storefront.inspect.", DispatchProducts()) !
+    let suffix = MatchEventPrefix("storefront.cart.harbor-board", "storefront.inspect.", DispatchProducts())!
     Assert.Equal("", suffix, "wrong prefix should return empty")
 }
 
@@ -84,14 +84,14 @@ fn M111MatchEventPrefixEmptyPrefixFailsClearly() -> Void {
 
 [Fact]
 fn M111MatchEventPrefixRequiresExactSuffixSegment() -> Void {
-    let suffix = MatchEventPrefix("storefront.inspect.harbor-board.extra", "storefront.inspect.", DispatchProducts()) !
+    let suffix = MatchEventPrefix("storefront.inspect.harbor-board.extra", "storefront.inspect.", DispatchProducts())!
     Assert.Equal("", suffix, "helper should not accept partial suffix matches")
 }
 
 [Fact]
 fn M111MatchEventPrefixEmptyAllowedSuffixesReturnsEmpty() -> Void {
     let allowed: String[] = []
-    let suffix = MatchEventPrefix("storefront.inspect.harbor-board", "storefront.inspect.", allowed) !
+    let suffix = MatchEventPrefix("storefront.inspect.harbor-board", "storefront.inspect.", allowed)!
     Assert.Equal("", suffix, "empty allowed suffix list should reject all matches")
 }
 

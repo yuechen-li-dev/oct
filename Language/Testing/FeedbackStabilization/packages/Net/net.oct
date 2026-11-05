@@ -1,0 +1,8 @@
+package Net
+
+enum Mode { Slow Fast }
+concept Port = Int { Require(Self > 0, "positive port") }
+
+template fn Echo<T>(value: T) -> T { return value }
+
+fn Fast() -> Mode { return Mode.Fast }

@@ -15,16 +15,16 @@ concept ArtifactCapabilityRequest {
 }
 
 fn EchoCapability() -> NativeComputeRequest {
-    return NativeComputeRequest {Package: "Main" Wrapper: "test-wrapper" Operation: "EchoStringRaw"}
+    return NativeComputeRequest { Package: "Main" Wrapper: "test-wrapper" Operation: "EchoStringRaw" }
 }
 
 fn RequestedCapabilities() -> ArtifactCapabilityRequest {
     let echo = EchoCapability()
-    return ArtifactCapabilityRequest {Native:[echo, echo]}
+    return ArtifactCapabilityRequest { Native: [echo, echo] }
 }
 
 [Artifact(RequestedCapabilities)]
 fn EmitNativeResult() -> Void ! Error {
-    let result = EchoStringRaw("concept grant") ?
+    let result = EchoStringRaw("concept grant")?
     Artifact.WriteText("nested/native-result.txt", result)
 }

@@ -2,9 +2,9 @@ expect error: "record table 'Measurements' column 'Latency': array element 0 exp
 
 package MainInvalid
 
-record table Measurements {Latency: Float}
+record table Measurements { Latency: Float }
 
 fn Main() -> Int {
-    let bad = Measurements {Latency:["slow"]}
+    let bad = Measurements { Latency: ["slow"] }
     return Len(bad)
 }

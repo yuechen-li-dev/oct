@@ -587,3 +587,19 @@ func TestFormatOctFailKeepsEveryExpectationLineAndFormatsArtifactBodies(t *testi
 		}
 	}
 }
+
+func TestUtilityScoreSignUsesParserContext(t *testing.T) {
+	source, err := os.ReadFile("testdata/utility_negative.oct.in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := FormatSource(string(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustContain(t, out, "when score - 5 > 0 score -5")
+	again, err := FormatSource(out)
+	if err != nil || again != out {
+		t.Fatalf("not idempotent: %v\n%s", err, again)
+	}
+}

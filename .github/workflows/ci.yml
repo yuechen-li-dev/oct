@@ -85,6 +85,14 @@ jobs:
           go build -o dist/${{ matrix.binary_name }} ./cmd/oct
           go build -o dist/${{ matrix.mcp_binary_name }} ./cmd/oct-mcp
 
+      - name: Check canonical Oct formatting
+        shell: pwsh
+        run: |
+          foreach ($sourceRoot in @('Libraries', 'Language', 'Experiments', 'Examples')) {
+            go run ./cmd/oct fmt $sourceRoot --check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
       - name: Run fast tests
         run: go test -count=1 -parallel 8 ./...
 

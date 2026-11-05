@@ -13,7 +13,7 @@ fn GiteaConfigCreationAndValidationPassesForValidInput() -> Void {
         "OctLab"
     )
 
-    let valid = ValidateGiteaInstanceConfig(config) !
+    let valid = ValidateGiteaInstanceConfig(config)!
     Assert.True(valid, "valid gitea instance config should pass validation")
 }
 
@@ -59,8 +59,8 @@ fn GiteaAppIniTextIsDeterministicAndContainsExpectedFields() -> Void {
         "OctLab"
     )
 
-    let first = GiteaAppIniText(config) !
-    let second = GiteaAppIniText(config) !
+    let first = GiteaAppIniText(config)!
+    let second = GiteaAppIniText(config)!
 
     let expected = "[server]\n" +
         "DOMAIN = git.oct.local\n" +
@@ -97,7 +97,7 @@ fn OctLabCloneCommandIncludesRepoAndTargetDirectory() -> Void {
         "OctLab"
     )
 
-    let command = OctLabCloneCommand(config, "https://github.com/oct-lang/oct.git") !
+    let command = OctLabCloneCommand(config, "https://github.com/oct-lang/oct.git")!
     Assert.Equal("git clone https://github.com/oct-lang/oct.git /srv/gitea/repos/oct", command, "clone command should be explicit and readable")
 
     Assert.Error(OctLabCloneCommand(config, ""), "empty repo url should fail")
@@ -116,7 +116,7 @@ fn OctLabDirectoryPlanIsDeterministicAndOrdered() -> Void {
         "OctLab"
     )
 
-    let plan = OctLabDirectoryPlan(config) !
+    let plan = OctLabDirectoryPlan(config)!
     let expected = ["/srv/gitea", "/srv/gitea/data", "/srv/gitea/repos", "/srv/gitea/conf", "/srv/gitea/log", "/srv/gitea/tmp", "/srv/gitea/repos/oct"]
 
     Assert.Equal(expected[0], plan[0], "directory plan first element")
@@ -141,10 +141,10 @@ fn DeploymentGiteaComposableBootstrapWorkflow() -> Void {
         "OctLab"
     )
 
-    let _valid = ValidateGiteaInstanceConfig(config) !
-    let iniText = GiteaAppIniText(config) !
-    let cloneCommand = OctLabCloneCommand(config, "https://github.com/oct-lang/oct.git") !
-    let directories = OctLabDirectoryPlan(config) !
+    let _valid = ValidateGiteaInstanceConfig(config)!
+    let iniText = GiteaAppIniText(config)!
+    let cloneCommand = OctLabCloneCommand(config, "https://github.com/oct-lang/oct.git")!
+    let directories = OctLabDirectoryPlan(config)!
 
     Assert.True(Len(iniText) > 0, "app.ini text should be generated")
     Assert.True(Len(cloneCommand) > 0, "clone command should be generated")

@@ -17,15 +17,15 @@ concept PublicationVersion = Int {
 
 /// Admits a runtime-derived positive count through the ordinary fallible Concept constructor.
 fn AdmitPositiveCount(value: Int) -> PositiveCount ! Error {
-    return PositiveCount(value) ?
+    return PositiveCount(value)?
 }
 
 /// Admits a runtime-derived non-empty publication identity.
 fn AdmitPublicationSource(value: String) -> PublicationSource ! Error {
-    return PublicationSource(value) ?
+    return PublicationSource(value)?
 }
 
 /// Admits a runtime-derived non-negative publication version.
 fn AdmitPublicationVersion(value: Int) -> PublicationVersion ! Error {
-    return PublicationVersion(value) ?
+    return PublicationVersion(value)?
 }

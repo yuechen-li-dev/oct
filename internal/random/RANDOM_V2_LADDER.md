@@ -276,7 +276,7 @@ milestone may weaken an existing compiled-lane assertion to pass (see AGENTS.md)
     - `Rng`, `Rand*`, `RngSeed`, all `*Result` records, `Crypto*` from `Random`
     - the `Legacy` flag and the three arity-check forms in the builtin table, which exist only for v1
     - the v1 natives, the xoshiro code, and the v1 `CompiledDispatch.*` tests
-  - Move the three fixtures that call `Random.CryptoRandBytes` to `Entropy.Bytes`: `Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest`, `Language/Testing/CompiledOctxiliary/valid/file_bytes_and_directory_m4.octest` and `Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest`. They call it without `import Random`, which v1 allows and v2 does not.
+  - Move the three fixtures that call `Random.CryptoRandBytes` to `Entropy.Bytes`: `Language/Testing/OctxiliaryContracts/valid/generic_wrapper_m6.octest`, `Language/Testing/OctxiliaryContracts/valid/file_bytes_and_directory_m4.octest` and `Language/Testing/OctxiliaryDispatch/valid/interpreted_generic_wrapper_w7b.octest`. They call it without `import Random`, which v1 allows and v2 does not.
   - Update `Language/Types/Tuples/invalid/random_tuple_threading_rejected.octfail` so it no longer depends on `Random` (rename it to a neutral tuple contract).
   - Docs:
     - Retire `internal/random/Random.{Core,CoinToss,Dice,Distributions}.md` into one `Random.md` generated from this spec.

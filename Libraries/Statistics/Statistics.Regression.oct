@@ -11,7 +11,7 @@ fn Covariance(xs: Float[], ys: Float[]) -> Float {
     let my = Mean(ys)
 
     var accum = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         accum = accum + (xs[i] - mx) * (ys[i] - my)
     }
 
@@ -29,7 +29,7 @@ fn SampleCovariance(xs: Float[], ys: Float[]) -> Float {
     let my = Mean(ys)
 
     var accum = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         accum = accum + (xs[i] - mx) * (ys[i] - my)
     }
 
@@ -44,7 +44,7 @@ fn SampleVariance(xs: Float[]) -> Float {
 
     let mean = Mean(xs)
     var accum = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         let d = xs[i] - mean
         accum = accum + d * d
     }
@@ -98,7 +98,7 @@ fn LinearRegression(xs: Float[], ys: Float[]) -> LinearRegressionResult ! Error 
 
     var num = 0.0
     var den = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         let dx = xs[i] - mx
         num = num + dx * (ys[i] - my)
         den = den + dx * dx
@@ -114,7 +114,7 @@ fn LinearRegression(xs: Float[], ys: Float[]) -> LinearRegressionResult ! Error 
     // Compute R-squared: 1 - RSS/TSS
     var rss = 0.0
     var tss = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         let predicted = slope * xs[i] + intercept
         let residual = ys[i] - predicted
         rss = rss + residual * residual

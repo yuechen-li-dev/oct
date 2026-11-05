@@ -13,7 +13,7 @@ fn StorefrontM4ViewRendersDeterministically() -> Void {
 fn StorefrontM4SelectionAndCartFlowWorks() -> Void {
     let mounted = MountUI(View(Init()))
 
-    let emitCategory = Emit(mounted, CategoryDeskEvent()) !
+    let emitCategory = Emit(mounted, CategoryDeskEvent())!
     Assert.Equal(0, emitCategory, "category event should emit")
     let categoryEvents = DrainEvents(mounted)
     Assert.Equal(1, Len(categoryEvents), "category click should enqueue one event")
@@ -22,7 +22,7 @@ fn StorefrontM4SelectionAndCartFlowWorks() -> Void {
     model = Update(model, categoryEvents[0])
     Assert.Equal("desk", model.SelectedCategory, "category state should update")
 
-    let emitSelect = Emit(mounted, InspectEvent("harbor-board")) !
+    let emitSelect = Emit(mounted, InspectEvent("harbor-board"))!
     Assert.Equal(0, emitSelect, "product inspect event should emit")
     let selectEvents = DrainEvents(mounted)
     Assert.Equal(1, Len(selectEvents), "inspect click should enqueue one event")
@@ -30,7 +30,7 @@ fn StorefrontM4SelectionAndCartFlowWorks() -> Void {
     model = Update(model, selectEvents[0])
     Assert.Equal("harbor-board", model.SelectedProduct, "selected product should update")
 
-    let emitAdd = Emit(mounted, AddToCartEvent("harbor-board")) !
+    let emitAdd = Emit(mounted, AddToCartEvent("harbor-board"))!
     Assert.Equal(0, emitAdd, "add-to-cart should emit")
     let addEvents = DrainEvents(mounted)
     Assert.Equal(1, Len(addEvents), "add click should enqueue one event")

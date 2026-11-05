@@ -193,11 +193,11 @@ fn M1ArtifactWriteAll() -> Int ! Error {
         M1Pairwise(phaseRun.Mode, phaseRun.FixedKF, phaseRun.AdaptiveKF),
         M1Pairwise(phaseRun.Mode, phaseRun.LowPass, phaseRun.AdaptiveKF)
     ]
-    var csv: String[][] = [["mode","method","sampleRate","duration","sampleCount","seed","inputSNRDb","outputSNRDb","nrmse","correlation","innovationWhitenessCost","lag1InnovationAutocorrelation","finalA","diagnosticLabel"]]
-    for i in 0..Len(rows) { let r = rows[i] csv = Append(csv, [r.Mode,r.Method,ToString(r.SampleRate),ToString(r.Duration),ToString(r.SampleCount),ToString(r.Seed),ToString(r.InputSNRDb),ToString(r.OutputSNRDb),ToString(r.Nrmse),ToString(r.Correlation),ToString(r.InnovationWhitenessCost),ToString(r.Lag1InnovationAutocorrelation),r.FinalAText,r.DiagnosticLabel]) }
+    var csv: String[][] = [["mode", "method", "sampleRate", "duration", "sampleCount", "seed", "inputSNRDb", "outputSNRDb", "nrmse", "correlation", "innovationWhitenessCost", "lag1InnovationAutocorrelation", "finalA", "diagnosticLabel"]]
+    for i in 0..Len(rows) { let r = rows[i] csv = Append(csv, [r.Mode, r.Method, ToString(r.SampleRate), ToString(r.Duration), ToString(r.SampleCount), ToString(r.Seed), ToString(r.InputSNRDb), ToString(r.OutputSNRDb), ToString(r.Nrmse), ToString(r.Correlation), ToString(r.InnovationWhitenessCost), ToString(r.Lag1InnovationAutocorrelation), r.FinalAText, r.DiagnosticLabel]) }
     let settingsTable = Markdown.KeyValueTable(
-        ["sampleRate","duration","messageHz","carrierHz","frequencyDeviationHz","inputSNRDb","seed","whitenessLagCount","artifactRowGuardThreshold"],
-        [ToString(tiny.SampleRate),ToString(tiny.Duration),ToString(tiny.MessageHz),ToString(tiny.CarrierHz),ToString(tiny.FrequencyDeviationHz),ToString(tiny.InputSNRDb),ToString(tiny.Seed),"1","1000"]
+        ["sampleRate", "duration", "messageHz", "carrierHz", "frequencyDeviationHz", "inputSNRDb", "seed", "whitenessLagCount", "artifactRowGuardThreshold"],
+        [ToString(tiny.SampleRate), ToString(tiny.Duration), ToString(tiny.MessageHz), ToString(tiny.CarrierHz), ToString(tiny.FrequencyDeviationHz), ToString(tiny.InputSNRDb), ToString(tiny.Seed), "1", "1000"]
     )
     var modes: String[] = []
     var methods: String[] = []

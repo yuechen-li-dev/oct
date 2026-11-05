@@ -5,7 +5,7 @@ fn Mean(xs: Float[]) -> Float {
     Assert.True(n > 0, "Mean requires at least one value")
 
     var sum = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         sum = sum + xs[i]
     }
 
@@ -27,7 +27,7 @@ fn WeightedMean(xs: Float[], weights: Float[]) -> Float ! Error {
     var weightedCompensation = 0.0
     var weightSum = 0.0
     var weightCompensation = 0.0
-    for i in 0 .. Len(xs) {
+    for i in 0..Len(xs) {
         let weight = weights[i]
         if weight < 0.0 {
             return error("WeightedMean requires non-negative weights")
@@ -56,7 +56,7 @@ fn Variance(xs: Float[]) -> Float {
 
     let mean = Mean(xs)
     var accum = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         let d = xs[i] - mean
         accum = accum + d * d
     }
@@ -124,12 +124,12 @@ fn SortedCopy(xs: Float[]) -> Float[] {
     }
 
     var out = [xs[0]]
-    for i in 1 .. n {
+    for i in 1..n {
         out = Append(out, xs[i])
     }
 
     // Deterministic insertion sort ascending.
-    for k in 1 .. n {
+    for k in 1..n {
         let value = out[k]
         var j = k
 

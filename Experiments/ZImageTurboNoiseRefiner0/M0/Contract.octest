@@ -57,7 +57,9 @@ fn AdaLnOrderAndRmsNormAreExplicit() -> Void {
 [Suite("EVT2.O0.Structural")]
 [Artifact]
 fn WriteO0StructuralWitness() -> Void ! Error {
-    let root = "internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle"
+    // The completed campaign's ledger pins historical bytes. New toolchain
+    // runs publish here, rather than replacing that historical evidence.
+    let root = "Experiments/ZImageTurboNoiseRefiner0/M0/artifacts/current"
     let _directory = IO.MakeAll(root)?
     let witness = StructuralWitness {
         schema: "oct.prometheus.evt2.o0.structural-witness.v1"

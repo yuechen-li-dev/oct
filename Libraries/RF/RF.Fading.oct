@@ -30,7 +30,7 @@ fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> 
     }
 
     var out = [ApplyAdditiveNoise(signal[0], noise[0])]
-    for i in 1 .. Len(signal) {
+    for i in 1..Len(signal) {
         out = Append(out, ApplyAdditiveNoise(signal[i], noise[i]))
     }
 
@@ -63,7 +63,7 @@ fn RayleighPowerGainSeries(inPhase: Float[], quadrature: Float[]) -> Float[] {
     }
 
     var out = [RayleighPowerGainFromComponents(inPhase[0], quadrature[0])]
-    for i in 1 .. Len(inPhase) {
+    for i in 1..Len(inPhase) {
         out = Append(out, RayleighPowerGainFromComponents(inPhase[i], quadrature[i]))
     }
 
@@ -81,7 +81,7 @@ fn ApplyPowerGainSeries(samples: Float<kg*m^2/s^3>[], gain: Float[]) -> Float<kg
     }
 
     var out = [ApplyPowerGain(samples[0], gain[0])]
-    for i in 1 .. Len(samples) {
+    for i in 1..Len(samples) {
         out = Append(out, ApplyPowerGain(samples[i], gain[i]))
     }
     return out
@@ -135,7 +135,7 @@ fn RicianPowerGainSeries(kFactorLinear: Float, scatterInPhase: Float[], scatterQ
     }
 
     var out = [RicianPowerGainFromComponents(kFactorLinear, scatterInPhase[0], scatterQuadrature[0])]
-    for i in 1 .. Len(scatterInPhase) {
+    for i in 1..Len(scatterInPhase) {
         out = Append(out, RicianPowerGainFromComponents(kFactorLinear, scatterInPhase[i], scatterQuadrature[i]))
     }
 

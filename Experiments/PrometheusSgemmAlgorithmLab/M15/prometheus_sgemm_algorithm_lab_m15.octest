@@ -20,7 +20,7 @@ fn M15RunsAllRequiredStressFamilies() -> Void {
 fn M15BoundednessRemainsIntact() -> Void {
     let rows = M15ScenarioResults()
     var violations = 0
-    for i in 0 .. Len(rows) {
+    for i in 0..Len(rows) {
         violations = violations + rows[i].BoundViolationCount
     }
     Assert.Equal(violations, 0, "controller quantities must remain within intended bounds under stress")

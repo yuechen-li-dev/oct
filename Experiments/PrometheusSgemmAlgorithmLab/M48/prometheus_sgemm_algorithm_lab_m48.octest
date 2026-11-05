@@ -2,7 +2,7 @@ package PrometheusSgemmAlgorithmLab
 
 fn M48AggregateFor(results: M48RecipeAggregate[], recipe: M48RecipeName) -> M48RecipeAggregate {
     var out = results[0]
-    for i in 0 .. Len(results) {
+    for i in 0..Len(results) {
         if results[i].Recipe == recipe {
             out = results[i]
         }
@@ -82,7 +82,7 @@ fn M48RecommendationIsComputed() -> Void {
     var topScore = -100000
     var topRecipe = M48RecipeName.BaselineControl
 
-    for i in 0 .. Len(aggregates) {
+    for i in 0..Len(aggregates) {
         if aggregates[i].Recommended {
             recommendedCount = recommendedCount + 1
         }

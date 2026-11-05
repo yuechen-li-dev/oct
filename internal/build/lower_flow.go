@@ -201,6 +201,20 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 			return nil, err
 		}
 		return MIRFlowLocalAssign{Name: s.Name, Value: v}, nil
+	case ast.IndexAssignStmt:
+		if !locals[s.Target] {
+			return nil, fmt.Errorf("flow indexed assignment target '%s' is not a state local", s.Target)
+		}
+		value, err := lowerSharedFlowExpressionWith(env, locals, nil, func(ctx *lowerCtx) (string, string, bool, error) {
+			if err := ctx.lowerBlock(ast.Block{Statements: []ast.Stmt{s}}); err != nil {
+				return "", "", false, err
+			}
+			return "", "Void", false, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowExprStmt{Value: value}, nil
 	case ast.GotoStmt:
 		return MIRFlowGoto{Target: s.Target}, nil
 	case ast.SuspendStmt:
@@ -636,7 +650,11 @@ func lowerSharedFlowExpressionWith(env map[string]string, flowLocals map[string]
 	if err != nil {
 		return nil, err
 	}
-	ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: lowerMIRValue(value, typ)}
+	if typ == "Void" && !fallible {
+		ctx.blocks[ctx.cur].Terminator = MIRReturn{}
+	} else {
+		ctx.blocks[ctx.cur].Terminator = MIRReturn{Value: lowerMIRValue(value, typ)}
+	}
 	shared.anonymousID = ctx.anonymousID
 	shared.functions = append(shared.functions, ctx.extra...)
 

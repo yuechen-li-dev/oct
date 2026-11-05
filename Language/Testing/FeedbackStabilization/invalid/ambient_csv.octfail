@@ -1,0 +1,6 @@
+expect artifact error: "ambient filesystem read \"data/ambient.csv\"; only outputs already declared in this phase may be read"
+package Main
+[Artifact]
+fn ReadAmbient() -> Void ! Error {
+    let rows = CsvReadRows("data/ambient.csv")?
+}

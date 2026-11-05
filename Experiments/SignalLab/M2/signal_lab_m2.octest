@@ -104,7 +104,7 @@ fn SignalLabM2DisabledButtonsDoNotEmitEvents() -> Void {
 fn SignalLabM2EventUpdateViewPatchLoopRemainsValid() -> Void {
     let mounted = MountUI(View(Init()))
 
-    let emitStart = Emit(mounted, StartEvent()) !
+    let emitStart = Emit(mounted, StartEvent())!
     Assert.Equal(0, emitStart, "Start emit should succeed")
 
     let startEvents = DrainEvents(mounted)
@@ -117,7 +117,7 @@ fn SignalLabM2EventUpdateViewPatchLoopRemainsValid() -> Void {
     let startPatch = PatchUI(mounted, View(model))
     Assert.Equal(0, startPatch, "Patch after start should succeed")
 
-    let emitStep = Emit(mounted, StepEvent()) !
+    let emitStep = Emit(mounted, StepEvent())!
     Assert.Equal(0, emitStep, "Step emit should succeed")
 
     let stepEvents = DrainEvents(mounted)
@@ -130,7 +130,7 @@ fn SignalLabM2EventUpdateViewPatchLoopRemainsValid() -> Void {
     let tickPatch = PatchUI(mounted, View(model))
     Assert.Equal(0, tickPatch, "Patch after tick should succeed")
 
-    let emitStop = Emit(mounted, StopEvent()) !
+    let emitStop = Emit(mounted, StopEvent())!
     Assert.Equal(0, emitStop, "Stop emit should succeed")
 
     let stopEvents = DrainEvents(mounted)

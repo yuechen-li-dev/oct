@@ -314,7 +314,7 @@ fn M26Simulate(strategy: M26StrategyConfig, regime: M26WorkloadRegime) -> M26Sim
 
     var ready = [false]
     var readySince = [0]
-    for i in 1 .. n {
+    for i in 1..n {
         ready = Append(ready, false)
         readySince = Append(readySince, 0)
     }
@@ -658,7 +658,7 @@ fn M26StrategyComparisonTableFrom(rows: M26SimulationResult[]) -> M26StrategyCom
     var starve = [rows[0].ComputeStarvationTime]
     var peak = [rows[0].PeakWipDepth]
     var score = [rows[0].ProductScore]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         regime = Append(regime, rows[i].Regime)
         strategy = Append(strategy, rows[i].Strategy)
         total = Append(total, rows[i].TotalCompletionTime)
@@ -691,7 +691,7 @@ fn M26NoiseFilterTableFrom(rows: M26SimulationResult[]) -> M26NoiseFilterTable {
     var over = [M26PickOne(rows, names[0]).AbOvershootCount]
     var med = [M26PickOne(rows, names[0]).MedianEstimateMilli]
     var reject = [M26PickOne(rows, names[0]).MedianOutlierRejectCount]
-    for i in 1 .. Len(names) {
+    for i in 1..Len(names) {
         let r = M26PickOne(rows, names[i])
         strategy = Append(strategy, names[i])
         ewm = Append(ewm, r.EwmFinalEstimateMilli)
@@ -739,7 +739,7 @@ fn M26PiMarginTableFrom(rows: M26SimulationResult[]) -> M26PiMarginTable {
         i = i + 1
     }
 
-    for r in 1 .. Len(regimes) {
+    for r in 1..Len(regimes) {
         regime = Append(regime, regimes[r].Name)
         var picked = rows[0]
         var j = 0
@@ -763,7 +763,7 @@ fn M26WipStarvationTableFrom(rows: M26SimulationResult[]) -> M26WipStarvationTab
     var ready = [rows[0].ReadyButUnusedTime]
     var avg = [rows[0].AverageWipDepthMilli]
     var mem = [rows[0].MemoryPressureProxy]
-    for i in 1 .. Len(rows) {
+    for i in 1..Len(rows) {
         regime = Append(regime, rows[i].Regime)
         strategy = Append(strategy, rows[i].Strategy)
         starve = Append(starve, rows[i].ComputeStarvationTime)
@@ -781,7 +781,7 @@ fn M26FinalRecommendationFrom(rows: M26SimulationResult[]) -> M26FinalRecommenda
     var burstBest = jitterNames[0]
     var burstScore = -999999
 
-    for i in 0 .. Len(jitterNames) {
+    for i in 0..Len(jitterNames) {
         let js = M26ScoreFor(rows, "ordinary-jitter", jitterNames[i])
         if js > jitterScore { jitterScore = js jitterBest = jitterNames[i] }
         let bs = M26ScoreFor(rows, "burst-shock", jitterNames[i]) + M26ScoreFor(rows, "calm-then-burst", jitterNames[i])
@@ -803,6 +803,6 @@ fn M26FinalRecommendationFrom(rows: M26SimulationResult[]) -> M26FinalRecommenda
         PiWorthCarrying: switch { case piBurst >= M26ScoreFor(rows, "burst-shock", "B-raw-pull-lag") => "yes-if-clamped-tight-with-anti-windup" else => "defer-pi-tuning" }
         KeepFixedDoubleFallback: switch { case doubleBurst >= M26ScoreFor(rows, "burst-shock", burstBest) => "yes-keep-fixed-double-fallback" else => "yes-as-guarded-fallback-anyway" }
         AdaptivePullLagWorthImplementation: switch { case jitterBest != "A-fixed-double-baseline" => "yes-with-burst-detector-fallback" else => "defer-until-detector-is-better" }
-        M27Next: "Implement production-shaped hybrid: EWMA-smoothed pull-lag in stable mode + control-chart burst detector + fixed-double fallback gate with explicit recovery hysteresis and margin clamp." 
+        M27Next: "Implement production-shaped hybrid: EWMA-smoothed pull-lag in stable mode + control-chart burst detector + fixed-double fallback gate with explicit recovery hysteresis and margin clamp."
     }
 }

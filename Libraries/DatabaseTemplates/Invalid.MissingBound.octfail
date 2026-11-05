@@ -2,11 +2,11 @@ expect error: "missing field 'Extent'"
 
 package DatabaseTemplates
 
-record MissingBoundJob {ID: String}
+record MissingBoundJob { ID: String }
 
-template record StableIdentity<Record, Key> {KeyOf: Selector<Record, Key>}
+template record StableIdentity<Record, Key> { KeyOf: Selector<Record, Key> }
 
-template record BoundedExtent<Record> {MaxRecords: Int}
+template record BoundedExtent<Record> { MaxRecords: Int }
 
 template record BoundedKeyedDataset<Record, Key> {
     Identity: StableIdentity<Record, Key>
@@ -14,6 +14,6 @@ template record BoundedKeyedDataset<Record, Key> {
 }
 
 fn Main() -> Void {
-    let identity = StableIdentity<MissingBoundJob, String> {KeyOf: .ID}
-    let invalid = BoundedKeyedDataset<MissingBoundJob, String> {Identity: identity}
+    let identity = StableIdentity<MissingBoundJob, String> { KeyOf: .ID }
+    let invalid = BoundedKeyedDataset<MissingBoundJob, String> { Identity: identity }
 }

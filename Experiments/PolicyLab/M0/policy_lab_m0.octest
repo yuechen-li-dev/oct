@@ -48,13 +48,13 @@ fn DisqualifyingExceptionOverridesBaseRule() -> Void {
 /// PL-A-DOMAIN-1: structural invalidity is rejected at Concept construction.
 [Fact]
 fn InvalidWorkweekHoursAreRejected() -> Void {
-    match AdmitWorkweekHours(- 1) {
-        ok(value) -> {Assert.True(false, "negative hours must not be admitted")}
-        err(e) -> {Assert.True(true, "checked Concept construction rejects negative hours")}
+    match AdmitWorkweekHours(-1) {
+        ok(value) -> { Assert.True(false, "negative hours must not be admitted") }
+        err(e) -> { Assert.True(true, "checked Concept construction rejects negative hours") }
     }
     match AdmitWorkweekHours(169) {
-        ok(value) -> {Assert.True(false, "more than 168 elapsed hours must not be admitted")}
-        err(e) -> {Assert.True(true, "checked Concept construction rejects impossible elapsed hours")}
+        ok(value) -> { Assert.True(false, "more than 168 elapsed hours must not be admitted") }
+        err(e) -> { Assert.True(true, "checked Concept construction rejects impossible elapsed hours") }
     }
 }
 
@@ -64,12 +64,12 @@ fn ValidRefinedInputsAreAdmitted() -> Void {
     let known: WorkweekHours = 40
     Assert.True(known == 40, "known valid refined input is statically admitted")
     match AdmitWorkweekHours(41) {
-        ok(value) -> {Assert.True(value == 41, "dynamic valid input is admitted")}
-        err(e) -> {Assert.True(false, "41 hours should be admitted")}
+        ok(value) -> { Assert.True(value == 41, "dynamic valid input is admitted") }
+        err(e) -> { Assert.True(false, "41 hours should be admitted") }
     }
     match AdmitRegularRateCents(0) {
-        ok(value) -> {Assert.True(false, "zero regular rate is outside this experiment's domain")}
-        err(e) -> {Assert.True(true, "rate Concept rejects zero")}
+        ok(value) -> { Assert.True(false, "zero regular rate is outside this experiment's domain") }
+        err(e) -> { Assert.True(true, "rate Concept rejects zero") }
     }
 }
 
@@ -119,14 +119,14 @@ fn OvertimeAmountsCannotBeNegative(hours: Int, rate: Int) -> Void {
 /// PL-A-QUANTIFIERS: Algorithms maps legal-style case families to ordinary typed callables.
 [Fact]
 fn QuantifierAndTransformationMappingIsReadable() -> Void {
-    let hours =[39, 40, 41, 45]
+    let hours = [39, 40, 41, 45]
     let atMostForty = MakeAtOrBelowPredicate(40)
-    let aboveForty = fn(value: Int) -> Bool with {threshold: 40} {return value > threshold}
-    let overtimeHours = fn(value: Int) -> Int with {threshold: 40} {
-        if value <= threshold {return 0}
+    let aboveForty = fn(value: Int) -> Bool with { threshold: 40 } { return value > threshold }
+    let overtimeHours = fn(value: Int) -> Int with { threshold: 40 } {
+        if value <= threshold { return 0 }
         return value - threshold
     }
-    let add = fn(total: Int, value: Int) -> Int {return total + value}
+    let add = fn(total: Int, value: Int) -> Int { return total + value }
 
     Assert.True(Algorithms.Any<Int>(hours, aboveForty), "exists maps to Algorithms.Any")
     Assert.False(Algorithms.All<Int>(hours, atMostForty), "for all maps to Algorithms.All")
@@ -157,10 +157,10 @@ fn ConflictingRuleStatesAreExplicit(caseID: Int) -> Void {
         case 2 -> ResolveRuleEffects([RuleEffect.RequiresOvertime, RuleEffect.RequiresOvertime])
         else -> ResolveRuleEffects([RuleEffect.RequiresOvertime, RuleEffect.DeniesOvertime])
     }
-    if caseID == 0 {Assert.True(result == ConflictResult.NoApplicableRule, "no applicable rule exposed")}
-    if caseID == 1 {Assert.True(result == ConflictResult.OneApplicableRule, "one applicable rule exposed")}
-    if caseID == 2 {Assert.True(result == ConflictResult.MultipleCompatibleRules, "compatible overlap exposed")}
-    if caseID == 3 {Assert.True(result == ConflictResult.ConflictingRules, "conflict exposed")}
+    if caseID == 0 { Assert.True(result == ConflictResult.NoApplicableRule, "no applicable rule exposed") }
+    if caseID == 1 { Assert.True(result == ConflictResult.OneApplicableRule, "one applicable rule exposed") }
+    if caseID == 2 { Assert.True(result == ConflictResult.MultipleCompatibleRules, "compatible overlap exposed") }
+    if caseID == 3 { Assert.True(result == ConflictResult.ConflictingRules, "conflict exposed") }
 }
 
 /// PL-A-AMENDMENT: synthetic controlled amendment, not enacted law.
@@ -276,7 +276,7 @@ fn ExplanationArtifactSourceIsDeterministic() -> Void {
     let first = BuildPolicyAuditMarkdown()
     let second = BuildPolicyAuditMarkdown()
     Assert.Equal(Len(first), Len(second), "artifact line count repeats")
-    for i in 0 .. Len(first) {
+    for i in 0..Len(first) {
         Assert.Equal(first[i], second[i], "artifact lines repeat exactly")
     }
 }

@@ -9,7 +9,7 @@ fn PathDirectLoweringCompiledNoSidecarM3() -> Void {
     Assert.Equal(".txt", PathExtension("tmp/x.txt"), "PathExtension should extract extension")
     Assert.Equal("x", PathStem("tmp/x.txt"), "PathStem should extract stem")
     Assert.Equal("tmp", PathParent("tmp/x.txt"), "PathParent should extract parent")
-    Assert.Equal("tmp/x.txt", PathClean("tmp/./x.txt"), "PathClean should normalize path")
+    Assert.Equal(PathJoin(["tmp", "x.txt"]), PathClean("tmp/./x.txt"), "PathClean should normalize a native path")
 }
 
 [Fact]

@@ -8,7 +8,7 @@ concept SieveLimit = Int {
 /// The transform is invoked exactly once for each source value.
 template fn Map<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
     var result: U[] = []
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         result = Append(result, transform(values[i]))
     }
     return result
@@ -17,7 +17,7 @@ template fn Map<T, U>(values: T[], transform: fn(T) -> U) -> U[] {
 /// Eagerly transforms every value with its ascending zero-based index.
 template fn MapIndexed<T, U>(values: T[], transform: fn(Int, T) -> U) -> U[] {
     var result: U[] = []
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         result = Append(result, transform(i, values[i]))
     }
     return result
@@ -26,7 +26,7 @@ template fn MapIndexed<T, U>(values: T[], transform: fn(Int, T) -> U) -> U[] {
 /// Eagerly selects accepted values into a fresh array without mutating values.
 template fn Filter<T>(values: T[], predicate: fn(T) -> Bool) -> T[] {
     var result: T[] = []
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         if predicate(values[i]) {
             result = Append(result, values[i])
         }
@@ -37,7 +37,7 @@ template fn Filter<T>(values: T[], predicate: fn(T) -> Bool) -> T[] {
 /// Returns true at the first accepted value and otherwise false.
 /// Empty arrays return false.
 template fn Any<T>(values: T[], predicate: fn(T) -> Bool) -> Bool {
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         if predicate(values[i]) {
             return true
         }
@@ -48,7 +48,7 @@ template fn Any<T>(values: T[], predicate: fn(T) -> Bool) -> Bool {
 /// Returns false at the first rejected value and otherwise true.
 /// Empty arrays return true.
 template fn All<T>(values: T[], predicate: fn(T) -> Bool) -> Bool {
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         if not predicate(values[i]) {
             return false
         }
@@ -59,7 +59,7 @@ template fn All<T>(values: T[], predicate: fn(T) -> Bool) -> Bool {
 /// Returns the ascending zero-based index of the first accepted value.
 /// The established Algorithms search convention uses -1 when no value matches.
 template fn FindIndex<T>(values: T[], predicate: fn(T) -> Bool) -> Int {
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         if predicate(values[i]) {
             return i
         }
@@ -71,7 +71,7 @@ template fn FindIndex<T>(values: T[], predicate: fn(T) -> Bool) -> Int {
 /// Empty arrays return initial unchanged.
 template fn Fold<T, A>(values: T[], initial: A, reducer: fn(A, T) -> A) -> A {
     var accumulator = initial
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         accumulator = reducer(accumulator, values[i])
     }
     return accumulator
@@ -82,7 +82,7 @@ template fn Fold<T, A>(values: T[], initial: A, reducer: fn(A, T) -> A) -> A {
 /// Param predicate: exact fn(T) -> Bool predicate.
 /// Returns: first matching T, or Error when no value matches.
 template fn FirstWhere<T>(values: T[], predicate: fn(T) -> Bool) -> T ! Error {
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         if predicate(values[i]) {
             return values[i]
         }
@@ -94,7 +94,7 @@ template fn FirstWhere<T>(values: T[], predicate: fn(T) -> Bool) -> T ! Error {
 /// The template removes type-specific copies while keeping the predicate type explicit.
 template fn CountWhere<T>(values: T[], predicate: fn(T) -> Bool) -> Int {
     var count = 0
-    for i in 0 .. Len(values) {
+    for i in 0..Len(values) {
         if predicate(values[i]) {
             count = count + 1
         }
@@ -173,7 +173,7 @@ fn IsPrime(n: Int) -> Bool {
 /// Complexity is O(n log log n) time and O(n) memory.
 fn PrimesThrough(limit: SieveLimit) -> Int[] {
     var prime = [false]
-    for i in 1 .. limit + 1 {
+    for i in 1..limit + 1 {
         prime = Append(prime, true)
     }
     prime[0] = false
@@ -192,7 +192,7 @@ fn PrimesThrough(limit: SieveLimit) -> Int[] {
     }
 
     var result = [2]
-    for value in 3 .. limit + 1 {
+    for value in 3..limit + 1 {
         if prime[value] {
             result = Append(result, value)
         }

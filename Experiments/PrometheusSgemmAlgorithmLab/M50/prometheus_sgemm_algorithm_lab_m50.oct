@@ -123,13 +123,13 @@ fn M50FeedforwardBonus(f: M50LeaseFacts) -> Int {
 
 fn M50PolicyDecision(policy: String, f: M50LeaseFacts) -> M50Decision {
     if M50HardDeny(f) {
-        return M50Decision {Action: "deny" UtilityScore: -100 ReasonCode: "hard_deny_safety_or_cap" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: true YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant}
+        return M50Decision { Action: "deny" UtilityScore: -100 ReasonCode: "hard_deny_safety_or_cap" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: true YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant }
     }
     if f.CriticalSectionComplete and (not f.LeaseHeld) {
-        return M50Decision {Action: "hold" UtilityScore: -20 ReasonCode: "no_yield_without_held_lease" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: false YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant}
+        return M50Decision { Action: "hold" UtilityScore: -20 ReasonCode: "no_yield_without_held_lease" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: false YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant }
     }
     if M50CanYield(f) {
-        return M50Decision {Action: "yield" UtilityScore: 90 ReasonCode: "hard_yield_critical_section_complete" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: false YieldRequired: true SelectedRecipeVariant: f.SelectedRecipeVariant}
+        return M50Decision { Action: "yield" UtilityScore: 90 ReasonCode: "hard_yield_critical_section_complete" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: false YieldRequired: true SelectedRecipeVariant: f.SelectedRecipeVariant }
     }
 
     let hardBlockLookahead = M50LookaheadBlockedByHardGate(f)
@@ -172,18 +172,18 @@ fn M50PolicyDecision(policy: String, f: M50LeaseFacts) -> M50Decision {
     if hardBlockLookahead { lookaheadScore = -50 }
 
     if pressure >= 40 and backpressureScore >= grantScore {
-        return M50Decision {Action: "backpressure" UtilityScore: backpressureScore ReasonCode: "utility_backpressure_pressure_or_contention" AllowedOutstandingDepth: f.MaxOutstandingDepth - 1 LookaheadAllowed: false BackpressureApplied: true YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant}
+        return M50Decision { Action: "backpressure" UtilityScore: backpressureScore ReasonCode: "utility_backpressure_pressure_or_contention" AllowedOutstandingDepth: f.MaxOutstandingDepth - 1 LookaheadAllowed: false BackpressureApplied: true YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant }
     }
     if f.LookaheadRequested and lookaheadScore >= grantScore and (not hardBlockLookahead) {
-        return M50Decision {Action: "allow_lookahead" UtilityScore: lookaheadScore ReasonCode: "utility_allow_lookahead_latency_dominant" AllowedOutstandingDepth: f.LookaheadLimit LookaheadAllowed: true BackpressureApplied: false YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant}
+        return M50Decision { Action: "allow_lookahead" UtilityScore: lookaheadScore ReasonCode: "utility_allow_lookahead_latency_dominant" AllowedOutstandingDepth: f.LookaheadLimit LookaheadAllowed: true BackpressureApplied: false YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant }
     }
     if f.LookaheadRequested and hardBlockLookahead {
-        return M50Decision {Action: "block_lookahead" UtilityScore: -40 ReasonCode: "hard_block_lookahead_limit_or_transfer" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: true YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant}
+        return M50Decision { Action: "block_lookahead" UtilityScore: -40 ReasonCode: "hard_block_lookahead_limit_or_transfer" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: true YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant }
     }
     if grantScore >= backpressureScore {
-        return M50Decision {Action: "grant" UtilityScore: grantScore ReasonCode: "utility_grant_ready_and_safe" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: false YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant}
+        return M50Decision { Action: "grant" UtilityScore: grantScore ReasonCode: "utility_grant_ready_and_safe" AllowedOutstandingDepth: f.MaxOutstandingDepth LookaheadAllowed: false BackpressureApplied: false YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant }
     }
-    return M50Decision {Action: "backpressure" UtilityScore: backpressureScore ReasonCode: "utility_backpressure_default" AllowedOutstandingDepth: f.MaxOutstandingDepth - 1 LookaheadAllowed: false BackpressureApplied: true YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant}
+    return M50Decision { Action: "backpressure" UtilityScore: backpressureScore ReasonCode: "utility_backpressure_default" AllowedOutstandingDepth: f.MaxOutstandingDepth - 1 LookaheadAllowed: false BackpressureApplied: true YieldRequired: false SelectedRecipeVariant: f.SelectedRecipeVariant }
 }
 
 fn M50ScoreResult(policy: String, f: M50LeaseFacts) -> M50PolicyResult {
@@ -208,23 +208,23 @@ fn M50ScoreResult(policy: String, f: M50LeaseFacts) -> M50PolicyResult {
     if policy == "fairness-biased" { fair = fair + 25 throughput = throughput - 5 complexity = complexity + 15 }
     if policy == "hybrid-feedforward-utility" { stall = stall + 10 look = look + 10 fair = fair + 10 diag = diag + 10 complexity = complexity + 5 }
     let score = safety + throughput + stall + bq + look + fair + diag - occRisk - overgrant - complexity
-    return M50PolicyResult {PolicyName: policy ScenarioName: f.ScenarioName Decision: d CorrectnessSafetyScore: safety ThroughputProxy: throughput StallRiskReduction: stall OccupancyCliffRisk: occRisk OvergrantRisk: overgrant BackpressureQuality: bq LookaheadUsefulness: look FairnessScore: fair ImplementationComplexity: complexity Diagnosability: diag RobustProductScore: score}
+    return M50PolicyResult { PolicyName: policy ScenarioName: f.ScenarioName Decision: d CorrectnessSafetyScore: safety ThroughputProxy: throughput StallRiskReduction: stall OccupancyCliffRisk: occRisk OvergrantRisk: overgrant BackpressureQuality: bq LookaheadUsefulness: look FairnessScore: fair ImplementationComplexity: complexity Diagnosability: diag RobustProductScore: score }
 }
 
 fn M50ScenarioCatalog() -> M50LeaseFacts[] {
     return [
-        M50LeaseFacts {ScenarioName: "safe-ready-slot" SlotState: "ready" Failed: false Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 1 MaxOutstandingDepth: 4 DeviceBand: "balanced" ShapeClass: "medium-square" SelectedRecipeVariant: "tile-128x64" RegisterPressureClass: "medium" SharedMemoryPressureClass: "medium" MemoryBandwidthPressureClass: "medium" ComputePressureClass: "medium" PipelineLatencyPressureClass: "medium" TransferOverlapAvailable: true TrueMultiQueueSelected: true LookaheadRequested: false LookaheadLimit: 3 ContentionLevel: "low" LatencyDominant: false MemoryPressureLevel: "medium" WorkerId: 0 RecentGrantSkew: 0},
-        M50LeaseFacts {ScenarioName: "failed-slot" SlotState: "failed" Failed: true Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 0 MaxOutstandingDepth: 4 DeviceBand: "balanced" ShapeClass: "medium-square" SelectedRecipeVariant: "tile-128x64" RegisterPressureClass: "low" SharedMemoryPressureClass: "low" MemoryBandwidthPressureClass: "low" ComputePressureClass: "low" PipelineLatencyPressureClass: "low" TransferOverlapAvailable: true TrueMultiQueueSelected: true LookaheadRequested: false LookaheadLimit: 3 ContentionLevel: "low" LatencyDominant: false MemoryPressureLevel: "low" WorkerId: 0 RecentGrantSkew: 0},
-        M50LeaseFacts {ScenarioName: "latency-transfer-available" SlotState: "ready" Failed: false Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 1 MaxOutstandingDepth: 4 DeviceBand: "compute-rich" ShapeClass: "ffn-like" SelectedRecipeVariant: "pipeline-prefetch" RegisterPressureClass: "medium" SharedMemoryPressureClass: "medium" MemoryBandwidthPressureClass: "medium" ComputePressureClass: "medium" PipelineLatencyPressureClass: "transfer-prefetch" TransferOverlapAvailable: true TrueMultiQueueSelected: true LookaheadRequested: true LookaheadLimit: 3 ContentionLevel: "low" LatencyDominant: true MemoryPressureLevel: "medium" WorkerId: 1 RecentGrantSkew: 0},
-        M50LeaseFacts {ScenarioName: "high-contention-high-memory" SlotState: "ready" Failed: false Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 2 MaxOutstandingDepth: 4 DeviceBand: "degraded" ShapeClass: "k-heavy" SelectedRecipeVariant: "register-dense" RegisterPressureClass: "high" SharedMemoryPressureClass: "high" MemoryBandwidthPressureClass: "high" ComputePressureClass: "high" PipelineLatencyPressureClass: "high" TransferOverlapAvailable: false TrueMultiQueueSelected: false LookaheadRequested: true LookaheadLimit: 3 ContentionLevel: "high" LatencyDominant: false MemoryPressureLevel: "high" WorkerId: 1 RecentGrantSkew: 2},
-        M50LeaseFacts {ScenarioName: "starvation-risk" SlotState: "ready" Failed: false Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 0 MaxOutstandingDepth: 4 DeviceBand: "balanced" ShapeClass: "medium-square" SelectedRecipeVariant: "tile-64x64" RegisterPressureClass: "medium" SharedMemoryPressureClass: "low" MemoryBandwidthPressureClass: "medium" ComputePressureClass: "medium" PipelineLatencyPressureClass: "medium" TransferOverlapAvailable: true TrueMultiQueueSelected: true LookaheadRequested: false LookaheadLimit: 3 ContentionLevel: "medium" LatencyDominant: false MemoryPressureLevel: "medium" WorkerId: 2 RecentGrantSkew: 3}
+        M50LeaseFacts { ScenarioName: "safe-ready-slot" SlotState: "ready" Failed: false Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 1 MaxOutstandingDepth: 4 DeviceBand: "balanced" ShapeClass: "medium-square" SelectedRecipeVariant: "tile-128x64" RegisterPressureClass: "medium" SharedMemoryPressureClass: "medium" MemoryBandwidthPressureClass: "medium" ComputePressureClass: "medium" PipelineLatencyPressureClass: "medium" TransferOverlapAvailable: true TrueMultiQueueSelected: true LookaheadRequested: false LookaheadLimit: 3 ContentionLevel: "low" LatencyDominant: false MemoryPressureLevel: "medium" WorkerId: 0 RecentGrantSkew: 0 },
+        M50LeaseFacts { ScenarioName: "failed-slot" SlotState: "failed" Failed: true Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 0 MaxOutstandingDepth: 4 DeviceBand: "balanced" ShapeClass: "medium-square" SelectedRecipeVariant: "tile-128x64" RegisterPressureClass: "low" SharedMemoryPressureClass: "low" MemoryBandwidthPressureClass: "low" ComputePressureClass: "low" PipelineLatencyPressureClass: "low" TransferOverlapAvailable: true TrueMultiQueueSelected: true LookaheadRequested: false LookaheadLimit: 3 ContentionLevel: "low" LatencyDominant: false MemoryPressureLevel: "low" WorkerId: 0 RecentGrantSkew: 0 },
+        M50LeaseFacts { ScenarioName: "latency-transfer-available" SlotState: "ready" Failed: false Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 1 MaxOutstandingDepth: 4 DeviceBand: "compute-rich" ShapeClass: "ffn-like" SelectedRecipeVariant: "pipeline-prefetch" RegisterPressureClass: "medium" SharedMemoryPressureClass: "medium" MemoryBandwidthPressureClass: "medium" ComputePressureClass: "medium" PipelineLatencyPressureClass: "transfer-prefetch" TransferOverlapAvailable: true TrueMultiQueueSelected: true LookaheadRequested: true LookaheadLimit: 3 ContentionLevel: "low" LatencyDominant: true MemoryPressureLevel: "medium" WorkerId: 1 RecentGrantSkew: 0 },
+        M50LeaseFacts { ScenarioName: "high-contention-high-memory" SlotState: "ready" Failed: false Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 2 MaxOutstandingDepth: 4 DeviceBand: "degraded" ShapeClass: "k-heavy" SelectedRecipeVariant: "register-dense" RegisterPressureClass: "high" SharedMemoryPressureClass: "high" MemoryBandwidthPressureClass: "high" ComputePressureClass: "high" PipelineLatencyPressureClass: "high" TransferOverlapAvailable: false TrueMultiQueueSelected: false LookaheadRequested: true LookaheadLimit: 3 ContentionLevel: "high" LatencyDominant: false MemoryPressureLevel: "high" WorkerId: 1 RecentGrantSkew: 2 },
+        M50LeaseFacts { ScenarioName: "starvation-risk" SlotState: "ready" Failed: false Invalidated: false UnsafeRuntime: false LeaseHeld: false ReadyAttention: true CriticalSectionComplete: false OutstandingDepth: 0 MaxOutstandingDepth: 4 DeviceBand: "balanced" ShapeClass: "medium-square" SelectedRecipeVariant: "tile-64x64" RegisterPressureClass: "medium" SharedMemoryPressureClass: "low" MemoryBandwidthPressureClass: "medium" ComputePressureClass: "medium" PipelineLatencyPressureClass: "medium" TransferOverlapAvailable: true TrueMultiQueueSelected: true LookaheadRequested: false LookaheadLimit: 3 ContentionLevel: "medium" LatencyDominant: false MemoryPressureLevel: "medium" WorkerId: 2 RecentGrantSkew: 3 }
     ]
 }
 
 fn M50AggregatePolicyScore(policy: String) -> Int {
     let scenarios = M50ScenarioCatalog()
     var score = 0
-    for i in 0 .. Len(scenarios) { score = score + M50ScoreResult(policy, scenarios[i]).RobustProductScore }
+    for i in 0..Len(scenarios) { score = score + M50ScoreResult(policy, scenarios[i]).RobustProductScore }
     return score
 }
 
@@ -232,11 +232,11 @@ fn M50RecommendPolicy() -> M50Recommendation {
     let names = M50PolicyNames()
     var best = names[0]
     var bestScore = M50AggregatePolicyScore(names[0])
-    for i in 1 .. Len(names) {
+    for i in 1..Len(names) {
         let s = M50AggregatePolicyScore(names[i])
         if s > bestScore { best = names[i] bestScore = s }
     }
-    return M50Recommendation {RecommendedPolicy: best Score: bestScore Reason: "computed_from_scenario_aggregate_robust_product_score"}
+    return M50Recommendation { RecommendedPolicy: best Score: bestScore Reason: "computed_from_scenario_aggregate_robust_product_score" }
 }
 
 record M50ReasonTable { Rule: String[] Outcome: String[] }

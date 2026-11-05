@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -70,7 +71,7 @@ func TestEnsureBuildsOnceAndThenUsesTheCache(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s is not in the cache: %v", command, err)
 		}
-		if info.Mode().Perm()&0o100 == 0 {
+		if runtime.GOOS != "windows" && info.Mode().Perm()&0o100 == 0 {
 			t.Errorf("%s is not executable: %v", command, info.Mode())
 		}
 	}

@@ -1,7 +1,7 @@
 package Geometry
 
-fn InvalidRuntimeLength() -> Float < m > {
-    return - 1m
+fn InvalidRuntimeLength() -> Float<m> {
+    return -1m
 }
 
 [Fact]
@@ -12,23 +12,23 @@ fn Distance2DHandCheck() -> Void {
 
 [Fact]
 fn PlanarAreaAndCircumferenceHandChecks() -> Void {
-    let circleArea = CircleArea(2m) !
-    let circleCirc = CircleCircumference(2m) !
-    let rectArea = RectangleArea(3m, 4m) !
-    let triArea = TriangleArea(6m, 4m) !
+    let circleArea = CircleArea(2m)!
+    let circleCirc = CircleCircumference(2m)!
+    let rectArea = RectangleArea(3m, 4m)!
+    let triArea = TriangleArea(6m, 4m)!
 
-    Assert.Near(Pi() * 4.0, circleArea / 1m ^ 2, 0.000001, "circle area hand-check")
+    Assert.Near(Pi() * 4.0, circleArea / 1m^2, 0.000001, "circle area hand-check")
     Assert.Near(4.0 * Pi(), circleCirc / 1m, 0.000001, "circle circumference hand-check")
-    Assert.True(rectArea == 12m ^ 2, "rectangle area hand-check")
-    Assert.Near(12.0, triArea / 1m ^ 2, 0.000001, "triangle area hand-check")
+    Assert.True(rectArea == 12m^2, "rectangle area hand-check")
+    Assert.Near(12.0, triArea / 1m^2, 0.000001, "triangle area hand-check")
 }
 
 [Fact]
 fn PlanarZeroDimensionPolicy() -> Void {
-    Assert.Near(0.0, CircleArea(0m) !/ 1m ^ 2, 0.000001, "zero radius circle area should be zero")
-    Assert.Near(0.0, CircleCircumference(0m) !/ 1m, 0.000001, "zero radius circumference should be zero")
-    Assert.Near(0.0, RectangleArea(0m, 5m) !/ 1m ^ 2, 0.000001, "zero width rectangle area should be zero")
-    Assert.Near(0.0, TriangleArea(7m, 0m) !/ 1m ^ 2, 0.000001, "zero height triangle area should be zero")
+    Assert.Near(0.0, CircleArea(0m)! / 1m^2, 0.000001, "zero radius circle area should be zero")
+    Assert.Near(0.0, CircleCircumference(0m)! / 1m, 0.000001, "zero radius circumference should be zero")
+    Assert.Near(0.0, RectangleArea(0m, 5m)! / 1m^2, 0.000001, "zero width rectangle area should be zero")
+    Assert.Near(0.0, TriangleArea(7m, 0m)! / 1m^2, 0.000001, "zero height triangle area should be zero")
 }
 
 [Fact]
@@ -39,22 +39,22 @@ fn PlanarNegativeDimensionsRejected() -> Void {
 [Fact]
 fn RuntimeLengthAdmissionIsReusable() -> Void ! Error {
     let raw = 3m
-    let admitted = NonNegativeLength(raw) ?
-    let circle = CircleArea(admitted) !
-    let sphere = SphereVolume(admitted) !
-    Assert.True(circle > 0m ^ 2, "admitted length is reusable for planar geometry")
-    Assert.True(sphere > 0m ^ 3, "admitted length is reusable for solid geometry")
+    let admitted = NonNegativeLength(raw)?
+    let circle = CircleArea(admitted)!
+    let sphere = SphereVolume(admitted)!
+    Assert.True(circle > 0m^2, "admitted length is reusable for planar geometry")
+    Assert.True(sphere > 0m^3, "admitted length is reusable for solid geometry")
 }
 
 [Fact]
 fn PlanarComposabilityChain() -> Void {
     let d = Distance2D(1m, 2m, 4m, 6m)
-    let radius = NonNegativeLength(d) !
-    let sweptArea = CircleArea(radius) !
+    let radius = NonNegativeLength(d)!
+    let sweptArea = CircleArea(radius)!
     let scaled = sweptArea / 2.0
 
     Assert.Near(5.0, d / 1m, 0.000001, "distance in chain should remain correct")
-    Assert.True(scaled > 0m ^ 2, "derived area expression should remain physically meaningful")
+    Assert.True(scaled > 0m^2, "derived area expression should remain physically meaningful")
 }
 
 [Fact]

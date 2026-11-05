@@ -10,7 +10,7 @@ fn ZeroSeries(count: Int) -> Float[] ! Error {
         return error("zero series requires count > 0")
     }
     var out = [0.0]
-    for i in 1 .. count {
+    for i in 1..count {
         out = Append(out, 0.0)
     }
     return out
@@ -22,7 +22,7 @@ fn Reverse(values: Float[]) -> Float[] ! Error {
         return error("reverse requires non-empty array")
     }
     var out = [values[Len(values) - 1]]
-    for i in 1 .. Len(values) {
+    for i in 1..Len(values) {
         out = Append(out, values[Len(values) - 1 - i])
     }
     return out
@@ -47,8 +47,8 @@ fn Convolve(x: Float[], h: Float[]) -> Float[] ! Error {
     let outputLength = Len(x) + Len(h) - 1
     var out = ZeroSeries(outputLength)?
 
-    for i in 0 .. Len(x) {
-        for j in 0 .. Len(h) {
+    for i in 0..Len(x) {
+        for j in 0..Len(h) {
             out[i + j] = out[i + j] + x[i] * h[j]
         }
     }
@@ -84,12 +84,12 @@ fn AutoCorrelate(x: Float[]) -> Float[] ! Error {
 fn NormalizedAutoCorrelate(x: Float[]) -> Float[] ! Error {
     let r = AutoCorrelate(x)?
     let center = Len(x) - 1
-    let peak   = r[center]
+    let peak = r[center]
     if Abs(peak) < 0.000000000001 {
         return error("normalized autocorrelation requires non-zero peak")
     }
     var out = [r[0] / peak]
-    for i in 1 .. Len(r) {
+    for i in 1..Len(r) {
         out = Append(out, r[i] / peak)
     }
     return out
@@ -116,9 +116,9 @@ fn MovingAverage(values: Float[], window: Int) -> Float[] ! Error {
     let outputLength = Len(values) - window + 1
     var out = ZeroSeries(outputLength)?
 
-    for i in 0 .. outputLength {
+    for i in 0..outputLength {
         var sum = 0.0
-        for j in i .. i + window {
+        for j in i..i + window {
             sum = sum + values[j]
         }
         out[i] = sum / Float(window)
@@ -138,7 +138,7 @@ fn RectangularWindow(n: Int) -> Float[] ! Error {
         return error("window requires n > 0")
     }
     var out = [1.0]
-    for i in 1 .. n {
+    for i in 1..n {
         out = Append(out, 1.0)
     }
     return out
@@ -155,10 +155,10 @@ fn HannWindow(n: Int) -> Float[] ! Error {
     if n == 1 {
         return [1.0]
     }
-    let twoPi   = 2.0 * Pi()
+    let twoPi = 2.0 * Pi()
     let nMinus1 = Float(n - 1)
     var out = [0.5 * (1.0 - Cos(twoPi * 0.0 / nMinus1))]
-    for i in 1 .. n {
+    for i in 1..n {
         out = Append(out, 0.5 * (1.0 - Cos(twoPi * Float(i) / nMinus1)))
     }
     return out
@@ -175,10 +175,10 @@ fn HammingWindow(n: Int) -> Float[] ! Error {
     if n == 1 {
         return [1.0]
     }
-    let twoPi   = 2.0 * Pi()
+    let twoPi = 2.0 * Pi()
     let nMinus1 = Float(n - 1)
     var out = [0.54 - 0.46 * Cos(twoPi * 0.0 / nMinus1)]
-    for i in 1 .. n {
+    for i in 1..n {
         out = Append(out, 0.54 - 0.46 * Cos(twoPi * Float(i) / nMinus1))
     }
     return out
@@ -195,11 +195,11 @@ fn BlackmanWindow(n: Int) -> Float[] ! Error {
     if n == 1 {
         return [1.0]
     }
-    let twoPi   = 2.0 * Pi()
-    let fourPi  = 4.0 * Pi()
+    let twoPi = 2.0 * Pi()
+    let fourPi = 4.0 * Pi()
     let nMinus1 = Float(n - 1)
     var out = [0.42 - 0.5 * Cos(twoPi * 0.0 / nMinus1) + 0.08 * Cos(fourPi * 0.0 / nMinus1)]
-    for i in 1 .. n {
+    for i in 1..n {
         let fi = Float(i)
         out = Append(out, 0.42 - 0.5 * Cos(twoPi * fi / nMinus1) + 0.08 * Cos(fourPi * fi / nMinus1))
     }
@@ -217,7 +217,7 @@ fn ApplyWindow(signal: Float[], window: Float[]) -> Float[] ! Error {
         return error("apply window requires signal and window to have equal length")
     }
     var out = [signal[0] * window[0]]
-    for i in 1 .. Len(signal) {
+    for i in 1..Len(signal) {
         out = Append(out, signal[i] * window[i])
     }
     return out
@@ -246,33 +246,33 @@ fn LowpassFIR(cutoff: Float, n: Int, window: Float[]) -> Float[] ! Error {
         return error("lowpass FIR requires window length == n")
     }
 
-    let center  = Float(n - 1) / 2.0
-    let omegaC  = Pi() * cutoff
+    let center = Float(n - 1) / 2.0
+    let omegaC = Pi() * cutoff
 
     var h = [0.0]
-    for i in 1 .. n {
+    for i in 1..n {
         h = Append(h, 0.0)
     }
 
-    for i in 0 .. n {
+    for i in 0..n {
         let m = Float(i) - center
         let val = switch {
             case m == 0.0 => cutoff
-            else          => Sin(omegaC * m) / (Pi() * m)
+            else => Sin(omegaC * m) / (Pi() * m)
         }
         h[i] = val * window[i]
     }
 
     // Normalize so filter has unit DC gain (sum of coefficients = 1).
     var kernelSum = 0.0
-    for i in 0 .. n {
+    for i in 0..n {
         kernelSum = kernelSum + h[i]
     }
     if Abs(kernelSum) < 0.000000000001 {
         return error("lowpass FIR: kernel sum is zero after windowing")
     }
     var normalized = [h[0] / kernelSum]
-    for i in 1 .. n {
+    for i in 1..n {
         normalized = Append(normalized, h[i] / kernelSum)
     }
 
@@ -291,7 +291,7 @@ fn HighpassFIR(cutoff: Float, n: Int, window: Float[]) -> Float[] ! Error {
     let center = (n - 1) / 2
 
     var h = [0.0 - lp[0]]
-    for i in 1 .. n {
+    for i in 1..n {
         h = Append(h, 0.0 - lp[i])
     }
     h[center] = 1.0 + h[center]
@@ -308,10 +308,10 @@ fn BandpassFIR(lowCutoff: Float, highCutoff: Float, n: Int, window: Float[]) -> 
         return error("bandpass FIR requires lowCutoff < highCutoff")
     }
     let lpHigh = LowpassFIR(highCutoff, n, window)?
-    let lpLow  = LowpassFIR(lowCutoff,  n, window)?
+    let lpLow = LowpassFIR(lowCutoff, n, window)?
 
     var h = [lpHigh[0] - lpLow[0]]
-    for i in 1 .. n {
+    for i in 1..n {
         h = Append(h, lpHigh[i] - lpLow[i])
     }
     return h
@@ -331,7 +331,7 @@ fn MagnitudeSpectrum(spectrum: Complex[]) -> Float[] ! Error {
         return error("magnitude spectrum requires non-empty spectrum")
     }
     var out = [Abs(spectrum[0])]
-    for i in 1 .. Len(spectrum) {
+    for i in 1..Len(spectrum) {
         out = Append(out, Abs(spectrum[i]))
     }
     return out
@@ -343,7 +343,7 @@ fn MagnitudeSpectrum(spectrum: Complex[]) -> Float[] ! Error {
 fn PowerSpectrum(spectrum: Complex[]) -> Float[] ! Error {
     let mag = MagnitudeSpectrum(spectrum)?
     var out = [mag[0] * mag[0]]
-    for i in 1 .. Len(mag) {
+    for i in 1..Len(mag) {
         out = Append(out, mag[i] * mag[i])
     }
     return out
@@ -360,7 +360,7 @@ fn DominantBinIndex(magnitudes: Float[]) -> Int ! Error {
     let half = Len(magnitudes) / 2 + 1
     var maxVal = magnitudes[0]
     var maxIdx = 0
-    for i in 1 .. half {
+    for i in 1..half {
         if magnitudes[i] > maxVal {
             maxVal = magnitudes[i]
             maxIdx = i

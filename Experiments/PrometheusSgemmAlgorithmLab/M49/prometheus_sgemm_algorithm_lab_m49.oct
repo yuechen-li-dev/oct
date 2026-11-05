@@ -168,20 +168,20 @@ fn M49AllScenarios() -> M49Scenario[] {
 
 fn M49ShapeProfiles() -> M49ShapeProfile[] {
     return [
-        M49ShapeProfile {Shape: M49ShapeClass.SmallSquare ComputeBoundPermille: 380 LatencySensitivityPermille: 680 VarianceSensitivityPermille: 760},
-        M49ShapeProfile {Shape: M49ShapeClass.MediumSquare ComputeBoundPermille: 520 LatencySensitivityPermille: 520 VarianceSensitivityPermille: 520},
-        M49ShapeProfile {Shape: M49ShapeClass.LargeSquare ComputeBoundPermille: 820 LatencySensitivityPermille: 300 VarianceSensitivityPermille: 320},
-        M49ShapeProfile {Shape: M49ShapeClass.TallSkinny ComputeBoundPermille: 400 LatencySensitivityPermille: 720 VarianceSensitivityPermille: 690},
-        M49ShapeProfile {Shape: M49ShapeClass.WideShort ComputeBoundPermille: 420 LatencySensitivityPermille: 700 VarianceSensitivityPermille: 680},
-        M49ShapeProfile {Shape: M49ShapeClass.KHeavy ComputeBoundPermille: 900 LatencySensitivityPermille: 260 VarianceSensitivityPermille: 350},
-        M49ShapeProfile {Shape: M49ShapeClass.MlFfnLike ComputeBoundPermille: 760 LatencySensitivityPermille: 440 VarianceSensitivityPermille: 470}
+        M49ShapeProfile { Shape: M49ShapeClass.SmallSquare ComputeBoundPermille: 380 LatencySensitivityPermille: 680 VarianceSensitivityPermille: 760 },
+        M49ShapeProfile { Shape: M49ShapeClass.MediumSquare ComputeBoundPermille: 520 LatencySensitivityPermille: 520 VarianceSensitivityPermille: 520 },
+        M49ShapeProfile { Shape: M49ShapeClass.LargeSquare ComputeBoundPermille: 820 LatencySensitivityPermille: 300 VarianceSensitivityPermille: 320 },
+        M49ShapeProfile { Shape: M49ShapeClass.TallSkinny ComputeBoundPermille: 400 LatencySensitivityPermille: 720 VarianceSensitivityPermille: 690 },
+        M49ShapeProfile { Shape: M49ShapeClass.WideShort ComputeBoundPermille: 420 LatencySensitivityPermille: 700 VarianceSensitivityPermille: 680 },
+        M49ShapeProfile { Shape: M49ShapeClass.KHeavy ComputeBoundPermille: 900 LatencySensitivityPermille: 260 VarianceSensitivityPermille: 350 },
+        M49ShapeProfile { Shape: M49ShapeClass.MlFfnLike ComputeBoundPermille: 760 LatencySensitivityPermille: 440 VarianceSensitivityPermille: 470 }
     ]
 }
 
 fn M49FindShape(shape: M49ShapeClass) -> M49ShapeProfile {
     let profiles = M49ShapeProfiles()
     var out = profiles[0]
-    for i in 0 .. Len(profiles) {
+    for i in 0..Len(profiles) {
         if profiles[i].Shape == shape {
             out = profiles[i]
         }
@@ -305,8 +305,8 @@ fn M49AggregateForApproach(approach: M49Approach) -> M49Aggregate {
     var integrationComplexity = 0
     var productScore = 0
 
-    for i in 0 .. Len(shapes) {
-        for j in 0 .. Len(scenarios) {
+    for i in 0..Len(shapes) {
+        for j in 0..Len(scenarios) {
             let e = M49Evaluate(approach, shapes[i], scenarios[j])
             throughput = throughput + e.ThroughputProxy
             utilization = utilization + e.ResourceUtilization

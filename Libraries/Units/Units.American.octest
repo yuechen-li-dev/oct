@@ -73,7 +73,7 @@ fn OneMileIsCorrectMeters() -> Void {
 [Fact]
 fn TwelveInchesEqualOneFoot() -> Void {
     let inches = ToMeter(Inch { Value: 12.0 })
-    let foot   = FootToMeter(Foot { Value: 1.0 })
+    let foot = FootToMeter(Foot { Value: 1.0 })
     Assert.Near(inches / 1.0m, foot / 1.0m, 0.000001, "12 inches = 1 foot")
 }
 

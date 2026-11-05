@@ -9,7 +9,7 @@ fn BaselineShowsMonotonicPathLossAndShapePreservation() -> Void {
     Assert.Equal(Len(baseline.Distances), Len(baseline.NoisePower), "noise shape should match distance shape")
     Assert.Equal(Len(baseline.Distances), Len(baseline.SnrLinear), "snr shape should match distance shape")
 
-    for i in 1 .. Len(baseline.PathLossLinear) {
+    for i in 1..Len(baseline.PathLossLinear) {
         Assert.True(baseline.PathLossLinear[i] > baseline.PathLossLinear[i - 1], "path loss should increase with distance")
         Assert.True(baseline.ReceivedPower[i] < baseline.ReceivedPower[i - 1], "received power should drop with distance")
     }
@@ -48,7 +48,7 @@ fn RicianHighKAndLowKProduceDifferentGainBehavior() -> Void {
 
     var lowKDistance = 0.0
     var highKDistance = 0.0
-    for i in 0 .. Len(rayleighLike) {
+    for i in 0..Len(rayleighLike) {
         lowKDistance = lowKDistance + Abs(rician.LowKPowerGain[i] - rayleighLike[i])
         highKDistance = highKDistance + Abs(rician.HighKPowerGain[i] - rayleighLike[i])
     }

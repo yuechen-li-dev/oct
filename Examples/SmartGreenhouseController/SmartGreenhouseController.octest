@@ -9,7 +9,7 @@ fn ComfortBandSwitchWorks() -> Void {
 
 [Fact]
 fn WithUpdateIsImmutable() -> Void {
-    let start = GreenhouseState {AirTemp: 293.15K SoilMoisture: 0.50 LightLevel: 0.75 BatteryCharge: 0.90}
+    let start = GreenhouseState { AirTemp: 293.15K SoilMoisture: 0.50 LightLevel: 0.75 BatteryCharge: 0.90 }
     let warmed = WarmByOneStep(start, 2.0s)
     Assert.Equal(293.15K, start.AirTemp, "source record unchanged")
     Assert.True(warmed.AirTemp > start.AirTemp, "updated record warmed")
@@ -23,7 +23,7 @@ fn EnumPayloadMatchWorks() -> Void {
 
 [Fact]
 fn MatrixVectorDistinctFromArray() -> Void {
-    let arr =[1.0, 2.0]
+    let arr = [1.0, 2.0]
     let next = PredictDeviation(vector[arr[0], arr[1]])
     Assert.Near(1.06, next[0], 0.0001, "predicted temp deviation")
     Assert.Near(1.81, next[1], 0.0001, "predicted moisture deviation")
@@ -31,7 +31,7 @@ fn MatrixVectorDistinctFromArray() -> Void {
 
 [Fact]
 fn BatchScoresAllCandidates() -> Void {
-    let s = GreenhouseState {AirTemp: 289.15K SoilMoisture: 0.40 LightLevel: 0.60 BatteryCharge: 0.95}
+    let s = GreenhouseState { AirTemp: 289.15K SoilMoisture: 0.40 LightLevel: 0.60 BatteryCharge: 0.95 }
     let scores = BatchModeScores(s)
     Assert.Equal(4, Len(scores), "batch output count")
     Assert.True(scores[0] > scores[3], "heat preferred in cold state")
@@ -39,27 +39,27 @@ fn BatchScoresAllCandidates() -> Void {
 
 [Fact]
 fn FlowCompletesAndHistoryPresent() -> Void {
-    let init = GreenhouseState {AirTemp: 289.15K SoilMoisture: 0.35 LightLevel: 0.55 BatteryCharge: 1.0}
+    let init = GreenhouseState { AirTemp: 289.15K SoilMoisture: 0.35 LightLevel: 0.55 BatteryCharge: 1.0 }
     let machine = RunController(init, 4)
     while Complete(machine) == false {
         Step(machine)
     }
 
-    let endState = Result(machine) !
+    let endState = Result(machine)!
     let history = StateHistory(machine)
-    let snap = BoardSnapshot(machine) !
+    let snap = BoardSnapshot(machine)!
 
     Assert.True(endState.BatteryCharge < init.BatteryCharge, "battery consumed")
     Assert.True(Len(history) >= 4, "visited multiple states")
     Assert.Equal(4, snap.StepIndex, "board tracked step count")
-    let snapTemp: Float < K > = snap.Temp
+    let snapTemp: Float<K> = snap.Temp
     Assert.Equal(endState.AirTemp, snapTemp, "board snapshot preserves dimensioned temperature")
 }
 
 [Fact]
 fn UnitTypedCalculationCompilesAndRuns() -> Void {
-    let period: Float < s > = 2.0s
+    let period: Float<s> = 2.0s
     let distance = 3.0m
-    let velocity: Float < m * s ^ - 1 > = distance / period
-    Assert.Near(1.5, velocity /(1.0m * s ^ - 1), 0.000001, "dimensioned velocity")
+    let velocity: Float<m*s^-1> = distance / period
+    Assert.Near(1.5, velocity / (1.0m*s^-1), 0.000001, "dimensioned velocity")
 }

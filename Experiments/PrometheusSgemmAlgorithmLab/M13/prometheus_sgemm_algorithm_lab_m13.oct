@@ -146,7 +146,7 @@ fn SimulateM13Policy(regime: M13Regime, predictor: String, chunkSize: Int, maxLo
     var varianceAccumMilli = 0
     var varianceSamples = 0
 
-    for _step in 0 .. 4096 {
+    for _step in 0..4096 {
         if remaining <= 0 {
             if readyPool > 0 {
                 wastedTransferWork = wastedTransferWork + (readyPool * safeChunk)
@@ -267,7 +267,7 @@ fn SimulateM13Policy(regime: M13Regime, predictor: String, chunkSize: Int, maxLo
         var stageSlots = M13MinInt(lookahead, safeDepth)
         if predictedNeed == false { stageSlots = 0 }
 
-        for _prefetch in 0 .. 8 {
+        for _prefetch in 0..8 {
             if stageSlots > 0 and remaining > 0 {
                 let speculativeChunk = M13MinInt(safeChunk, remaining)
                 let tx = M13TransferTime(speculativeChunk, regime)
@@ -354,7 +354,7 @@ fn M13StudyRows() -> M13CaseResult[] {
 
     var rows = [EvaluateM13Case(regimes[0], M13PredictorNoPrediction(), 16, 2, 2)]
 
-    for i in 0 .. Len(regimes) {
+    for i in 0..Len(regimes) {
         let regime = regimes[i]
         rows = Append(rows, EvaluateM13Case(regime, M13PredictorFixedHeuristic(), 16, 2, 2))
         rows = Append(rows, EvaluateM13Case(regime, M13PredictorMovingAverage(), 16, 2, 2))

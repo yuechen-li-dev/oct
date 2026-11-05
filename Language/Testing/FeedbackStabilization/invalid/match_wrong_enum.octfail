@@ -1,0 +1,10 @@
+expect error: "enum label 'Anything' does not match subject type Held"
+package Main
+enum Held { Empty Items(Int) }
+fn Main() -> Int {
+    let held = Held.Items(3)
+    return match held {
+        case Anything.Empty => 0
+        case Anything.Items(v) => v
+    }
+}

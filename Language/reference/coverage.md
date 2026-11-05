@@ -159,13 +159,14 @@ and their special execution prerequisites.
 | Testing / CompiledBuiltinSweep | [octest](tooling/testing.md) | [Language/Testing/CompiledBuiltinSweep](../Testing/CompiledBuiltinSweep/) |
 | Testing / CompiledCallbacks | [octest](tooling/testing.md) | [Language/Testing/CompiledCallbacks](../Testing/CompiledCallbacks/) |
 | Testing / CompiledIdentifierHygiene | [octest](tooling/testing.md) | [Language/Testing/CompiledIdentifierHygiene](../Testing/CompiledIdentifierHygiene/) |
-| Testing / CompiledOctxiliary | [octest](tooling/testing.md) | [Language/Testing/CompiledOctxiliary](../Testing/CompiledOctxiliary/) |
 | Testing / CompiledPi | [octest](tooling/testing.md) | [Language/Testing/CompiledPi](../Testing/CompiledPi/) |
 | Testing / CompiledSelectedReachable | [octest](tooling/testing.md) | [Language/Testing/CompiledSelectedReachable](../Testing/CompiledSelectedReachable/) |
 | Testing / CompiledStringBuiltins | [octest](tooling/testing.md) | [Language/Testing/CompiledStringBuiltins](../Testing/CompiledStringBuiltins/) |
-| Testing / InterpretedOctxiliary | [octest](tooling/testing.md) | [Language/Testing/InterpretedOctxiliary](../Testing/InterpretedOctxiliary/) |
+| Testing / FeedbackStabilization | [Testing and expected failures](tooling/testing.md) | [Language/Testing/FeedbackStabilization](../Testing/FeedbackStabilization/) |
 | Testing / LaneAttributes | [octest](tooling/testing.md) | [Language/Testing/LaneAttributes](../Testing/LaneAttributes/) |
 | Testing / OctestAssertionsM83 | [octest](tooling/testing.md) | [Language/Testing/OctestAssertionsM83](../Testing/OctestAssertionsM83/) |
+| Testing / OctxiliaryContracts | [Testing and expected failures](tooling/testing.md) | [Language/Testing/OctxiliaryContracts](../Testing/OctxiliaryContracts/) |
+| Testing / OctxiliaryDispatch | [Testing and expected failures](tooling/testing.md) | [Language/Testing/OctxiliaryDispatch](../Testing/OctxiliaryDispatch/) |
 | Testing / SelectedDirectoryCompiled | [octest](tooling/testing.md) | [Language/Testing/SelectedDirectoryCompiled](../Testing/SelectedDirectoryCompiled/) |
 | Testing / SelectedFileCompiled | [octest](tooling/testing.md) | [Language/Testing/SelectedFileCompiled](../Testing/SelectedFileCompiled/) |
 | Testing / TheoryCycleTime | [octest](tooling/testing.md) | [Language/Testing/TheoryCycleTime](../Testing/TheoryCycleTime/) |

@@ -24,6 +24,9 @@ type File struct {
 	// Tooling that must leave markup text alone, such as the formatter, reads
 	// it; no compilation phase does.
 	MarkupSpans []MarkupSpan
+	// ContextualExpressionStarts records expression offsets after contextual
+	// keywords, whose lexical token otherwise looks like an ordinary name.
+	ContextualExpressionStarts []int
 }
 
 // MarkupSpan is the byte range of one Oct-XML element in its source file,
@@ -665,6 +668,7 @@ type SwitchExpr struct {
 func (SwitchExpr) exprNode() {}
 
 type MatchCase struct {
+	Label   Expr
 	Variant string
 	Binding string
 	Value   Expr

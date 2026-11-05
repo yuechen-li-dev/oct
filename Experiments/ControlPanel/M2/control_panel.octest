@@ -10,7 +10,7 @@ fn ControlPanelM2ViewRendersFromState() -> Void {
 fn ControlPanelM2LoopRemainsStateDriven() -> Void {
     let mounted = MountUI(View(Init()))
 
-    let emitPowerOn = Emit(mounted, PowerOnEvent()) !
+    let emitPowerOn = Emit(mounted, PowerOnEvent())!
     Assert.Equal(0, emitPowerOn, "PowerOn emit should succeed")
 
     let eventsAfterPowerOn = DrainEvents(mounted)
@@ -23,7 +23,7 @@ fn ControlPanelM2LoopRemainsStateDriven() -> Void {
     let patchAfterPowerOn = PatchUI(mounted, View(model))
     Assert.Equal(0, patchAfterPowerOn, "rerender after power on should patch")
 
-    let emitStep = Emit(mounted, StepEvent()) !
+    let emitStep = Emit(mounted, StepEvent())!
     Assert.Equal(0, emitStep, "Step emit should succeed")
 
     let eventsAfterStep = DrainEvents(mounted)
@@ -35,7 +35,7 @@ fn ControlPanelM2LoopRemainsStateDriven() -> Void {
     let patchAfterStep = PatchUI(mounted, View(model))
     Assert.Equal(0, patchAfterStep, "rerender after step should patch")
 
-    let emitTempInc = Emit(mounted, TemperatureIncrementEvent()) !
+    let emitTempInc = Emit(mounted, TemperatureIncrementEvent())!
     Assert.Equal(0, emitTempInc, "temperature increment emit should succeed")
 
     let tempEvents = DrainEvents(mounted)

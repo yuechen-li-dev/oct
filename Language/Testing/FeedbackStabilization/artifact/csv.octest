@@ -1,0 +1,11 @@
+package Main
+
+[Artifact]
+fn ReadStagedCsv() -> Void ! Error {
+    Artifact.WriteText("csv/data.csv", "Name,Value\none,1.5\ntwo,2.5\n")
+    let rows = CsvReadRows("csv/data.csv")?
+    Assert.Equal(3, Len(rows), "staged CSV reads")
+    Assert.Equal("2.5", rows[2][1], "staged cell")
+    Artifact.WriteText("csv/matrix.csv", "1.0,2.0\n3.0,4.0\n")
+    Assert.Equal(3.0, CsvReadMatrix("csv/matrix.csv")?[1][0], "staged matrix reads")
+}

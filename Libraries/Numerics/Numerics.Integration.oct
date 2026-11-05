@@ -15,9 +15,9 @@ package Numerics
 // ============================================================
 
 record IntegrationResult {
-    Value:      Float
-    Iterations: Int   // number of function evaluations
-    Converged:  Bool  // only meaningful for adaptive methods
+    Value: Float
+    Iterations: Int // number of function evaluations
+    Converged: Bool // only meaningful for adaptive methods
 }
 
 record AdaptivePanelResult {
@@ -48,7 +48,7 @@ fn Trapezoid(f: fn(Float) -> Float, a: Float, b: Float, n: Int) -> Float ! Error
     let h = (b - a) / Float(n)
     var sum = f(a) / 2.0 + f(b) / 2.0
 
-    for i in 1 .. n {
+    for i in 1..n {
         sum = sum + f(a + Float(i) * h)
     }
 
@@ -118,10 +118,10 @@ fn GaussLegendre5(f: fn(Float) -> Float, a: Float, b: Float) -> Float ! Error {
     }
 
     // Nodes on [-1, 1]
-    let n0 =  0.0
-    let n1 =  0.538469310105683
+    let n0 = 0.0
+    let n1 = 0.538469310105683
     let n2 = -0.538469310105683
-    let n3 =  0.906179845938664
+    let n3 = 0.906179845938664
     let n4 = -0.906179845938664
 
     // Weights
@@ -132,14 +132,14 @@ fn GaussLegendre5(f: fn(Float) -> Float, a: Float, b: Float) -> Float ! Error {
     let w4 = 0.236926885056189
 
     // Transform: x = (b-a)/2 * t + (b+a)/2
-    let mid   = (b + a) / 2.0
-    let half  = (b - a) / 2.0
+    let mid = (b + a) / 2.0
+    let half = (b - a) / 2.0
 
     let sum = w0 * f(mid + half * n0)
-            + w1 * f(mid + half * n1)
-            + w2 * f(mid + half * n2)
-            + w3 * f(mid + half * n3)
-            + w4 * f(mid + half * n4)
+        + w1 * f(mid + half * n1)
+        + w2 * f(mid + half * n2)
+        + w3 * f(mid + half * n3)
+        + w4 * f(mid + half * n4)
 
     return half * sum
 }
@@ -182,10 +182,10 @@ fn AdaptiveSimpson(
         return error("AdaptiveSimpson: maxDepth must be > 0")
     }
 
-    let mid  = (a + b) / 2.0
-    let fa   = f(a)
-    let fm   = f(mid)
-    let fb   = f(b)
+    let mid = (a + b) / 2.0
+    let fa = f(a)
+    let fm = f(mid)
+    let fb = f(b)
 
     let whole = (b - a) / 6.0 * (fa + 4.0 * fm + fb)
 
@@ -208,15 +208,15 @@ fn adaptiveSimpsonHelper(
     tolerance: Float,
     depth: Int
 ) -> AdaptivePanelResult {
-    let mid  = (a + b) / 2.0
+    let mid = (a + b) / 2.0
     let lmid = (a + mid) / 2.0
     let rmid = (mid + b) / 2.0
 
     let flm = f(lmid)
     let frm = f(rmid)
 
-    let left  = (mid - a) / 6.0 * (fa  + 4.0 * flm + fm)
-    let right = (b - mid) / 6.0 * (fm  + 4.0 * frm + fb)
+    let left = (mid - a) / 6.0 * (fa + 4.0 * flm + fm)
+    let right = (b - mid) / 6.0 * (fm + 4.0 * frm + fb)
     let delta = left + right - whole
 
     let corrected = left + right + delta / 15.0

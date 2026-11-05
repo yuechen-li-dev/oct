@@ -1,0 +1,6 @@
+expect error: "duplicate type: Range"
+package Main
+record Range {
+    X: Int
+}
+fn Main() -> Int { return 0 }

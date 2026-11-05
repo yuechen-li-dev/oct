@@ -49,7 +49,7 @@ fn M0MitigationSelectionUsesHeldOutEvidence() -> Void {
 [Fact]
 [Suite("Experiments.PrometheusNumericalHeterogeneityLab.M0")]
 fn M0ShadowJudgmentIsDeterministicAndAuditOnly() -> Void {
-    let evidence = M0ShadowEvidence {Deterministic: true ReferenceSuspect: false ErrorMilli: 6703 GainMilli: 1420 Repeats: 100}
+    let evidence = M0ShadowEvidence { Deterministic: true ReferenceSuspect: false ErrorMilli: 6703 GainMilli: 1420 Repeats: 100 }
     let a = M0SelectShadowAction(evidence)
     let b = M0SelectShadowAction(evidence)
     Assert.Equal(a.Action, b.Action, "bounded score is deterministic")
@@ -60,7 +60,7 @@ fn M0ShadowJudgmentIsDeterministicAndAuditOnly() -> Void {
 [Fact]
 [Suite("Experiments.PrometheusNumericalHeterogeneityLab.M0")]
 fn M0SuspectReferenceIsQuarantined() -> Void {
-    let decision = M0SelectShadowAction(M0ShadowEvidence {Deterministic: true ReferenceSuspect: true ErrorMilli: 9000 GainMilli: 1800 Repeats: 100})
+    let decision = M0SelectShadowAction(M0ShadowEvidence { Deterministic: true ReferenceSuspect: true ErrorMilli: 9000 GainMilli: 1800 Repeats: 100 })
     Assert.Equal(M0ShadowAction.QuarantineEvidence, decision.Action, "suspect reference blocks mitigation claims")
     Assert.Equal(false, decision.ProductAuthorityChanged, "quarantine remains audit-only")
 }

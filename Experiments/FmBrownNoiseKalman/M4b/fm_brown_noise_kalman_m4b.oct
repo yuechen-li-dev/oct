@@ -400,7 +400,7 @@ fn RunM4bCase(c: M4bCase) -> M4bCaseMetrics ! Error {
         AdaptiveNRMSE: Shared.Nrmse(clean, recovered)
         AdaptiveWhitenessCost: adaptiveW
         AdaptiveCorrelation: Shared.Correlation(clean, recovered)
-        FinalA: if Len(aTrace) > 0 { aTrace[Len(aTrace)-1] } else { 0.0 }
+        FinalA: if Len(aTrace) > 0 { aTrace[Len(aTrace) - 1] } else { 0.0 }
         ClampCount: if Complete(machine) { BoardSnapshot(machine)!.ClampCount } else { 0 }
 
         DeltaOutputSNRDb: delta
@@ -507,7 +507,7 @@ fn M4bArtifactWriteAll() -> Int {
     let report = RunM4bSweep()!
     Artifact.Checkpoint("beforeMarkdownReportBuild")
 
-    var csv = [["seed","inputSNRDb","messageHz","deltaOutputSNRDb","whitenessRatio","finalA","clampCount","label"]]
+    var csv = [["seed", "inputSNRDb", "messageHz", "deltaOutputSNRDb", "whitenessRatio", "finalA", "clampCount", "label"]]
     for i in 0..Len(report.Cases) {
         let r = report.Cases[i]
         csv = Append(csv, [

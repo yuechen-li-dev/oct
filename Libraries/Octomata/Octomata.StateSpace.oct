@@ -15,7 +15,7 @@ package Octomata
 ///
 /// Returns updated state x[k+1] and output y[k].
 record StateSpaceResult {
-    State:  Float[]
+    State: Float[]
     Output: Float[]
 }
 
@@ -52,16 +52,16 @@ fn StateSpaceUpdate(
         return error("state-space update requires u length == m")
     }
 
-    let Ax    = MatVecMulFlat(A, n, n, x)?
-    let Bu    = MatVecMulFlat(B, n, m, u)?
+    let Ax = MatVecMulFlat(A, n, n, x)?
+    let Bu = MatVecMulFlat(B, n, m, u)?
     let xNext = VecAdd(Ax, Bu)?
 
     let Cx = MatVecMulFlat(C, p, n, x)?
     let Du = MatVecMulFlat(D, p, m, u)?
-    let y  = VecAdd(Cx, Du)?
+    let y = VecAdd(Cx, Du)?
 
     return StateSpaceResult {
-        State:  xNext
+        State: xNext
         Output: y
     }
 }
@@ -77,13 +77,13 @@ fn MatVecMulFlat(A: Float[], rows: Int, cols: Int, x: Float[]) -> Float[] ! Erro
     }
 
     var out = [0.0]
-    for i in 1 .. rows {
+    for i in 1..rows {
         out = Append(out, 0.0)
     }
 
-    for r in 0 .. rows {
+    for r in 0..rows {
         var sum = 0.0
-        for c in 0 .. cols {
+        for c in 0..cols {
             sum = sum + A[r * cols + c] * x[c]
         }
         out[r] = sum
@@ -99,7 +99,7 @@ fn VecAdd(a: Float[], b: Float[]) -> Float[] ! Error {
     }
 
     var out = [a[0] + b[0]]
-    for i in 1 .. Len(a) {
+    for i in 1..Len(a) {
         out = Append(out, a[i] + b[i])
     }
 
@@ -113,7 +113,7 @@ fn VecSub(a: Float[], b: Float[]) -> Float[] ! Error {
     }
 
     var out = [a[0] - b[0]]
-    for i in 1 .. Len(a) {
+    for i in 1..Len(a) {
         out = Append(out, a[i] - b[i])
     }
 
@@ -123,7 +123,7 @@ fn VecSub(a: Float[], b: Float[]) -> Float[] ! Error {
 /// Scalar-vector multiply.
 fn VecScale(a: Float[], s: Float) -> Float[] {
     var out = [a[0] * s]
-    for i in 1 .. Len(a) {
+    for i in 1..Len(a) {
         out = Append(out, a[i] * s)
     }
     return out

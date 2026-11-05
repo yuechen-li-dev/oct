@@ -4,9 +4,9 @@ package RepeatedElements
 // their length give the table its row count, and the filled column is
 // completed to it.
 
-enum StageKind {Input Compute Output}
+enum StageKind { Input Compute Output }
 
-record Meta {Native: Bool}
+record Meta { Native: Bool }
 
 record table Measurements {
     Stage: String
@@ -46,7 +46,7 @@ fn ColumnsAreFilledToTheRowCount() -> Void {
         Stage: StageNames()
         Latency: [0.0 ...]
         Count: [0 ...]
-        Meta: [Meta {Native: true} ...]
+        Meta: [Meta { Native: true } ...]
     }
     Assert.Equal(4, Len(table), "the column that states its length gives the row count")
     Assert.Equal(StageKind.Input, table.Kind[0], "the elements before `...` come first")

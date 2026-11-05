@@ -225,10 +225,10 @@ fn M1BuildImportReport(evidence: M1NativeEvidence) -> M1ImportReport {
 }
 
 fn M1RowsCsv(evidence: M1NativeEvidence) -> String[][] {
-    var rows = [["case","path","stage","split","shape","inputFamily","weightFamily","perturbation","dL2","dLinf","gL1","gL2","gLinf","gpuNs","validationClean"]]
+    var rows = [["case", "path", "stage", "split", "shape", "inputFamily", "weightFamily", "perturbation", "dL2", "dLinf", "gL1", "gL2", "gLinf", "gpuNs", "validationClean"]]
     for i in 0..Len(evidence.Records) {
         let row = evidence.Records[i]
-        rows = Append(rows, [row.CaseName,row.Path,row.Stage,row.Split,row.Shape,row.InputFamily,row.WeightFamily,row.Perturbation,String.From<Float>(row.DisturbanceL2),String.From<Float>(row.DisturbanceLInfinity),String.From<Float>(row.GainL1),String.From<Float>(row.GainL2),String.From<Float>(row.GainLInfinity),String.From<Int>(row.GpuNs),String.From<Bool>(row.ValidationClean)])
+        rows = Append(rows, [row.CaseName, row.Path, row.Stage, row.Split, row.Shape, row.InputFamily, row.WeightFamily, row.Perturbation, String.From<Float>(row.DisturbanceL2), String.From<Float>(row.DisturbanceLInfinity), String.From<Float>(row.GainL1), String.From<Float>(row.GainL2), String.From<Float>(row.GainLInfinity), String.From<Int>(row.GpuNs), String.From<Bool>(row.ValidationClean)])
     }
     return rows
 }
@@ -273,10 +273,10 @@ fn M1WriteArtifacts() -> Int ! Error {
     let root = "Experiments/PrometheusNumericalHeterogeneityLab/M1/"
     let md = Markdown.Report([
         Markdown.Title("Prometheus M49a native evidence import"),
-        Markdown.Section("Authority", [Markdown.KeyValueTable(["native evidence","synthetic evidence","source JSON","source SHA-256","product authority changed"],[report.EvidenceAuthority,report.SyntheticAuthority,report.SourceJsonPath,report.SourceJsonSha256,String.From<Bool>(report.ProductAuthorityChanged)])]),
-        Markdown.Section("Envelope evaluation", [Markdown.KeyValueTable(["identification support","held-out support","held-out failures","D bound","G bound","certified"],[String.From<Int>(report.Envelope.IdentificationSupport),String.From<Int>(report.Envelope.HeldOutSupport),String.From<Int>(report.Envelope.HeldOutFailures),String.From<Float>(report.Envelope.DisturbanceBound),String.From<Float>(report.Envelope.GainBound),String.From<Bool>(report.Envelope.Certified)])]),
-        Markdown.Section("Evidence-fitted shadow utility", [Markdown.KeyValueTable(["algorithm","training rows","held-out rows","training MSE","held-out MSE","learned selected path","authored selected path","uniform selected path","certified","shadow only"],[report.LearnedPolicy.Model.Algorithm,String.From<Int>(report.LearnedPolicy.Model.Training.Rows),String.From<Int>(report.LearnedPolicy.Model.HeldOut.Rows),String.From<Float>(report.LearnedPolicy.Model.Training.MeanSquaredError),String.From<Float>(report.LearnedPolicy.Model.HeldOut.MeanSquaredError),report.LearnedPolicy.SelectedPath,report.LearnedPolicy.AuthoredSelectedPath,report.LearnedPolicy.UniformSelectedPath,String.From<Bool>(report.LearnedPolicy.Model.Certified),String.From<Bool>(report.LearnedPolicy.ShadowOnly)])]),
-        Markdown.Section("Interpretation", [Markdown.Paragraph(report.Interpretation),Markdown.Paragraph(report.Envelope.ExtrapolationPolicy)])
+        Markdown.Section("Authority", [Markdown.KeyValueTable(["native evidence", "synthetic evidence", "source JSON", "source SHA-256", "product authority changed"], [report.EvidenceAuthority, report.SyntheticAuthority, report.SourceJsonPath, report.SourceJsonSha256, String.From<Bool>(report.ProductAuthorityChanged)])]),
+        Markdown.Section("Envelope evaluation", [Markdown.KeyValueTable(["identification support", "held-out support", "held-out failures", "D bound", "G bound", "certified"], [String.From<Int>(report.Envelope.IdentificationSupport), String.From<Int>(report.Envelope.HeldOutSupport), String.From<Int>(report.Envelope.HeldOutFailures), String.From<Float>(report.Envelope.DisturbanceBound), String.From<Float>(report.Envelope.GainBound), String.From<Bool>(report.Envelope.Certified)])]),
+        Markdown.Section("Evidence-fitted shadow utility", [Markdown.KeyValueTable(["algorithm", "training rows", "held-out rows", "training MSE", "held-out MSE", "learned selected path", "authored selected path", "uniform selected path", "certified", "shadow only"], [report.LearnedPolicy.Model.Algorithm, String.From<Int>(report.LearnedPolicy.Model.Training.Rows), String.From<Int>(report.LearnedPolicy.Model.HeldOut.Rows), String.From<Float>(report.LearnedPolicy.Model.Training.MeanSquaredError), String.From<Float>(report.LearnedPolicy.Model.HeldOut.MeanSquaredError), report.LearnedPolicy.SelectedPath, report.LearnedPolicy.AuthoredSelectedPath, report.LearnedPolicy.UniformSelectedPath, String.From<Bool>(report.LearnedPolicy.Model.Certified), String.From<Bool>(report.LearnedPolicy.ShadowOnly)])]),
+        Markdown.Section("Interpretation", [Markdown.Paragraph(report.Interpretation), Markdown.Paragraph(report.Envelope.ExtrapolationPolicy)])
     ])
     var x: Float[] = []
     var d: Float[] = []

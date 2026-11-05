@@ -2,10 +2,10 @@ expect error: "has type String"
 
 package DatabaseTemplates
 
-record WrongKeyJob {ID: String}
+record WrongKeyJob { ID: String }
 
-template record StableIdentity<Record, Key> {KeyOf: Selector<Record, Key>}
+template record StableIdentity<Record, Key> { KeyOf: Selector<Record, Key> }
 
 fn Main() -> Void {
-    let invalid = StableIdentity<WrongKeyJob, Int> {KeyOf: .ID}
+    let invalid = StableIdentity<WrongKeyJob, Int> { KeyOf: .ID }
 }

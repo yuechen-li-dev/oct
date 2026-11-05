@@ -193,16 +193,16 @@ record M46TableFinalRecommendation {
 
 fn M46BenchmarkModes() -> M46BenchmarkMode[] {
     return [
-        M46BenchmarkMode {Name: "smoke" WarmupIterations: 1 MeasuredIterations: 3 RequireTimestampQuery: false AllowFallbackToBaseline: true Cifriendly: true},
-        M46BenchmarkMode {Name: "characterization" WarmupIterations: 5 MeasuredIterations: 15 RequireTimestampQuery: true AllowFallbackToBaseline: false Cifriendly: false},
-        M46BenchmarkMode {Name: "comparison" WarmupIterations: 4 MeasuredIterations: 12 RequireTimestampQuery: true AllowFallbackToBaseline: true Cifriendly: false}
+        M46BenchmarkMode { Name: "smoke" WarmupIterations: 1 MeasuredIterations: 3 RequireTimestampQuery: false AllowFallbackToBaseline: true Cifriendly: true },
+        M46BenchmarkMode { Name: "characterization" WarmupIterations: 5 MeasuredIterations: 15 RequireTimestampQuery: true AllowFallbackToBaseline: false Cifriendly: false },
+        M46BenchmarkMode { Name: "comparison" WarmupIterations: 4 MeasuredIterations: 12 RequireTimestampQuery: true AllowFallbackToBaseline: true Cifriendly: false }
     ]
 }
 
 fn M46ModeByName(name: String) -> M46BenchmarkMode {
     let modes = M46BenchmarkModes()
     var found = modes[0]
-    for i in 0 .. Len(modes) {
+    for i in 0..Len(modes) {
         if modes[i].Name == name {
             found = modes[i]
         }
@@ -212,13 +212,13 @@ fn M46ModeByName(name: String) -> M46BenchmarkMode {
 
 fn M46ShapeCases() -> M46ShapeCase[] {
     return [
-        M46ShapeCase {ShapeClass: "small-square" CaseName: "small-square-128" Rows: 128 Cols: 128 Depth: 128 SmokeEligible: true},
-        M46ShapeCase {ShapeClass: "medium-square" CaseName: "medium-square-512" Rows: 512 Cols: 512 Depth: 512 SmokeEligible: true},
-        M46ShapeCase {ShapeClass: "large-square" CaseName: "large-square-2048" Rows: 2048 Cols: 2048 Depth: 2048 SmokeEligible: false},
-        M46ShapeCase {ShapeClass: "tall-skinny" CaseName: "tall-skinny-2048x256x512" Rows: 2048 Cols: 256 Depth: 512 SmokeEligible: true},
-        M46ShapeCase {ShapeClass: "wide-short" CaseName: "wide-short-256x2048x512" Rows: 256 Cols: 2048 Depth: 512 SmokeEligible: true},
-        M46ShapeCase {ShapeClass: "k-heavy" CaseName: "k-heavy-512x512x4096" Rows: 512 Cols: 512 Depth: 4096 SmokeEligible: false},
-        M46ShapeCase {ShapeClass: "ml-ffn-like" CaseName: "ml-ffn-4096x11008x4096" Rows: 4096 Cols: 11008 Depth: 4096 SmokeEligible: false}
+        M46ShapeCase { ShapeClass: "small-square" CaseName: "small-square-128" Rows: 128 Cols: 128 Depth: 128 SmokeEligible: true },
+        M46ShapeCase { ShapeClass: "medium-square" CaseName: "medium-square-512" Rows: 512 Cols: 512 Depth: 512 SmokeEligible: true },
+        M46ShapeCase { ShapeClass: "large-square" CaseName: "large-square-2048" Rows: 2048 Cols: 2048 Depth: 2048 SmokeEligible: false },
+        M46ShapeCase { ShapeClass: "tall-skinny" CaseName: "tall-skinny-2048x256x512" Rows: 2048 Cols: 256 Depth: 512 SmokeEligible: true },
+        M46ShapeCase { ShapeClass: "wide-short" CaseName: "wide-short-256x2048x512" Rows: 256 Cols: 2048 Depth: 512 SmokeEligible: true },
+        M46ShapeCase { ShapeClass: "k-heavy" CaseName: "k-heavy-512x512x4096" Rows: 512 Cols: 512 Depth: 4096 SmokeEligible: false },
+        M46ShapeCase { ShapeClass: "ml-ffn-like" CaseName: "ml-ffn-4096x11008x4096" Rows: 4096 Cols: 11008 Depth: 4096 SmokeEligible: false }
     ]
 }
 
@@ -232,17 +232,17 @@ fn M46ShapeCasesForMode(mode: M46BenchmarkMode) -> M46ShapeCase[] {
 
 fn M46VariantAvailabilityTable() -> M46VariantAvailability[] {
     return [
-        M46VariantAvailability {Variant: "baseline-scalar" Implemented: true},
-        M46VariantAvailability {Variant: "memory-conservative" Implemented: false},
-        M46VariantAvailability {Variant: "small-register-tile" Implemented: false},
-        M46VariantAvailability {Variant: "balanced-2x2-accum4" Implemented: false},
-        M46VariantAvailability {Variant: "aggressive-4x4-accum8" Implemented: false}
+        M46VariantAvailability { Variant: "baseline-scalar" Implemented: true },
+        M46VariantAvailability { Variant: "memory-conservative" Implemented: false },
+        M46VariantAvailability { Variant: "small-register-tile" Implemented: false },
+        M46VariantAvailability { Variant: "balanced-2x2-accum4" Implemented: false },
+        M46VariantAvailability { Variant: "aggressive-4x4-accum8" Implemented: false }
     ]
 }
 
 fn M46VariantImplemented(variant: String, avail: M46VariantAvailability[]) -> Bool {
     var implemented = false
-    for i in 0 .. Len(avail) {
+    for i in 0..Len(avail) {
         if avail[i].Variant == variant {
             implemented = avail[i].Implemented
         }
@@ -259,7 +259,7 @@ fn M46EstimateOps(shape: M46ShapeCase) -> Float {
 }
 
 fn M46BuildCaseMeasurement(config: M46RunConfig, device: M46DeviceInfo, shape: M46ShapeCase, selectedVariant: String, manualOverride: String, avail: M46VariantAvailability[], measuredMs: Float, baselineMs: Float, maxAbsError: Float, maxRelError: Float, firstFailingIndex: Int, hasNanOrInf: Bool, diagnostics: M46Diagnostics) -> M46CaseMeasurement {
-    let selected = switch {case manualOverride != "" -> manualOverride else -> selectedVariant}
+    let selected = switch { case manualOverride != "" -> manualOverride else -> selectedVariant }
     let available = M46VariantImplemented(selected, avail)
 
     var testedVariant = selected
@@ -286,9 +286,9 @@ fn M46BuildCaseMeasurement(config: M46RunConfig, device: M46DeviceInfo, shape: M
 
     let ops = M46EstimateOps(shape)
     let memBytes = M46EstimateMemoryBytes(shape)
-    let gflops = switch {case measuredMs > 0.0 -> ops / (measuredMs / 1000.0) / 1000000000.0 else -> 0.0}
-    let ai = switch {case memBytes > 0.0 -> ops / memBytes else -> 0.0}
-    let speedupPermille = switch {case measuredMs > 0.0 -> (baselineMs / measuredMs) * 1000.0 else -> 0.0}
+    let gflops = switch { case measuredMs > 0.0 -> ops / (measuredMs / 1000.0) / 1000000000.0 else -> 0.0 }
+    let ai = switch { case memBytes > 0.0 -> ops / memBytes else -> 0.0 }
+    let speedupPermille = switch { case measuredMs > 0.0 -> (baselineMs / measuredMs) * 1000.0 else -> 0.0 }
     let diagMatch = diagnostics.ReportedBand == device.OccupancyBand and diagnostics.ReportedShapeClass == shape.ShapeClass and diagnostics.ReportedSelectedVariant == selected
     let correct = maxAbsError <= config.AbsTolerance and maxRelError <= config.RelTolerance and hasNanOrInf == false and testedVariant != "unavailable"
 
@@ -344,7 +344,7 @@ fn M46EvaluateCase(config: M46RunConfig, measurement: M46CaseMeasurement) -> M46
         else -> "eligible_for_runtime_dispatch"
     }
 
-    return M46Recommendation {CorrectnessGate: correctnessGate TimingGate: timingGate StabilityGate: stabilityGate DiagnosticsGate: diagnosticsGate TimingConfidenceGate: confidenceGate ActuationReady: actuation Reason: reason}
+    return M46Recommendation { CorrectnessGate: correctnessGate TimingGate: timingGate StabilityGate: stabilityGate DiagnosticsGate: diagnosticsGate TimingConfidenceGate: confidenceGate ActuationReady: actuation Reason: reason }
 }
 
 fn M46BuildArtifact(config: M46RunConfig, device: M46DeviceInfo, measurements: M46CaseMeasurement[]) -> M46BenchmarkArtifact {
@@ -352,9 +352,9 @@ fn M46BuildArtifact(config: M46RunConfig, device: M46DeviceInfo, measurements: M
     let rec = M46EvaluateCase(config, measurement)
     return M46BenchmarkArtifact {
         Schema: "prometheus.sgemm.occupancy_benchmark.v1"
-        Device: M46ArtifactDevice {Name: device.Name VendorId: device.VendorId DeviceId: device.DeviceId DriverVersion: device.DriverVersion OccupancyBand: device.OccupancyBand CapabilityClasses: "captured_by_native_probe"}
-        Run: M46ArtifactRun {TimestampUtc: "2026-04-28T00:00:00Z" WarmupIterations: config.WarmupIterations MeasuredIterations: config.MeasuredIterations TimingSource: switch {case device.TimestampQueryAvailable -> "vulkan_timestamp_query" else -> "cpu_wall_clock_fallback"} TimingConfidence: switch {case device.TimestampQueryAvailable -> "high" else -> "low"} Mode: config.ModeName}
-        Cases: [M46ArtifactCase {ShapeClass: measurement.ShapeClass Rows: measurement.Rows Cols: measurement.Cols Depth: measurement.Depth SelectedVariant: measurement.SelectedVariant TestedVariant: measurement.TestedVariant ManualOverrideRequestedVariant: measurement.ManualOverrideRequestedVariant FallbackReason: measurement.FallbackReason Correct: measurement.Correct MaxAbsError: measurement.MaxAbsError MaxRelError: measurement.MaxRelError MeanMs: measurement.MeanMs MedianMs: measurement.MedianMs MinMs: measurement.MinMs Gflops: measurement.Gflops ArithmeticIntensityEstimate: measurement.ArithmeticIntensityEstimate Diagnostics: "captured_in_runtime_diagnostics" ActuationReady: rec.ActuationReady}]
+        Device: M46ArtifactDevice { Name: device.Name VendorId: device.VendorId DeviceId: device.DeviceId DriverVersion: device.DriverVersion OccupancyBand: device.OccupancyBand CapabilityClasses: "captured_by_native_probe" }
+        Run: M46ArtifactRun { TimestampUtc: "2026-04-28T00:00:00Z" WarmupIterations: config.WarmupIterations MeasuredIterations: config.MeasuredIterations TimingSource: switch { case device.TimestampQueryAvailable -> "vulkan_timestamp_query" else -> "cpu_wall_clock_fallback" } TimingConfidence: switch { case device.TimestampQueryAvailable -> "high" else -> "low" } Mode: config.ModeName }
+        Cases: [M46ArtifactCase { ShapeClass: measurement.ShapeClass Rows: measurement.Rows Cols: measurement.Cols Depth: measurement.Depth SelectedVariant: measurement.SelectedVariant TestedVariant: measurement.TestedVariant ManualOverrideRequestedVariant: measurement.ManualOverrideRequestedVariant FallbackReason: measurement.FallbackReason Correct: measurement.Correct MaxAbsError: measurement.MaxAbsError MaxRelError: measurement.MaxRelError MeanMs: measurement.MeanMs MedianMs: measurement.MedianMs MinMs: measurement.MinMs Gflops: measurement.Gflops ArithmeticIntensityEstimate: measurement.ArithmeticIntensityEstimate Diagnostics: "captured_in_runtime_diagnostics" ActuationReady: rec.ActuationReady }]
         FinalRecommendation: rec
     }
 }
@@ -405,5 +405,5 @@ fn M46AcceptanceGateTable(rec: M46Recommendation) -> M46TableAcceptanceGates {
 }
 
 fn M46FinalRecommendationTable(rec: M46Recommendation) -> M46TableFinalRecommendation {
-    return M46TableFinalRecommendation {ActuationReady: rec.ActuationReady CorrectnessGate: rec.CorrectnessGate TimingGate: rec.TimingGate StabilityGate: rec.StabilityGate DiagnosticsGate: rec.DiagnosticsGate TimingConfidenceGate: rec.TimingConfidenceGate Reason: rec.Reason}
+    return M46TableFinalRecommendation { ActuationReady: rec.ActuationReady CorrectnessGate: rec.CorrectnessGate TimingGate: rec.TimingGate StabilityGate: rec.StabilityGate DiagnosticsGate: rec.DiagnosticsGate TimingConfidenceGate: rec.TimingConfidenceGate Reason: rec.Reason }
 }

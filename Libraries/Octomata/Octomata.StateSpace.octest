@@ -47,7 +47,7 @@ fn StateSpaceDoubleIntegratorModelsPosition() -> Void {
     /// Input u = acceleration
     let dt = 0.1
     let A = [1.0, dt, 0.0, 1.0]
-    let B = [0.5*dt*dt, dt]
+    let B = [0.5 * dt * dt, dt]
     let C = [1.0, 0.0]
     let D = [0.0]
 

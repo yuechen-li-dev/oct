@@ -6,10 +6,10 @@ fn STLSQRecoversKnownSparseSystemExactly() -> Void ! Error {
     // should be pruned to exactly zero).
     let n = 50
     var theta = [0.0]
-    for k in 1 .. n * 3 { theta = Append(theta, 0.0) }
+    for k in 1..n * 3 { theta = Append(theta, 0.0) }
     var target = [0.0]
-    for k in 1 .. n { target = Append(target, 0.0) }
-    for i in 0 .. n {
+    for k in 1..n { target = Append(target, 0.0) }
+    for i in 0..n {
         let x = Float(i) * 0.1 - 2.5
         theta[i * 3 + 0] = 1.0
         theta[i * 3 + 1] = x

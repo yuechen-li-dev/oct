@@ -1,0 +1,22 @@
+package Main
+
+[Fact]
+fn MatrixCsvAndShortPlotForms() -> Void ! Error {
+    let path = "feedback_matrix.csv"
+    CsvWriteMatrix(path, [[1.5, 2.0], [3.0, 4.5]])?
+    Assert.Equal(4.5, CsvReadMatrix(path)?[1][1], "numeric matrix roundtrip")
+    let table = CsvReadTable(path)?
+    Assert.Error(CsvWriteTable("unused.csv", table), "WriteTable retains its explicit unsupported boundary")
+    PlotLine([0.0, 1.0], [1.0, 2.0], "feedback_line.png")
+    PlotScatter([0.0, 1.0], [2.0, 1.0], "feedback_scatter.png")
+    Assert.True(FileExists("feedback_line.png"), "short line")
+    Assert.True(FileExists("feedback_scatter.png"), "short scatter")
+    PlotRenderLine([0.0, 1.0], [1.0, 2.0], "feedback_sized.png", 400px, 300px, "", "x", "y", "")?
+    let image = ImageLoad("feedback_sized.png")?
+    Assert.Equal(400px, ImageWidth(image), "requested pixel width")
+    Assert.Equal(300px, ImageHeight(image), "requested pixel height")
+    FileDelete(path)?
+    FileDelete("feedback_line.png")?
+    FileDelete("feedback_scatter.png")?
+    FileDelete("feedback_sized.png")?
+}

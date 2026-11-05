@@ -40,7 +40,8 @@ var languagePackageSets = []string{
 
 // Directories another test owns, with the reason this test cannot run them.
 var languageRunElsewhere = map[string]string{
-	"Language/Tooling/ConceptCapabilitiesM2/valid": "artifact entry points that are run with native grants, one of them to be refused; internal/tester/artifact_phase_test.go",
+	"Language/Testing/FeedbackStabilization/diagnostics": "deliberately failing assertion fixture; internal/tester/feedback_diagnostics_test.go verifies the diagnostic in both lanes",
+	"Language/Tooling/ConceptCapabilitiesM2/valid":       "artifact entry points that are run with native grants, one of them to be refused; internal/tester/artifact_phase_test.go",
 }
 
 // Directories whose tests call a wrapper sidecar. They are run with
@@ -48,10 +49,11 @@ var languageRunElsewhere = map[string]string{
 // builds a sidecar the first time it is asked for and reuses it afterwards.
 // Every other directory runs with no sidecar available.
 var languageSidecars = map[string][]string{
-	"Language/Runtime/LibraryBuiltins/valid":       {"octxiliary-hash", "octxiliary-text"},
-	"Language/Testing/CompiledOctxiliary/valid":    {"octxiliary-test-wrapper", "octxiliary-io"},
-	"Language/Testing/InterpretedOctxiliary/valid": {"octxiliary-test-wrapper"},
-	"Language/Types/Bytes/valid":                   {"octxiliary-io"},
+	"Language/Testing/FeedbackStabilization/serialization": {"octxiliary-io", "octxiliary-csv", "octxiliary-plot", "octxiliary-image"},
+	"Language/Runtime/LibraryBuiltins/valid":               {"octxiliary-hash", "octxiliary-text"},
+	"Language/Testing/OctxiliaryContracts/valid":           {"octxiliary-test-wrapper", "octxiliary-io"},
+	"Language/Testing/OctxiliaryDispatch/valid":            {"octxiliary-test-wrapper"},
+	"Language/Types/Bytes/valid":                           {"octxiliary-io"},
 }
 
 // A known gap is a directory that fails in one lane because that lane lacks a

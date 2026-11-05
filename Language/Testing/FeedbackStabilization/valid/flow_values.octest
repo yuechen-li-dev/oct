@@ -1,0 +1,32 @@
+package FeedbackStabilization
+
+flow ArrayWork() -> Int {
+    board { Grid: Matrix<Int> }
+    state Work {
+        var values = [1, 2]
+        values[1] = 9
+        var grid = matrix[[1, 2] [3, 4]]
+        board.Grid = grid
+        grid[0, 0] = 99
+        return values[1]
+    }
+}
+
+flow OtherWork() -> Int {
+    board { Count: Int }
+    state Work {
+        board.Count = 7
+        return board.Count
+    }
+}
+
+[Fact]
+fn LocalWritesAndIndependentSnapshots() -> Void {
+    let first = ArrayWork()
+    let second = OtherWork()
+    Step(first)
+    Step(second)
+    Assert.Equal(9, Result(first)!, "state local indexed write")
+    Assert.Equal(1, BoardSnapshot(first)!.Grid[0, 0], "board owns its matrix")
+    Assert.Equal(7, BoardSnapshot(second)!.Count, "snapshot retains flow identity")
+}

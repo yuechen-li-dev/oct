@@ -96,7 +96,7 @@ fn SignalLabM9aHistoryStillCapsAtSixSamples() -> Void {
 fn SignalLabM9aEventUpdateViewPatchLoopRemainsValid() -> Void {
     let mounted = MountUI(View(Init()))
 
-    let emitStart = Emit(mounted, StartEvent()) !
+    let emitStart = Emit(mounted, StartEvent())!
     Assert.Equal(0, emitStart, "Start emit should succeed")
 
     let startEvents = DrainEvents(mounted)
@@ -109,7 +109,7 @@ fn SignalLabM9aEventUpdateViewPatchLoopRemainsValid() -> Void {
     let startPatch = PatchUI(mounted, View(model))
     Assert.Equal(0, startPatch, "Patch after start should succeed")
 
-    let emitStep = Emit(mounted, StepEvent()) !
+    let emitStep = Emit(mounted, StepEvent())!
     Assert.Equal(0, emitStep, "Step emit should succeed")
 
     let stepEvents = DrainEvents(mounted)

@@ -2,7 +2,7 @@ package Optimization
 
 // f(x,y) = (x-1)² + (y-2)², minimum at [1,2], fmin=0
 fn fNM2D(v: Float[]) -> Float {
-    return (v[0]-1.0)*(v[0]-1.0) + (v[1]-2.0)*(v[1]-2.0)
+    return (v[0] - 1.0) * (v[0] - 1.0) + (v[1] - 2.0) * (v[1] - 2.0)
 }
 
 // Rosenbrock: f(x,y) = (1-x)² + 100(y-x²)², minimum at [1,1]
@@ -10,12 +10,12 @@ fn fNM2D(v: Float[]) -> Float {
 fn fRosenbrock(v: Float[]) -> Float {
     let x = v[0]
     let y = v[1]
-    return (1.0-x)*(1.0-x) + 100.0*(y - x*x)*(y - x*x)
+    return (1.0 - x) * (1.0 - x) + 100.0 * (y - x * x) * (y - x * x)
 }
 
 // f(x,y,z) = x² + y² + z², minimum at [0,0,0]
 fn fSphere3D(v: Float[]) -> Float {
-    return v[0]*v[0] + v[1]*v[1] + v[2]*v[2]
+    return v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
 }
 
 [Fact]
@@ -72,6 +72,6 @@ fn ArgMaxFindsMaximum() -> Void {
 [Fact]
 fn InitialSimplexHasN1Vertices() -> Void {
     let x0 = [1.0, 2.0, 3.0]
-    let s  = InitialSimplex(x0)
+    let s = InitialSimplex(x0)
     Assert.Equal(4, Len(s), "initial simplex has n+1=4 vertices for n=3")
 }

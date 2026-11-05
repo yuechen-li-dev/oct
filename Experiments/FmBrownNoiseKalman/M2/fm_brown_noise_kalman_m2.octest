@@ -49,12 +49,6 @@ fn M2ArtifactFilesWrite() -> Void ! Error {
     Assert.True(Len(md) > 10, "markdown report written")
 }
 
-[Artifact]
-[Suite("Experiments.FmBrownNoiseKalman.M2")]
-fn M2Artifacts() -> Void ! Error {
-    let _ = M2ArtifactWriteAll()?
-}
-
 [Theory]
 [Suite("Experiments.FmBrownNoiseKalman.M2b")]
 [InlineData(1)]

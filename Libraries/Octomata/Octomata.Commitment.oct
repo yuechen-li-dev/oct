@@ -21,29 +21,29 @@ package Octomata
 /// Carry this in board memory or thread it explicitly across calls.
 record ValueCommitment {
     /// The currently committed value.
-    Current:   Int
+    Current: Int
     /// How many ticks the current value has been held.
     CommitAge: Int
     /// Whether a value is currently committed.
-    HasValue:  Bool
+    HasValue: Bool
 }
 
 /// Result of a single stabilization tick.
 record StabilizeResult {
     /// The resolved value after applying hysteresis and min_commit.
-    Value:     Int
+    Value: Int
     /// Updated commitment state to carry into the next tick.
-    Next:      ValueCommitment
+    Next: ValueCommitment
     /// True if the resolved value changed from the previous tick.
-    Changed:   Bool
+    Changed: Bool
 }
 
 /// Build an empty commitment state — no value held yet.
 fn NoValueCommitment() -> ValueCommitment {
     return ValueCommitment {
-        Current:   0
+        Current: 0
         CommitAge: 0
-        HasValue:  false
+        HasValue: false
     }
 }
 
@@ -59,10 +59,10 @@ fn NoValueCommitment() -> ValueCommitment {
 ///             (for Int values, any change satisfies threshold of 0)
 /// minCommit:  current value is held for at least this many ticks
 fn StabilizeValue(
-    next:       Int,
+    next: Int,
     commitment: ValueCommitment,
     hysteresis: Int,
-    minCommit:  Int
+    minCommit: Int
 ) -> StabilizeResult ! Error {
     if hysteresis < 0 {
         return error("stabilize value requires hysteresis >= 0")
@@ -76,9 +76,9 @@ fn StabilizeValue(
         return StabilizeResult {
             Value: next
             Next: ValueCommitment {
-                Current:   next
+                Current: next
                 CommitAge: 1
-                HasValue:  true
+                HasValue: true
             }
             Changed: true
         }
@@ -89,9 +89,9 @@ fn StabilizeValue(
         return StabilizeResult {
             Value: commitment.Current
             Next: ValueCommitment {
-                Current:   commitment.Current
+                Current: commitment.Current
                 CommitAge: commitment.CommitAge + 1
-                HasValue:  true
+                HasValue: true
             }
             Changed: false
         }
@@ -102,9 +102,9 @@ fn StabilizeValue(
         return StabilizeResult {
             Value: commitment.Current
             Next: ValueCommitment {
-                Current:   commitment.Current
+                Current: commitment.Current
                 CommitAge: commitment.CommitAge + 1
-                HasValue:  true
+                HasValue: true
             }
             Changed: false
         }
@@ -119,9 +119,9 @@ fn StabilizeValue(
         return StabilizeResult {
             Value: commitment.Current
             Next: ValueCommitment {
-                Current:   commitment.Current
+                Current: commitment.Current
                 CommitAge: commitment.CommitAge + 1
-                HasValue:  true
+                HasValue: true
             }
             Changed: false
         }
@@ -131,9 +131,9 @@ fn StabilizeValue(
     return StabilizeResult {
         Value: next
         Next: ValueCommitment {
-            Current:   next
+            Current: next
             CommitAge: 1
-            HasValue:  true
+            HasValue: true
         }
         Changed: true
     }
@@ -147,7 +147,7 @@ fn StabilizeValue(
 /// Returns the next tick count and whether the cooldown is now expired.
 record CooldownResult {
     Remaining: Int
-    Expired:   Bool
+    Expired: Bool
 }
 
 fn TickCooldown(remaining: Int) -> CooldownResult ! Error {
@@ -157,12 +157,12 @@ fn TickCooldown(remaining: Int) -> CooldownResult ! Error {
     if remaining == 0 {
         return CooldownResult {
             Remaining: 0
-            Expired:   true
+            Expired: true
         }
     }
     return CooldownResult {
         Remaining: remaining - 1
-        Expired:   remaining - 1 == 0
+        Expired: remaining - 1 == 0
     }
 }
 
@@ -180,16 +180,16 @@ fn StartCooldown(ticks: Int) -> Int ! Error {
 /// the first tick of a transition without triggering on every held tick.
 record EdgeResult {
     /// True on the first tick the signal becomes true (rising edge).
-    Rising:   Bool
+    Rising: Bool
     /// True on the first tick the signal becomes false (falling edge).
-    Falling:  Bool
+    Falling: Bool
     /// The current signal value (for threading convenience).
-    Current:  Bool
+    Current: Bool
 }
 
 fn DetectEdge(signal: Bool, previous: Bool) -> EdgeResult {
     return EdgeResult {
-        Rising:  signal and not previous
+        Rising: signal and not previous
         Falling: not signal and previous
         Current: signal
     }
@@ -204,17 +204,17 @@ record LatchResult {
     /// Current latch output.
     Latched: Bool
     /// Updated latch state to carry forward.
-    Next:    Bool
+    Next: Bool
 }
 
 fn UpdateLatch(current: Bool, set: Bool, reset: Bool) -> LatchResult {
     let next = switch {
-        case reset        => false
-        case set          => true
-        else              => current
+        case reset => false
+        case set => true
+        else => current
     }
     return LatchResult {
         Latched: next
-        Next:    next
+        Next: next
     }
 }

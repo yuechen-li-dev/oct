@@ -22,7 +22,7 @@ fn FreeSpacePathLossLinearSeries(distance: Float<m>[], frequencyHz: Float) -> Fl
         return [0.0]
     }
     var out = [FreeSpacePathLossLinear(distance[0], frequencyHz)]
-    for i in 1 .. Len(distance) {
+    for i in 1..Len(distance) {
         out = Append(out, FreeSpacePathLossLinear(distance[i], frequencyHz))
     }
     return out
@@ -47,7 +47,7 @@ fn LogDistancePathLossLinearSeries(distance: Float<m>[], referenceDistance: Floa
         return [0.0]
     }
     var out = [LogDistancePathLossLinear(distance[0], referenceDistance, referencePathLossLinear, pathLossExponent)]
-    for i in 1 .. Len(distance) {
+    for i in 1..Len(distance) {
         out = Append(out, LogDistancePathLossLinear(distance[i], referenceDistance, referencePathLossLinear, pathLossExponent))
     }
     return out
@@ -78,7 +78,7 @@ fn ThermalNoisePowerWithNoiseFigureSeries(bandwidthHz: Float[], temperatureKelvi
         return [0kg*m^2/s^3]
     }
     var out = [ThermalNoisePowerWithNoiseFigure(bandwidthHz[0], temperatureKelvin[0], noiseFigureLinear[0])]
-    for i in 1 .. Len(bandwidthHz) {
+    for i in 1..Len(bandwidthHz) {
         out = Append(out, ThermalNoisePowerWithNoiseFigure(bandwidthHz[i], temperatureKelvin[i], noiseFigureLinear[i]))
     }
     return out
@@ -109,7 +109,7 @@ fn SNRLinearSeries(receivedPower: Float<kg*m^2/s^3>[], noisePower: Float<kg*m^2/
         return [0.0]
     }
     var out = [SNRLinear(receivedPower[0], noisePower[0])]
-    for i in 1 .. Len(receivedPower) {
+    for i in 1..Len(receivedPower) {
         out = Append(out, SNRLinear(receivedPower[i], noisePower[i]))
     }
     return out
@@ -131,7 +131,7 @@ fn ApplyAwgnSamples(signal: Float<kg*m^2/s^3>[], noise: Float<kg*m^2/s^3>[]) -> 
         return [0kg*m^2/s^3]
     }
     var out = [ApplyAdditiveNoise(signal[0], noise[0])]
-    for i in 1 .. Len(signal) {
+    for i in 1..Len(signal) {
         out = Append(out, ApplyAdditiveNoise(signal[i], noise[i]))
     }
     return out
@@ -149,7 +149,7 @@ fn RayleighPowerGainSeries(inPhase: Float[], quadrature: Float[]) -> Float[] {
         return [0.0]
     }
     var out = [RayleighPowerGainFromComponents(inPhase[0], quadrature[0])]
-    for i in 1 .. Len(inPhase) {
+    for i in 1..Len(inPhase) {
         out = Append(out, RayleighPowerGainFromComponents(inPhase[i], quadrature[i]))
     }
     return out
@@ -163,7 +163,7 @@ fn ApplyPowerGainSeries(samples: Float<kg*m^2/s^3>[], gain: Float[]) -> Float<kg
         return [0kg*m^2/s^3]
     }
     var out = [ApplyPowerGain(samples[0], gain[0])]
-    for i in 1 .. Len(samples) {
+    for i in 1..Len(samples) {
         out = Append(out, ApplyPowerGain(samples[i], gain[i]))
     }
     return out
@@ -201,7 +201,7 @@ record SequenceChannelProbe {
 
 fn BuildDistanceSweep16() -> Float<m>[] {
     var out = [5m]
-    for i in 1 .. 16 {
+    for i in 1..16 {
         out = Append(out, 5m * (i + 1))
     }
     return out
@@ -209,7 +209,7 @@ fn BuildDistanceSweep16() -> Float<m>[] {
 
 fn BuildBandwidthSweep16Hz() -> Float[] {
     var out = [100000.0]
-    for i in 1 .. 16 {
+    for i in 1..16 {
         out = Append(out, 100000.0 * (i + 1))
     }
     return out
@@ -217,7 +217,7 @@ fn BuildBandwidthSweep16Hz() -> Float[] {
 
 fn BuildConstantSeries16(value: Float) -> Float[] {
     var out = [value]
-    for _ in 1 .. 16 {
+    for _ in 1..16 {
         out = Append(out, value)
     }
     return out
@@ -225,7 +225,7 @@ fn BuildConstantSeries16(value: Float) -> Float[] {
 
 fn BuildNoiseFigureSeries16() -> Float[] {
     var out = [2.0]
-    for i in 1 .. 16 {
+    for i in 1..16 {
         let noiseFigure = switch {
             case i < 6 => 2.0
             case i < 11 => 2.5
@@ -278,7 +278,7 @@ fn BuildSequenceBaseline() -> SequenceBaseline {
 
     var freeSpaceReceived = [ReceivedPower(txPower, txGain, rxGain, freeSpaceLoss[0], systemLoss)]
     var logDistanceReceived = [ReceivedPower(txPower, txGain, rxGain, logDistanceLoss[0], systemLoss)]
-    for i in 1 .. Len(distances) {
+    for i in 1..Len(distances) {
         freeSpaceReceived = Append(freeSpaceReceived, ReceivedPower(txPower, txGain, rxGain, freeSpaceLoss[i], systemLoss))
         logDistanceReceived = Append(logDistanceReceived, ReceivedPower(txPower, txGain, rxGain, logDistanceLoss[i], systemLoss))
     }
@@ -304,7 +304,7 @@ fn BuildSequenceBaseline() -> SequenceBaseline {
 fn BuildAwgnNoiseFromSignal(signal: Float<kg*m^2/s^3>[]) -> Float<kg*m^2/s^3>[] {
     let factors = BuildAwgnScaleFactors16()
     var out = [ApplyPowerGain(signal[0], factors[0])]
-    for i in 1 .. Len(signal) {
+    for i in 1..Len(signal) {
         out = Append(out, ApplyPowerGain(signal[i], factors[i]))
     }
     return out

@@ -9,15 +9,15 @@ record PackageManifest {
     Dependencies: Dependency[]
 }
 
-record Dependency {Name: String VersionRequirement: String}
+record Dependency { Name: String VersionRequirement: String }
 
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "RiemannAtlas"
         Version: "0.1.0"
         Description: "Atlas M0 handoff graph for the completed external Riemann M23-M25 slice"
-        Authors:["Codex"]
+        Authors: ["Codex"]
         Date: "2026-08-30"
-        Dependencies:[Dependency {Name: "Atlas" VersionRequirement: "0.1.0"}]
+        Dependencies: [Dependency { Name: "Atlas" VersionRequirement: "0.1.0" }]
     }
 }

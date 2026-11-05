@@ -127,8 +127,8 @@ fn MediumB(r: Int, c: Int) -> Float {
 fn AssertMatricesNear(label: String, expected: Matrix<Float>, actual: Matrix<Float>) -> Void {
     Assert.Equal(expected.rows, actual.rows, label + " rows")
     Assert.Equal(expected.cols, actual.cols, label + " cols")
-    for r in 0 .. expected.rows {
-        for c in 0 .. expected.cols {
+    for r in 0..expected.rows {
+        for c in 0..expected.cols {
             Assert.Near(expected[r, c], actual[r, c], 0.000001, label + " matrix element")
         }
     }

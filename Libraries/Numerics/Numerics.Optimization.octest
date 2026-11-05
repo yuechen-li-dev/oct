@@ -38,7 +38,7 @@ fn BrentFindsMinimum() -> Void {
 [Fact]
 fn BrentFasterThanGoldenSection() -> Void {
     let golden = GoldenSection(fParabola25, 0.0, 5.0, 0.000001, 200)!
-    let brent  = Brent(fParabola25, 0.0, 5.0, 0.000001, 200)!
+    let brent = Brent(fParabola25, 0.0, 5.0, 0.000001, 200)!
     Assert.True(brent.Iterations <= golden.Iterations,
         "Brent uses fewer or equal iterations than golden section")
 }
