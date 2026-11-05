@@ -89,6 +89,7 @@ func generate(compilerRoot, compiler string, check bool) error {
 		{source, "prometheusreduction"},
 		{"internal/prometheus/reactors/PrometheusExecution.concept", "prometheusexecution"},
 		{"internal/prometheus/reactors/PrometheusRmsNorm.concept", "prometheusrmsnorm"},
+		{"internal/prometheus/reactors/PrometheusModelBlock.concept", "prometheusmodelblock"},
 	} {
 		compile := exec.Command(compiler, "emit-c", entry.Source, "--source-modules", "--module-root", "internal/prometheus/reactors", "--out-dir", temporary)
 		if output, err := compile.CombinedOutput(); err != nil {
@@ -240,7 +241,7 @@ func buildNativePackage(conceptRoot string) error {
 
 // Integrity is checked on the materialized build products, independent of Git.
 func verifyDeployment(repoRoot, outputRoot string) error {
-	for _, stem := range []string{"prometheusreduction", "prometheusexecution", "prometheusrmsnorm"} {
+	for _, stem := range []string{"prometheusreduction", "prometheusexecution", "prometheusrmsnorm", "prometheusmodelblock"} {
 		body, err := os.ReadFile(filepath.Join(outputRoot, stem+".provenance.json"))
 		if err != nil {
 			return err

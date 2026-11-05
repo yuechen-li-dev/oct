@@ -175,6 +175,9 @@ typedef struct prom_model_block_weight_resource {
 } prom_model_block_weight_resource;
 
 typedef struct prom_model_block_m1b_pipeline {
+  /* Non-null only for a borrowed entry into the Concept prefix portfolio. */
+  struct prom_model_block_state* concept_block;
+  uint32_t concept_role;
   uint32_t shader_id;
   uint32_t binding_count;
   uint32_t push_constant_bytes;
@@ -190,6 +193,11 @@ typedef struct prom_model_block_m1b_pipeline {
 #define PROM_MODEL_BLOCK_AUDIT_SOURCE_COUNT 13u
 
 typedef struct prom_model_block_state {
+  /* Concept owns allocations and the closed/pre-attention submissions. The
+     legacy records below are borrowed projections for remaining model stages. */
+  void* concept_owner;
+  /* A reset fence is not evidence that a submission occurred. */
+  uint32_t legacy_submission_pending;
   uint64_t block_id;
   uint64_t next_block_id;
   uint64_t model_contract_identity;
@@ -234,10 +242,6 @@ typedef struct prom_model_block_state {
   uint64_t weight_upload_count;
   uint64_t execution_count;
   uint64_t last_execution_ns;
-  VkDescriptorSetLayout descriptor_set_layout;
-  VkDescriptorPool descriptor_pool;
-  VkPipelineLayout pipeline_layout;
-  VkDescriptorSet descriptor_set;
   VkCommandBuffer command_buffer;
   VkFence fence;
   VkQueryPool m1b_timestamp_query_pool;
@@ -288,7 +292,6 @@ typedef struct prom_model_block_state {
   uint64_t vk_unmap_memory_count;
   uint64_t vk_flush_count;
   uint64_t vk_invalidate_count;
-  prom_reduction_pipeline pipeline;
   prom_vk_buffer input_upload;
   prom_vk_buffer input_bf16_device;
   prom_vk_buffer input_device;

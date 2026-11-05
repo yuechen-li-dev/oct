@@ -40,6 +40,22 @@ Current Vulkan reactor file topology (P12 M5 baseline):
     pure RMSNorm planner supplies strategy and admission policy. The whole
     score chain uses the same Concept attachment without a host detour or
     legacy model-state allocation.
+- `../reactors/PrometheusModelBlock.concept`
+  - owns the resident block's buffers, replacement candidates, package pipelines,
+    and pending work. Its named pre-attention stages implement BF16 ingress,
+    AdaLN, normalization/modulation, QKV projection, and Q/K normalization/RoPE.
+    Typed capture plans select audit projections. Static C audit replay borrows
+    the same Concept stage implementation and resources.
+- `reactor_concept_model_block_abi.c` and `reactor_concept_model_block.cpp`
+  - C11 packet/view transport and C++23 shader-package adaptation. The remaining
+    C attention/FFN stages borrow Concept allocations; admission, generation
+    bookkeeping, and the larger model/session executors remain migration seams.
+    See [Concept M5](../../../docs/internal/prometheus_concept_model_block_m5.md).
+- `reactor_vulkan_model_block.c`
+  - the remaining model/session policy and execution paths. Closed-block and
+    NoiseRefiner pre-attention execution now delegate to Concept. Pipeline
+    interfaces are checked against the selected shader-package variant, while
+    the small native shader registry supplies selector metadata.
 - `reactor_vulkan_queue.cpp`
   - the common host queue API synchronization boundary for all native families.
 - `reactor_vulkan_fused_reduction.c`

@@ -26,7 +26,7 @@ func TestDeploymentProvenanceRejectsStaleInputsAndOutputs(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for _, stem := range []string{"prometheusreduction", "prometheusexecution", "prometheusrmsnorm"} {
+			for _, stem := range []string{"prometheusreduction", "prometheusexecution", "prometheusrmsnorm", "prometheusmodelblock"} {
 				input := []byte("opaque source hash fixture")
 				inputPath := filepath.Join("inputs", stem+".concept")
 				write(filepath.Join(root, inputPath), input)

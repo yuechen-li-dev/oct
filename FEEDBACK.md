@@ -14,15 +14,39 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 7 |
+| Open | 8 |
 | Deferred | 11 |
-| Resolved | 95 |
+| Resolved | 97 |
 | Superseded | 1 |
 
 ## Open issues
 
 Newest first. These entries remain open; their presence is not an instruction
 to change the implementation during unrelated work.
+
+### FB-117 — Parallel native qualification can exhaust the mixed-call host deadline
+
+Date: 2026-11-05
+
+Status: Open
+
+Observation: During M5, Concept `go test -timeout 75m ./...` failed
+`TestEVT2f5NativeMixedCalls/Normal` with `NATIVE_TIMEOUT: killed after 2m0s`.
+The subsequent Verify case completed, then reported an artifact parity mismatch
+because the failed Normal case never published comparison observations. The
+same unchanged test passed alone with `-parallel=1`: Normal 121.91 s, Verify
+123.44 s, total 245.41 s including native build/setup. Its independent Win64
+ABI probes and malformed-artifact checks passed. The full run had concurrent
+native builds; load sensitivity is an inference, not a compiler parity diagnosis.
+
+Suggestion: Qualify a fresh-input budget and scheduling policy for this parent
+host, while retaining bounded trap children and all ABI/parity assertions. Avoid
+comparing Verify against an unavailable Normal result after a preceding failure.
+The broad run remains failed; an isolated pass is not a full-suite green claim.
+Evidence: `.tmp/m5-concept-full.log`, `.tmp/m5-concept-mixed-rerun.log`, and
+`docs/internal/prometheus_concept_model_block_m5.md`.
+
+---
 
 ### FB-112 — Concept call arguments do not supply context for Result constructors
 
@@ -355,6 +379,45 @@ Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. 
 ## Resolved issues
 
 Recorded fixes and their evidence. Each entry states its qualification scope.
+
+### FB-116 — M2C session fixture omitted the current attention-route policy
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: `PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs`
+zero-initialized `main_attention_route_policy`. Current admission accepts the
+explicit route enum, whose `AUTO` value is 1; zero fails before stream allocation.
+The fixture therefore failed its intended three-slot lifecycle assertions.
+
+Resolution: Specify `PROM_MAIN_ATTENTION_ROUTE_AUTO` and retain a separate
+zero-policy rejection before successful creation. No production admission rule
+was relaxed. Validation: the repaired native case and adjacent facade rejection
+case run in the M5 selected regression lane.
+
+---
+
+### FB-115 — Model pipelines treated omitted selector interfaces as authoritative
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Several Z-Image `META` selector rows carry zero binding/push sizes;
+the full interface belongs to the shader package. The retained model pipeline
+factory compared its required interface against those omitted values and rejected
+creation. The new Concept ingress adapter initially exposed the same mismatch
+as `PROM_MODEL_BLOCK_DETAIL_INGRESS_PIPELINE_CREATE_FAILED`.
+
+Resolution: `prom_shader_package_validate_interface` checks the exact immutable
+selected variant. The Concept adapter and retained model factory use that owner
+instead of requiring duplicate selector facts. Validation rejects wrong binding
+counts, push sizes and missing variants/owners without opening module bytes;
+real-weight AdaLN and the independent six-stage prefix witness execute on GPU.
+See `docs/internal/prometheus_concept_model_block_m5.md`.
+
+---
 
 ### FB-104 — Workspace ownership check still assumes a source-bearing native registry
 

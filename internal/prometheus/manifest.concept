@@ -19,7 +19,7 @@ record struct NativeDefine { string name; string value; bool hasValue; };
 record struct NativeTarget {
     string name; NativeLanguage language; NativeStandard standard;
     NativeOutputKind kind; string output;
-    string<array>[6] sources;
+    string<array>[8] sources;
     string<array>[4] includes;
     NativeDefine<array>[1] defines;
     string<array>[1] linkInputs;
@@ -44,13 +44,14 @@ comptime NativeProjectManifest Native = NativeProjectManifest{
         NativeOutputKind::StaticLibrary, ".native-build/libprometheus_concept_c.a",
         [".native-build/generated/prometheusexecution.generated.c", ".native-build/generated/prometheusreduction.generated.c",
          ".native-build/generated/prometheusrmsnorm.generated.c", "native/reactor_concept_reduction_abi.c",
-         "native/reactor_concept_rmsnorm_abi.c", "@Vulkan/native/device_runtime.c"],
+         "native/reactor_concept_rmsnorm_abi.c", "@Vulkan/native/device_runtime.c",
+         ".native-build/generated/prometheusmodelblock.generated.c", "native/reactor_concept_model_block_abi.c"],
         ["native", ".native-build", "@Vulkan/native", "@VulkanSDK/include"],
         [NativeDefine{"PROMETHEUS_REACTOR_BUILD_DLL", "1", true}], [""]
     }, NativeTarget{
         "prometheus_concept_cpp", NativeLanguage::Cpp, NativeStandard::Cpp23,
         NativeOutputKind::StaticLibrary, ".native-build/libprometheus_concept_cpp.a",
-        ["native/reactor_concept_reduction.cpp", "native/reactor_concept_rmsnorm.cpp", "native/reactor_vulkan_queue.cpp", "", "", ""],
+        ["native/reactor_concept_reduction.cpp", "native/reactor_concept_rmsnorm.cpp", "native/reactor_vulkan_queue.cpp", "native/reactor_concept_model_block.cpp", "", "", "", ""],
         ["native", ".native-build", "@Vulkan/native", "@VulkanSDK/include"],
         [NativeDefine{"PROMETHEUS_REACTOR_BUILD_DLL", "1", true}], [""]
     }],

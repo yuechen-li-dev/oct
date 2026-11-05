@@ -200,6 +200,21 @@ malformed:prom_diag(d,PROM_SHADER_PACKAGE_MANIFEST_MALFORMED,"malformed shader p
 fail:free(schema_text);free(version);free(id);free(text);prom_shader_package_destroy(p);return 0;
 }
 
+int prom_shader_package_validate_interface(const prom_shader_package* p, const char* variant_id,
+    uint32_t bindings, uint32_t push_bytes, prom_shader_package_diagnostic* d) {
+  int index;
+  if (p == NULL || variant_id == NULL || (index = prom_find_variant(p, variant_id)) < 0) {
+    prom_diag(d, PROM_SHADER_PACKAGE_VARIANT_UNAVAILABLE, "requested shader interface is absent");
+    return 0;
+  }
+  if (p->variants[index].descriptor_bindings != bindings || p->variants[index].push_constant_bytes != push_bytes) {
+    prom_diag(d, PROM_SHADER_PACKAGE_TABLE_INVALID, "host bindings or push bytes disagree with shader package interface");
+    return 0;
+  }
+  prom_diag(d, PROM_SHADER_PACKAGE_OK, "");
+  return 1;
+}
+
 static size_t prom_bounded_strlen(const char* text, size_t limit){size_t length=0u;if(text==NULL)return 0u;while(length<limit&&text[length]!='\0')++length;return length;}
 static uint32_t prom_word(const unsigned char* p){return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
 static int prom_spirv_entry_and_local_size(const unsigned char* bytes,size_t size,const prom_package_variant* v){
