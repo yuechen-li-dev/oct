@@ -45,8 +45,8 @@ program source uses `.oct`. There is no required semicolon.
 
 ## Run a program instead of a test
 
-A normal `.oct` file declares a `Main` or `main` entry function. For example,
-replace the test above with `fn main() -> Int { return SumSquares([1, 2, 3]) }`
+A normal `.oct` file declares a `Main` entry function. For example,
+replace the test above with `fn Main() -> Int { return SumSquares([1, 2, 3]) }`
 and keep the package and helper function. `oct run file.oct` interprets it;
 `oct build file.oct` produces a native executable. A non-`Void` entry result is
 printed. Build output names are described in the [CLI](../tooling/cli.md).

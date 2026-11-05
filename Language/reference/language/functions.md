@@ -75,8 +75,10 @@ ordinary synchronous functions unless the computation must suspend.
 
 ## Entry functions and multiple results
 
-An executable package uses `Main` or `main` as its entry function. Tests instead
-select attributed functions. Ordinary functions can call named functions
+Use `Main` as the entry function of an executable package so it works with
+both `oct run` and `oct build`. The native backend also accepts lowercase
+`main`, but the interpreter currently requires `Main`. Tests instead select
+attributed functions. Ordinary functions can call named functions
 declared later and can recurse; there are no methods, overload sets, variadic
 parameters, default arguments, or tuple return syntax in this source surface.
 Use a named concept or record to return several related values.
