@@ -20,7 +20,7 @@ record ReductionParams {
 
 // SDSL-V does not yet expose Exp as a compiler intrinsic.
 fn ExpF32(value: f32) -> f32 {
-    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    let result: f32 = Exp(value);
     return result;
 }
 

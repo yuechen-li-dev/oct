@@ -18,13 +18,20 @@ type Value struct {
 func Eval(expr ast.Expr, env map[string]Value) (Value, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
-		value, err := strconv.ParseInt(strings.TrimRight(e.Value, "uU"), 10, 32)
-		if err != nil {
-			return Value{}, fmt.Errorf("invalid integer literal %s", e.Value)
-		}
+		text := strings.TrimRight(e.Value, "uU")
 		typ := ast.TypeRef{Name: "i32"}
+		var value int64
+		var err error
 		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {
 			typ = ast.TypeRef{Name: "u32"}
+			var unsigned uint64
+			unsigned, err = strconv.ParseUint(text, 10, 32)
+			value = int64(unsigned)
+		} else {
+			value, err = strconv.ParseInt(text, 10, 32)
+		}
+		if err != nil {
+			return Value{}, fmt.Errorf("invalid integer literal %s", e.Value)
 		}
 		return Value{Type: typ, Int32: value, IsKnown: true}, nil
 	case ast.BoolLiteral:
@@ -48,6 +55,11 @@ func Eval(expr ast.Expr, env map[string]Value) (Value, error) {
 			return Value{}, err
 		}
 		switch e.Operator {
+		case "~":
+			if !IsInteger(value.Type) {
+				return Value{}, fmt.Errorf("bitwise ~ requires scalar i32 or u32 operand")
+			}
+			return integerBits(value.Type, ^uint32(value.Int32)), nil
 		case "-":
 			if !IsInteger(value.Type) {
 				return Value{}, fmt.Errorf("unary - requires integer constant operand")
@@ -92,6 +104,35 @@ func Eval(expr ast.Expr, env map[string]Value) (Value, error) {
 			return Value{}, err
 		}
 		switch e.Operator {
+		case "&", "|", "^", "<<", ">>":
+			if !IsInteger(left.Type) {
+				return Value{}, fmt.Errorf("bitwise %s requires scalar i32 or u32 operands", e.Operator)
+			}
+			a, b := uint32(left.Int32), uint32(right.Int32)
+			if e.Operator == "<<" || e.Operator == ">>" {
+				if right.Type.Name != "u32" {
+					return Value{}, fmt.Errorf("shift count must be u32")
+				}
+				count := b & 31
+				if e.Operator == "<<" {
+					return integerBits(left.Type, a<<count), nil
+				}
+				if left.Type.Name == "i32" {
+					return integerBits(left.Type, uint32(int32(a)>>count)), nil
+				}
+				return integerBits(left.Type, a>>count), nil
+			}
+			if right.Type.Name != left.Type.Name {
+				return Value{}, fmt.Errorf("bitwise %s requires matching scalar i32 or u32 operands", e.Operator)
+			}
+			switch e.Operator {
+			case "&":
+				return integerBits(left.Type, a&b), nil
+			case "|":
+				return integerBits(left.Type, a|b), nil
+			default:
+				return integerBits(left.Type, a^b), nil
+			}
 		case "+", "-", "*", "/", "%":
 			if !IsInteger(left.Type) || !IsInteger(right.Type) {
 				return Value{}, fmt.Errorf("arithmetic constant expressions require integer operands")
@@ -139,6 +180,14 @@ func Eval(expr ast.Expr, env map[string]Value) (Value, error) {
 	default:
 		return Value{}, fmt.Errorf("expression is not a valid SDSL-V M6 constant expression")
 	}
+}
+
+func integerBits(typ ast.TypeRef, bits uint32) Value {
+	value := int64(bits)
+	if typ.Name == "i32" {
+		value = int64(int32(bits))
+	}
+	return Value{Type: typ, Int32: value, IsKnown: true}
 }
 
 func LiteralExpr(value Value) ast.Expr {

@@ -1755,6 +1755,20 @@ func hlslIntrinsic(intrinsic vdmir.Intrinsic) string {
 		return "GroupMemoryBarrier"
 	case vdmir.IntrinsicDot:
 		return "dot"
+	case vdmir.IntrinsicExp:
+		return "exp"
+	case vdmir.IntrinsicSqrt:
+		return "sqrt"
+	case vdmir.IntrinsicRsqrt:
+		return "rsqrt"
+	case vdmir.IntrinsicSin:
+		return "sin"
+	case vdmir.IntrinsicCos:
+		return "cos"
+	case vdmir.IntrinsicTanh:
+		return "tanh"
+	case vdmir.IntrinsicPow:
+		return "pow"
 	case vdmir.IntrinsicCross:
 		return "cross"
 	case vdmir.IntrinsicNormalize:

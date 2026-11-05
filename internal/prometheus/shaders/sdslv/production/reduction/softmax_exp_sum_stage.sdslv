@@ -33,7 +33,7 @@ enum ReductionLane {
 // SDSL-V does not yet expose Exp as a compiler intrinsic.  This one-expression
 // escape is the only foreign primitive; all indexing and reduction stay SDSL-V.
 fn ExpF32(value: f32) -> f32 {
-    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    let result: f32 = Exp(value);
     return result;
 }
 

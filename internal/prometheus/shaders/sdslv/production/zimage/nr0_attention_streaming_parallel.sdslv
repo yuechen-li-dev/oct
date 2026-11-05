@@ -9,7 +9,7 @@ stream AttentionStreamingIO {
 record AttentionStreamingParams { TokenCount: u32; HeadCount: u32; HeadWidth: u32; FusedWidth: u32; }
 
 fn ExponentialF32(value: f32) -> f32 {
-    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    let result: f32 = Exp(value);
     return result;
 }
 

@@ -1,0 +1,2 @@
+// expect-diagnostic: SDSL-V4302 2:30
+fn Invalid() -> f32 { return Sqrt(4u); }

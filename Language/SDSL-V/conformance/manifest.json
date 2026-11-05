@@ -11,6 +11,46 @@
   ],
   "valid": [
     {
+      "id": "compute.bitwise-constants",
+      "source": "Language/SDSL-V/conformance/compute/BitwiseConstants.sdslvvalid",
+      "profile": "compute",
+      "entry_points": [
+        "BitwiseConstants_CS"
+      ],
+      "stages": [
+        "compute"
+      ],
+      "stream_roles": {},
+      "coordinate_spaces": [],
+      "bindings": [],
+      "locations": [],
+      "builtins": [],
+      "required_capabilities": [],
+      "reference_artifacts": []
+    },
+    {
+      "id": "compute.oct-style-template",
+      "source": "Language/SDSL-V/conformance/compute/OctStyleTemplate.sdslvvalid",
+      "profile": "compute",
+      "entry_points": [
+        "OctStyleTile_CS"
+      ],
+      "stages": [
+        "compute"
+      ],
+      "stream_roles": {
+        "OutputIO": "resource"
+      },
+      "coordinate_spaces": [],
+      "bindings": [
+        "Output:set0/binding0:storage-buffer:readwrite"
+      ],
+      "locations": [],
+      "builtins": [],
+      "required_capabilities": [],
+      "reference_artifacts": []
+    },
+    {
       "id": "shared.coordinate-spaces",
       "source": "Language/SDSL-V/conformance/shared/CoordinateSpaces.sdslvvalid",
       "profile": "shared",
@@ -138,6 +178,20 @@
     }
   ],
   "invalid": [
+    {"source": "Language/SDSL-V/conformance/invalid/BitwiseFloat.sdslvinvalid", "code": "SDSL-V4311", "line": 2, "column": 30, "category": "bitwise-operations"},
+    {"source": "Language/SDSL-V/conformance/invalid/BitwiseBoolean.sdslvinvalid", "code": "SDSL-V4311", "line": 2, "column": 31, "category": "bitwise-operations"},
+    {"source": "Language/SDSL-V/conformance/invalid/BitwiseMixedSignedness.sdslvinvalid", "code": "SDSL-V4311", "line": 2, "column": 30, "category": "bitwise-operations"},
+    {"source": "Language/SDSL-V/conformance/invalid/BitwiseComplementFloat.sdslvinvalid", "code": "SDSL-V4311", "line": 2, "column": 30, "category": "bitwise-operations"},
+    {"source": "Language/SDSL-V/conformance/invalid/BitwiseVector.sdslvinvalid", "code": "SDSL-V4311", "line": 2, "column": 44, "category": "bitwise-operations"},
+    {"source": "Language/SDSL-V/conformance/invalid/ShiftSignedCount.sdslvinvalid", "code": "SDSL-V4312", "line": 2, "column": 30, "category": "bitwise-operations"},
+    {"source": "Language/SDSL-V/conformance/invalid/ShiftFloatCount.sdslvinvalid", "code": "SDSL-V4312", "line": 2, "column": 30, "category": "bitwise-operations"},
+    {"source": "Language/SDSL-V/conformance/invalid/HexOverflow.sdslvinvalid", "code": "SDSL-V4310", "line": 2, "column": 30, "category": "bitwise-operations"},
+    {"source": "Language/SDSL-V/conformance/invalid/TemplateMissingParameters.sdslvinvalid", "code": "SDSL-V4303", "line": 2, "column": 25, "category": "template-declaration"},
+    {"source": "Language/SDSL-V/conformance/invalid/ShaderParametersWithoutTemplate.sdslvinvalid", "code": "SDSL-V4303", "line": 2, "column": 13, "category": "template-declaration"},
+    {"source": "Language/SDSL-V/conformance/invalid/MathWrongArity.sdslvinvalid", "code": "SDSL-V4301", "line": 2, "column": 30, "category": "math-intrinsic"},
+    {"source": "Language/SDSL-V/conformance/invalid/MathInteger.sdslvinvalid", "code": "SDSL-V4302", "line": 2, "column": 30, "category": "math-intrinsic"},
+    {"source": "Language/SDSL-V/conformance/invalid/MathSemanticSpace.sdslvinvalid", "code": "SDSL-V4302", "line": 3, "column": 42, "category": "math-intrinsic"},
+    {"source": "Language/SDSL-V/conformance/invalid/MathMismatchedWidth.sdslvinvalid", "code": "SDSL-V4302", "line": 2, "column": 53, "category": "math-intrinsic"},
     {"source": "Language/SDSL-V/conformance/invalid/SpaceGroupDuplicateTypeName.sdslvinvalid", "code": "SDSL-V1509", "line": 3, "column": 5, "related_line": 2, "related_column": 5, "category": "semantic-space-group-name"},
     {"source": "Language/SDSL-V/conformance/invalid/SpaceGroupCanonicalIdentityCollision.sdslvinvalid", "code": "SDSL-V4124", "line": 3, "column": 5, "related_line": 2, "related_column": 5, "category": "semantic-space-group-identity"},
     {"source": "Language/SDSL-V/conformance/invalid/SpaceGroupExplicitIdentityCollision.sdslvinvalid", "code": "SDSL-V4124", "line": 3, "column": 5, "related_line": 1, "related_column": 36, "category": "semantic-space-group-explicit-collision"},

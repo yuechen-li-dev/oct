@@ -132,6 +132,12 @@ deterministic replay identity. It does not create or own runtime pipeline state.
 
 ## Contribution path
 
+Use `template shader Name<C: ConfigConcept>` for new shader templates. Shared
+scientific math and numeric conversions use typed intrinsics instead of inline
+HLSL. The [frontend modernization report](../internal/sdslv/DevelopmentReport/SDSL_V_FRONTEND_MODERNIZATION.md)
+records the shared parser boundary, production equivalence evidence, remaining
+language gaps, and the existing workspace-checker defect.
+
 Add a candidate at `experimental/<family>/`; use the existing language corpus
 and examples for contracts and only add a permanent benchmark when the identity
 is intended to persist. A durable generated proof may add a selector-ineligible

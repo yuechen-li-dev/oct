@@ -14,15 +14,136 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 2 |
+| Open | 7 |
 | Deferred | 11 |
-| Resolved | 89 |
+| Resolved | 90 |
 | Superseded | 1 |
 
 ## Open issues
 
 Newest first. These entries remain open; their presence is not an instruction
 to change the implementation during unrelated work.
+
+### FB-109 — Inline HLSL expressions rewrite only the first return
+
+Date: 2026-11-04
+
+Status: Open
+
+Observation: `internal/sdslv/emit/hlsl/hlsl.go` rewrites a foreign expression
+with `strings.Replace(expr.RawSource, "return", target+" =", 1)`. A conditional
+first return becomes an assignment without exiting the expression, while later
+raw returns escape the enclosing function. The original BF16 roundtrip helpers
+in HEAD `b30d64bb` expose this on the native GPU: positive and negative infinity
+become quiet NaNs (`0x7f800000 -> 0x7fc00000`,
+`0xff800000 -> 0xffc00000`). Both original Gemma helpers fail those two rows.
+The generated conditional is `if (mantissa == 0u) target = value;` followed by
+the NaN-return path. Failed baseline results are preserved by the paired
+modernization qualification.
+
+Suggestion: Give a foreign expression an actual expression-owned return scope,
+or reject unsupported control forms before emission. A textual first-match
+replacement cannot implement control flow safely. Do not change arbitrary raw
+returns into assignments and claim equivalent behavior.
+
+Scope: Ordinary SDSL-V branches fix the migrated BF16 programs and pass all
+precision rows. The general foreign-expression emitter remains unfixed.
+
+---
+
+### FB-108 — Legal SDSL-V identifiers can collide with HLSL keywords
+
+Date: 2026-11-04
+
+Status: Open
+
+Observation: A valid scalar local named `signed` passes SDSL-V validation but
+`oct sdslv test` fails in DXC with `'signed' is a reserved keyword in HLSL`.
+The emitted declaration is `int signed = ...;`. The integer GPU contract uses
+the descriptive name `signedWord`; that is not a compiler fix for legal source
+identifiers.
+
+Suggestion: Apply deterministic backend name escaping to declarations and their
+resolved uses. Preserve SDSL-V declaration identity instead of requiring authors
+to know the target language's reserved words.
+
+---
+
+### FB-107 — Comptime declarations in GPU facts reach unsupported statement lowering
+
+Date: 2026-11-04
+
+Status: Open
+
+Observation: A `.sdslvtest` fact containing `comptime let value: u32 = 1u;`
+passes parsing/validation, then `oct sdslv test` fails with
+`SDSL-V test body lowering: unsupported statement in GoOct SDSL-V M3`.
+The existing shader config/static-assert path handles bounded constant
+evaluation; the GPU fact path does not apply that same staging boundary.
+
+Suggestion: Reuse the existing bounded staging pass for admitted test bodies,
+or reject the unsupported test-profile form with a precise source diagnostic.
+Do not create a second constant evaluator or leave validated source to a
+generic downstream failure.
+
+Scope: Bitwise constant behavior is qualified through the normal config,
+static-assert, and shader compilation path. This pass does not claim comptime
+statements work in `.sdslvtest` bodies.
+
+---
+
+### FB-106 — Subgroup collectives still require inline shader bodies
+
+Date: 2026-11-04
+
+Status: Open
+
+Observation: Four production SDSL-V blocks still contain whole HLSL bodies:
+`reduction/softmax_fused.sdslv`,
+`zimage/main_transformer_joint_attention_subgroup_owned32.sdslv`,
+`zimage/main_transformer_joint_attention_builtin_topology.sdslv`, and
+`zimage/main_transformer_subgroup_owned32_topology_probe.sdslv` under
+`internal/prometheus/shaders/sdslv/production/`. Subgroup ID and local-invocation
+builtins already exist, but reductions, lane count/index operations, broadcasts,
+and their control-uniformity rules are not a complete typed language surface.
+The inline bodies also contain ordinary arithmetic and loops that should return
+to SDSL-V once these boundaries are expressible.
+
+Suggestion: Add typed subgroup operations through validation, VD-MIR, capability
+metadata, and emission. Qualify lane participation and workgroup merge behavior
+against these actual kernels before replacing the foreign bodies. Reuse the
+existing subgroup builtins; do not encode subgroup semantics in source strings.
+
+Scope: The scalar/vector math and template modernization does not establish
+subgroup-collective legality or qualify a replacement attention kernel.
+
+---
+
+### FB-104 — Workspace ownership check still assumes a source-bearing native registry
+
+Date: 2026-11-04
+
+Status: Open
+
+Observation: `go run ./tools/sdslv_workspace_check` fails with
+`registry does not own manifest source internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv`.
+The checker searches `reactor_shader_registry.c` for every manifest source
+string. The current native registry explicitly describes itself as a small
+selector projection; its `META` rows omit source paths and the complete catalog
+belongs to `prometheus.core`. The same first failure was reproduced using
+HEAD `b30d64bb`'s manifest, registry, and conformance inputs with the unchanged
+checker, before assigning any modernization-specific failure to this pass.
+
+Suggestion: Reconcile the checker with package-owned provenance and the native
+projection's actual contract. Preserve source ownership and digest checks at
+their owning boundary; do not add obsolete source strings to the registry just
+to satisfy a textual scan.
+
+Scope: All 26 shaders changed by the modernization independently pass DXC and
+SPIR-V validation and emit byte-identical modules relative to their baseline.
+This does not make the complete workspace check pass.
+
+---
 
 ### FB-103 — Entry function spelling differs between run and build
 
@@ -237,6 +358,39 @@ Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. 
 ## Resolved issues
 
 Recorded fixes and their narrow evidence. These are prior dispositions, not a claim that this organization pass reran every qualification.
+
+### FB-105 — Packed BF16 boundaries lack ordinary typed bit operations
+
+Date: 2026-11-04
+
+Status: Resolved
+
+Observation: Three production HLSL blocks remain in
+`zimage/nr0_bf16_ingress.sdslv`, `gemma4e2b/bf16_roundtrip.sdslv`, and
+`gemma4e2b/rope_half_split.sdslv` under
+`internal/prometheus/shaders/sdslv/production/`. Existing `Bitcast<T>` and
+`Convert<T>` cover conversion, but the bodies also require integer masks,
+shifts, bitwise composition, and explicit BF16 rounding/NaN policy. These are
+missing typed language capabilities, not a reason to keep extending raw HLSL.
+
+Suggestion: Specify integer bit operations and packed precision admission,
+then qualify finite rounding ties, signed zero, infinities, NaN payloads, and
+packed-lane selection before migrating these boundaries. Keep model-specific
+rounding policy in readable programs over compiler-owned operations.
+
+Scope: The two blocks in `sgemm/inline_hlsl_bitcast_proof.sdslv` deliberately
+test the foreign-language boundary and are not missing-feature evidence.
+
+Resolution: SDSL-V now has scalar `i32`/`u32` `&`, `|`, `^`, `~`, `<<`, and
+`>>`, hexadecimal masks, and matching 32-bit constant/runtime rules. All three
+BF16 sources use ordinary typed code and `Bitcast<T>`. The permanent GPU corpus
+passes 20 roundtrip and eight packed-lane cases. Paired checks of the actual
+three source helpers pass all 48 rewritten cases; the original helpers pass
+44 and fail four infinity cases because of FB-109. Config/static-assert and
+invalid-operand contracts are registered in conformance. This qualifies these
+precision boundaries, not a full model run.
+
+---
 
 ### FB-001 — Typed payload locals in compiled enum match
 
@@ -1596,13 +1750,13 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-104**. Put a new open issue at
+Use the next unused identifier, currently **FB-110**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.
 
 ```markdown
-### FB-104 — Short, specific title
+### FB-110 — Short, specific title
 
 Date: YYYY-MM-DD
 

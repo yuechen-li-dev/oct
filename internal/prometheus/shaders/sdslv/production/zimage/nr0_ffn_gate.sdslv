@@ -17,7 +17,7 @@ stream FfnGateIO {
 
 record FfnGateParams { ElementCount: u32; Reserved0: u32; Reserved1: u32; Reserved2: u32; }
 
-fn ExponentialF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return exp(value); }; return result; }
+fn ExponentialF32(value: f32) -> f32 { let result: f32 = Exp(value); return result; }
 
 // W1 is transformed in place only after its separate audit boundary; W3 is
 // immutable through this stage, preserving its independent witness.

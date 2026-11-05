@@ -11,7 +11,7 @@ stream AttentionResidualIO {
 record AttentionResidualParams { Epsilon: f32; TokenCount: u32; ModelWidth: u32; Reserved: u32; }
 
 fn ReciprocalSqrtF32(value: f32) -> f32 {
-    let result: f32 = HLSL<f32>(value) { return rsqrt(value); };
+    let result: f32 = Rsqrt(value);
     return result;
 }
 

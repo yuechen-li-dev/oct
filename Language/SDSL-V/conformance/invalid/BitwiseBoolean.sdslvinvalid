@@ -1,0 +1,2 @@
+// expect-diagnostic: SDSL-V4311 2:31
+fn Invalid() -> bool { return true | false; }

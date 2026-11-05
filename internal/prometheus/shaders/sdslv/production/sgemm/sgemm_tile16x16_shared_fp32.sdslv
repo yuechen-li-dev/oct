@@ -56,8 +56,7 @@ config Tile16x16SharedFp32: SharedTileSgemmConfig {
     Tile.K => 16u;
 }
 
-template<C: SharedTileSgemmConfig>
-shader SgemmTileSharedFp32 {
+template shader SgemmTileSharedFp32<C: SharedTileSgemmConfig> {
     resources SgemmIO;
 
     static assert C.Threads.X * C.Threads.Y <= 1024u;

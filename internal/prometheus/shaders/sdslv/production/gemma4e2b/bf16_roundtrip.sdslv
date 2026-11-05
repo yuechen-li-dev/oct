@@ -23,20 +23,17 @@ record Bf16RoundtripParams {
 // Finite values round to nearest-even at BF16 bit 16. NaNs retain high payload
 // bits and are made quiet, preventing a signalling payload from becoming inf.
 fn RoundtripBF16(value: f32) -> f32 {
-    let rounded: f32 = HLSL<f32>(value) {
-        uint bits = asuint(value);
-        uint exponent = bits & 0x7f800000u;
-        uint mantissa = bits & 0x007fffffu;
-        if (exponent == 0x7f800000u) {
-            if (mantissa == 0u) return value;
-            uint bf16 = (bits >> 16u) | 0x0040u;
-            return asfloat(bf16 << 16u);
-        }
-        uint lsb = (bits >> 16u) & 1u;
-        uint bf16 = (bits + 0x00007fffu + lsb) >> 16u;
-        return asfloat(bf16 << 16u);
-    };
-    return rounded;
+    let bits: u32 = Bitcast<u32>(value);
+    let exponent: u32 = bits & 0x7f800000u;
+    let mantissa: u32 = bits & 0x007fffffu;
+    if exponent == 0x7f800000u {
+        if mantissa == 0u { return value; }
+        let bf16: u32 = (bits >> 16u) | 0x0040u;
+        return Bitcast<f32>(bf16 << 16u);
+    }
+    let lsb: u32 = (bits >> 16u) & 1u;
+    let bf16: u32 = (bits + 0x00007fffu + lsb) >> 16u;
+    return Bitcast<f32>(bf16 << 16u);
 }
 
 shader Gemma4E2BM1Bf16Roundtrip {

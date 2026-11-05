@@ -1,0 +1,3 @@
+// expect-diagnostic: SDSL-V4302 3:42
+type Direction = float3 @space(world.vector);
+fn Invalid(x: Direction) -> f32 { return Sin(x); }

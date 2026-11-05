@@ -54,8 +54,7 @@ config Reg2x2Tile16x16ExactTailFp32: RegBlockedSgemmConfig {
     Tile.K => 16u;
 }
 
-template<C: RegBlockedSgemmConfig>
-shader SgemmReg2x2Tile16x16ExactTailFp32 {
+template shader SgemmReg2x2Tile16x16ExactTailFp32<C: RegBlockedSgemmConfig> {
     resources SgemmIO;
 
     static assert C.Threads.X * C.Threads.Y <= 1024u;

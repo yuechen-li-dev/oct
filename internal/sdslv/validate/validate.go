@@ -1804,6 +1804,20 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 		left := v.exprTypeWithExpected(e.Left, scope, shaderName, templateParam, nil, currentDeriveField)
 		right := v.exprTypeWithExpected(e.Right, scope, shaderName, templateParam, nil, currentDeriveField)
 		switch e.Operator {
+		case "&", "|", "^", "<<", ">>":
+			left, right = v.resolveAlias(left), v.resolveAlias(right)
+			if !consteval.IsInteger(left) || left.Space != "" {
+				v.errorAt(e.Span, "SDSL-V4311", "bitwise %s requires scalar i32 or u32 operands", e.Operator)
+				return ast.TypeRef{Name: "<error>"}
+			}
+			if e.Operator == "<<" || e.Operator == ">>" {
+				if right.Name != "u32" || right.Space != "" {
+					v.errorAt(e.Span, "SDSL-V4312", "shift count must be u32")
+				}
+			} else if right.Name != left.Name || right.Space != "" {
+				v.errorAt(e.Span, "SDSL-V4311", "bitwise %s requires matching scalar i32 or u32 operands", e.Operator)
+			}
+			return left
 		case "and", "or":
 			if left.Name != "bool" || right.Name != "bool" {
 				v.errorAt(ast.ExprSpan(e.Right), "SDSL-V1502", "operator `%s` requires bool operands", e.Operator)
@@ -1830,6 +1844,12 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 	case ast.UnaryExpr:
 		operand := v.exprTypeWithExpected(e.Operand, scope, shaderName, templateParam, nil, currentDeriveField)
 		switch e.Operator {
+		case "~":
+			operand = v.resolveAlias(operand)
+			if !consteval.IsInteger(operand) || operand.Space != "" {
+				v.errorAt(e.Span, "SDSL-V4311", "bitwise ~ requires scalar i32 or u32 operand")
+			}
+			return operand
 		case "not":
 			if operand.Name != "bool" {
 				v.errorAt(ast.ExprSpan(e.Operand), "SDSL-V1502", "operator `not` requires bool operand")
@@ -2048,6 +2068,8 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 	}
 	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
 		switch id.Name {
+		case "Exp", "Sqrt", "Rsqrt", "Sin", "Cos", "Tanh", "Pow":
+			return v.mathIntrinsicType(id.Name, call, scope, shaderName, templateParam)
 		case "Dot":
 			return v.dotType(call, scope, shaderName, templateParam)
 		case "Cross":
@@ -2238,6 +2260,29 @@ func (v *validator) vectorConstructorType(name string, call ast.CallExpr, scope 
 		}
 	}
 	return ast.TypeRef{Name: name}
+}
+
+func (v *validator) mathIntrinsicType(name string, call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	arity := 1
+	if name == "Pow" {
+		arity = 2
+	}
+	if len(call.Arguments) != arity {
+		v.errorAt(call.Span, "SDSL-V4301", "%s expects %d arguments, got %d", name, arity, len(call.Arguments))
+		return ast.TypeRef{Name: "<error>"}
+	}
+	result := v.resolveAlias(v.exprType(call.Arguments[0], scope, shaderName, templateParam))
+	if result.Space != "" || !oneOf(result.Name, "f32", "float2", "float3", "float4") {
+		v.errorAt(call.Span, "SDSL-V4302", "%s expects plain f32, float2, float3, or float4 arguments", name)
+		return ast.TypeRef{Name: "<error>"}
+	}
+	for _, arg := range call.Arguments[1:] {
+		got := v.resolveAlias(v.exprType(arg, scope, shaderName, templateParam))
+		if got.Space != "" || got.Name != result.Name {
+			v.errorAt(call.Span, "SDSL-V4302", "%s expects matching plain float arguments, got %s and %s", name, typeName(result), typeName(got))
+		}
+	}
+	return result
 }
 
 func (v *validator) crossType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {

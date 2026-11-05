@@ -28,8 +28,7 @@ config Tile16x16: TileCopyConfig {
     TILE_SIZE: 256u;
 }
 
-template<C: TileCopyConfig>
-shader TileCopy {
+template shader TileCopy<C: TileCopyConfig> {
     resources TileCopyIO;
 
     workgroup Tile: array<f32, C.TILE_SIZE>;

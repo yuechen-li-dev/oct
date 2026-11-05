@@ -648,6 +648,8 @@ const (
 )
 
 type IntegerLiteral struct {
+	// Value is decimal text with an optional unsigned suffix. The parser
+	// normalizes hexadecimal spelling; Span retains its exact source extent.
 	Span  source.Span
 	Value string
 }

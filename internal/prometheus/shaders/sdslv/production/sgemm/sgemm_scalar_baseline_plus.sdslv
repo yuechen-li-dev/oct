@@ -48,8 +48,7 @@ config Scalar8x8: ScalarSgemmConfig {
     Unroll.K => 4u;
 }
 
-template<C: ScalarSgemmConfig>
-shader SgemmScalarBaselinePlus {
+template shader SgemmScalarBaselinePlus<C: ScalarSgemmConfig> {
     resources SgemmIO;
 
     static assert C.Threads.X * C.Threads.Y <= 1024u;

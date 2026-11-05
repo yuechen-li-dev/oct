@@ -18,9 +18,9 @@ record FftButterflyParams {
     Reserved1: u32;
 }
 
-fn CosineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return cos(value); }; return result; }
-fn SineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return sin(value); }; return result; }
-fn UintToF32(value: u32) -> f32 { let result: f32 = HLSL<f32>(value) { return float(value); }; return result; }
+fn CosineF32(value: f32) -> f32 { let result: f32 = Cos(value); return result; }
+fn SineF32(value: f32) -> f32 { let result: f32 = Sin(value); return result; }
+fn UintToF32(value: u32) -> f32 { let result: f32 = Convert<f32>(value); return result; }
 
 shader FftRadix2Butterfly {
     resources FftButterflyIO;

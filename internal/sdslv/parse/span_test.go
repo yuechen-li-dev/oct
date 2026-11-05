@@ -8,6 +8,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/token"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
@@ -36,6 +37,25 @@ func TestSdslvAstRepresentativeSourceSpans(t *testing.T) {
 	call := fn.Body.Statements[2].(ast.ExprStmt).Value.(ast.CallExpr)
 	assertSlice(t, text, call.Span, "Assert.Equal(y, 1u, \"embedded SDSL-V fixture must preserve its asserted invariant\")")
 	auditKnownSpans(t, reflect.ValueOf(module), len(text))
+}
+
+func TestNestedTypeClosersPreserveSpansAndLexerInput(t *testing.T) {
+	const text = "fn F(x: array<array<u32>>) -> void {}"
+	result, err := lex.Analyze(source.File{Path: "closers.sdslv", Text: text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := append([]token.Token(nil), result.Tokens...)
+	module, err := BuildModule(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(result.Tokens, before) {
+		t.Fatal("type-closer splitting mutated the caller's lexer tokens")
+	}
+	ref := module.Decls[0].(ast.FunctionDecl).Parameters[0].Type
+	assertSlice(t, text, ref.Span, "array<array<u32>>")
+	assertSlice(t, text, ref.Args[0].Span, "array<u32>")
 }
 
 func TestSdslvNdarraySourceSpansAndSlices(t *testing.T) {

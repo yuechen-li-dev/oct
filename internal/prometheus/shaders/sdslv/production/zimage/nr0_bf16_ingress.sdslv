@@ -16,11 +16,9 @@ record Bf16IngressParams {
 }
 
 fn WidenBF16(word: u32, element: u32) -> f32 {
-    let widened: f32 = HLSL<f32>(word, element) {
-        uint bf16Bits = (element % 2u) == 0u ? (word & 65535u) : (word >> 16u);
-        return asfloat(bf16Bits << 16u);
-    };
-    return widened;
+    var bf16Bits: u32 = word >> 16u;
+    if element % 2u == 0u { bf16Bits = word & 0xffffu; }
+    return Bitcast<f32>(bf16Bits << 16u);
 }
 
 shader Nr0Bf16Ingress {

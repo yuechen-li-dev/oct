@@ -1,0 +1,32 @@
+concept BitConfig {
+    WIDTH: u32;
+    ALL_BITS: u32;
+    HIGH_BIT: u32;
+    UNSIGNED_HIGH: u32;
+    WRAPPED_COUNT: u32;
+    SIGNED_SHIFT: i32;
+    COMBINED: u32;
+}
+config Bits: BitConfig {
+    WIDTH: 1u << 2u;
+    ALL_BITS: ~0u;
+    HIGH_BIT: 1u << 31u;
+    UNSIGNED_HIGH: 0x80000000u >> 31u;
+    WRAPPED_COUNT: 1u << 33u;
+    SIGNED_SHIFT: -8 >> 2u;
+    COMBINED: (0x80u | 0x03u) ^ 0x01u;
+}
+template shader Bitwise<C: BitConfig> {
+    static assert C.ALL_BITS == 0xffffffffu;
+    static assert C.HIGH_BIT == 0x80000000u;
+    static assert C.UNSIGNED_HIGH == 1u;
+    static assert C.WRAPPED_COUNT == 2u;
+    static assert C.SIGNED_SHIFT == -2;
+    static assert C.COMBINED == 0x82u;
+    workgroup Scratch: array<u32, (16u >> 2u)>;
+    stage compute [numthreads(C.WIDTH, 1u, 1u)] fn CS() -> void {
+        Scratch[GroupIndex] = C.HIGH_BIT | GroupIndex;
+        WorkgroupBarrier();
+    }
+}
+compile Bitwise<Bits> as BitwiseConstants;

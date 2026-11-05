@@ -32,11 +32,11 @@ record MainTransformerJointQkParams {
     ImageTokens: u32;
 }
 
-fn ReciprocalSqrtF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return rsqrt(value); }; return result; }
-fn CosineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return cos(value); }; return result; }
-fn SineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return sin(value); }; return result; }
-fn PowerF32(base: f32, exponent: f32) -> f32 { let result: f32 = HLSL<f32>(base, exponent) { return pow(base, exponent); }; return result; }
-fn UintToF32(value: u32) -> f32 { let result: f32 = HLSL<f32>(value) { return float(value); }; return result; }
+fn ReciprocalSqrtF32(value: f32) -> f32 { let result: f32 = Rsqrt(value); return result; }
+fn CosineF32(value: f32) -> f32 { let result: f32 = Cos(value); return result; }
+fn SineF32(value: f32) -> f32 { let result: f32 = Sin(value); return result; }
+fn PowerF32(base: f32, exponent: f32) -> f32 { let result: f32 = Pow(base, exponent); return result; }
+fn UintToF32(value: u32) -> f32 { let result: f32 = Convert<f32>(value); return result; }
 
 // One physical program owns Q and K by the closed segment-offset binding. The
 // first 1024 tokens use [33,row,column]; the 32-token suffix uses

@@ -1,0 +1,2 @@
+// expect-diagnostic: SDSL-V4311 2:44
+fn Invalid(value: uint2) -> uint2 { return value & value; }

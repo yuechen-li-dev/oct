@@ -48,6 +48,26 @@ for the exact combinational and sequential FLOW subset, clock/reset behavior,
 and compile-only restrictions. Neither runtime containers nor floating-point
 software become hardware simply by adding the declaration.
 
+## SDSL-V shader programs
+
+SDSL-V is Oct's typed shader language, with compute, vertex, and pixel
+profiles. Use `oct sdslv check`, `emit-hlsl`, and `compile-spv` for its explicit
+compiler path; `.sdslvtest` runs shader correctness tests on the native GPU
+host. It has its own GPU legality and storage rules.
+
+Template declarations follow the familiar Oct order:
+`template shader Tile<C: TileConfig> { ... }`, with explicit materialization
+through `compile Tile<Config> as Name;`. Its parameter is a static config
+checked against a concept. Scientific math such as `Exp`, `Sin`, `Cos`, `Sqrt`,
+and `Pow` operates on typed scalar/vector values directly.
+Scalar shader integers also have `&`, `|`, `^`, `~`, `<<`, and `>>`, with
+32-bit rules and hexadecimal masks documented in the shader specification.
+
+The [SDSL-V specification](../../../docs/SDSL_V_LANGUAGE_SPEC.md) owns the
+shader rules, and the [workspace guide](../../../docs/SDSL_V_WORKSPACE.md)
+explains compilation and production ownership. Sharing parser mechanics with
+ordinary Oct does not admit host-only runtime features into shaders.
+
 ## Inspectability
 
 Generated Go, MIR, specialization names, and internal build directories are

@@ -1,5 +1,5 @@
-// M28 benchmark/test-only proof. `asuint` is deliberately foreign: SDSL-V has
-// no first-class typed bit-cast surface yet.
+// M28 benchmark/test-only proof of the explicit foreign-language boundary.
+// Bitcast<u32> and WorkgroupBarrier are available; HLSL is deliberate here.
 shader InlineHlslBitCastProof {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
 let bits: u32 = HLSL<u32> { return asuint(1.0); };

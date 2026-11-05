@@ -20,7 +20,7 @@ SDSL-V source
 
 - `concept` declarations as compile-time config schemas;
 - `config` declarations as concrete compile-time values;
-- single-parameter `template<Param: Concept>` shader declarations;
+- single-parameter `template shader Name<Param: Concept>` declarations;
 - `compile TemplateShader<Config> as Alias;` monomorphization;
 - narrow constant-expression support for:
   - workgroup array sizes
@@ -42,8 +42,7 @@ config Tile16x16x16: SgemmTileConfig {
     TILE_K: 16u;
 }
 
-template<C: SgemmTileConfig>
-shader SgemmTile {
+template shader SgemmTile<C: SgemmTileConfig> {
     workgroup TileA: array<f32, C.TILE_M * C.TILE_K>;
     stage compute [numthreads(C.TILE_M, C.TILE_N, 1u)] fn CS() -> void {
         let tileElements: u32 = C.TILE_M * C.TILE_N;
@@ -55,6 +54,11 @@ compile SgemmTile<Tile16x16x16> as SgemmTile16;
 ```
 
 ## Constant expressions
+
+New templates put the parameter list after the shader name, following Oct's
+declaration order. The original `template<C: SgemmTileConfig> shader SgemmTile`
+form remains accepted for existing sources and pinned artifacts. Both spellings
+use the same concept/config validation and monomorphization path.
 
 Current M5 constant expressions support:
 

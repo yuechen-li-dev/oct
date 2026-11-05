@@ -2,12 +2,14 @@ package parse
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/token"
 	"github.com/yuechen-li-dev/oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/syntax"
 )
 
 func BuildModule(result lex.Result) (ast.Module, error) {
@@ -91,7 +93,7 @@ func (p *parser) parseDecl() (ast.Decl, error) {
 	case token.KeywordTemplate:
 		return p.parseTemplateShader()
 	case token.KeywordShader:
-		return p.parseShader(nil)
+		return p.parseShader(nil, false)
 	case token.KeywordCompile:
 		return p.parseCompileDecl()
 	case token.KeywordFn:
@@ -458,20 +460,30 @@ func (p *parser) parseEnum() (ast.EnumDecl, error) {
 }
 
 func (p *parser) parseTemplateShader() (ast.ShaderDecl, error) {
-	param, err := p.parseTemplateParam()
-	if err != nil {
-		return ast.ShaderDecl{}, err
+	start := p.position
+	p.advance() // template
+	var param *ast.TemplateParam
+	legacy := p.current().Kind == token.LeftAngle
+	if legacy {
+		parsed, err := p.parseTemplateParam()
+		if err != nil {
+			return ast.ShaderDecl{}, err
+		}
+		param = &parsed
 	}
 	if p.current().Kind != token.KeywordShader {
-		return ast.ShaderDecl{}, p.errorAtCurrent("expected shader after template parameter")
+		return ast.ShaderDecl{}, p.errorAtCurrent("expected shader after template declaration")
 	}
-	return p.parseShader(&param)
+	shader, err := p.parseShader(param, !legacy)
+	if err == nil {
+		shader.Span = p.spanSince(start)
+	}
+	return shader, err
 }
 
 func (p *parser) parseTemplateParam() (ast.TemplateParam, error) {
 	start := p.position
-	p.advance()
-	if _, err := p.expect(token.LeftAngle, "expected '<' after template"); err != nil {
+	if _, err := p.expect(token.LeftAngle, "expected '<' with one concept config parameter"); err != nil {
 		return ast.TemplateParam{}, err
 	}
 	name, err := p.expect(token.Identifier, "expected template parameter name")
@@ -494,15 +506,27 @@ func (p *parser) parseTemplateParam() (ast.TemplateParam, error) {
 	return ast.TemplateParam{Span: p.spanSince(start), Name: name.Lexeme, ConceptName: concept.Lexeme}, nil
 }
 
-func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, error) {
+func (p *parser) parseShader(templateParam *ast.TemplateParam, parameterAfterName bool) (ast.ShaderDecl, error) {
 	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected shader name")
 	if err != nil {
 		return ast.ShaderDecl{}, err
 	}
+	if parameterAfterName {
+		if p.current().Kind != token.LeftAngle {
+			return ast.ShaderDecl{}, p.errorAtCurrent("SDSL-V4303: template shader requires Name<C: Concept>")
+		}
+		param, err := p.parseTemplateParam()
+		if err != nil {
+			return ast.ShaderDecl{}, err
+		}
+		templateParam = &param
+	} else if templateParam == nil && p.current().Kind == token.LeftAngle {
+		return ast.ShaderDecl{}, p.errorAtCurrent("SDSL-V4303: shader parameters require template shader Name<C: Concept>")
+	}
 	if p.current().Kind == token.Identifier && (p.current().Lexeme == "implements" || p.current().Lexeme == "where") {
-		return ast.ShaderDecl{}, p.errorAtCurrent("SDSL-V4101: historical implements/where-interface syntax was removed from canonical SDSL-V; use concept, config, template<C: Concept>, and compile")
+		return ast.ShaderDecl{}, p.errorAtCurrent("SDSL-V4101: historical implements/where-interface syntax was removed from canonical SDSL-V; use concept, config, template shader Name<C: Concept>, and compile")
 	}
 	if _, err := p.expect(token.LeftBrace, "expected '{' after shader name"); err != nil {
 		return ast.ShaderDecl{}, err
@@ -580,9 +604,6 @@ func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, 
 	}
 	p.advance()
 	shader.Span = p.spanSince(start)
-	if templateParam != nil {
-		shader.Span.Start = templateParam.Span.Start
-	}
 	return shader, nil
 }
 
@@ -1626,31 +1647,20 @@ func (p *parser) parseWithInternal(stopAtRightAngle bool) (ast.Expr, error) {
 }
 
 func (p *parser) parseBinary(minPrec int, stopAtRightAngle bool) (ast.Expr, error) {
-	left, err := p.parseUnary()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		prec, ok := binaryPrecedence(p.current().Kind, stopAtRightAngle)
-		if !ok || prec < minPrec {
-			break
-		}
-		op := p.current().Lexeme
-		p.advance()
-		right, err := p.parseBinary(prec+1, stopAtRightAngle)
-		if err != nil {
-			return nil, err
-		}
-		left = ast.BinaryExpr{Span: spanFrom(ast.ExprSpan(left).Start, ast.ExprSpan(right).End), Left: left, Operator: op, Right: right}
-	}
-	return left, nil
+	return syntax.ParseBinary(minPrec, p.parseUnary, func() (string, int, bool) {
+		t := p.current()
+		precedence, ok := binaryPrecedence(t.Kind, stopAtRightAngle)
+		return t.Lexeme, precedence, ok
+	}, p.advance, func(left ast.Expr, op string, right ast.Expr) ast.Expr {
+		return ast.BinaryExpr{Span: spanFrom(ast.ExprSpan(left).Start, ast.ExprSpan(right).End), Left: left, Operator: op, Right: right}
+	})
 }
 
 func (p *parser) parseUnary() (ast.Expr, error) {
 	if p.current().Kind == token.Bang {
 		return nil, p.errorAtCurrent("use `not` instead of `!` for logical negation")
 	}
-	if p.current().Kind == token.Minus || p.current().Kind == token.KeywordNot {
+	if p.current().Kind == token.Minus || p.current().Kind == token.KeywordNot || p.current().Kind == token.BitNot {
 		t := p.current()
 		op := t.Lexeme
 		p.advance()
@@ -1796,7 +1806,19 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	switch t.Kind {
 	case token.IntLiteral:
 		p.advance()
-		return ast.IntegerLiteral{Span: t.Span, Value: t.Lexeme}, nil
+		value := t.Lexeme
+		if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
+			unsigned := strings.HasSuffix(value, "u") || strings.HasSuffix(value, "U")
+			n, err := strconv.ParseUint(strings.TrimRight(value[2:], "uU"), 16, 32)
+			if err != nil || (!unsigned && n > 0x7fffffff) {
+				return nil, p.errorAtToken(t, "SDSL-V4310: hexadecimal literal must fit its i32 or u32 type")
+			}
+			value = strconv.FormatUint(n, 10)
+			if unsigned {
+				value += "u"
+			}
+		}
+		return ast.IntegerLiteral{Span: t.Span, Value: value}, nil
 	case token.FloatLiteral:
 		p.advance()
 		return ast.FloatLiteral{Span: t.Span, Value: t.Lexeme}, nil
@@ -2645,6 +2667,23 @@ func (p *parser) match(kind token.Kind) bool {
 
 func (p *parser) expect(kind token.Kind, message string) (token.Token, error) {
 	t := p.current()
+	if kind == token.RightAngle && t.Kind == token.ShiftRight {
+		// A type delimiter consumes one '>' from a lexed '>>'. Own the new
+		// token slice so parsing never mutates the caller's lexer result.
+		middle := t.Span.Start
+		middle.Offset++
+		middle.Column++
+		first, second := t, t
+		first.Kind, first.Lexeme, first.Span.End = token.RightAngle, ">", middle
+		second.Kind, second.Lexeme, second.Span.Start = token.RightAngle, ">", middle
+		second.Column++
+		tokens := make([]token.Token, len(p.tokens)+1)
+		copy(tokens, p.tokens[:p.position])
+		tokens[p.position], tokens[p.position+1] = first, second
+		copy(tokens[p.position+2:], p.tokens[p.position+1:])
+		p.tokens = tokens
+		t = first
+	}
 	if t.Kind != kind {
 		return token.Token{}, p.errorAtCurrent(message)
 	}
@@ -2690,10 +2729,21 @@ func binaryPrecedence(kind token.Kind, stopAtRightAngle bool) (int, bool) {
 			return 0, false
 		}
 		return 3, true
-	case token.Plus, token.Minus:
+	case token.BitOr:
 		return 4, true
-	case token.Star, token.Slash, token.Percent:
+	case token.BitXor:
 		return 5, true
+	case token.BitAnd:
+		return 6, true
+	case token.ShiftLeft, token.ShiftRight:
+		if stopAtRightAngle && kind == token.ShiftRight {
+			return 0, false
+		}
+		return 7, true
+	case token.Plus, token.Minus:
+		return 8, true
+	case token.Star, token.Slash, token.Percent:
+		return 9, true
 	default:
 		return 0, false
 	}

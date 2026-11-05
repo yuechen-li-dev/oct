@@ -24,15 +24,17 @@ record RopeParams {
 }
 
 fn RoundtripBF16(value: f32) -> f32 {
-    return HLSL<f32>(value) {
-        uint bits = asuint(value); uint exponent = bits & 0x7f800000u;
-        uint mantissa = bits & 0x007fffffu;
-        if (exponent == 0x7f800000u) {
-            if (mantissa == 0u) return value;
-            return asfloat((((bits >> 16u) | 0x0040u) << 16u));
-        }
-        return asfloat(((bits + 0x00007fffu + ((bits >> 16u) & 1u)) >> 16u) << 16u);
-    };
+    let bits: u32 = Bitcast<u32>(value);
+    let exponent: u32 = bits & 0x7f800000u;
+    let mantissa: u32 = bits & 0x007fffffu;
+    if exponent == 0x7f800000u {
+        if mantissa == 0u { return value; }
+        let bf16: u32 = (bits >> 16u) | 0x0040u;
+        return Bitcast<f32>(bf16 << 16u);
+    }
+    let lsb: u32 = (bits >> 16u) & 1u;
+    let bf16: u32 = (bits + 0x00007fffu + lsb) >> 16u;
+    return Bitcast<f32>(bf16 << 16u);
 }
 
 shader Gemma4E2BM1RopeHalfSplit {

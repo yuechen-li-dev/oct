@@ -1,0 +1,81 @@
+[WorkgroupSize(4, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[TestInputFloat(0.5, 4.0, 2.0)]
+[Fact]
+fn ScalarMathUsesRuntimeInput() -> void {
+    let x: f32 = read TestInput.Float[0u] when 0u < TestInput.Length else 0.0;
+    let y: f32 = read TestInput.Float[1u] when 1u < TestInput.Length else 0.0;
+    let z: f32 = read TestInput.Float[2u] when 2u < TestInput.Length else 0.0;
+    Assert.Near(1.64872127, Exp(x), 0.000001, "Exp uses the runtime input");
+    Assert.Near(2.0, Sqrt(y), 0.000001, "Sqrt returns the positive root");
+    Assert.Near(0.5, Rsqrt(y), 0.000001, "Rsqrt returns the reciprocal root");
+    Assert.Near(0.47942554, Sin(x), 0.000001, "Sin uses radians");
+    Assert.Near(0.87758256, Cos(x), 0.000001, "Cos uses radians");
+    Assert.Near(0.46211716, Tanh(x), 0.000001, "Tanh uses the native hyperbolic operation");
+    Assert.Near(16.0, Pow(y, z), 0.000001, "Pow takes an explicit float exponent");
+    Assert.Near(4.60653066, Exp(-x) + Sqrt(y) * z, 0.000001, "shared parsing preserves unary and binary precedence");
+    Assert.Equal(5u, 9u - 3u - 1u, "shared parsing preserves left associativity");
+}
+
+[WorkgroupSize(4, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[TestInputFloat(0.5, 1.0, 4.0, 2.0)]
+[Fact]
+fn VectorMathPreservesLaneShape() -> void {
+    let a: f32 = read TestInput.Float[0u] when 0u < TestInput.Length else 0.0;
+    let b: f32 = read TestInput.Float[1u] when 1u < TestInput.Length else 0.0;
+    let c: f32 = read TestInput.Float[2u] when 2u < TestInput.Length else 0.0;
+    let d: f32 = read TestInput.Float[3u] when 3u < TestInput.Length else 0.0;
+    let x: float4 = float4(a, b, c, d);
+    let expectedExp: float4 = float4(1.64872127, 2.71828183, 54.59815003, 7.38905610);
+    let actualExp: float4 = Exp(x);
+    Assert.Near(expectedExp.x, actualExp.x, 0.00001, "Exp maps all four lanes: x");
+    Assert.Near(expectedExp.y, actualExp.y, 0.00001, "Exp maps all four lanes: y");
+    Assert.Near(expectedExp.z, actualExp.z, 0.00001, "Exp maps all four lanes: z");
+    Assert.Near(expectedExp.w, actualExp.w, 0.00001, "Exp maps all four lanes: w");
+    let expectedSqrt: float4 = float4(0.70710678, 1.0, 2.0, 1.41421356);
+    let actualSqrt: float4 = Sqrt(x);
+    Assert.Near(expectedSqrt.x, actualSqrt.x, 0.000001, "Sqrt preserves vector width: x");
+    Assert.Near(expectedSqrt.y, actualSqrt.y, 0.000001, "Sqrt preserves vector width: y");
+    Assert.Near(expectedSqrt.z, actualSqrt.z, 0.000001, "Sqrt preserves vector width: z");
+    Assert.Near(expectedSqrt.w, actualSqrt.w, 0.000001, "Sqrt preserves vector width: w");
+    let expectedRsqrt: float4 = float4(1.41421356, 1.0, 0.5, 0.70710678);
+    let actualRsqrt: float4 = Rsqrt(x);
+    Assert.Near(expectedRsqrt.x, actualRsqrt.x, 0.000001, "Rsqrt maps each lane: x");
+    Assert.Near(expectedRsqrt.y, actualRsqrt.y, 0.000001, "Rsqrt maps each lane: y");
+    Assert.Near(expectedRsqrt.z, actualRsqrt.z, 0.000001, "Rsqrt maps each lane: z");
+    Assert.Near(expectedRsqrt.w, actualRsqrt.w, 0.000001, "Rsqrt maps each lane: w");
+    let expectedSin: float4 = float4(0.47942554, 0.84147098, -0.75680250, 0.90929743);
+    let actualSin: float4 = Sin(x);
+    Assert.Near(expectedSin.x, actualSin.x, 0.000001, "Sin maps each lane in radians: x");
+    Assert.Near(expectedSin.y, actualSin.y, 0.000001, "Sin maps each lane in radians: y");
+    Assert.Near(expectedSin.z, actualSin.z, 0.000001, "Sin maps each lane in radians: z");
+    Assert.Near(expectedSin.w, actualSin.w, 0.000001, "Sin maps each lane in radians: w");
+    let expectedCos: float4 = float4(0.87758256, 0.54030231, -0.65364362, -0.41614684);
+    let actualCos: float4 = Cos(x);
+    Assert.Near(expectedCos.x, actualCos.x, 0.000001, "Cos maps each lane in radians: x");
+    Assert.Near(expectedCos.y, actualCos.y, 0.000001, "Cos maps each lane in radians: y");
+    Assert.Near(expectedCos.z, actualCos.z, 0.000001, "Cos maps each lane in radians: z");
+    Assert.Near(expectedCos.w, actualCos.w, 0.000001, "Cos maps each lane in radians: w");
+    let expectedTanh: float4 = float4(0.46211716, 0.76159416, 0.99932930, 0.96402758);
+    let actualTanh: float4 = Tanh(x);
+    Assert.Near(expectedTanh.x, actualTanh.x, 0.000001, "Tanh maps each lane: x");
+    Assert.Near(expectedTanh.y, actualTanh.y, 0.000001, "Tanh maps each lane: y");
+    Assert.Near(expectedTanh.z, actualTanh.z, 0.000001, "Tanh maps each lane: z");
+    Assert.Near(expectedTanh.w, actualTanh.w, 0.000001, "Tanh maps each lane: w");
+    let expectedPow: float4 = float4(0.25, 1.0, 16.0, 4.0);
+    let actualPow: float4 = Pow(x, float4(2.0, 2.0, 2.0, 2.0));
+    Assert.Near(expectedPow.x, actualPow.x, 0.000001, "Pow requires matching vector widths: x");
+    Assert.Near(expectedPow.y, actualPow.y, 0.000001, "Pow requires matching vector widths: y");
+    Assert.Near(expectedPow.z, actualPow.z, 0.000001, "Pow requires matching vector widths: z");
+    Assert.Near(expectedPow.w, actualPow.w, 0.000001, "Pow requires matching vector widths: w");
+    let expectedPairSin: float2 = float2(0.47942554, -0.47942554);
+    let actualPairSin: float2 = Sin(float2(a, -a));
+    Assert.Near(expectedPairSin.x, actualPairSin.x, 0.000001, "float2 remains a two-lane value: x");
+    Assert.Near(expectedPairSin.y, actualPairSin.y, 0.000001, "float2 remains a two-lane value: y");
+    let expectedTripleCos: float3 = float3(0.87758256, 1.0, 0.87758256);
+    let actualTripleCos: float3 = Cos(float3(a, 0.0, -a));
+    Assert.Near(expectedTripleCos.x, actualTripleCos.x, 0.000001, "float3 remains a three-lane value: x");
+    Assert.Near(expectedTripleCos.y, actualTripleCos.y, 0.000001, "float3 remains a three-lane value: y");
+    Assert.Near(expectedTripleCos.z, actualTripleCos.z, 0.000001, "float3 remains a three-lane value: z");
+}

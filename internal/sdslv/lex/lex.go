@@ -128,12 +128,18 @@ func (l *lexer) nextToken() (token.Token, error) {
 		return token.Token{Kind: token.RightBracket, Lexeme: "]", Line: line, Column: column}, nil
 	case '<':
 		l.advanceRune()
+		if l.matchString("<") {
+			return finish(token.ShiftLeft, "<<"), nil
+		}
 		if l.matchString("=") {
 			return token.Token{Kind: token.LeftEqual, Lexeme: "<=", Line: line, Column: column}, nil
 		}
 		return token.Token{Kind: token.LeftAngle, Lexeme: "<", Line: line, Column: column}, nil
 	case '>':
 		l.advanceRune()
+		if l.matchString(">") {
+			return finish(token.ShiftRight, ">>"), nil
+		}
 		if l.matchString("=") {
 			return token.Token{Kind: token.RightEqual, Lexeme: ">=", Line: line, Column: column}, nil
 		}
@@ -188,11 +194,19 @@ func (l *lexer) nextToken() (token.Token, error) {
 		if l.matchString("&") {
 			return token.Token{}, fmt.Errorf("use `and` instead of `&&` at %d:%d", line, column)
 		}
+		return finish(token.BitAnd, "&"), nil
 	case '|':
 		l.advanceRune()
 		if l.matchString("|") {
 			return token.Token{}, fmt.Errorf("use `or` instead of `||` at %d:%d", line, column)
 		}
+		return finish(token.BitOr, "|"), nil
+	case '^':
+		l.advanceRune()
+		return finish(token.BitXor, "^"), nil
+	case '~':
+		l.advanceRune()
+		return finish(token.BitNot, "~"), nil
 	case '!':
 		l.advanceRune()
 		if l.matchString("=") {
@@ -279,6 +293,23 @@ func (l *lexer) scanIdentifier() string {
 
 func (l *lexer) scanNumber() (token.Kind, string, error) {
 	start := l.offset
+	if l.matchString("0x") || l.matchString("0X") {
+		digits := l.offset
+		for !l.atEnd() {
+			r, _ := l.peekRune()
+			if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F') {
+				break
+			}
+			l.advanceRune()
+		}
+		if l.offset == digits {
+			return "", "", fmt.Errorf("SDSL-V4310: hexadecimal literal requires digits at %d:%d", l.line, l.column)
+		}
+		if r, ok := l.peekRune(); ok && (r == 'u' || r == 'U') {
+			l.advanceRune()
+		}
+		return token.IntLiteral, l.source[start:l.offset], nil
+	}
 	for !l.atEnd() {
 		r, _ := l.peekRune()
 		if !unicode.IsDigit(r) {

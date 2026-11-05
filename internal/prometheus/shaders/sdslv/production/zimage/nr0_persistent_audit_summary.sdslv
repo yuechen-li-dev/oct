@@ -31,7 +31,7 @@ record PersistentAuditParams {
 }
 
 fn SquareRootF32(value: f32) -> f32 {
-    let result: f32 = HLSL<f32>(value) { return sqrt(value); };
+    let result: f32 = Sqrt(value);
     return result;
 }
 

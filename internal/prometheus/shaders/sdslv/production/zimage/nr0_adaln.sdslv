@@ -20,7 +20,7 @@ record AdaLNParams {
 }
 
 fn TanhF32(value: f32) -> f32 {
-    let result: f32 = HLSL<f32>(value) { return tanh(value); };
+    let result: f32 = Tanh(value);
     return result;
 }
 

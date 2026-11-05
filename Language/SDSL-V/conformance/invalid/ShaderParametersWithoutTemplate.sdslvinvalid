@@ -1,0 +1,2 @@
+// expect-diagnostic: SDSL-V4303 2:13
+shader Plain<C: Missing> { }

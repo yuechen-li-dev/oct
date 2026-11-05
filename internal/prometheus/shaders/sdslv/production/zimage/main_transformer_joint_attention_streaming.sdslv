@@ -15,7 +15,7 @@ stream MainTransformerJointAttentionIO {
 
 record MainTransformerJointAttentionParams { TokenCount: u32; HeadCount: u32; HeadWidth: u32; FusedWidth: u32; }
 
-fn ExponentialF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return exp(value); }; return result; }
+fn ExponentialF32(value: f32) -> f32 { let result: f32 = Exp(value); return result; }
 
 // One workgroup owns one (query token, head) row. The 1056 score and
 // probability entries are workgroup-local only; this program does not

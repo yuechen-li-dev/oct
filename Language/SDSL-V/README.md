@@ -5,5 +5,6 @@ This directory owns SDSL-V language specimens and conformance inputs. It is part
 - `M*/` directories retain milestone source, test, benchmark, and canonical artifact fixtures.
 - `conformance/` contains the registered valid and invalid cases plus its manifest and pinned graphics artifacts.
 - `AttentionSpacePoc/` contains the attention-space comparison inputs.
+- `Modernization/` contains GPU contracts for typed scientific math, bit operations, BF16 precision boundaries, and shared expression parsing.
 
 Fixture paths participate in stable IDs and replay identities. Moving a specimen requires updating its registered path and derived identities, then running the SDSL-V Go test packages.

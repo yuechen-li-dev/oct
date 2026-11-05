@@ -1,0 +1,2 @@
+// expect-diagnostic: SDSL-V4301 2:30
+fn Invalid() -> f32 { return Exp(1.0, 2.0); }

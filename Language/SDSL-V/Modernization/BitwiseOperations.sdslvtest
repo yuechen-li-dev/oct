@@ -1,0 +1,30 @@
+[WorkgroupSize(4, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[TestInputUInt(0x80000001u, 0x7fffffffu, 32u, 33u)]
+[Fact]
+fn IntegerBitOperationsUseRuntimeWords() -> void {
+    let high: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 0u;
+    let low: u32 = read TestInput.UInt[1u] when 1u < TestInput.Length else 0u;
+    let wordWidth: u32 = read TestInput.UInt[2u] when 2u < TestInput.Length else 0u;
+    let nextWidth: u32 = read TestInput.UInt[3u] when 3u < TestInput.Length else 0u;
+    Assert.Equal(1u, high & low, "AND preserves only shared bits");
+    Assert.Equal(0xffffffffu, high | low, "OR preserves the complete 32-bit word");
+    Assert.Equal(0xfffffffeu, high ^ low, "XOR excludes the shared low bit");
+    Assert.Equal(0x7ffffffeu, ~high, "complement inverts exactly 32 bits");
+    Assert.Equal(2u, high << 1u, "left shift discards bits past bit 31");
+    Assert.Equal(0x40000000u, high >> 1u, "unsigned right shift fills with zero");
+    Assert.Equal(1u, high >> 31u, "the high bit survives a 31-bit shift");
+    Assert.Equal(high, high << wordWidth, "runtime shift counts use their low five bits");
+    Assert.Equal(high, high >> wordWidth, "a count of 32 is a zero-bit right shift");
+    Assert.Equal(2u, high << nextWidth, "a count of 33 is a one-bit left shift");
+    let signedWord: i32 = Bitcast<i32>(high);
+    Assert.Equal(-1073741824, signedWord >> 1u, "signed right shift preserves sign and i32 result typing");
+    Assert.Equal(0x80000000u, Bitcast<u32>(1 << 31u), "signed left shift preserves the 32-bit bit pattern");
+    Assert.Equal(-1, -1 >> 31u, "signed right shift extends the sign bit");
+    Assert.Equal(0, ~(-1), "signed complement uses the same 32-bit representation");
+    Assert.Equal(0, -2 & 1, "signed AND accepts matching signed operands");
+    Assert.Equal(1u, 1u | 2u & 4u, "bitwise AND binds more tightly than OR");
+    Assert.Equal(2u, 8u >> 1u + 1u, "addition binds more tightly than shifting");
+    Assert.Equal(true, high & 1u == 1u, "bitwise operations bind before comparisons");
+}
+

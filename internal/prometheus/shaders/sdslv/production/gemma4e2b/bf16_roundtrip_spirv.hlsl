@@ -20,26 +20,21 @@ struct Bf16RoundtripParams
 
 float RoundtripBF16(float value)
 {
-    float __sdslv_inline_hlsl_0;
+    uint bits = asuint(value);
+    uint exponent = (bits & 2139095040u);
+    uint mantissa = (bits & 8388607u);
+    if ((exponent == 2139095040u))
     {
-        // BEGIN INLINE HLSL internal/prometheus/shaders/sdslv/production/gemma4e2b/bf16_roundtrip.sdslv:26
-        
-                uint bits = asuint(value);
-                uint exponent = bits & 0x7f800000u;
-                uint mantissa = bits & 0x007fffffu;
-                if (exponent == 0x7f800000u) {
-                    if (mantissa == 0u) __sdslv_inline_hlsl_0 = value;
-                    uint bf16 = (bits >> 16u) | 0x0040u;
-                    return asfloat(bf16 << 16u);
-                }
-                uint lsb = (bits >> 16u) & 1u;
-                uint bf16 = (bits + 0x00007fffu + lsb) >> 16u;
-                return asfloat(bf16 << 16u);
-            
-        // END INLINE HLSL
+        if ((mantissa == 0u))
+        {
+            return value;
+        }
+        uint bf16 = ((uint(bits) >> (16u & 31u)) | 64u);
+        return asfloat((uint(bf16) << (16u & 31u)));
     }
-    float rounded = __sdslv_inline_hlsl_0;
-    return rounded;
+    uint lsb = ((uint(bits) >> (16u & 31u)) & 1u);
+    uint bf16 = (uint(((bits + 32767u) + lsb)) >> (16u & 31u));
+    return asfloat((uint(bf16) << (16u & 31u)));
 }
 
 [[vk::push_constant]] ConstantBuffer<Bf16RoundtripParams> params;

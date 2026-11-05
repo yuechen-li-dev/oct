@@ -1,0 +1,18 @@
+namespace Conformance.OctStyleTemplate;
+
+concept TileConfig { WIDTH: u32; }
+config Four: TileConfig { WIDTH: 4u; }
+stream OutputIO { [binding(0)] Output: readwrite array<f32>; }
+
+template shader Tile<C: TileConfig> {
+    resources OutputIO;
+    workgroup Scratch: array<f32, C.WIDTH * 2u>;
+    stage compute [numthreads(C.WIDTH, 1u, 1u)] fn CS() -> void {
+        let index: u32 = DispatchThreadID.x;
+        Scratch[index] = Convert<f32>(index);
+        WorkgroupBarrier();
+        Output[index] = Cos(Scratch[index]) + Sqrt(4.0);
+    }
+}
+
+compile Tile<Four> as OctStyleTile;

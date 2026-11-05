@@ -12,6 +12,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/dimension"
 	"github.com/yuechen-li-dev/oct/internal/lex"
 	"github.com/yuechen-li-dev/oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/syntax"
 )
 
 func BuildFile(result lex.Result) (ast.File, error) {
@@ -2257,28 +2258,13 @@ func (p *parser) parseRangeExpr() (ast.Expr, error) {
 }
 
 func (p *parser) parseBinaryExpr(minPrecedence int) (ast.Expr, error) {
-	left, err := p.parsePrefixExpr()
-	if err != nil {
-		return nil, err
-	}
-
-	for {
-		opToken := p.current()
-		precedence, ok := binaryPrecedence(opToken.Kind)
-		if !ok || precedence < minPrecedence {
-			break
-		}
-
-		p.advance()
-		right, err := p.parseBinaryExpr(precedence + 1)
-		if err != nil {
-			return nil, err
-		}
-
-		left = ast.BinaryExpr{Left: left, Operator: opToken.Lexeme, Right: right}
-	}
-
-	return left, nil
+	return syntax.ParseBinary(minPrecedence, p.parsePrefixExpr, func() (string, int, bool) {
+		t := p.current()
+		precedence, ok := binaryPrecedence(t.Kind)
+		return t.Lexeme, precedence, ok
+	}, p.advance, func(left ast.Expr, op string, right ast.Expr) ast.Expr {
+		return ast.BinaryExpr{Left: left, Operator: op, Right: right}
+	})
 }
 
 func (p *parser) parsePrefixExpr() (ast.Expr, error) {

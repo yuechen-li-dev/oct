@@ -2565,7 +2565,7 @@ func (l *lowering) lowerTensorExpr(expr ast.Expr, scope map[string]binding, shad
 		if err != nil {
 			return nil, err
 		}
-		return vdmir.BinaryExpr{Provenance: l.provenance, ExprType: binaryResultType(left.Type(), lowerBinaryOperator(e.Operator), right.Type()), Left: left, Operator: lowerBinaryOperator(e.Operator), Right: right}, nil
+		return l.lowerBinaryExpr(left, e.Operator, right), nil
 	case ast.ParenExpr:
 		return l.lowerTensorExpr(e.Inner, scope, shaderName)
 	default:
@@ -3037,13 +3037,7 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 		if err != nil {
 			return nil, err
 		}
-		return vdmir.BinaryExpr{
-			Provenance: l.provenance,
-			ExprType:   binaryResultType(left.Type(), lowerBinaryOperator(e.Operator), right.Type()),
-			Left:       left,
-			Operator:   lowerBinaryOperator(e.Operator),
-			Right:      right,
-		}, nil
+		return l.lowerBinaryExpr(left, e.Operator, right), nil
 	case ast.UnaryExpr:
 		operand, err := l.lowerExprWithExpected(e.Operand, scope, shaderName, nil)
 		if err != nil {
@@ -3501,7 +3495,7 @@ func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, s
 			return vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}
 		case "Cross":
 			return vdmir.Type{Kind: vdmir.TypeFloat3, Name: "float3"}
-		case "Normalize", "Saturate", "Reflect":
+		case "Normalize", "Saturate", "Reflect", "Exp", "Sqrt", "Rsqrt", "Sin", "Cos", "Tanh", "Pow":
 			if len(call.Arguments) != 0 {
 				if lowered, err := l.lowerExpr(call.Arguments[0], scope, shaderName); err == nil {
 					return lowered.Type()
@@ -3812,8 +3806,27 @@ func tileOrViewStride(t vdmir.Type) vdmir.Expr {
 	return nil
 }
 
+func (l *lowering) lowerBinaryExpr(left vdmir.Expr, op string, right vdmir.Expr) vdmir.Expr {
+	if op == "<<" || op == ">>" {
+		// Keep an i32 literal signed even when the count is u32. HLSL's
+		// context-sensitive literal typing must not choose the shift kind.
+		left = vdmir.IntrinsicCallExpr{Provenance: l.provenance, ExprType: left.Type(),
+			Intrinsic: vdmir.IntrinsicConvert, TypeArgument: left.Type(), Arguments: []vdmir.Expr{left}}
+		// Define every runtime count, including counts >= 32, before the
+		// backend sees a shift. VD-MIR carries the explicit five-bit mask.
+		countType := vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+		right = vdmir.BinaryExpr{Provenance: l.provenance, ExprType: countType,
+			Left: right, Operator: "&",
+			Right: vdmir.LiteralExpr{ExprType: countType, Kind: vdmir.LiteralInteger, Value: "31u"}}
+	}
+	op = lowerBinaryOperator(op)
+	return vdmir.BinaryExpr{Provenance: l.provenance, ExprType: binaryResultType(left.Type(), op, right.Type()), Left: left, Operator: op, Right: right}
+}
+
 func binaryResultType(left vdmir.Type, op string, right vdmir.Type) vdmir.Type {
 	switch op {
+	case "&", "|", "^", "<<", ">>":
+		return left
 	case "&&", "||", "==", "!=", "<", "<=", ">", ">=":
 		return vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}
 	default:
@@ -4182,6 +4195,20 @@ func lowerCompilerIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdm
 		}
 	}
 	switch name {
+	case "Exp":
+		return vdmir.IntrinsicExp, vdmir.Type{}
+	case "Sqrt":
+		return vdmir.IntrinsicSqrt, vdmir.Type{}
+	case "Rsqrt":
+		return vdmir.IntrinsicRsqrt, vdmir.Type{}
+	case "Sin":
+		return vdmir.IntrinsicSin, vdmir.Type{}
+	case "Cos":
+		return vdmir.IntrinsicCos, vdmir.Type{}
+	case "Tanh":
+		return vdmir.IntrinsicTanh, vdmir.Type{}
+	case "Pow":
+		return vdmir.IntrinsicPow, vdmir.Type{}
 	case "Cross":
 		return vdmir.IntrinsicCross, vdmir.Type{}
 	case "Normalize":
@@ -4205,7 +4232,7 @@ func lowerCompilerIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdm
 
 func isCompilerIntrinsicCall(name string) bool {
 	switch name {
-	case "Dot", "Cross", "Normalize", "Saturate", "Lerp", "Reflect", "Sample", "RayQueryAny", "RayQueryTraceClosest":
+	case "Dot", "Cross", "Normalize", "Saturate", "Lerp", "Reflect", "Sample", "RayQueryAny", "RayQueryTraceClosest", "Exp", "Sqrt", "Rsqrt", "Sin", "Cos", "Tanh", "Pow":
 		return true
 	default:
 		return false

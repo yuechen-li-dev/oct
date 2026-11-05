@@ -21,7 +21,7 @@ stream FfnW2ResidualIO {
 
 record FfnW2ResidualParams { Epsilon: f32; TokenCount: u32; ModelWidth: u32; HiddenWidth: u32; }
 
-fn ReciprocalSqrtF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return rsqrt(value); }; return result; }
+fn ReciprocalSqrtF32(value: f32) -> f32 { let result: f32 = Rsqrt(value); return result; }
 
 // One workgroup owns a token. Every W2 accumulator, the post-W2 RMSNorm, and
 // final gated residual stay FP32; W2 is separately retained for audit before

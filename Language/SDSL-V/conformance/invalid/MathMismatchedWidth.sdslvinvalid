@@ -1,0 +1,2 @@
+// expect-diagnostic: SDSL-V4302 2:53
+fn Invalid(x: float2, y: float3) -> float2 { return Pow(x, y); }

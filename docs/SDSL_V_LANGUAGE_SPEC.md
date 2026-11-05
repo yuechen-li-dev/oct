@@ -173,6 +173,25 @@ are checked before lowering. Generic templates never emit entry points unless
 materialized. Concrete names deterministically prefix stage entries, such as
 `ForwardTextured_VS` and `ForwardTextured_PS`.
 
+Put template parameters after the declared name, as in ordinary Oct:
+
+```sdslv
+concept TileConfig { WIDTH: u32; }
+config Four: TileConfig { WIDTH: 4u; }
+template shader Tile<C: TileConfig> {
+    stage compute [numthreads(C.WIDTH, 1u, 1u)] fn CS() -> void { return; }
+}
+compile Tile<Four> as Tile4;
+```
+
+Shader templates take exactly one explicit concept-config parameter. The
+`template` keyword is required; ordinary shader declarations cannot take
+parameters. The older `template<C: TileConfig> shader Tile` spelling remains
+accepted for existing sources and pinned artifacts. New source uses the
+declaration-first spelling. This changes authoring syntax, not specialization,
+concept satisfaction, bindings, or emitted entry names. It does not add the
+host language's type-parameter templates to the GPU profile.
+
 `comptime` is bounded static planning and specialization for immutable facts:
 sizes, layouts, closed variants, unroll counts, resource counts, specialization
 choices, and artifact structure. It provides no arbitrary I/O, mutable global
@@ -189,6 +208,62 @@ The closed graphics math additions are `Cross`, `Normalize`, `Saturate`, `Lerp`,
 and `Reflect`; existing shared intrinsics such as `Dot` remain available with
 their validated scalar/vector contracts. Intrinsic names lower deterministically
 to backend operations.
+
+Shared scientific math includes `Exp`, `Sqrt`, `Rsqrt`, `Sin`, `Cos`, `Tanh`,
+and `Pow`. Unary operations accept a plain `f32`, `float2`, `float3`, or
+`float4` and return the same type, applying the operation to each vector lane.
+`Pow(base, exponent)` requires two values of the same supported type. Integral
+arguments, scalar/vector broadcasting, mismatched widths, and implicit erasure
+of semantic spaces are rejected. Aliases resolve before these checks.
+
+`Sin` and `Cos` use radians; `Rsqrt(x)` is reciprocal square root. These are
+runtime shader operations with shader floating-point precision and domain
+behavior, including non-finite results. They introduce no host error path or
+compile-time evaluation. Use explicit domain guards where the model needs
+them. Use the existing `Convert<T>` and `Bitcast<T>` for numeric conversion and
+bit-preserving conversion respectively.
+
+Ordinary math uses these typed operations instead of inline `HLSL` blocks.
+An escape block needed by a real shader identifies a missing language
+capability to specify and qualify. The
+[frontend modernization report](../internal/sdslv/DevelopmentReport/SDSL_V_FRONTEND_MODERNIZATION.md)
+records the remaining subgroup and packed-precision cases separately from
+the deliberate foreign-language conformance proof.
+
+### 2.7 Integer bit operations
+
+Scalar `i32` and `u32` support `&`, `|`, `^`, unary `~`, `<<`, and `>>`.
+AND, OR, and XOR require two operands of the same integer type; complement
+preserves its operand type. There is no implicit signed/unsigned conversion
+or admission of booleans, floating-point values, vectors, or arrays.
+
+Shifts preserve the left operand's type and require a `u32` count. Counts use
+their low five bits: 32 means zero positions and 33 means one. Left shift
+discards bits beyond the 32-bit word. Unsigned right shift fills with zeros;
+signed right shift extends the sign bit. Signed values use their 32-bit
+two's-complement representation. Runtime and bounded constant evaluation use
+the same rules.
+
+Hexadecimal integer literals use `0x` or `0X`, with an optional unsigned
+`u`/`U` suffix. The value must fit its declared literal type. For example,
+`0x7fffffff` is an `i32`, and `0xffffffffu` is a `u32`. Decimal unsigned
+constants also admit the full `u32` range. Source spans retain the authored
+spelling while the AST normalizes hexadecimal values for downstream tools.
+
+```sdslv
+let bits: u32 = Bitcast<u32>(value);
+let exponent: u32 = bits & 0x7f800000u;
+let upperHalf: u32 = bits >> 16u;
+let inverted: u32 = ~bits;
+```
+
+Binary precedence, from lower to higher, is `or`, `and`, comparison,
+`|`, `^`, `&`, shifts, addition/subtraction, multiplication/division/modulo.
+Each binary level associates left to right; unary `~` binds tightly.
+Thus `bits & mask == mask` compares the masked value, and `1u << n + 1u`
+shifts by `n + 1u`. Use parentheses to make compound bit expressions clear.
+Inside an angle-delimited type extent, parenthesize right shifts:
+`array<u32, (16u >> 2u)>`. Adjacent nested type closers still parse as `>>`.
 
 ## 3. Compute profile
 

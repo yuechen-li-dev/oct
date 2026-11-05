@@ -1,0 +1,66 @@
+fn RoundtripBF16(value: f32) -> f32 {
+    let bits: u32 = Bitcast<u32>(value);
+    let exponent: u32 = bits & 0x7f800000u;
+    let mantissa: u32 = bits & 0x007fffffu;
+    if exponent == 0x7f800000u {
+        if mantissa == 0u { return value; }
+        let bf16: u32 = (bits >> 16u) | 0x0040u;
+        return Bitcast<f32>(bf16 << 16u);
+    }
+    let lsb: u32 = (bits >> 16u) & 1u;
+    let bf16: u32 = (bits + 0x00007fffu + lsb) >> 16u;
+    return Bitcast<f32>(bf16 << 16u);
+}
+
+fn WidenBF16(word: u32, element: u32) -> f32 {
+    var bf16Bits: u32 = word >> 16u;
+    if element % 2u == 0u { bf16Bits = word & 0xffffu; }
+    return Bitcast<f32>(bf16Bits << 16u);
+}
+
+[WorkgroupSize(1, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[TestInputUInt(0x00000000u, 0x80000000u, 0x3f800000u, 0xbf800000u, 0x3f808000u, 0x3f818000u, 0x3f807fffu, 0x3f808001u, 0xbf808000u, 0xbf818000u, 0x7f800000u, 0xff800000u, 0x7f800001u, 0x7fc12345u, 0xff800001u, 0x7f7fffffu, 0x00000001u, 0x00008000u, 0x00008001u, 0x00018000u)]
+[Theory]
+[InlineData(0u, 0x00000000u)]
+[InlineData(1u, 0x80000000u)]
+[InlineData(2u, 0x3f800000u)]
+[InlineData(3u, 0xbf800000u)]
+[InlineData(4u, 0x3f800000u)]
+[InlineData(5u, 0x3f820000u)]
+[InlineData(6u, 0x3f800000u)]
+[InlineData(7u, 0x3f810000u)]
+[InlineData(8u, 0xbf800000u)]
+[InlineData(9u, 0xbf820000u)]
+[InlineData(10u, 0x7f800000u)]
+[InlineData(11u, 0xff800000u)]
+[InlineData(12u, 0x7fc00000u)]
+[InlineData(13u, 0x7fc10000u)]
+[InlineData(14u, 0xffc00000u)]
+[InlineData(15u, 0x7f800000u)]
+[InlineData(16u, 0x00000000u)]
+[InlineData(17u, 0x00000000u)]
+[InlineData(18u, 0x00010000u)]
+[InlineData(19u, 0x00020000u)]
+fn Bf16RoundtripPreservesPrecisionPolicy(index: u32, expected: u32) -> void {
+    let bits: u32 = read TestInput.UInt[index] when index < TestInput.Length else 0u;
+    let actual: u32 = Bitcast<u32>(RoundtripBF16(Bitcast<f32>(bits)));
+    Assert.Equal(expected, actual, "BF16 keeps nearest-even rounding, signed zero, infinities, and quiet NaN payloads");
+}
+
+[WorkgroupSize(1, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[TestInputUInt(0x40003f80u, 0xff807f80u, 0x7fc18000u, 0x7f810001u)]
+[Theory]
+[InlineData(0u, 0u, 0x3f800000u)]
+[InlineData(0u, 1u, 0x40000000u)]
+[InlineData(1u, 0u, 0x7f800000u)]
+[InlineData(1u, 1u, 0xff800000u)]
+[InlineData(2u, 0u, 0x80000000u)]
+[InlineData(2u, 1u, 0x7fc10000u)]
+[InlineData(3u, 0u, 0x00010000u)]
+[InlineData(3u, 1u, 0x7f810000u)]
+fn PackedBf16WideningPreservesExactLaneBits(index: u32, element: u32, expected: u32) -> void {
+    let word: u32 = read TestInput.UInt[index] when index < TestInput.Length else 0u;
+    Assert.Equal(expected, Bitcast<u32>(WidenBF16(word, element)), "packed BF16 widening selects the exact low or high lane without rounding");
+}

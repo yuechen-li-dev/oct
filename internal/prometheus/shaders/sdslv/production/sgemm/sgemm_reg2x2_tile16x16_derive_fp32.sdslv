@@ -72,8 +72,7 @@ record StoreCoord {
     valid: bool;
 }
 
-template<C: RegBlockedSgemmConfig>
-shader SgemmReg2x2Tile16x16DeriveFp32 {
+template shader SgemmReg2x2Tile16x16DeriveFp32<C: RegBlockedSgemmConfig> {
     resources SgemmIO;
 
     static assert C.Threads.X * C.Threads.Y <= 1024u;
