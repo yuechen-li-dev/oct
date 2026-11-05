@@ -1513,6 +1513,7 @@ type internalSymbolKind string
 
 const (
 	internalProgramCounter internalSymbolKind = "pc"
+	internalBlockLabel     internalSymbolKind = "block"
 	internalTemporary      internalSymbolKind = "tmp"
 	internalBatchItem      internalSymbolKind = "batch_item"
 	internalBatchCapture   internalSymbolKind = "batch_capture"

@@ -1,0 +1,52 @@
+package MainValid
+
+fn NestedLoopTotal(stop: Int) -> Int {
+    var total = 0
+    for outer in 1..5 {
+        for inner in 5..0 descend 2 {
+            if outer * 10 + inner == stop {
+                return total
+            }
+            if inner == 3 {
+                total = total + outer
+            } else {
+                total = total + inner
+            }
+        }
+    }
+    return total
+}
+
+[Fact]
+fn NestedLoopBranchesAndEarlyReturn() -> Void {
+    Assert.Equal(34, NestedLoopTotal(0), "nested loops complete through branch joins")
+    Assert.Equal(0, NestedLoopTotal(15), "return exits both loops on the first iteration")
+    Assert.Equal(12, NestedLoopTotal(23), "return exits both loops after a backedge")
+}
+
+fn CheckedLoopValue(value: Int) -> Int ! Error {
+    if value == 3 {
+        return error("loop sentinel")
+    }
+    return value * 2
+}
+
+fn NestedCheckedLoopTotal(limit: Int) -> Int ! Error {
+    var total = 0
+    for outer in 0..2 {
+        for inner in 0..limit {
+            let value = CheckedLoopValue(inner)?
+            total = total + value + outer
+        }
+    }
+    return total
+}
+
+[Fact]
+fn NestedLoopErrorPropagation() -> Void {
+    match NestedCheckedLoopTotal(2) {
+        ok(value) => { Assert.Equal(6, value, "successful propagation rejoins the loop") }
+        err(_) => { Assert.True(false, "valid loop should complete") }
+    }
+    Assert.Error(NestedCheckedLoopTotal(5), "sentinel propagates out of both loops")
+}

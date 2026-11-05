@@ -716,35 +716,47 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 				fmt.Fprintf(&b, "\t_ = %s\n", l.Name)
 			}
 		}
-		labelToIdx := map[string]int{}
+		// Normalize legacy fallthrough blocks without mutating the input MIR.
+		fn.Blocks = append([]MIRBlock(nil), fn.Blocks...)
+		for i, bb := range fn.Blocks {
+			if bb.Terminator == nil && i+1 < len(fn.Blocks) {
+				fn.Blocks[i].Terminator = MIRJump{Target: fn.Blocks[i+1].Label}
+			}
+		}
+		cfg, err := BuildCFG(fn)
+		if err != nil {
+			return "", err
+		}
+		// Ordinary MIR has static edges. Emit them directly so Go's optimizer
+		// sees loop backedges instead of a program-counter dispatch each turn.
+		// Labels are emitted only when referenced (Go rejects unused labels).
+		labelToIdx := make(map[string]int, len(fn.Blocks))
 		for i, bb := range fn.Blocks {
 			labelToIdx[bb.Label] = i
 		}
-		pcName := internalName(internalProgramCounter, -1)
-		fmt.Fprintf(&b, "\t%s := 0\n\tfor {\n\t\tswitch %s {\n", pcName, pcName)
+		fmt.Fprintf(&b, "\tgoto %s\n", internalName(internalBlockLabel, 0))
 		for i, bb := range fn.Blocks {
-			fmt.Fprintf(&b, "\t\tcase %d:\n", i)
+			if i == 0 || len(cfg.Predecessors[bb.Label]) > 0 {
+				fmt.Fprintf(&b, "%s:\n", internalName(internalBlockLabel, i))
+			}
+			// Keep statement-local declarations scoped to their MIR block, as
+			// they were in switch cases; direct edges never jump into that scope.
+			b.WriteString("\t{\n")
 			for _, s := range bb.Statements {
 				src, err := goStmt(s)
 				if err != nil {
 					return "", err
 				}
-				fmt.Fprintf(&b, "\t\t\t%s\n", src)
+				fmt.Fprintf(&b, "\t\t%s\n", src)
 			}
-			terminator := bb.Terminator
-			if terminator == nil {
-				if i+1 >= len(fn.Blocks) {
-					return "", fmt.Errorf("unsupported MIR terminator <nil> in final block %s.%s:%s", fn.Package, fn.Name, bb.Label)
-				}
-				terminator = MIRJump{Target: fn.Blocks[i+1].Label}
-			}
-			term, err := goTerminator(terminator, labelToIdx, pcName)
+			term, err := goTerminator(bb.Terminator, labelToIdx, "")
 			if err != nil {
 				return "", err
 			}
-			fmt.Fprintf(&b, "\t\t\t%s\n", term)
+			fmt.Fprintf(&b, "\t\t%s\n", term)
+			b.WriteString("\t}\n")
 		}
-		b.WriteString("\t\t}\n\t}\n}\n\n")
+		b.WriteString("}\n\n")
 	}
 	b.WriteString("var __octAssertionCount int\n\n")
 	b.WriteString("func __octIndex[T any](values []T, index int) T { if index < 0 || index >= len(values) { panic(fmt.Sprintf(\"runtime error: index %d out of bounds for array of length %d\", index, len(values))) }; return values[index] }\n\n")
@@ -2046,7 +2058,19 @@ func goStmt(s MIRStmt) (string, error) {
 	}
 }
 
+// An empty pcName emits direct branches for ordinary functions. Shared FLOW
+// expressions retain their local dispatcher and pass its program-counter name.
 func goTerminator(t MIRTerminator, labels map[string]int, pcName string) (string, error) {
+	jump := func(target string) (string, error) {
+		index, ok := labels[target]
+		if !ok {
+			return "", fmt.Errorf("unknown MIR jump target %q", target)
+		}
+		if pcName == "" {
+			return "goto " + internalName(internalBlockLabel, index), nil
+		}
+		return fmt.Sprintf("%s = %d; continue", pcName, index), nil
+	}
 	switch term := t.(type) {
 	case MIRReturn:
 		if term.Value == nil {
@@ -2058,13 +2082,21 @@ func goTerminator(t MIRTerminator, labels map[string]int, pcName string) (string
 		}
 		return "return " + goReturnExpr(value), nil
 	case MIRJump:
-		return fmt.Sprintf("%s = %d; continue", pcName, labels[term.Target]), nil
+		return jump(term.Target)
 	case MIRBranch:
 		cond, err := emitGoValue(term.Cond)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("if %s { %s = %d } else { %s = %d }; continue", cond, pcName, labels[term.TrueTarget], pcName, labels[term.FalseTarget]), nil
+		trueJump, err := jump(term.TrueTarget)
+		if err != nil {
+			return "", err
+		}
+		falseJump, err := jump(term.FalseTarget)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("if %s { %s } else { %s }", cond, trueJump, falseJump), nil
 	case MIRFail:
 		value, err := emitGoValue(term.Value)
 		if err != nil {

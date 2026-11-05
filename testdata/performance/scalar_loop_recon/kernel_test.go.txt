@@ -1,0 +1,28 @@
+package main
+
+import "testing"
+
+var scalarSink float64
+
+func directGoScalar() float64 {
+	total := 0.0
+	for index := 0; index < 20_000_000; index++ {
+		total = total + float64(index)*0.0000001
+	}
+	return total
+}
+
+func BenchmarkScalarOct(b *testing.B) {
+	if got, want := fn_Main_main(), directGoScalar(); got != want {
+		b.Fatalf("generated result %g differs from Go %g", got, want)
+	}
+	for b.Loop() {
+		scalarSink = fn_Main_main()
+	}
+}
+
+func BenchmarkScalarGo(b *testing.B) {
+	for b.Loop() {
+		scalarSink = directGoScalar()
+	}
+}
