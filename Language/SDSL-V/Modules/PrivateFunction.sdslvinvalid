@@ -1,0 +1,2 @@
+import "library/Shader/Arithmetic.sdslv" as Arithmetic;
+fn Rejected() -> u32 { return Arithmetic.Double(1u); }

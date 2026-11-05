@@ -7,13 +7,11 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/emit/hlsl"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lower"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/modules"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/toolchain"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
-	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 func CheckFile(path string) error {
@@ -82,17 +80,5 @@ func LowerFile(path string) (vdmir.Module, error) {
 }
 
 func loadModule(path string) (ast.Module, error) {
-	file, err := source.Load(path)
-	if err != nil {
-		return ast.Module{}, err
-	}
-	tokens, err := lex.Analyze(file)
-	if err != nil {
-		return ast.Module{}, err
-	}
-	module, err := parse.BuildModule(tokens)
-	if err != nil {
-		return ast.Module{}, err
-	}
-	return module, nil
+	return modules.Load(path)
 }

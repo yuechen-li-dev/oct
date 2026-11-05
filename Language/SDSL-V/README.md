@@ -6,5 +6,6 @@ This directory owns SDSL-V language specimens and conformance inputs. It is part
 - `conformance/` contains the registered valid and invalid cases plus its manifest and pinned graphics artifacts.
 - `AttentionSpacePoc/` contains the attention-space comparison inputs.
 - `Modernization/` contains GPU contracts for typed scientific math, bit operations, BF16 precision boundaries, and shared expression parsing.
+- `Modules/` contains imports, visibility, transitive private helper closure, shared templates, and the distinction between value types and static concepts/configs. Its negative cases are registered in the conformance manifest.
 
 Fixture paths participate in stable IDs and replay identities. Moving a specimen requires updating its registered path and derived identities, then running the SDSL-V Go test packages.

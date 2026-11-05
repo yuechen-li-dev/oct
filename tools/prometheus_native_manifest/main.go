@@ -119,7 +119,7 @@ func validateGeneratedInventory(root string, m manifest) error {
 			return fmt.Errorf("duplicate generated header entry: %s", name)
 		}
 		seenHeaders[name] = true
-		if filepath.Base(name) != name || !strings.HasSuffix(name, ".h") {
+		if !filepath.IsLocal(filepath.FromSlash(name)) || filepath.ToSlash(filepath.Clean(filepath.FromSlash(name))) != name || strings.Contains(name, "\\") || !strings.HasSuffix(name, ".h") {
 			return fmt.Errorf("generated header must be a native-relative .h path: %s", name)
 		}
 		if _, err := os.Stat(filepath.Join(root, "internal", "prometheus", "native", filepath.FromSlash(name))); err != nil {
@@ -137,7 +137,11 @@ func validateGeneratedInventory(root string, m manifest) error {
 		}
 		name := info.Name()
 		if filepath.Ext(name) == ".h" && (strings.HasSuffix(name, "spirv.h") || strings.HasSuffix(name, "generated.h")) {
-			discovered = append(discovered, name)
+			relative, err := filepath.Rel(nativeRoot, path)
+			if err != nil {
+				return err
+			}
+			discovered = append(discovered, filepath.ToSlash(relative))
 		}
 		return nil
 	}); err != nil {

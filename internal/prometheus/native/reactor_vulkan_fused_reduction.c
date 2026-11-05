@@ -3,6 +3,7 @@
 #include "reactor_vulkan_runtime_internal.h"
 #include "reactor_shader_registry.h"
 #include "reactor_shader_package.h"
+#include "generated/prometheusreduction.generated.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -11,6 +12,32 @@
 #include <stdio.h>
 #include <string.h>
 
+/* The Concept records cross a generated C boundary. Keep public numeric
+   vocabulary changes explicit instead of silently reinterpreting a schedule. */
+_Static_assert(PROM_REDUCTION_OPERATION_SUM == 1u && PROM_REDUCTION_OPERATION_MAX == 2u &&
+               PROM_REDUCTION_OPERATION_SOFTMAX == 3u, "Concept reduction operation ABI");
+_Static_assert(PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP == 1u &&
+               PROM_REDUCTION_STRATEGY_COMPOSED == 2u && PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS == 3u,
+               "Concept reduction strategy ABI");
+_Static_assert(PROM_REDUCTION_STAGE_ROW_SUM == 1u && PROM_REDUCTION_STAGE_ROW_MAX == 2u &&
+               PROM_REDUCTION_STAGE_SOFTMAX_EXP_SUM == 3u && PROM_REDUCTION_STAGE_SOFTMAX_NORMALIZE == 4u &&
+               PROM_REDUCTION_STAGE_SOFTMAX_FUSED == 5u && PROM_REDUCTION_STAGE_ROW_SUM_PACKED_SHORT == 6u &&
+               PROM_REDUCTION_STAGE_SOFTMAX_PACKED_SHORT == 7u, "Concept reduction stage ABI");
+_Static_assert(PROM_REDUCTION_TEMPORARY_NONE == 0u && PROM_REDUCTION_TEMPORARY_PARTIALS == 1u &&
+               PROM_REDUCTION_TEMPORARY_ROW_MAX == 2u && PROM_REDUCTION_TEMPORARY_ROW_SUM == 3u,
+               "Concept reduction temporary ABI");
+_Static_assert(PROM_REDUCTION_MAX_STAGES == 8u && PROM_REDUCTION_LOCAL_SIZE == 256u &&
+               PROM_REDUCTION_ELEMENTS_PER_PARTIAL == 1024u && PROM_REDUCTION_SINGLE_STAGE_THRESHOLD == 1024u &&
+               sizeof(float) == 4u, "Concept reduction shape ABI");
+_Static_assert(PROM_REDUCTION_MAX_ROWS == 1024u && PROM_REDUCTION_MAX_ELEMENTS_PER_ROW == 1048576u &&
+               PROM_REDUCTION_MAX_TOTAL_ELEMENTS == 16777216u && PROM_REDUCTION_FORCE_FUSED_MAX_ELEMENTS_PER_ROW == 1056u,
+               "Concept reduction admitted envelope");
+_Static_assert(PROM_REDUCTION_FLAG_FORCE_FUSED == 1u && PROM_REDUCTION_FLAG_FORCE_COMPOSED == 2u &&
+               PROM_REDUCTION_FINALIZATION_NONE == 0u && PROM_REDUCTION_FINALIZATION_STABLE_SOFTMAX == 1u,
+               "Concept reduction request ABI");
+_Static_assert(PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX == 128u && PROM_REDUCTION_PACKED_SHORT_SUM_MIN_ROWS == 512u &&
+               PROM_REDUCTION_PACKED_SHORT_SUM_WIDE_MIN_ROWS == 1024u && PROM_REDUCTION_PACKED_SHORT_ROWS_PER_GROUP == 8u,
+               "Concept reduction qualified crossover");
 
 static uint64_t prom_reduction_plan_replay_id(const PrometheusReductionPlan* plan) {
   uint64_t hash = 1469598103934665603ull;
@@ -36,15 +63,24 @@ static uint64_t prom_reduction_plan_replay_id(const PrometheusReductionPlan* pla
   return hash;
 }
 
+/* Concept owns all numeric admission and scheduling decisions. This adapter
+   checks caller pointers and serializes the result into the stable public ABI. */
+static concept_reduction_shape prom_reduction_shape(const PrometheusReductionRequest* request) {
+  const concept_reduction_shape shape = {
+      request->row_count, request->elements_per_row, request->operation,
+      request->finalization, request->flags,
+      request->input_element_count, request->output_element_count};
+  return shape;
+}
+
 static int prom_reduction_validate_request(const PrometheusReductionRequest* request,
                                            uint32_t require_pointers,
                                            uint64_t* out_total_elements,
                                            uint64_t* out_output_elements,
                                            int32_t* out_detail) {
-  uint64_t total;
-  uint64_t output;
+  int32_t detail;
   if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_INVALID_REQUEST;
-  if (request == NULL || request->struct_size < sizeof(PrometheusReductionRequest)) return 0;
+  if (request == NULL || request->struct_size < sizeof(*request)) return 0;
   if (require_pointers != 0u && request->input == NULL) {
     if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_NULL_INPUT;
     return 0;
@@ -53,248 +89,59 @@ static int prom_reduction_validate_request(const PrometheusReductionRequest* req
     if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_NULL_OUTPUT;
     return 0;
   }
-  if (request->row_count == 0u) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_ZERO_ROW_COUNT;
-    return 0;
-  }
-  if (request->elements_per_row == 0u) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_ZERO_ROW_WIDTH;
-    return 0;
-  }
-  if (request->row_count > PROM_REDUCTION_MAX_ROWS) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_ROW_LIMIT;
-    return 0;
-  }
-  if (request->elements_per_row > PROM_REDUCTION_MAX_ELEMENTS_PER_ROW) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_WIDTH_LIMIT;
-    return 0;
-  }
-  total = (uint64_t)request->row_count * (uint64_t)request->elements_per_row;
-  if (total == 0u || total > PROM_REDUCTION_MAX_TOTAL_ELEMENTS) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_ELEMENT_LIMIT;
-    return 0;
-  }
-  if (request->operation != PROM_REDUCTION_OPERATION_SUM &&
-      request->operation != PROM_REDUCTION_OPERATION_MAX &&
-      request->operation != PROM_REDUCTION_OPERATION_SOFTMAX) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_UNSUPPORTED_OPERATION;
-    return 0;
-  }
-  if (request->operation == PROM_REDUCTION_OPERATION_SOFTMAX) {
-    if (request->finalization != PROM_REDUCTION_FINALIZATION_STABLE_SOFTMAX) {
-      if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_INVALID_FINALIZATION;
-      return 0;
-    }
-    output = total;
-  } else {
-    if (request->finalization != PROM_REDUCTION_FINALIZATION_NONE) {
-      if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_INVALID_FINALIZATION;
-      return 0;
-    }
-    output = request->row_count;
-  }
-  if ((request->flags & ~(PROM_REDUCTION_FLAG_FORCE_FUSED | PROM_REDUCTION_FLAG_FORCE_COMPOSED)) != 0u ||
-      ((request->flags & PROM_REDUCTION_FLAG_FORCE_FUSED) != 0u &&
-       (request->flags & PROM_REDUCTION_FLAG_FORCE_COMPOSED) != 0u)) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_UNSUPPORTED_STRATEGY;
-    return 0;
-  }
-  if (request->operation != PROM_REDUCTION_OPERATION_SOFTMAX && request->flags != 0u) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_UNSUPPORTED_STRATEGY;
-    return 0;
-  }
-  if ((request->flags & PROM_REDUCTION_FLAG_FORCE_FUSED) != 0u &&
-      request->elements_per_row > PROM_REDUCTION_FORCE_FUSED_MAX_ELEMENTS_PER_ROW) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_UNSUPPORTED_STRATEGY;
-    return 0;
-  }
-  if (request->input_element_count != total) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_INPUT_SIZE_MISMATCH;
-    return 0;
-  }
-  if (request->output_element_count != output) {
-    if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_OUTPUT_SIZE_MISMATCH;
-    return 0;
-  }
-  if (out_total_elements != NULL) *out_total_elements = total;
-  if (out_output_elements != NULL) *out_output_elements = output;
-  if (out_detail != NULL) *out_detail = 0;
+  detail = concept_prometheus_reduction_validate_shape(prom_reduction_shape(request));
+  if (out_detail != NULL) *out_detail = detail;
+  if (detail != 0) return 0;
+  if (out_total_elements != NULL) *out_total_elements = request->input_element_count;
+  if (out_output_elements != NULL) *out_output_elements = request->output_element_count;
   return 1;
-}
-
-static void prom_reduction_add_stage(PrometheusReductionPlan* plan,
-                                     uint32_t role,
-                                     uint32_t shader_id,
-                                     uint32_t implementation_id,
-                                     uint32_t groups_x,
-                                     uint32_t input_elements_per_row,
-                                     uint32_t output_partials_per_row) {
-  PrometheusReductionStageDispatch* stage = &plan->stages[plan->stage_count];
-  memset(stage, 0, sizeof(*stage));
-  stage->stage_role = role;
-  stage->shader_id = shader_id;
-  stage->implementation_id = implementation_id;
-  stage->groups_x = groups_x;
-  stage->groups_y = 1u;
-  stage->groups_z = 1u;
-  stage->input_elements_per_row = input_elements_per_row;
-  stage->output_partials_per_row = output_partials_per_row;
-  plan->stage_count += 1u;
-}
-
-static void prom_reduction_assign_temporary_metadata(PrometheusReductionPlan* plan) {
-  uint64_t row_bytes = (uint64_t)plan->row_count * sizeof(float);
-  uint64_t partial_bytes = plan->partial_count > 1u
-                               ? (uint64_t)plan->row_count * plan->partial_count * sizeof(float)
-                               : 0u;
-  uint32_t index;
-  plan->temporary_alignment_bytes = (uint32_t)sizeof(float);
-  for (index = 0u; index < plan->stage_count; ++index) {
-    PrometheusReductionStageDispatch* stage = &plan->stages[index];
-    stage->temporary_role = PROM_REDUCTION_TEMPORARY_NONE;
-    stage->temporary_bytes_written = 0u;
-  }
-  if (plan->operation == PROM_REDUCTION_OPERATION_SUM || plan->operation == PROM_REDUCTION_OPERATION_MAX) {
-    if (plan->partial_count > 1u) {
-      plan->stages[0].temporary_role = PROM_REDUCTION_TEMPORARY_PARTIALS;
-      plan->stages[0].temporary_bytes_written = partial_bytes;
-    }
-    plan->temporary_bytes = partial_bytes;
-    return;
-  }
-  if (plan->strategy == PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP ||
-      plan->strategy == PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS) {
-    plan->temporary_bytes = 0u;
-    return;
-  }
-  if (plan->partial_count > 1u) {
-    plan->stages[0].temporary_role = PROM_REDUCTION_TEMPORARY_PARTIALS;
-    plan->stages[0].temporary_bytes_written = partial_bytes;
-    plan->stages[1].temporary_role = PROM_REDUCTION_TEMPORARY_ROW_MAX;
-    plan->stages[1].temporary_bytes_written = row_bytes;
-    plan->stages[2].temporary_role = PROM_REDUCTION_TEMPORARY_PARTIALS;
-    plan->stages[2].temporary_bytes_written = partial_bytes;
-    plan->stages[3].temporary_role = PROM_REDUCTION_TEMPORARY_ROW_SUM;
-    plan->stages[3].temporary_bytes_written = row_bytes;
-  } else {
-    plan->stages[0].temporary_role = PROM_REDUCTION_TEMPORARY_ROW_MAX;
-    plan->stages[0].temporary_bytes_written = row_bytes;
-    plan->stages[1].temporary_role = PROM_REDUCTION_TEMPORARY_ROW_SUM;
-    plan->stages[1].temporary_bytes_written = row_bytes;
-  }
-  plan->temporary_bytes = partial_bytes + 2u * row_bytes;
-}
-
-/* The short-row crossover is a fixed RTX 3070 witness fact, not a scheduler:
-   packed sum repays its partition overhead only at high row counts, while the
-   packed stable-softmax path wins across its supported short-width envelope. */
-static uint32_t prom_reduction_select_packed_short(const PrometheusReductionRequest* request) {
-  if (request->operation == PROM_REDUCTION_OPERATION_SOFTMAX) {
-    return request->flags == 0u && request->elements_per_row <= PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX;
-  }
-  if (request->operation == PROM_REDUCTION_OPERATION_SUM) {
-    if (request->elements_per_row <= 96u && request->row_count >= PROM_REDUCTION_PACKED_SHORT_SUM_MIN_ROWS) return 1u;
-    return request->elements_per_row <= PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX &&
-           request->row_count >= PROM_REDUCTION_PACKED_SHORT_SUM_WIDE_MIN_ROWS;
-  }
-  return 0u;
 }
 
 int prom_reactor_reduction_plan_impl(const PrometheusReductionRequest* request,
                                      PrometheusReductionPlan* out_plan) {
-  uint64_t total_elements;
-  uint64_t output_elements;
-  uint32_t partial_count;
-  uint32_t composed;
-  int32_t detail;
+  static const uint32_t shaders[] = {0u,
+      PROM_REDUCTION_SHADER_ROW_SUM, PROM_REDUCTION_SHADER_ROW_MAX,
+      PROM_REDUCTION_SHADER_SOFTMAX_EXP_SUM, PROM_REDUCTION_SHADER_SOFTMAX_NORMALIZE,
+      PROM_REDUCTION_SHADER_SOFTMAX_FUSED, PROM_REDUCTION_SHADER_ROW_SUM_PACKED_SHORT,
+      PROM_REDUCTION_SHADER_SOFTMAX_PACKED_SHORT};
+  static const uint32_t implementations[] = {0u,
+      PROM_REDUCTION_IMPLEMENTATION_ROW_SUM, PROM_REDUCTION_IMPLEMENTATION_ROW_MAX,
+      PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_EXP_SUM, PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_NORMALIZE,
+      PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_FUSED, PROM_REDUCTION_IMPLEMENTATION_ROW_SUM_PACKED_SHORT,
+      PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_PACKED_SHORT};
+  concept_reduction_schedule schedule;
+  uint32_t index;
   if (out_plan == NULL) return PROM_ERROR;
   memset(out_plan, 0, sizeof(*out_plan));
   out_plan->struct_size = sizeof(*out_plan);
-  if (!prom_reduction_validate_request(request, 0u, &total_elements, &output_elements, &detail)) return PROM_ERROR;
-  (void)output_elements;
-  partial_count = prom_reduction_ceil_div_u32(request->elements_per_row, PROM_REDUCTION_ELEMENTS_PER_PARTIAL);
+  if (!prom_reduction_validate_request(request, 0u, NULL, NULL, NULL)) return PROM_ERROR;
+  schedule = concept_prometheus_reduction_build_schedule(prom_reduction_shape(request));
+  if (schedule.count == 0u || schedule.count > PROM_REDUCTION_MAX_STAGES) return PROM_ERROR;
   out_plan->operation = request->operation;
   out_plan->row_count = request->row_count;
   out_plan->elements_per_row = request->elements_per_row;
+  out_plan->strategy = schedule.strategy;
   out_plan->local_size = PROM_REDUCTION_LOCAL_SIZE;
   out_plan->elements_per_partial = PROM_REDUCTION_ELEMENTS_PER_PARTIAL;
-  out_plan->partial_count = partial_count;
-
-  if (request->operation == PROM_REDUCTION_OPERATION_SUM || request->operation == PROM_REDUCTION_OPERATION_MAX) {
-    uint32_t role = request->operation == PROM_REDUCTION_OPERATION_SUM ? PROM_REDUCTION_STAGE_ROW_SUM
-                                                                       : PROM_REDUCTION_STAGE_ROW_MAX;
-    uint32_t shader = request->operation == PROM_REDUCTION_OPERATION_SUM ? PROM_REDUCTION_SHADER_ROW_SUM
-                                                                         : PROM_REDUCTION_SHADER_ROW_MAX;
-    uint32_t implementation = request->operation == PROM_REDUCTION_OPERATION_SUM
-                                  ? PROM_REDUCTION_IMPLEMENTATION_ROW_SUM
-                                  : PROM_REDUCTION_IMPLEMENTATION_ROW_MAX;
-    const uint32_t packed_short = prom_reduction_select_packed_short(request);
-    out_plan->strategy = packed_short != 0u ? PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS
-                                            : PROM_REDUCTION_STRATEGY_COMPOSED;
-    if (packed_short != 0u) {
-      prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_ROW_SUM_PACKED_SHORT,
-                               PROM_REDUCTION_SHADER_ROW_SUM_PACKED_SHORT,
-                               PROM_REDUCTION_IMPLEMENTATION_ROW_SUM_PACKED_SHORT,
-                               prom_reduction_ceil_div_u32(request->row_count,
-                                                           PROM_REDUCTION_PACKED_SHORT_ROWS_PER_GROUP),
-                               request->elements_per_row, 1u);
-    } else {
-      prom_reduction_add_stage(out_plan, role, shader, implementation, request->row_count * partial_count,
-                               request->elements_per_row, partial_count);
-    }
-    if (partial_count > 1u) {
-      prom_reduction_add_stage(out_plan, role, shader, implementation, request->row_count, partial_count, 1u);
-    }
-  } else {
-    composed = (request->flags & PROM_REDUCTION_FLAG_FORCE_COMPOSED) != 0u ||
-               ((request->flags & PROM_REDUCTION_FLAG_FORCE_FUSED) == 0u &&
-                request->elements_per_row > PROM_REDUCTION_SINGLE_STAGE_THRESHOLD);
-    const uint32_t packed_short = prom_reduction_select_packed_short(request);
-    if (packed_short != 0u) {
-      out_plan->strategy = PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS;
-      prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_SOFTMAX_PACKED_SHORT,
-                               PROM_REDUCTION_SHADER_SOFTMAX_PACKED_SHORT,
-                               PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_PACKED_SHORT,
-                               prom_reduction_ceil_div_u32(request->row_count,
-                                                           PROM_REDUCTION_PACKED_SHORT_ROWS_PER_GROUP),
-                               request->elements_per_row, 1u);
-    } else if (!composed) {
-      out_plan->strategy = PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP;
-      prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_SOFTMAX_FUSED,
-                               PROM_REDUCTION_SHADER_SOFTMAX_FUSED,
-                               PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_FUSED,
-                               request->row_count, request->elements_per_row, 1u);
-    } else {
-      out_plan->strategy = PROM_REDUCTION_STRATEGY_COMPOSED;
-      prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_ROW_MAX,
-                               PROM_REDUCTION_SHADER_ROW_MAX,
-                               PROM_REDUCTION_IMPLEMENTATION_ROW_MAX,
-                               request->row_count * partial_count, request->elements_per_row, partial_count);
-      if (partial_count > 1u) {
-        prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_ROW_MAX,
-                                 PROM_REDUCTION_SHADER_ROW_MAX,
-                                 PROM_REDUCTION_IMPLEMENTATION_ROW_MAX,
-                                 request->row_count, partial_count, 1u);
-      }
-      prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_SOFTMAX_EXP_SUM,
-                               PROM_REDUCTION_SHADER_SOFTMAX_EXP_SUM,
-                               PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_EXP_SUM,
-                               request->row_count * partial_count, request->elements_per_row, partial_count);
-      if (partial_count > 1u) {
-        prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_ROW_SUM,
-                                 PROM_REDUCTION_SHADER_ROW_SUM,
-                                 PROM_REDUCTION_IMPLEMENTATION_ROW_SUM,
-                                 request->row_count, partial_count, 1u);
-      }
-      prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_SOFTMAX_NORMALIZE,
-                               PROM_REDUCTION_SHADER_SOFTMAX_NORMALIZE,
-                               PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_NORMALIZE,
-                               prom_reduction_ceil_div_u32((uint32_t)total_elements, PROM_REDUCTION_LOCAL_SIZE),
-                               request->elements_per_row, 1u);
-    }
+  out_plan->partial_count = schedule.partials;
+  out_plan->stage_count = schedule.count;
+  out_plan->temporary_alignment_bytes = sizeof(float);
+  out_plan->temporary_bytes = schedule.temporaryBytes;
+  for (index = 0u; index < schedule.count; ++index) {
+    const concept_reduction_stage* source = &schedule.stages.data[index];
+    PrometheusReductionStageDispatch* target = &out_plan->stages[index];
+    if (source->role == 0u || source->role >= sizeof(shaders) / sizeof(shaders[0])) return PROM_ERROR;
+    target->stage_role = source->role;
+    target->shader_id = shaders[source->role];
+    target->implementation_id = implementations[source->role];
+    target->groups_x = source->groups;
+    target->groups_y = 1u;
+    target->groups_z = 1u;
+    target->input_elements_per_row = source->inputWidth;
+    target->output_partials_per_row = source->outputPartials;
+    target->temporary_role = source->temporaryRole;
+    target->temporary_bytes_written = source->temporaryBytes;
   }
-  if (out_plan->stage_count == 0u || out_plan->stage_count > PROM_REDUCTION_MAX_STAGES) return PROM_ERROR;
-  prom_reduction_assign_temporary_metadata(out_plan);
   out_plan->replay_id = prom_reduction_plan_replay_id(out_plan);
   return PROM_OK;
 }

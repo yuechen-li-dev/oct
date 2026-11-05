@@ -1,0 +1,3 @@
+concept TileShape { WIDTH: u32; }
+config Four: TileShape { WIDTH: 4u; }
+fn Rejected(value: Four) -> void { return; }

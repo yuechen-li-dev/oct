@@ -1,0 +1,13 @@
+import "library/Composition.sdslv" as Composition;
+import "library/Shader/Arithmetic.sdslv" as Arithmetic;
+
+[WorkgroupSize(1, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[TestInputUInt(7u)]
+[Fact]
+fn TransitiveDiamondImportsKeepPrivateNamesSeparate() -> void {
+    let value: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 0u;
+    let result: Composition.Score = Composition.Score(value);
+    Assert.Equal(8u, result, "type and function namespaces remain distinct");
+    Assert.Equal(51u, Composition.Combine(value) + Arithmetic.TwicePlusOne(value), "each private Double belongs to its source module; diamond dependencies bind once");
+}

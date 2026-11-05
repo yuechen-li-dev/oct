@@ -29,6 +29,13 @@ SDSL-V source
 
 ## Supported forms
 
+`type` names a value type; `concept` defines a compile-time configuration
+schema; `config` supplies a checked set of values. Use an alias or record for
+GPU data and a concept-config parameter for shader specialization. Concepts and
+configs have no runtime value representation. See the current
+[type/concept distinction](SDSL_V_LANGUAGE_SPEC.md#25-static-abstraction-and-comptime)
+and its executable contracts; this milestone note retains the original scope.
+
 ```sdslv
 concept SgemmTileConfig {
     TILE_M: u32;

@@ -4,6 +4,7 @@
 // output reads both original half-pair members, so reuse can never introduce an
 // in-place hazard.
 namespace Prometheus.Production.Gemma4E2BM1;
+import "../shared/Bf16.sdslv" as Bf16;
 
 stream RopeIO {
     [binding(0)] Input: readonly array<f32>;
@@ -21,20 +22,6 @@ record RopeParams {
     Reserved2: u32;
     Reserved3: u32;
     Reserved4: u32;
-}
-
-fn RoundtripBF16(value: f32) -> f32 {
-    let bits: u32 = Bitcast<u32>(value);
-    let exponent: u32 = bits & 0x7f800000u;
-    let mantissa: u32 = bits & 0x007fffffu;
-    if exponent == 0x7f800000u {
-        if mantissa == 0u { return value; }
-        let bf16: u32 = (bits >> 16u) | 0x0040u;
-        return Bitcast<f32>(bf16 << 16u);
-    }
-    let lsb: u32 = (bits >> 16u) & 1u;
-    let bf16: u32 = (bits + 0x00007fffu + lsb) >> 16u;
-    return Bitcast<f32>(bf16 << 16u);
 }
 
 shader Gemma4E2BM1RopeHalfSplit {
@@ -56,10 +43,10 @@ shader Gemma4E2BM1RopeHalfSplit {
             let sine: f32 = Sine[table_element];
             // The accepted portable BF16 authority rounds each product and
             // the final sum/difference at the positional boundary.
-            let first_product: f32 = RoundtripBF16(source * cosine);
-            let second_product: f32 = RoundtripBF16(pair_source * sine);
-            var transformed: f32 = RoundtripBF16(first_product - second_product);
-            if component >= half { transformed = RoundtripBF16(first_product + second_product); }
+            let first_product: f32 = Bf16.RoundtripBF16(source * cosine);
+            let second_product: f32 = Bf16.RoundtripBF16(pair_source * sine);
+            var transformed: f32 = Bf16.RoundtripBF16(first_product - second_product);
+            if component >= half { transformed = Bf16.RoundtripBF16(first_product + second_product); }
             Output[element] = transformed;
         }
         return;

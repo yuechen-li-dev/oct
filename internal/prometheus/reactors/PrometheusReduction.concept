@@ -1,0 +1,164 @@
+module PrometheusReduction;
+profile Core;
+
+// The reactor owns shape admission, strategy, stage topology, and temporary
+// lifetimes. Vulkan handles and the public C packet remain at the adapter.
+comptime uint32 Sum = 1;
+comptime uint32 Max = 2;
+comptime uint32 Softmax = 3;
+comptime uint32 Fused = 1;
+comptime uint32 Composed = 2;
+comptime uint32 Packed = 3;
+comptime uint32 Partial = 1;
+comptime uint32 RowMax = 2;
+comptime uint32 RowSum = 3;
+comptime uint32 LocalSize = 256;
+comptime uint32 PartialWidth = 1024;
+
+[[repr(C)]]
+record struct ReductionShape
+{
+    uint32 rows;
+    uint32 width;
+    uint32 operation;
+    uint32 finalization;
+    uint32 flags;
+    uint64 inputCount;
+    uint64 outputCount;
+};
+
+[[repr(C)]]
+record struct ReductionStage
+{
+    uint32 role;
+    uint32 groups;
+    uint32 inputWidth;
+    uint32 outputPartials;
+    uint32 temporaryRole;
+    uint64 temporaryBytes;
+};
+
+[[repr(C)]]
+record struct ReductionSchedule
+{
+    uint32 strategy;
+    uint32 partials;
+    uint32 count;
+    uint64 temporaryBytes;
+    ReductionStage<array>[8] stages;
+};
+
+// Mutable construction stays internal; the foreign result is a plain,
+// immutable repr(C) record with no references or owning fields.
+struct ScheduleBuilder
+{
+    uint32 strategy;
+    uint32 partials;
+    uint32 count;
+    uint64 temporaryBytes;
+    ReductionStage<array>[8] stages;
+};
+
+ReductionSchedule Finish(ScheduleBuilder schedule)
+{
+    return ReductionSchedule{schedule.strategy, schedule.partials, schedule.count,
+                             schedule.temporaryBytes, schedule.stages};
+}
+
+int ValidateShape(ReductionShape shape)
+{
+    if (shape.rows == 0) { return -6804; }
+    if (shape.width == 0) { return -6805; }
+    if (shape.rows > 1024) { return -6811; }
+    if (shape.width > 1048576) { return -6812; }
+    uint64 total = (shape.rows as uint64) * (shape.width as uint64);
+    if (total > 16777216) { return -6813; }
+    if (shape.operation != Sum and shape.operation != Max and shape.operation != Softmax) { return -6806; }
+    uint64 output = shape.rows as uint64;
+    if (shape.operation == Softmax)
+    {
+        if (shape.finalization != 1) { return -6807; }
+        output = total;
+    }
+    else if (shape.finalization != 0) { return -6807; }
+    if (shape.flags > 2 or (shape.operation != Softmax and shape.flags != 0)) { return -6815; }
+    if (shape.flags == 1 and shape.width > 1056) { return -6815; }
+    if (shape.inputCount != total) { return -6809; }
+    if (shape.outputCount != output) { return -6810; }
+    return 0;
+}
+
+uint32 Groups(uint32 count, uint32 width) { return (count + width - 1u) / width; }
+
+bool UsePacked(ReductionShape shape)
+{
+    if (shape.operation == Softmax) { return shape.flags == 0 and shape.width <= 128; }
+    if (shape.operation != Sum) { return false; }
+    return (shape.width <= 96 and shape.rows >= 512) or (shape.width <= 128 and shape.rows >= 1024);
+}
+
+void Append(ref ScheduleBuilder schedule, uint32 role, uint32 groups,
+            uint32 width, uint32 partials, uint32 temporaryRole, uint64 temporaryBytes)
+{
+    assert(schedule.count < 8, "reduction schedule exceeds its fixed ABI capacity");
+    schedule.stages[schedule.count as int] = ReductionStage{role, groups, width, partials, temporaryRole, temporaryBytes};
+    schedule.count = schedule.count + 1u;
+}
+
+// A row reduction always has one partial pass, optionally followed by one
+// finishing pass. The final destination is either a named row temporary or output.
+void Reduce(ref ScheduleBuilder schedule, uint32 partialRole, uint32 finalRole, ReductionShape shape,
+            uint32 destination, uint64 rowBytes)
+{
+    uint32 firstDestination = destination;
+    uint64 firstBytes = rowBytes;
+    if (schedule.partials > 1)
+    {
+        firstDestination = Partial;
+        firstBytes = (shape.rows as uint64) * 4u * (schedule.partials as uint64);
+    }
+    Append(ref schedule, partialRole, shape.rows * schedule.partials, shape.width,
+           schedule.partials, firstDestination, firstBytes);
+    if (schedule.partials > 1)
+    {
+        Append(ref schedule, finalRole, shape.rows, schedule.partials, 1, destination, rowBytes);
+    }
+}
+
+ReductionSchedule BuildSchedule(ReductionShape shape)
+{
+    assert(ValidateShape(shape) == 0, "only admitted shapes may reach reduction planning");
+    ReductionStage<array>[8] stages = [ReductionStage{0, 0, 0, 0, 0, 0}...];
+    ScheduleBuilder schedule = ScheduleBuilder{Composed, Groups(shape.width, PartialWidth), 0, 0, stages};
+    uint64 rowBytes = (shape.rows as uint64) * 4u;
+    uint64 partialBytes = 0;
+    if (schedule.partials > 1) { partialBytes = rowBytes * (schedule.partials as uint64); }
+
+    if (UsePacked(shape))
+    {
+        schedule.strategy = Packed;
+        uint32 role = 6;
+        if (shape.operation == Softmax) { role = 7; }
+        Append(ref schedule, role, Groups(shape.rows, 8), shape.width, 1, 0, 0);
+        return Finish(schedule);
+    }
+    if (shape.operation != Softmax)
+    {
+        Reduce(ref schedule, shape.operation, shape.operation, shape, 0, 0);
+        schedule.temporaryBytes = partialBytes;
+        return Finish(schedule);
+    }
+    if (shape.flags != 2 and (shape.flags == 1 or shape.width <= PartialWidth))
+    {
+        schedule.strategy = Fused;
+        Append(ref schedule, 5, shape.rows, shape.width, 1, 0, 0);
+        return Finish(schedule);
+    }
+
+    Reduce(ref schedule, 2, 2, shape, RowMax, rowBytes);
+    Reduce(ref schedule, 3, 1, shape, RowSum, rowBytes);
+    uint32 total = shape.rows * shape.width;
+    Append(ref schedule, 4, Groups(total, LocalSize), shape.width, 1, 0, 0);
+    schedule.temporaryBytes = partialBytes + 2u * rowBytes;
+    return Finish(schedule);
+}

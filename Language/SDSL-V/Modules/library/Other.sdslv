@@ -1,0 +1,4 @@
+namespace Shader.Other;
+
+fn Double(value: u32) -> u32 { return value * 3u; }
+export fn Triple(value: u32) -> u32 { return Double(value); }

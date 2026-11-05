@@ -5,15 +5,19 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
 )
 
 type HeaderOptions struct {
-	Symbol       string
-	SourcePath   string
-	Compute      *ComputeHeaderMetadata
-	CommandLine  string
-	HeaderPath   string
-	IncludeGuard string
+	Dependencies       []vdmir.Dependency
+	DependencyIdentity string
+	Symbol             string
+	SourcePath         string
+	Compute            *ComputeHeaderMetadata
+	CommandLine        string
+	HeaderPath         string
+	IncludeGuard       string
 }
 
 type ComputeHeaderMetadata struct {
@@ -55,6 +59,12 @@ func HeaderFromWords(words []uint32, opts HeaderOptions) (string, error) {
 	b.WriteString("#include <stdint.h>\n\n")
 	if opts.SourcePath != "" {
 		fmt.Fprintf(&b, "// Source: %s\n", filepath.ToSlash(opts.SourcePath))
+	}
+	if opts.DependencyIdentity != "" {
+		fmt.Fprintf(&b, "// Source graph SHA-256: %s\n", opts.DependencyIdentity)
+		for _, dep := range opts.Dependencies {
+			fmt.Fprintf(&b, "// Dependency: %s %s\n", dep.Path, dep.SHA256)
+		}
 	}
 	if opts.Compute != nil && opts.Compute.EntryPoint != "" {
 		fmt.Fprintf(&b, "// Entry point: %s\n", opts.Compute.EntryPoint)

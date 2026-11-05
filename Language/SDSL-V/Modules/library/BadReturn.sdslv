@@ -1,0 +1,2 @@
+namespace Shader.BadReturn;
+export fn Broken(value: u32) -> u32 { return 1.5; }

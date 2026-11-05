@@ -1,0 +1,2 @@
+import "library/BadReturn.sdslv" as BadReturn;
+fn Rejected() -> u32 { return BadReturn.Broken(1u); }

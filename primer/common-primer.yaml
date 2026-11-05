@@ -1,0 +1,91 @@
+document:
+  name: common-primer
+  format: yaml
+  version: 2
+  kind: common
+summary: Make correctness depend on explicit contracts and checks rather than author vigilance alone.
+policy:
+  adoption: >-
+    Read this file and the applicable language profile, plus an API overlay when
+    relevant. Keep AGENTS.md for repository-specific instructions, architecture,
+    commands, and supported targets. Primers complement those instructions.
+    Follow higher-priority instructions; surface a genuine conflict explicitly.
+  requirement: A correctness obligation within its stated scope; satisfy it or report the unresolved failure.
+  default: >-
+    The usual design choice. Depart when the actual domain or repository benefits;
+    explain the concrete tradeoff near the design or in the change description.
+    A departure does not itself require permission or a new framework.
+  enforcement: >-
+    Each rule names its failure mode and verification. Some checks are mechanical;
+    others require review or runtime evidence. These documents do not guarantee
+    program correctness. Compilation, annotations, and a clean linter are not proofs
+    of domain behavior, memory safety in unsafe code, or integration success.
+rules:
+  - id: COMMON-CONTRACTS
+    level: requirement
+    scope: Changed APIs and state transitions
+    rule: >-
+      Make valid inputs, outputs, failure modes, mutation, ownership, and lifetime
+      visible in types and nearby contracts. Validate untrusted data at the boundary.
+      Use types to exclude invalid states where practical; annotations alone do not validate data.
+    reason: Prevents callers from having to infer hidden preconditions or contradictory state.
+    verification: Test valid cases, boundary values, malformed input, and meaningful invalid transitions.
+  - id: COMMON-FAILURE
+    level: requirement
+    scope: Recoverable failures and cleanup
+    rule: >-
+      Use the language's error conventions to preserve the reason and context.
+      Specify state after failure and release acquired resources on every exit.
+      Never turn failure, timeout, or cancellation into success or substitute empty
+      output silently. Assertions are for internal invariants, not input validation.
+    reason: Prevents hidden partial success and resource leaks.
+    verification: Exercise failure after acquisition and confirm cleanup and observable state.
+  - id: COMMON-STRUCTURE
+    level: default
+    scope: Design and reuse
+    rule: >-
+      Start with cohesive functions and data types. Reuse the existing authority
+      for behavior and state. Add an abstraction when it encodes an invariant,
+      a real substitution boundary, or useful repeated behavior; judge it by its
+      contract and cost rather than banning a language feature by name.
+    reason: Keeps behavior locally understandable and avoids duplicate implementations drifting apart.
+    verification: Review a representative caller and trace ownership, data flow, and failure handling.
+  - id: COMMON-CONCURRENCY
+    level: requirement
+    scope: Concurrent or deferred work
+    rule: >-
+      Identify who starts, observes, cancels, and joins work; bound resource use
+      and define shutdown. Establish access rules for shared mutable state and
+      define what happens when a consumer disappears. Async does not imply parallelism or safety.
+    reason: Prevents unobserved failures and work outliving their resources.
+    verification: Exercise cancellation, error propagation, overlap, overload, and owner teardown as applicable.
+  - id: COMMON-COMPATIBILITY
+    level: requirement
+    scope: Toolchains, dependencies, persistence, and external protocols
+    rule: >-
+      Respect the repository's declared supported versions and lock dependencies
+      using its package tools. Document serialized/ABI contracts and compatibility
+      changes. Isolate unsafe, dynamic, or platform-dependent operations behind a
+      boundary with explicit assumptions; do not claim portability without target evidence.
+    reason: Prevents valid local code from breaking consumers, reproducible builds, or another target.
+    verification: Build supported targets and test representative external data and compatibility boundaries.
+  - id: COMMON-EVIDENCE
+    level: requirement
+    scope: Verification and completion claims
+    rule: >-
+      Run checks appropriate to the changed behavior through its real entry point.
+      Include a regression for the motivating failure when useful and assert
+      observable results rather than mirroring implementation. Use controlled input,
+      seeds, clocks, and artifacts where needed. Report exact limits and unrun checks.
+    reason: Prevents tests, mocks, or a successful build from being mistaken for working integration.
+    verification: Match each completion claim to retained command output, assertions, or runtime evidence.
+  - id: COMMON-PERFORMANCE
+    level: default
+    scope: Optimization
+    rule: >-
+      Use a clear implementation first. Optimize against a measured workload and
+      preserve correctness controls. State allocation, blocking, and complexity
+      costs where callers need them; accept low-level tools when evidence justifies them.
+    reason: Prevents speculative optimization from obscuring behavior or silently changing semantics.
+    verification: Compare representative before/after behavior and cost under equivalent conditions.
+references: []

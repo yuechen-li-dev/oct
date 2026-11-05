@@ -1,0 +1,2 @@
+concept TileShape { WIDTH: u32; }
+fn Rejected(value: TileShape) -> void { return; }

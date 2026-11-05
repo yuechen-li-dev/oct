@@ -14,7 +14,7 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 7 |
+| Open | 8 |
 | Deferred | 11 |
 | Resolved | 90 |
 | Superseded | 1 |
@@ -23,6 +23,26 @@ report is historical evidence, not the current issue count.
 
 Newest first. These entries remain open; their presence is not an instruction
 to change the implementation during unrelated work.
+
+### FB-110 — Top-level GPU benchmarks admit invocation builtins without emitting them
+
+Date: 2026-11-05
+
+Status: Open
+
+Observation: A top-level `.sdslvbench` function can use `DispatchThreadID.x`
+and pass discovery, validation, and lowering, but native benchmark compilation
+fails in DXC with `use of undeclared identifier 'DispatchThreadID'`. Reproduced
+with `[Benchmark] fn InvocationIndex() -> void { let value: u32 = DispatchThreadID.x; return; }`.
+`hlsl.EmitBenchmark` emits the ordinary function outside the dispatch wrapper's
+builtin parameter scope. The imported benchmark qualification exposed this
+existing profile boundary; its final source uses an ordinary constant argument.
+
+Suggestion: Thread required invocation builtins through top-level benchmark
+functions and their calls, or reject the unsupported form during validation.
+Keep the existing shader-method benchmark path as a separate supported case.
+
+---
 
 ### FB-109 — Inline HLSL expressions rewrite only the first return
 

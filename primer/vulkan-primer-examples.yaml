@@ -1,0 +1,97 @@
+document:
+  name: vulkan-primer-examples
+  format: yaml
+  version: 2
+  kind: examples
+profile: vulkan-primer.yaml
+cases:
+  - id: VK-ALIGNED-SPIRV-WORDS
+    language: cpp
+    mode: run
+    demonstrates: [VK-SHADERS, CPP-INTEROP]
+    description: >-
+      Host representation checks copy little-endian bytes into aligned word storage.
+      A structurally readable header is not proof of a valid shader module; run
+      spirv-val for the declared environment before real Vulkan module creation.
+    code: |
+      #include <cassert>
+      #include <cstddef>
+      #include <cstdint>
+      #include <expected>
+      #include <span>
+      #include <vector>
+      enum class ShaderError { length, magic };
+      [[nodiscard]] std::expected<std::vector<std::uint32_t>, ShaderError>
+      read_words(std::span<const std::byte> bytes) {
+          if (bytes.size() < 20 || bytes.size() % 4 != 0)
+              return std::unexpected(ShaderError::length);
+          std::vector<std::uint32_t> words(bytes.size() / 4);
+          for (std::size_t word = 0; word < words.size(); ++word) {
+              std::uint32_t value = 0;
+              for (std::size_t octet = 0; octet < 4; ++octet)
+                  value |= std::to_integer<std::uint32_t>(bytes[word * 4 + octet]) << (octet * 8);
+              words[word] = value;
+          }
+          if (words[0] != 0x07230203U) return std::unexpected(ShaderError::magic);
+          return words;
+      }
+      int main() {
+          std::vector<std::byte> storage(21);
+          // Intentionally offset byte storage; never read it via uint32_t*.
+          std::span<std::byte> bytes{storage.data() + 1, 20};
+          bytes[0] = std::byte{0x03}; bytes[1] = std::byte{0x02};
+          bytes[2] = std::byte{0x23}; bytes[3] = std::byte{0x07};
+          auto words = read_words(bytes);
+          assert(words && words->size() == 5 && (*words)[0] == 0x07230203U);
+          auto truncated = read_words(bytes.first(19));
+          assert(!truncated && truncated.error() == ShaderError::length);
+          bytes[0] = std::byte{0};
+          auto wrong_magic = read_words(bytes);
+          assert(!wrong_magic && wrong_magic.error() == ShaderError::magic);
+      }
+  - id: VK-MULTI-QUEUE-RETIREMENT
+    language: cpp
+    mode: run
+    demonstrates: [VK-OWNERSHIP]
+    description: >-
+      Host-only predicate for a resource used on two queues. Completion values
+      must come from actual queue completion observation; this does not model WSI.
+    code: |
+      #include <array>
+      #include <cassert>
+      #include <cstddef>
+      #include <cstdint>
+      using QueueValues = std::array<std::uint64_t, 2>;
+      bool can_retire(const QueueValues& last_use, const QueueValues& completed) {
+          for (std::size_t queue = 0; queue < last_use.size(); ++queue)
+              if (completed[queue] < last_use[queue]) return false;
+          return true;
+      }
+      int main() {
+          const QueueValues last_use{7, 12};
+          assert(!can_retire(last_use, QueueValues{7, 11}));
+          assert(!can_retire(last_use, QueueValues{6, 12}));
+          assert(can_retire(last_use, QueueValues{7, 12}));
+          assert(can_retire(last_use, QueueValues{9, 15}));
+      }
+  - id: VK-PRESENT-LIFETIME-RECIPE
+    language: cpp
+    mode: illustrative
+    demonstrates: [VK-PRESENT, VK-SYNC]
+    description: >-
+      Review recipe, not a complete executable or GPU proof. Real integration must
+      supply feature checks, result handling, stage/access/layout dependencies,
+      queue ownership, and swapchain retirement. A real-device validation run is required.
+    code: |
+      // Distinct indices: frame_slot selects submission resources;
+      // acquired_image selects the swapchain image and its render_finished semaphore.
+      // 1. Wait for the frame_slot submission fence before recycling its resources.
+      // 2. Acquire acquired_image. On out-of-date, recreate without resetting that fence.
+      // 3. Record transitions and rendering for acquired_image.
+      // 4. Reset the frame fence only when ready to submit. Handle submission failure.
+      // 5. Submit waiting for the frame's acquire semaphore at the first image-use stage;
+      //    signal render_finished[acquired_image] and the frame fence.
+      // 6. Present waiting for render_finished[acquired_image].
+      // Reuse that present-wait semaphore only after reacquiring the same image
+      // AND waiting for acquire synchronization, or another spec-backed completion proof.
+      // The frame fence alone cannot justify reuse or retired-swapchain destruction.

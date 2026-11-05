@@ -1,0 +1,9 @@
+namespace Shader.Graphics;
+
+export type ClipPosition = float4 @space(clip.position);
+export stream Varyings {
+    Position: ClipPosition;
+    [location(0)] Color: float4;
+}
+export stream Output { [target(0)] Color: float4; }
+export fn Origin() -> ClipPosition { return float4(0.0, 0.0, 0.0, 1.0); }

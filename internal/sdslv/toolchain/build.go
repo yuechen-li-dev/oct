@@ -10,12 +10,10 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/emit/hlsl"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lower"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/modules"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
-	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 type CompileOptions struct {
@@ -31,6 +29,8 @@ type CompileOptions struct {
 }
 
 type CompileResult struct {
+	Dependencies              []vdmir.Dependency
+	DependencyIdentity        string
 	InputPath                 string
 	HLSLPath                  string
 	SPIRVPath                 string
@@ -119,11 +119,13 @@ func GenerateHeader(opts GenerateHeaderOptions) (GenerateHeaderResult, error) {
 		return GenerateHeaderResult{}, fmt.Errorf("read SPIR-V %s: %w", result.SPIRVPath, err)
 	}
 	headerText, err := HeaderFromSPIRVBytes(bytes, HeaderOptions{
-		Symbol:      opts.Symbol,
-		SourcePath:  opts.InputPath,
-		Compute:     computeHeaderMetadata(entry),
-		CommandLine: opts.CommandLine,
-		HeaderPath:  opts.OutputPath,
+		Symbol:             opts.Symbol,
+		SourcePath:         opts.InputPath,
+		Compute:            computeHeaderMetadata(entry),
+		CommandLine:        opts.CommandLine,
+		HeaderPath:         opts.OutputPath,
+		Dependencies:       result.Dependencies,
+		DependencyIdentity: result.DependencyIdentity,
 	})
 	if err != nil {
 		return GenerateHeaderResult{}, err
@@ -210,6 +212,8 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 		return CompileResult{}, fmt.Errorf("dxc failed (exit code %d)\ncommand: %s %s\nstdout:\n%s\nstderr:\n%s", result.ExitCode, filepath.ToSlash(dxcPath), strings.Join(dxcArgs, " "), strings.TrimSpace(result.Stdout), strings.TrimSpace(result.Stderr))
 	}
 	compileResult := CompileResult{
+		Dependencies:              append([]vdmir.Dependency(nil), mir.Dependencies...),
+		DependencyIdentity:        mir.DependencyIdentity,
 		InputPath:                 opts.InputPath,
 		HLSLPath:                  hlslPath,
 		SPIRVPath:                 outputPath,
@@ -255,15 +259,7 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 }
 
 func loadModuleAndHLSL(path string) (ast.Module, vdmir.Module, string, error) {
-	file, err := source.Load(path)
-	if err != nil {
-		return ast.Module{}, vdmir.Module{}, "", err
-	}
-	tokens, err := lex.Analyze(file)
-	if err != nil {
-		return ast.Module{}, vdmir.Module{}, "", err
-	}
-	module, err := parse.BuildModule(tokens)
+	module, err := modules.Load(path)
 	if err != nil {
 		return ast.Module{}, vdmir.Module{}, "", err
 	}

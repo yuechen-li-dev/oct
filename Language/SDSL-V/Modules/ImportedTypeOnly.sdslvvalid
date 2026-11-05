@@ -1,0 +1,7 @@
+import "library/Visibility.sdslv" as Visibility;
+shader ImportedTypeOnly {
+    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void {
+        let value: Visibility.Token = 1u;
+        return;
+    }
+}

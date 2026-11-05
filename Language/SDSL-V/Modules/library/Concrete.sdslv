@@ -1,0 +1,4 @@
+namespace Shader.Concrete;
+shader Concrete {
+    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void { return; }
+}

@@ -3,11 +3,28 @@ package ast
 import "github.com/yuechen-li-dev/oct/internal/source"
 
 type Module struct {
-	Source    source.File
-	Span      source.Span
-	Namespace string
-	Uses      []string
-	Decls     []Decl
+	Source             source.File
+	Span               source.Span
+	Namespace          string
+	Uses               []string
+	Decls              []Decl
+	Imports            []Import
+	Exports            map[string][]source.Span
+	Dependencies       []Dependency
+	DependencyIdentity string
+}
+
+type Import struct {
+	Span     source.Span
+	Path     string
+	Alias    string
+	Relative bool
+}
+
+type Dependency struct {
+	Path      string `json:"path"`
+	Namespace string `json:"namespace"`
+	SHA256    string `json:"sha256"`
 }
 
 type Decl interface{ declNode() }

@@ -1,0 +1,64 @@
+module PrometheusReductionTests;
+profile Core;
+import PrometheusReduction;
+
+[[fact]]
+void AdmissionRejectsMalformedShapesBeforePlanning()
+{
+    Assert.Equal(ValidateShape(ReductionShape{0, 8, 1, 0, 0, 0, 0}), -6804, "zero rows");
+    Assert.Equal(ValidateShape(ReductionShape{1, 0, 1, 0, 0, 0, 1}), -6805, "zero width");
+    Assert.Equal(ValidateShape(ReductionShape{1025, 1, 1, 0, 0, 1025, 1025}), -6811, "row capacity");
+    Assert.Equal(ValidateShape(ReductionShape{1, 1048577, 1, 0, 0, 1048577, 1}), -6812, "width capacity");
+    Assert.Equal(ValidateShape(ReductionShape{1024, 1048576, 1, 0, 0, 1073741824, 1024}), -6813, "total capacity");
+    Assert.Equal(ValidateShape(ReductionShape{1, 8, 9, 0, 0, 8, 1}), -6806, "unknown operation");
+    Assert.Equal(ValidateShape(ReductionShape{1, 8, 3, 0, 0, 8, 8}), -6807, "softmax finalization");
+    Assert.Equal(ValidateShape(ReductionShape{1, 8, 3, 1, 3, 8, 8}), -6815, "conflicting force flags");
+    Assert.Equal(ValidateShape(ReductionShape{1, 1057, 3, 1, 1, 1057, 1057}), -6815, "forced fused envelope");
+    Assert.Equal(ValidateShape(ReductionShape{1, 8, 1, 0, 0, 7, 1}), -6809, "input count");
+    Assert.Equal(ValidateShape(ReductionShape{1, 8, 1, 0, 0, 8, 8}), -6810, "output count");
+}
+
+[[fact]]
+void LongRowsHaveOnePartialLifetimeAndOneFinish()
+{
+    ReductionSchedule schedule = BuildSchedule(ReductionShape{2, 2050, 1, 0, 0, 4100, 2});
+    Assert.Equal(schedule.partials, 3u, "tail creates the third partial");
+    Assert.Equal(schedule.count, 2u, "one partial pass and one finish");
+    Assert.Equal(schedule.stages[0].groups, 6u, "three partials per row");
+    Assert.Equal(schedule.stages[0].temporaryRole, 1u, "partial destination");
+    Assert.Equal(schedule.stages[0].temporaryBytes, 24u as uint64, "all row partials have storage");
+    Assert.Equal(schedule.stages[1].groups, 2u, "finish has one group per row");
+    Assert.Equal(schedule.stages[1].temporaryRole, 0u, "final destination is caller output");
+    Assert.Equal(schedule.temporaryBytes, 24u as uint64, "partial lifetime is reused");
+}
+
+[[fact]]
+void ComposedSoftmaxTracksMaxAndSumLifetimes()
+{
+    ReductionSchedule schedule = BuildSchedule(ReductionShape{3, 2049, 3, 1, 0, 6147, 6147});
+    Assert.Equal(schedule.count, 5u, "max, max finish, exponential sum, sum finish, normalization");
+    Assert.Equal(schedule.stages[0].role, 2u, "maximum partials");
+    Assert.Equal(schedule.stages[1].temporaryRole, 2u, "row maximum survives exponentiation");
+    Assert.Equal(schedule.stages[2].role, 3u, "exponentiation writes sum partials");
+    Assert.Equal(schedule.stages[3].role, 1u, "sum finishes those partials");
+    Assert.Equal(schedule.stages[3].temporaryRole, 3u, "row sum survives normalization");
+    Assert.Equal(schedule.stages[4].role, 4u, "normalization is last");
+    Assert.Equal(schedule.stages[4].groups, 25u, "normalization covers the flat tail");
+    Assert.Equal(schedule.temporaryBytes, 60u as uint64, "one reused partial region and two row regions");
+}
+
+[[fact]]
+void StrategyHonorsPackedCrossoverAndExplicitFusedEnvelope()
+{
+    ReductionSchedule packed = BuildSchedule(ReductionShape{512, 96, 1, 0, 0, 49152, 512});
+    Assert.Equal(packed.strategy, 3u, "short high-count sums use packed rows");
+    Assert.Equal(packed.stages[0].groups, 64u, "eight rows per packed group");
+    ReductionSchedule maximum = BuildSchedule(ReductionShape{512, 96, 2, 0, 0, 49152, 512});
+    Assert.Equal(maximum.strategy, 2u, "max has no qualified packed implementation");
+    ReductionSchedule fused = BuildSchedule(ReductionShape{2, 1056, 3, 1, 1, 2112, 2112});
+    Assert.Equal(fused.strategy, 1u, "explicit fused request uses its audited envelope");
+    Assert.Equal(fused.temporaryBytes, 0u as uint64, "fused rows own no intermediate buffer");
+    ReductionSchedule composed = BuildSchedule(ReductionShape{2, 17, 3, 1, 2, 34, 34});
+    Assert.Equal(composed.strategy, 2u, "force composed overrides short-row policy");
+    Assert.Equal(composed.count, 3u, "short composed rows do not invent finish passes");
+}

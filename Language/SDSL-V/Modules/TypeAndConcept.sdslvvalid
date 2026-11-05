@@ -1,0 +1,18 @@
+namespace Conformance.TypeAndConcept;
+
+type SampleValue = f32;
+type TileWidth = u32;
+concept TileShape {
+    WIDTH: TileWidth;
+    require WIDTH <= 64u;
+}
+config Tile4: TileShape { WIDTH: 4u; }
+
+template shader Tile<C: TileShape> {
+    resources { [binding(0)] Output: readwrite array<SampleValue>; }
+    stage compute [numthreads(C.WIDTH, 1u, 1u)] fn CS() -> void {
+        let value: SampleValue = 2.0;
+        Output[DispatchThreadID.x] = value;
+    }
+}
+compile Tile<Tile4> as TypeAndConcept;

@@ -20,6 +20,12 @@ func Dump(module Module) string {
 	} else {
 		line(0, "vdmir module <anonymous>")
 	}
+	if module.DependencyIdentity != "" {
+		line(0, "source-graph sha256="+module.DependencyIdentity)
+		for _, dependency := range module.Dependencies {
+			line(1, fmt.Sprintf("source %s namespace=%s sha256=%s", dependency.Path, dependency.Namespace, dependency.SHA256))
+		}
+	}
 	for _, requirement := range module.Requirements {
 		line(0, fmt.Sprintf("require %s scope=%s tuple=%dx%dx%d components=%s,%s,%s,%s packing=%s layout=%s",
 			requirement.Kind, requirement.Scope, requirement.M, requirement.N, requirement.K,

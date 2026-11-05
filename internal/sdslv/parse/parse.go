@@ -43,7 +43,16 @@ func (p *parser) parseModule() (ast.Module, error) {
 			return ast.Module{}, err
 		}
 	}
-	for p.match(token.KeywordUse) {
+	for p.current().Kind == token.KeywordUse || p.current().Kind == token.KeywordImport {
+		if p.current().Kind == token.KeywordImport {
+			decl, err := p.parseImport()
+			if err != nil {
+				return ast.Module{}, err
+			}
+			module.Imports = append(module.Imports, decl)
+			continue
+		}
+		p.advance()
 		path, err := p.parsePath()
 		if err != nil {
 			return ast.Module{}, err
@@ -54,14 +63,55 @@ func (p *parser) parseModule() (ast.Module, error) {
 		}
 	}
 	for p.current().Kind != token.EOF {
+		exported := p.match(token.KeywordExport)
+		exportStart := p.position - 1
 		decl, err := p.parseDecl()
 		if err != nil {
 			return ast.Module{}, err
 		}
 		module.Decls = append(module.Decls, decl)
+		if exported {
+			name, _ := ast.Declaration(decl)
+			if name == "" {
+				return ast.Module{}, p.errorAtCurrent("SDSL-V4403: export requires a named declaration")
+			}
+			if module.Exports == nil {
+				module.Exports = map[string][]source.Span{}
+			}
+			module.Exports[name] = append(module.Exports[name], p.spanSince(exportStart))
+		}
 	}
 	module.Span = p.spanSince(start)
 	return module, nil
+}
+
+func (p *parser) parseImport() (ast.Import, error) {
+	start := p.position
+	p.advance()
+	decl := ast.Import{}
+	if p.current().Kind == token.StringLiteral {
+		decl.Path, decl.Relative = p.current().Lexeme, true
+		p.advance()
+	} else {
+		path, err := p.parsePath()
+		if err != nil {
+			return ast.Import{}, err
+		}
+		decl.Path = path
+	}
+	if p.current().Kind == token.Identifier && p.current().Lexeme == "as" {
+		p.advance()
+		alias, err := p.expect(token.Identifier, "expected import alias after as")
+		if err != nil {
+			return ast.Import{}, err
+		}
+		decl.Alias = alias.Lexeme
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after import"); err != nil {
+		return ast.Import{}, err
+	}
+	decl.Span = p.spanSince(start)
+	return decl, nil
 }
 
 func (p *parser) parseDecl() (ast.Decl, error) {
@@ -351,7 +401,7 @@ func (p *parser) parseConfig() (ast.ConfigDecl, error) {
 	if _, err := p.expect(token.Colon, "expected ':' after config name"); err != nil {
 		return ast.ConfigDecl{}, err
 	}
-	concept, err := p.expect(token.Identifier, "expected concept name after ':'")
+	concept, err := p.parsePath()
 	if err != nil {
 		return ast.ConfigDecl{}, err
 	}
@@ -404,7 +454,7 @@ func (p *parser) parseConfig() (ast.ConfigDecl, error) {
 		fields = append(fields, ast.ConfigField{Span: valueSpan(value), Path: fieldPath, Value: value, Style: assignmentStyle})
 	}
 	p.advance()
-	return ast.ConfigDecl{Span: p.spanSince(start), Name: name.Lexeme, ConceptName: concept.Lexeme, Fields: fields, Requirements: requirements}, nil
+	return ast.ConfigDecl{Span: p.spanSince(start), Name: name.Lexeme, ConceptName: concept, Fields: fields, Requirements: requirements}, nil
 }
 
 func (p *parser) parseEnum() (ast.EnumDecl, error) {
@@ -493,7 +543,7 @@ func (p *parser) parseTemplateParam() (ast.TemplateParam, error) {
 	if _, err := p.expect(token.Colon, "expected ':' after template parameter name"); err != nil {
 		return ast.TemplateParam{}, err
 	}
-	concept, err := p.expect(token.Identifier, "expected concept name in template parameter")
+	concept, err := p.parsePath()
 	if err != nil {
 		return ast.TemplateParam{}, err
 	}
@@ -503,7 +553,7 @@ func (p *parser) parseTemplateParam() (ast.TemplateParam, error) {
 	if _, err := p.expect(token.RightAngle, "expected '>' after template parameter"); err != nil {
 		return ast.TemplateParam{}, err
 	}
-	return ast.TemplateParam{Span: p.spanSince(start), Name: name.Lexeme, ConceptName: concept.Lexeme}, nil
+	return ast.TemplateParam{Span: p.spanSince(start), Name: name.Lexeme, ConceptName: concept}, nil
 }
 
 func (p *parser) parseShader(templateParam *ast.TemplateParam, parameterAfterName bool) (ast.ShaderDecl, error) {
@@ -631,14 +681,14 @@ func (p *parser) parseMaterial() (ast.MaterialDecl, error) {
 func (p *parser) parseCompileDecl() (ast.CompileDecl, error) {
 	start := p.position
 	p.advance()
-	shaderName, err := p.expect(token.Identifier, "expected template shader name after compile")
+	shaderName, err := p.parsePath()
 	if err != nil {
 		return ast.CompileDecl{}, err
 	}
 	if _, err := p.expect(token.LeftAngle, "expected '<' after compile target"); err != nil {
 		return ast.CompileDecl{}, err
 	}
-	configName, err := p.expect(token.Identifier, "expected config name in compile declaration")
+	configName, err := p.parsePath()
 	if err != nil {
 		return ast.CompileDecl{}, err
 	}
@@ -662,7 +712,7 @@ func (p *parser) parseCompileDecl() (ast.CompileDecl, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after compile declaration"); err != nil {
 		return ast.CompileDecl{}, err
 	}
-	return ast.CompileDecl{Span: p.spanSince(start), ShaderName: shaderName.Lexeme, ConfigName: configName.Lexeme, AliasName: alias.Lexeme}, nil
+	return ast.CompileDecl{Span: p.spanSince(start), ShaderName: shaderName, ConfigName: configName, AliasName: alias.Lexeme}, nil
 }
 
 func (p *parser) parseWorkgroup() (ast.WorkgroupDecl, error) {
@@ -692,14 +742,14 @@ func (p *parser) parseResources() ([]ast.ResourceDecl, error) {
 	start := p.position
 	p.advance()
 	if p.current().Kind == token.Identifier {
-		name, err := p.expect(token.Identifier, "expected resource bundle name")
+		name, err := p.parsePath()
 		if err != nil {
 			return nil, err
 		}
 		if _, err := p.expect(token.Semicolon, "expected ';' after resource bundle name"); err != nil {
 			return nil, err
 		}
-		return []ast.ResourceDecl{{Span: p.spanSince(start), Name: name.Lexeme}}, nil
+		return []ast.ResourceDecl{{Span: p.spanSince(start), Name: name}}, nil
 	}
 	if _, err := p.expect(token.LeftBrace, "expected '{' after resources"); err != nil {
 		return nil, err
@@ -1686,7 +1736,7 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			if enumName, ok := identifierName(expr); ok && p.payloadInitializerStarts() {
+			if enumName, ok := qualifiedExpressionName(expr); ok && p.payloadInitializerStarts() {
 				start := ast.ExprSpan(expr).Start
 				fields, err := p.parseFieldInitializers()
 				if err != nil {
@@ -1783,7 +1833,7 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 			}
 			expr = ast.CallExpr{Span: spanFrom(id.Span.Start, end.Span.End), Callee: id, TypeArgument: &arg, OpenAngleSpan: open.Span, CloseAngleSpan: close.Span, Arguments: args}
 		case token.LeftBrace:
-			typeName, ok := identifierName(expr)
+			typeName, ok := qualifiedExpressionName(expr)
 			if !ok || !p.payloadInitializerStarts() {
 				return expr, nil
 			}
@@ -2186,18 +2236,16 @@ func (p *parser) parseMatchExpr() (ast.MatchExpr, error) {
 	}
 	var arms []ast.MatchArm
 	for p.current().Kind != token.RightBrace {
-		enumName, err := p.expect(token.Identifier, "expected enum name in match arm")
+		enumName := p.current()
+		path, err := p.parsePath()
 		if err != nil {
 			return ast.MatchExpr{}, err
 		}
-		if _, err := p.expect(token.Dot, "expected '.' after enum name in match arm"); err != nil {
-			return ast.MatchExpr{}, err
+		parts := strings.Split(path, ".")
+		if len(parts) < 2 {
+			return ast.MatchExpr{}, p.errorAtCurrent("expected enum and variant name in match arm")
 		}
-		variantName, err := p.expect(token.Identifier, "expected variant name in match arm")
-		if err != nil {
-			return ast.MatchExpr{}, err
-		}
-		arm := ast.MatchArm{EnumName: enumName.Lexeme, VariantName: variantName.Lexeme}
+		arm := ast.MatchArm{EnumName: strings.Join(parts[:len(parts)-1], "."), VariantName: parts[len(parts)-1]}
 		if p.match(token.LeftParen) {
 			binding, err := p.expect(token.Identifier, "expected payload binding name")
 			if err != nil {
@@ -2313,6 +2361,14 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 		return ast.TypeRef{}, err
 	}
 	ref := ast.TypeRef{Name: name.Lexeme, NameSpan: name.Span}
+	for p.match(token.Dot) {
+		part, err := p.expect(token.Identifier, "expected qualified type name after '.'")
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		ref.Name += "." + part.Lexeme
+		ref.NameSpan.End = part.Span.End
+	}
 	if p.current().Kind == token.Bang {
 		bang := p.current()
 		p.advance()
@@ -2755,6 +2811,18 @@ func identifierName(expr ast.Expr) (string, bool) {
 		return "", false
 	}
 	return id.Name, true
+}
+
+func qualifiedExpressionName(expr ast.Expr) (string, bool) {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		return e.Name, true
+	case ast.FieldAccessExpr:
+		owner, ok := qualifiedExpressionName(e.Target)
+		return owner + "." + e.Field, ok
+	default:
+		return "", false
+	}
 }
 
 func reductionOpFromToken(tok token.Token) (ast.ReductionOp, error) {

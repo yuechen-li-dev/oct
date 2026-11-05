@@ -46,6 +46,11 @@ type Diagnostic struct {
 
 // Sort establishes stable source order without depending on map iteration.
 func Sort(values []Diagnostic) {
+	for i := range values {
+		if values[i].Span.Path != "" {
+			values[i].Path = values[i].Span.Path
+		}
+	}
 	sort.SliceStable(values, func(i, j int) bool {
 		a, b := values[i], values[j]
 		if a.Path != b.Path {
@@ -63,6 +68,9 @@ func Sort(values []Diagnostic) {
 
 func Render(d Diagnostic) string {
 	where := d.Path
+	if d.Span.Path != "" {
+		where = d.Span.Path
+	}
 	if d.Span.Known() {
 		where = fmt.Sprintf("%s:%d:%d", where, d.Span.Start.Line, d.Span.Start.Column)
 	} else if where == "" {
@@ -71,6 +79,9 @@ func Render(d Diagnostic) string {
 	line := fmt.Sprintf("%s: %s %s: %s", where, d.Severity, d.Code, d.Message)
 	for _, related := range d.Related {
 		at := d.Path
+		if related.Span.Path != "" {
+			at = related.Span.Path
+		}
 		if related.Span.Known() {
 			at = fmt.Sprintf("%s:%d:%d", at, related.Span.Start.Line, related.Span.Start.Column)
 		}

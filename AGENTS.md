@@ -79,7 +79,8 @@ Release hygiene:
 
 ## Primer Rule (Native Code)
 
-Read `primer/` before writing or editing native code (C, C++, Vulkan, etc.).
+Read `primer/README.md`, `primer/common-primer.yaml`, and the applicable language
+and API profiles before writing or editing native code (C, C++, Vulkan, etc.).
 
 The files in `primer/` are the authoritative coding rules for native code in this repository.
 Do not write native code that conflicts with them.

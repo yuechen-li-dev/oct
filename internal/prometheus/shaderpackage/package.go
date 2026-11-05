@@ -123,10 +123,18 @@ type Implementation struct {
 	Dispatchable     bool   `json:"dispatchable"`
 }
 type Provenance struct {
-	VariantID    string `json:"variant_id"`
-	Source       string `json:"source,omitempty"`
-	SourceSHA256 string `json:"source_sha256,omitempty"`
-	Generator    string `json:"generator"`
+	VariantID          string             `json:"variant_id"`
+	Source             string             `json:"source,omitempty"`
+	SourceSHA256       string             `json:"source_sha256,omitempty"`
+	Generator          string             `json:"generator"`
+	Dependencies       []SourceDependency `json:"dependencies,omitempty"`
+	DependencyIdentity string             `json:"dependency_identity,omitempty"`
+}
+
+type SourceDependency struct {
+	Path      string `json:"path"`
+	Namespace string `json:"namespace"`
+	SHA256    string `json:"sha256"`
 }
 
 type BuildOptions struct {
@@ -183,7 +191,12 @@ func Build(opts BuildOptions) (Manifest, error) {
 		byKernel[asset.ID] = variantID
 		m.Tables.Kernels = append(m.Tables.Kernels, Kernel{asset.ID, asset.Name, asset.Stage, authority})
 		m.Tables.Variants = append(m.Tables.Variants, Variant{variantID, asset.ID, digest, asset.EntryPoint, asset.Workgroup, asset.DescriptorBindings, asset.PushConstantBytes, asset.StageRole, asset.RowWidthEnvelope})
-		m.Tables.Provenance = append(m.Tables.Provenance, Provenance{variantID, asset.Source, asset.SourceSHA256, "oct sdslv package build"})
+		provenance, err := sourceProvenance(opts.RepositoryRoot, asset)
+		if err != nil {
+			return Manifest{}, err
+		}
+		provenance.VariantID = variantID
+		m.Tables.Provenance = append(m.Tables.Provenance, provenance)
 		for _, item := range asset.RequiredVulkanExtensions {
 			m.Tables.Requirements = append(m.Tables.Requirements, Requirement{variantID, "vulkan_extension", item})
 		}
@@ -330,6 +343,14 @@ func Validate(root string, m Manifest) error {
 			return fmt.Errorf("experimental variant leaked into production implementation %d", i.ID)
 		}
 		impls[i.ID] = true
+	}
+	for _, provenance := range m.Tables.Provenance {
+		if variants[provenance.VariantID].ID == "" {
+			return fmt.Errorf("invalid provenance variant %q", provenance.VariantID)
+		}
+		if err := validateSourceGraph(provenance); err != nil {
+			return err
+		}
 	}
 	return nil
 }

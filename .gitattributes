@@ -14,6 +14,10 @@ Language/Data/Octagon/Load/valid/concept_catalog.octagon text eol=lf
 *.c text eol=lf
 *.h text eol=lf
 *.sdslv* text eol=lf
+*.concept text eol=lf
+*.concept_test text eol=lf
+primer/* text eol=lf
+internal/prometheus/native/native_sources_windows.cmd text eol=crlf
 # JSONTestSuite is test data, kept byte for byte.
 internal/octjson/testdata/JSONTestSuite/test_parsing/* -text
 

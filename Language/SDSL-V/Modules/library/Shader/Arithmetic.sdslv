@@ -1,0 +1,10 @@
+namespace Shader.Arithmetic;
+
+fn Double(value: u32) -> u32 { return value * 2u; }
+
+export fn TwicePlusOne(value: u32) -> u32 {
+    return Double(value) + 1u;
+}
+
+// An unused export is not a root of an individual shader compilation.
+export fn Unused(value: u32) -> u32 { return value + 999u; }

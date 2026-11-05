@@ -1,0 +1,14 @@
+namespace Shader.Values;
+
+export record Sample { Bits: u32; }
+export enum Decision {
+    Keep;
+    Stop { Value: u32; }
+}
+
+export fn Make(value: u32) -> Sample { return Sample { Bits: value; }; }
+
+export fn Choose(value: u32) -> Decision {
+    if value > 0u { return Decision.Stop { Value: value; }; }
+    return Decision.Keep;
+}

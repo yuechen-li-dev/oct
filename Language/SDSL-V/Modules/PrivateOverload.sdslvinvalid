@@ -1,0 +1,2 @@
+import "library/Visibility.sdslv" as Visibility;
+fn Rejected() -> u32 { return Visibility.Token(1u); }

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,12 +14,10 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/modules"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/toolchain"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
-	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 const Schema = "sdslv.conformance.v1"
@@ -184,16 +183,16 @@ func moduleEntryFacts(module vdmir.Module) ([]string, []string) {
 
 func verifyInvalid(root string, fixture InvalidFixture) error {
 	path := filepath.Join(root, filepath.FromSlash(fixture.Source))
-	file, err := source.Load(path)
+	module, err := modules.Load(path)
 	if err != nil {
-		return err
-	}
-	tokens, err := lex.Analyze(file)
-	if err != nil {
-		return verifySyntaxError(fixture, err)
-	}
-	module, err := parse.BuildModule(tokens)
-	if err != nil {
+		var moduleErr *modules.Error
+		if errors.As(err, &moduleErr) {
+			actual := moduleErr.Diagnostic
+			if actual.Code == fixture.Code && actual.Span.Start.Line == fixture.Line && actual.Span.Start.Column == fixture.Column {
+				return nil
+			}
+			return fmt.Errorf("invalid conformance fixture %s module diagnostic = %s", fixture.Source, err)
+		}
 		return verifySyntaxError(fixture, err)
 	}
 	for _, actual := range validate.Diagnostics(module) {

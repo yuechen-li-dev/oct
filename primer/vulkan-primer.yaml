@@ -1,0 +1,122 @@
+document:
+  name: vulkan-primer
+  format: yaml
+  version: 2
+  kind: api_overlay
+summary: Vulkan lifetime, synchronization, representation, and real GPU qualification contracts.
+uses:
+  - common-primer.yaml
+baseline: >-
+  Compose this API overlay with the implementation's language profile. Declare the
+  supported Vulkan API version, device features/extensions, SDK, shader tools, and
+  target drivers. Use synchronization2 and other modern facilities when supported;
+  retain a tested legacy path only when the declared device baseline requires it.
+  The examples check host logic only and do not qualify Vulkan execution.
+examples: vulkan-primer-examples.yaml
+rules:
+  - id: VK-CAPABILITIES
+    level: requirement
+    scope: Instance/device creation and optional functionality
+    rule: >-
+      Query and enable required features/extensions explicitly and keep the
+      capability decision authoritative in the backend. Use only supported queue
+      families, formats, limits, and entry points. Report unsupported configurations
+      clearly rather than partially initializing a renderer. Isolate platform surface glue.
+    reason: An API symbol or header version does not establish device support.
+    verification: Test supported devices plus missing-feature/limit paths and retain device/driver information.
+  - id: VK-OWNERSHIP
+    level: requirement
+    scope: Handles, allocations, descriptors, command pools, and staging resources
+    rule: >-
+      Identify the owner and every CPU/GPU use. Retire resources only after all
+      relevant submissions complete on all using queues; CPU scope end or successful
+      submission is not GPU completion. Respect parent-child destruction and external
+      synchronization requirements. Reset/recycle pools, descriptors, command buffers,
+      and staging memory only when their users have finished.
+    reason: Host RAII alone cannot prove asynchronous GPU lifetime.
+    verification: Exercise multiple frames in flight, upload failure, resize, and shutdown with lifetime validation.
+  - id: VK-SYNC
+    level: requirement
+    scope: Resource hazards, queue transfers, and host access
+    rule: >-
+      For each dependency, identify producer/consumer stages and access masks,
+      image layout and subresource range, and queue-family ownership. Use the
+      corresponding execution AND memory dependency. Semaphores and barriers have
+      different roles; a completed CPU call is not memory visibility. Reuse a small
+      set of reviewed recipes, with the resource-state assumptions visible.
+    reason: Plausible barriers can leave read/write hazards or invalid queue ownership.
+    verification: Enable synchronization validation and exercise real dependent passes, transfers, and queue paths.
+  - id: VK-PRESENT
+    level: requirement
+    scope: Acquire, submit, present, and swapchain recreation
+    rule: >-
+      Separate frame-slot reuse, acquired-image ownership, and presentation
+      completion. A submission fence does not prove vkQueuePresentKHR has consumed
+      its wait semaphore. Prefer present-wait semaphores per swapchain image, reused
+      after reacquisition and its synchronization, or another spec-backed completion
+      proof. Handle acquire/present errors without waiting on an unsignaled reset
+      fence. Retire old swapchains with an explicit presentation-completion strategy.
+    reason: Presentation uses resources beyond the lifetime proven by the graphics submission fence.
+    verification: Run rapid resize, minimize/restore, out-of-date/suboptimal, and shutdown with WSI validation.
+  - id: VK-MEMORY
+    level: requirement
+    scope: Mapped memory, uploads, readback, and allocation
+    rule: >-
+      Check memory requirements and binding offsets. For noncoherent memory,
+      flush/invalidate ranges respecting nonCoherentAtomSize, allocation bounds,
+      and memory dependencies. HOST_COHERENT removes cache operations, not ordering
+      or lifetime obligations. Keep staging storage alive until transfer completion
+      and establish visibility/ownership for its consumer.
+    reason: Correct bytes in CPU memory do not establish device-visible or host-readable results.
+    verification: Test actual upload/readback, boundary-sized ranges, and noncoherent heaps when available.
+  - id: VK-SHADERS
+    level: requirement
+    scope: SPIR-V, push constants, vertex data, and shader interfaces
+    rule: >-
+      Validate shader byte length and representation; produce properly aligned
+      uint32_t storage rather than casting arbitrary byte buffers. Check host/shader
+      offsets, strides, types, ranges, and device limits explicitly. sizeof alone
+      does not prove layout agreement. Use shader validation/reflection or generated
+      layouts plus host assertions, with a declared SPIR-V target environment.
+    reason: Host types can compile while violating binary or shader layout contracts.
+    verification: Reject malformed shader input, validate compiled SPIR-V, and compare reflected and host layouts.
+  - id: VK-DESCRIPTORS
+    level: requirement
+    scope: Descriptor updates, pipelines, and command recording
+    rule: >-
+      Match layouts, binding types/counts, pipeline compatibility, dynamic offsets,
+      and resource lifetime. Do not update descriptors still in use unless the
+      exact enabled feature and binding flags allow it. Define command-pool thread
+      ownership and recording/reset rules. Keep allocation, submission, and waits
+      visible through wrappers.
+    reason: Thin handle wrappers do not establish binding or pending-use validity.
+    verification: Exercise actual bindings, concurrent recording, descriptor reuse, and pipeline/layout changes.
+  - id: VK-QUERIES
+    level: requirement
+    scope: Timestamps, queries, and performance claims
+    rule: >-
+      Check queue timestamp support, valid bits, timestampPeriod, availability,
+      and reset/reuse rules. Bracket the intended stages; account for wraparound
+      and distinguish GPU execution time from CPU submission and presentation latency.
+    reason: A numeric timestamp can be valid yet measure the wrong interval.
+    verification: Run the measured GPU path and retain device properties, scope, units, and availability evidence.
+  - id: VK-RECOVERY
+    level: requirement
+    scope: VkResult handling, validation, and device loss
+    rule: >-
+      Handle success/status/error results according to the operation; avoid
+      VK_SUCCESS-only helpers for APIs with meaningful status values. Stop normal
+      submission after device loss and follow a documented cleanup/recovery policy.
+      Enable relevant validation in development and retain names/labels and diagnostics.
+      Never claim GPU correctness from host tests or silent validation alone.
+    reason: Result handling and validation cannot substitute for actual rendering and recovery evidence.
+    verification: Record real GPU output, validation results, supported stress cases, and untested recovery paths.
+references:
+  - title: Vulkan specification
+    url: https://docs.vulkan.org/spec/latest/index.html
+  - title: Synchronization examples
+    url: https://docs.vulkan.org/guide/latest/synchronization_examples.html
+  - title: Swapchain semaphore reuse
+    url: https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
+  - title: Swapchain recreation and presentation lifetime
+    url: https://docs.vulkan.org/samples/latest/samples/api/swapchain_recreation/README.html
