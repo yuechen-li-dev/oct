@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,6 +28,8 @@ func main() {
 }
 
 func run() error {
+	outputDir := flag.String("out", "", "retain generated Go, binaries, and a Go kernel benchmark in this directory")
+	flag.Parse()
 	repo, err := os.Getwd()
 	if err != nil {
 		return err
@@ -78,6 +81,25 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if *outputDir != "" {
+		if err := os.MkdirAll(*outputDir, 0o755); err != nil {
+			return err
+		}
+		for name, path := range map[string]string{
+			"oct.generated.go":                   compiled.GeneratedSourcePath,
+			"kernel_test.go":                     filepath.Join(repo, "testdata/performance/scalar_loop_recon/kernel_test.go.txt"),
+			filepath.Base(compiled.ArtifactPath): compiled.ArtifactPath,
+			filepath.Base(baselineBinary):        baselineBinary,
+		} {
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(*outputDir, name), body, 0o755); err != nil {
+				return err
+			}
+		}
+	}
 	octSamples, octOutput, err := measure(compiled.ArtifactPath, 7)
 	if err != nil {
 		return err
@@ -94,6 +116,7 @@ func run() error {
 	goMedian := median(goSamples)
 	fmt.Printf("iterations=20000000 samples=7\n")
 	fmt.Printf("oct_median=%s go_median=%s ratio=%.2fx result=%s\n", octMedian, goMedian, float64(octMedian)/float64(goMedian), octOutput)
+	fmt.Printf("oct_samples=%v\ngo_samples=%v\n", octSamples, goSamples)
 	fmt.Printf("generated_float64_conversions=%d generated_guard_branches=%d generated_program_counter_switches=%d\n",
 		bytes.Count(generatedSource, []byte("float64(")),
 		bytes.Count(generatedSource, []byte("if !")),

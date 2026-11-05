@@ -27,6 +27,19 @@ ordinary Oct semantics.
 fail-closed direct backend. Low-level writer consolidation is deliberately
 deferred until another consumer justifies the shared primitive.
 
+## Source-only Go emission omits the floating-literal helper (2026-11-04)
+
+Observation: Emitting `testdata/performance/scalar_loop_recon/main.oct` with
+`internal/build.EmitGoSource` succeeds, but type-checking the generated Go fails
+with `undefined: __octFloatLiteral`. The helper is emitted only after the
+`includeMain` early return in `emitGoWithOptions`. This predates the direct-branch
+loop change; ordinary `build.Compile` emits the helper and works.
+
+Suggestion: Include the floating-literal runtime helper in source-only output
+and add an embeddable floating-point specimen to that seam's boundary tests.
+
+Status: Open. Outside the scalar-loop dispatch optimization.
+
 ## Purpose
 
 This file is a collection of observations and suggestions about the Oct codebase.
