@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 9 |
 | Deferred | 11 |
-| Resolved | 91 |
+| Resolved | 92 |
 | Superseded | 1 |
 
 ## Open issues
@@ -397,7 +397,29 @@ Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. 
 
 ## Resolved issues
 
-Recorded fixes and their narrow evidence. These are prior dispositions, not a claim that this organization pass reran every qualification.
+Recorded fixes and their evidence. Each entry states its qualification scope.
+
+### FB-113 — Shared Concept attachments expose callback and destruction-order defects
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The RMSNorm intent port passed numerical checks but left 17 Concept
+buffers and one borrowed context alive after runtime destruction. The runtime
+removed its handle from the registry before attachment cleanup, so validated
+attachment getters could no longer find their state. A reduction on the same
+device also failed because independently defined submit callbacks conflicted
+with Concept Vulkan's single submit authority per device.
+
+Resolution: Retire attachments while the owner remains registered, then remove
+the handle. Both adapters now register the same shared queue-submit callback.
+The new native GPU tests cover automatic owner destruction, two Concept
+attachments alongside legacy SGEMM, resident Q/K consumers, uncertain completion,
+and detach/reattach. Resource counters return to their starting values. See
+[the M2 report](docs/internal/prometheus_concept_rmsnorm_m2.md).
+
+---
 
 ### FB-111 — Concept reduction port exposes incomplete generated ownership cleanup
 
@@ -417,8 +439,10 @@ and existing cleanup lowerer. Runtime contracts are
 `tests/runtime/borrowed_owned_match.concept_test`, and the Vulkan library's
 borrowed-buffer replacement fact in that repository. Production reductions now
 pass real Vulkan numerical, failure, shared-device, detach, and leak checks.
-Deployment provenance for both generated modules is explicitly allowed through
-this repository's JSON ignore rule so clean checkouts retain the evidence.
+The subsequent build-output cleanup materializes both generated modules and
+provenance under ignored `.native-build/generated/`, checks their input/output
+hashes, and regenerates them during clean builds. The earlier JSON ignore
+exception for checked provenance was removed.
 See [the milestone report](docs/internal/prometheus_concept_shared_device_m1.md).
 
 ---
@@ -1814,7 +1838,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-113**. Put a new open issue at
+Use the next unused identifier, currently **FB-114**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

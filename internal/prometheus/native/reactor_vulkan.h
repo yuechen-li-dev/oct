@@ -7,6 +7,10 @@
 #include "reactor_sgemm_dispatch_metadata.h"
 #include <vulkan/vulkan.h>
 
+#define PROM_M42_MAX_TOKENS 1024u
+#define PROM_M42_MAX_MODEL_WIDTH 4096u
+#define PROM_M46_CAPACITY_LIMIT_BYTES (1024ull * 1024ull * 1024ull)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,9 +18,11 @@ extern "C" {
 /* External host synchronization shared by legacy and Concept submissions. */
 VkResult prom_vk_queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo* submits, VkFence fence);
 VkResult prom_vk_device_wait_idle(VkDevice device);
+int32_t prom_vk_concept_queue_submit(void* owner, VkQueue queue, VkCommandBuffer commands, VkFence fence);
 int prom_reactor_runtime_concept_reduction_detach(void* handle);
 void* prom_reactor_runtime_concept_reduction_state(void* handle);
 int prom_reactor_runtime_set_concept_reduction_state(void* handle, void* state);
+int prom_reactor_runtime_concept_norm_detach(void* handle);
 
 typedef enum prom_vk_cooperative_matrix_state {
   PROM_VK_COOPERATIVE_MATRIX_UNAVAILABLE = 0u,

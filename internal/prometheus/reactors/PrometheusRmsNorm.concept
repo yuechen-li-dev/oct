@@ -1,0 +1,366 @@
+module PrometheusRmsNorm;
+profile Vulkan;
+import Vulkan;
+import Standard.Math;
+
+extern "C" handle PromNormHost;
+extern "C" PipelineCreation PromNormLoadPipeline(PromNormHost host, VkDevice device,
+    VkPipelineCache cache, uint32 role);
+foreign concept PackagePipelineAllocation on PromNormLoadPipeline
+{
+    requires compiler.Allocates(PromNormLoadPipeline);
+}
+
+// Slots have semantic roles: ordinary normalization, resident Q, resident K.
+// A completed resident slot stays owned here until its next admitted producer.
+class NormSlot
+{
+public:
+    owned Buffer<float> input;
+    owned Buffer<float> rounded;
+    owned Buffer<float> partials;
+    owned Buffer<float> inverse;
+    owned Buffer<float> output;
+    owned Buffer<float> rope;
+    owned Buffer<float> cosine;
+    owned Buffer<float> sine;
+    Option<owned Submission> pending;
+    uint32 generation;
+    bool resident;
+};
+
+class NormExecutor
+{
+public:
+    owned BorrowedContext context;
+    Option<owned Pipeline><array>[4] pipelines;
+    Option<owned NormSlot><array>[3] slots;
+    owned Buffer<float> weight;
+    uint64 weightGeneration;
+    uint64 weightHash;
+    uint32 width;
+    uint64 nextRequest;
+    uint64 allocations;
+    uint64 reuses;
+    uint64 descriptors;
+    uint64 ropeDescriptors;
+    uint32 testFlags;
+    bool timed;
+    bool deviceLost;
+};
+
+[[repr(C)]]
+record struct NormJob
+{
+    uint32 rows;
+    uint32 width;
+    uint32 inputStride;
+    uint32 outputStride;
+    uint32 partials;
+    uint32 staged;
+    uint32 inPlace;
+    uint32 roundInput;
+    uint32 roundOutput;
+    uint32 ropeHeads;
+    float epsilon;
+};
+
+[[repr(C)]]
+record struct NormReducePush
+{
+    uint32 rows;
+    uint32 width;
+    uint32 partials;
+    uint32 stride;
+    uint32 chunk;
+    uint32 total;
+    uint32 role;
+    float epsilon;
+};
+
+[[repr(C)]]
+record struct NormTiming
+{
+    uint64 partial;
+    uint64 finalReduction;
+    uint64 apply;
+    uint64 total;
+};
+
+bool HasSlot(ref const Option<owned NormSlot> value)
+{
+    return match (ref const value) { Option::Some(slot) => true, Option::None => false, };
+}
+
+Result<NormExecutor, VulkanError> CreateNormExecutor(PromNormHost host, DeviceBorrow device,
+    uint32 testFlags, bool timed)
+{
+    owned BorrowedContext context = BorrowDevice(device)?;
+    Option<owned Pipeline><array>[4] pipelines = [Option::None ...];
+    for (index in 0..4) {
+        PipelineCreation created = PromNormLoadPipeline(host, device.device, context.view.cache, index as uint32);
+        Check(created.code)?;
+        owned Pipeline pipeline = Pipeline{device.device, created.shader, created.setLayout,
+            created.layout, created.pipeline, created.pushBytes};
+        Option<owned Pipeline> entry = Option::Some(move pipeline);
+        pipelines[index] = move entry;
+    }
+    Option<owned NormSlot><array>[3] slots = [Option::None ...];
+    owned Buffer<float> weight = CreateBufferOn<float>(context.view, 1, Placement::Shared)?;
+    owned NormExecutor executor = NormExecutor{move context, move pipelines, move slots, move weight,
+        0, 0, 0, 1, 1, 0, 0, 0, testFlags, timed, false};
+    return Result::Ok(move executor);
+}
+
+Result<NormSlot, VulkanError> CreateNormSlot(DeviceView device)
+{
+    owned Buffer<float> input = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> rounded = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> partials = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> inverse = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> output = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> rope = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> cosine = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> sine = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    Option<owned Submission> pending = Option::None;
+    owned NormSlot slot = NormSlot{move input, move rounded, move partials, move inverse,
+        move output, move rope, move cosine, move sine, move pending, 0, false};
+    return Result::Ok(move slot);
+}
+
+Result<void, VulkanError> DrainNormSlot(ref NormSlot slot)
+{
+    match (ref slot.pending) {
+        Option::Some(work) => { Wait(ref work)?; }
+        Option::None => { }
+    }
+    slot.pending = Option::None;
+    return Result::Ok();
+}
+
+Result<void, VulkanError> DrainNorm(ref NormExecutor executor)
+{
+    for (index in 0..3) {
+        if (HasSlot(ref const executor.slots[index])) {
+            ref NormSlot slot = OptionValue(ref executor.slots[index]);
+            DrainNormSlot(ref slot)?;
+        }
+    }
+    return Result::Ok();
+}
+
+// Candidate storage is uploaded before publication. An invalid or failed
+// replacement never changes the last committed weight generation.
+Result<void, VulkanError> ReplaceWeight(ref NormExecutor executor, ReadOnlySpan<float> values,
+    uint64 generation, uint64 hash)
+{
+    if (executor.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    if (generation <= executor.weightGeneration) { return Result::Error(ErrorFromCode(-7406)); }
+    DrainNorm(ref executor)?;
+    owned Buffer<float> candidate = CreateBufferOn<float>(executor.context.view, Len(values) as usize, Placement::Shared)?;
+    UploadOn(executor.context.view, ref const candidate, values)?;
+    executor.weight = move candidate;
+    executor.allocations = executor.allocations + 1;
+    executor.weightGeneration = generation;
+    executor.weightHash = hash;
+    executor.width = Len(values) as uint32;
+    return Result::Ok();
+}
+
+Result<void, VulkanError> Grow(ref NormExecutor executor, ref Buffer<float> buffer, usize count)
+{
+    if (count <= buffer.count) { executor.reuses = executor.reuses + 1; return Result::Ok(); }
+    owned Buffer<float> replacement = CreateBufferOn<float>(executor.context.view, count, Placement::Shared)?;
+    buffer = move replacement;
+    executor.allocations = executor.allocations + 1;
+    return Result::Ok();
+}
+
+Result<void, VulkanError> PrepareNorm(ref NormExecutor executor, uint32 index, NormJob job)
+{
+    if (executor.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    if (not HasSlot(ref const executor.slots[index as int])) {
+        owned NormSlot slot = CreateNormSlot(executor.context.view)?;
+        Option<owned NormSlot> entry = Option::Some(move slot);
+        executor.slots[index as int] = move entry;
+        executor.allocations = executor.allocations + 8;
+    }
+    ref NormSlot slot = OptionValue(ref executor.slots[index as int]);
+    DrainNormSlot(ref slot)?;
+    slot.resident = false;
+    slot.generation = slot.generation + 1;
+    usize storage = (job.rows as usize) * (job.inputStride as usize);
+    Grow(ref executor, ref slot.input, storage)?;
+    if (job.roundInput != 0) { Grow(ref executor, ref slot.rounded, storage)?; }
+    Grow(ref executor, ref slot.partials, (job.rows as usize) * (((job.width + 1023u) / 1024u) as usize))?;
+    Grow(ref executor, ref slot.inverse, job.rows as usize)?;
+    if (job.inPlace == 0) { Grow(ref executor, ref slot.output, (job.rows as usize) * (job.outputStride as usize))?; }
+    if (job.ropeHeads != 0) {
+        Grow(ref executor, ref slot.rope, (job.rows as usize) * (job.width as usize))?;
+        Grow(ref executor, ref slot.cosine, (15u * job.width) as usize)?;
+        Grow(ref executor, ref slot.sine, (15u * job.width) as usize)?;
+    }
+    return Result::Ok();
+}
+
+void RoundBf16(ref Recording recording, ref NormExecutor executor,
+    ref const Buffer<float> input, ref const Buffer<float> output, uint32 count)
+{
+    Binding<array>[4] bindings = [Bind(0, ref const input, Access::Read),
+        Bind(1, ref const input, Access::Read), Bind(2, ref const input, Access::Read),
+        Bind(3, ref const output, Access::Write)];
+    uint32<array>[8] push = [count, 0, 0, 0, 0, 0, 0, 0];
+    ref const Pipeline pipeline = OptionValue(ref const executor.pipelines[2]);
+    DispatchWith(ref recording, ref const pipeline, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), (count + 255u) / 256u, 1, 1);
+    executor.descriptors = executor.descriptors + 1;
+}
+
+void Reduce(ref Recording recording, ref NormExecutor executor, ref const Buffer<float> input,
+    ref const Buffer<float> output, NormReducePush push)
+{
+    Binding<array>[4] bindings = [Bind(0, ref const input, Access::Read),
+        Bind(1, ref const input, Access::Read), Bind(2, ref const input, Access::Read),
+        Bind(3, ref const output, Access::Write)];
+    NormReducePush<array>[1] constants = [push];
+    ref const Pipeline pipeline = OptionValue(ref const executor.pipelines[0]);
+    DispatchWith(ref recording, ref const pipeline, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(constants)), push.rows * push.partials, 1, 1);
+    executor.descriptors = executor.descriptors + 1;
+}
+
+void RecordNorm(ref Recording recording, ref NormExecutor executor, ref const NormSlot slot,
+    ref const Buffer<float> input, ref const Buffer<float> output, NormJob job)
+{
+    if (executor.timed) { discard Timestamp(ref recording); }
+    if (job.staged != 0) {
+        Reduce(ref recording, ref executor, ref const input, ref const slot.partials,
+            NormReducePush{job.rows, job.width, job.partials, job.inputStride, 1024, job.width, 1, job.epsilon});
+    } else {
+        Reduce(ref recording, ref executor, ref const input, ref const slot.inverse,
+            NormReducePush{job.rows, job.width, 1, job.inputStride, job.width, job.width, 3, job.epsilon});
+    }
+    if (executor.timed) { discard Timestamp(ref recording); }
+    if (job.staged != 0) {
+        Reduce(ref recording, ref executor, ref const slot.partials, ref const slot.inverse,
+            NormReducePush{job.rows, job.partials, 1, job.partials, job.partials, job.width, 2, job.epsilon});
+    }
+    if (executor.timed) { discard Timestamp(ref recording); }
+    Binding<array>[4] bindings = [Bind(0, ref const input, Access::Read),
+        Bind(1, ref const executor.weight, Access::Read), Bind(2, ref const slot.inverse, Access::Read),
+        Bind(3, ref const output, Access::Write)];
+    uint32<array>[8] push = [job.rows, job.width, job.inputStride, job.outputStride, job.rows * job.width, 0, 0, 0];
+    ref const Pipeline pipeline = OptionValue(ref const executor.pipelines[1]);
+    DispatchWith(ref recording, ref const pipeline, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), (job.rows * job.width + 255u) / 256u, 1, 1);
+    executor.descriptors = executor.descriptors + 1;
+    if (executor.timed) { discard Timestamp(ref recording); }
+    if (job.roundOutput != 0) { RoundBf16(ref recording, ref executor, ref const output, ref const output, job.rows * job.outputStride); }
+    if (job.ropeHeads != 0) {
+        Binding<array>[4] ropeBindings = [Bind(0, ref const output, Access::Read),
+            Bind(1, ref const slot.cosine, Access::Read), Bind(2, ref const slot.sine, Access::Read),
+            Bind(3, ref const slot.rope, Access::Write)];
+        uint32<array>[8] ropePush = [15, job.ropeHeads, job.width, 0, 0, 0, 0, 0];
+        ref const Pipeline ropePipeline = OptionValue(ref const executor.pipelines[3]);
+        DispatchWith(ref recording, ref const ropePipeline, ReadOnlySpan(ropeBindings), AsBytes(ReadOnlySpan(ropePush)), (job.rows * job.width + 255u) / 256u, 1, 1);
+        executor.ropeDescriptors = executor.ropeDescriptors + 1;
+        executor.descriptors = executor.descriptors + 1;
+    }
+}
+
+Result<NormTiming, VulkanError> ExecuteNorm(ref NormExecutor executor, uint32 index, NormJob job,
+    ReadOnlySpan<float> input, ReadOnlySpan<float> cosine, ReadOnlySpan<float> sine,
+    Span<float> output, Span<float> inverse)
+{
+    ref NormSlot slot = OptionValue(ref executor.slots[index as int]);
+    UploadOn(executor.context.view, ref const slot.input, input)?;
+    if (job.ropeHeads != 0) {
+        UploadOn(executor.context.view, ref const slot.cosine, cosine)?;
+        UploadOn(executor.context.view, ref const slot.sine, sine)?;
+    }
+    uint32 queries = 0;
+    if (executor.timed) { queries = 4; }
+    owned Recording recording = BeginRecordingOn(executor.context.view, queries)?;
+    if (job.roundInput != 0) { RoundBf16(ref recording, ref executor, ref const slot.input, ref const slot.rounded, job.rows * job.inputStride); }
+    if (job.roundInput != 0) {
+        if (job.inPlace != 0) { RecordNorm(ref recording, ref executor, ref const slot, ref const slot.rounded, ref const slot.rounded, job); }
+        else { RecordNorm(ref recording, ref executor, ref const slot, ref const slot.rounded, ref const slot.output, job); }
+    } else {
+        if (job.inPlace != 0) { RecordNorm(ref recording, ref executor, ref const slot, ref const slot.input, ref const slot.input, job); }
+        else { RecordNorm(ref recording, ref executor, ref const slot, ref const slot.input, ref const slot.output, job); }
+    }
+    owned Submission submission = Submit(move recording)?;
+    Option<owned Submission> pending = Option::Some(move submission);
+    slot.pending = move pending;
+    uint32 uncertainFlag = 4;
+    if ((executor.testFlags & uncertainFlag) != 0) {
+        executor.testFlags = executor.testFlags & ~uncertainFlag;
+        return Result::Error(ErrorFromCode(-7414));
+    }
+    ref Submission work = OptionValue(ref slot.pending);
+    Wait(ref work)?;
+    NormTiming timing = NormTiming{0, 0, 0, 0};
+    if (executor.timed) {
+        double partial = ElapsedNanoseconds(ref const work, 0, 1)?;
+        double finalReduction = ElapsedNanoseconds(ref const work, 1, 2)?;
+        double apply = ElapsedNanoseconds(ref const work, 2, 3)?;
+        double total = ElapsedNanoseconds(ref const work, 0, 3)?;
+        timing = NormTiming{TruncTo<uint64>(partial)!, TruncTo<uint64>(finalReduction)!, TruncTo<uint64>(apply)!, TruncTo<uint64>(total)!};
+    }
+    if (job.ropeHeads != 0) {
+        if (Len(output) != 0) { DownloadOn(executor.context.view, ref const slot.rope, output)?; }
+        slot.resident = true;
+    } else {
+        for (row in 0..(job.rows as int)) {
+            Span<float> destination = Subspan(output, row * (job.width as int), job.width as int);
+            uint64 offset = (row as uint64) * (job.outputStride as uint64) * 4;
+            if (job.inPlace == 0) { Check(ConceptVkReadBytes(slot.output.device, slot.output.memory, offset, AsBytes(destination)))?; }
+            else if (job.roundInput != 0) { Check(ConceptVkReadBytes(slot.rounded.device, slot.rounded.memory, offset, AsBytes(destination)))?; }
+            else { Check(ConceptVkReadBytes(slot.input.device, slot.input.memory, offset, AsBytes(destination)))?; }
+        }
+        DownloadOn(executor.context.view, ref const slot.inverse, inverse)?;
+    }
+    slot.pending = Option::None;
+    executor.nextRequest = executor.nextRequest + 1;
+    return Result::Ok(timing);
+}
+
+int NormCode(ref NormExecutor executor, Result<void, VulkanError> result)
+{
+    match (result) {
+        Result::Ok => { return 0; }
+        Result::Error(error) => {
+            return ObserveNormError(ref executor, error);
+        }
+    }
+    return -3;
+}
+
+int ObserveNormError(ref NormExecutor executor, VulkanError error)
+{
+    int code = CodeFromError(error);
+    if (code == -4) { executor.deviceLost = true; }
+    return code;
+}
+
+void ConsumeResident(ref NormExecutor executor)
+{
+    for (index in 1..3) {
+        if (HasSlot(ref const executor.slots[index])) {
+            ref NormSlot slot = OptionValue(ref executor.slots[index]);
+            slot.resident = false;
+        }
+    }
+}
+
+void DisposeNorm(owned NormExecutor executor) { }
+
+uint64 RetainedNorm(ref const NormExecutor executor)
+{
+    uint64 count = executor.weight.count as uint64;
+    for (index in 0..3) {
+        if (HasSlot(ref const executor.slots[index])) {
+            ref const NormSlot slot = OptionValue(ref const executor.slots[index]);
+            count = count + ((slot.input.count + slot.rounded.count + slot.partials.count +
+                slot.inverse.count + slot.output.count + slot.rope.count + slot.cosine.count + slot.sine.count) as uint64);
+        }
+    }
+    return count * 4;
+}

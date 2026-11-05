@@ -36,11 +36,6 @@ using Clock = std::chrono::steady_clock;
     state.release();
     return result;
 }
-int32_t submit(void*, VkQueue queue, VkCommandBuffer commands, VkFence fence) {
-    VkSubmitInfo info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    info.commandBufferCount = 1u; info.pCommandBuffers = &commands;
-    return prom_vk_queue_submit(queue, 1u, &info, fence);
-}
 }
 
 extern "C" PipelineCreation PromReductionLoadPipeline(void* host, VkDevice device, VkPipelineCache cache, uint32_t role) {
@@ -84,7 +79,7 @@ extern "C" int prom_reactor_runtime_reduction_impl(void* host, const PrometheusR
         auto attachment = attach(host, services);
         if (!attachment) { out.stage = PROM_STAGE_INIT; out.detail_code = PROM_REDUCTION_DETAIL_RESOURCE_CREATE_FAILED; return PROM_ERROR; }
         const std::lock_guard lock{(*attachment)->mutex};
-        if (ConceptVkSetQueueSubmit(services.device, host, submit) != 0) {
+        if (ConceptVkSetQueueSubmit(services.device, host, prom_vk_concept_queue_submit) != 0) {
             out.stage = PROM_STAGE_INIT; out.detail_code = PROM_REDUCTION_DETAIL_RUNTIME_UNAVAILABLE; return PROM_ERROR;
         }
         const int result = prom_concept_reduction_execute((*attachment)->executor, request, &out);

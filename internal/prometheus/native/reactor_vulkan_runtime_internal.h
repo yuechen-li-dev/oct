@@ -35,8 +35,6 @@
 #define PROM_M42_DESCRIPTOR_SET_COUNT 15u
 #define PROM_M42_PIPELINE_COUNT 3u
 #define PROM_M42_QUERY_COUNT 26u
-#define PROM_M42_MAX_TOKENS 1024u
-#define PROM_M42_MAX_MODEL_WIDTH 4096u
 #define PROM_M42_MAX_HEAD_DIM 1024u
 #define PROM_M42_MAX_MATRIX_ELEMENTS 16777216ull
 #define PROM_M42_PACK_SHADER_HASH 0xd5c3fd6a2af8965full
@@ -78,7 +76,6 @@
 #define PROM_M45_CAPACITY_LIMIT_BYTES (1024ull * 1024ull * 1024ull)
 #define PROM_M45_RESIDUAL_SHADER_HASH 0xc6e177b9fb86f1e5ull
 #define PROM_M46_PIPELINE_COUNT 2u
-#define PROM_M46_CAPACITY_LIMIT_BYTES (1024ull * 1024ull * 1024ull)
 #define PROM_M46_REDUCE_SHADER_HASH 0xa9af5205bcd60571ull
 #define PROM_M46_APPLY_SHADER_HASH 0x78750b592ac5470eull
 #define PROM_M46_QUERY_BASE 211u
@@ -132,30 +129,6 @@
 
 
 
-
-
-
-typedef struct prom_m46_reduce_push_constants {
-  uint32_t row_count;
-  uint32_t elements_per_row;
-  uint32_t partials_per_row;
-  uint32_t input_row_stride;
-  uint32_t chunk_elements;
-  uint32_t total_elements;
-  uint32_t stage_role;
-  float epsilon;
-} prom_m46_reduce_push_constants;
-
-typedef struct prom_m46_apply_push_constants {
-  uint32_t tokens;
-  uint32_t model_width;
-  uint32_t z_row_stride;
-  uint32_t n_row_stride;
-  uint32_t logical_element_count;
-  uint32_t reserved0;
-  uint32_t reserved1;
-  uint32_t reserved2;
-} prom_m46_apply_push_constants;
 
 
 
@@ -456,16 +429,9 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m44_readback;
   prom_vk_buffer m45_output;
   prom_vk_buffer m45_x_readback;
-  prom_vk_buffer m46_partials;
-  prom_vk_buffer m46_inv_rms;
-  prom_vk_buffer m46_output;
-  prom_vk_buffer m46_readback;
-  /* M1 RoPE retains a distinct device-local destination.  M46 owns
-     m46_output as the normalized source in the chained submission. */
-  prom_vk_buffer gemma4e2b_m1_rope_output;
-  prom_vk_buffer gemma4e2b_m1_rope_readback;
-  prom_vk_buffer m49a_m46_z;
-  prom_vk_buffer gemma4e2b_m1_bf16_roundtrip;
+  prom_vk_buffer gemma4e2b_m1_output;
+  prom_vk_buffer gemma4e2b_m1_readback;
+  prom_vk_buffer gemma4e2b_m1_rope_input;
   prom_vk_buffer m47_n_packed;
   prom_vk_buffer m47_gate;
   prom_vk_buffer m47_up;
@@ -486,7 +452,7 @@ typedef struct prom_reduction_slot {
   uint64_t m43_command_reuse_count;
   uint64_t m44_command_reuse_count;
   uint64_t m45_command_reuse_count;
-  uint64_t m46_command_reuse_count;
+  uint64_t gemma4e2b_m1_command_reuse_count;
   uint64_t m47_command_reuse_count;
   uint64_t m48_command_reuse_count;
 } prom_reduction_slot;
@@ -627,8 +593,6 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m45_buffer_reuse_count;
   uint64_t m45_descriptor_update_count;
   uint64_t m45_pipeline_create_count;
-  prom_reduction_pipeline m46_pipelines[PROM_M46_PIPELINE_COUNT];
-  prom_reduction_pipeline gemma4e2b_m1_bf16_roundtrip_pipeline;
   prom_reduction_pipeline gemma4e2b_m1_rope_pipeline;
   prom_reduction_pipeline gemma4e2b_m1_attention_scores_pipeline;
   prom_vk_buffer gemma4e2b_m1_rope_cosine_upload;
@@ -641,23 +605,6 @@ typedef struct prom_reduction_runtime_state {
   uint64_t gemma4e2b_m1_rope_pipeline_create_count;
   uint64_t gemma4e2b_m1_attention_scores_descriptor_update_count;
   uint64_t gemma4e2b_m1_attention_scores_pipeline_create_count;
-  /* The most recent completed kernel-68 Q and K destinations are pinned by
-     role until the model-private score consumer releases them. */
-  uint32_t gemma4e2b_m1_rope_q_slot_id;
-  uint32_t gemma4e2b_m1_rope_q_slot_generation;
-  uint32_t gemma4e2b_m1_rope_q_valid;
-  uint32_t gemma4e2b_m1_rope_k_slot_id;
-  uint32_t gemma4e2b_m1_rope_k_slot_generation;
-  uint32_t gemma4e2b_m1_rope_k_valid;
-  prom_vk_buffer m46_weight_upload;
-  prom_vk_buffer m46_weight;
-  uint64_t m46_weight_generation;
-  uint64_t m46_weight_hash;
-  uint32_t m46_weight_model_width;
-  uint64_t m46_buffer_grow_count;
-  uint64_t m46_buffer_reuse_count;
-  uint64_t m46_descriptor_update_count;
-  uint64_t m46_pipeline_create_count;
   prom_reduction_pipeline m47_pipelines[PROM_M47_PIPELINE_COUNT];
   prom_vk_buffer m47_weight_upload[PROM_M47_WEIGHT_COUNT];
   prom_vk_buffer m47_weight_f32[PROM_M47_WEIGHT_COUNT];

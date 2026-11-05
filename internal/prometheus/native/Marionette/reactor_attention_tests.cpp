@@ -537,6 +537,9 @@ FACT(PrometheusM46RmsNormPlanningAndOwnershipContracts)
     ASSERT_EQUAL(0u, separate.intermediate_host_copy_count,
                  "RMSNorm planning never inserts an intermediate host copy");
     ASSERT_EQUAL(1u, separate.final_readback_count, "one final N readback is explicit");
+    ASSERT_EQUAL(0u, separate.copy_region_count, "shared output needs no device copy regions");
+    ASSERT_EQUAL(0u, separate.memory.weight_upload_bytes, "shared weight has no staging duplicate");
+    ASSERT_EQUAL(0u, separate.memory.n_readback_bytes, "shared output has no readback allocation");
     ASSERT_EQUAL(static_cast<std::uint64_t>(127u * sizeof(float)),
                  separate.memory.inv_rms_bytes, "explicit InvRms storage is exact");
     ASSERT_EQUAL(0u, separate.memory.partial_sum_bytes,
@@ -546,7 +549,7 @@ FACT(PrometheusM46RmsNormPlanningAndOwnershipContracts)
                  separate.barriers[2].destination_access_mask,
                  "separate apply keeps Z read-only");
     ASSERT_EQUAL(0u, separate.intermediate_host_copy_count,
-                 "padding is excluded without a host compaction step");
+                 "padding is excluded at the final readback boundary");
 
     request.requested_reduction_plan = PROM_M46_REDUCTION_FORCE_STAGED;
     prom_rmsnorm_plan forcedStaged{};

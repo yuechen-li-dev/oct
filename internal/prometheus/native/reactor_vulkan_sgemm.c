@@ -2539,6 +2539,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     prom_reactor_runtime_reduction_cleanup_state(rt->reduction_state, rt->vulkan.device);
     rt->reduction_state = NULL;
   }
+  if (prom_reactor_runtime_concept_norm_detach(rt) != PROM_OK) {
+    fputs("Prometheus: RMSNorm completion could not be established during teardown\n", stderr);
+    abort();
+  }
   for (uint32_t async_index = 0u; async_index < PROM_SGEMM_ASYNC_MAX_TASKS; ++async_index) {
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->async_tasks[async_index].c);
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->async_tasks[async_index].b);
@@ -3436,13 +3440,15 @@ int prom_reactor_runtime_destroy_impl(void* handle) {
     return PROM_INVALID_HANDLE;
   }
 
-  registry_remove(handle);
+  /* Borrower teardown reads the registered device services. Callers are
+     quiescent during destruction; invalidate the handle after retirement. */
   /* Persistent ray-query scenes borrow this sole device owner.  Retire them
      before vk_runtime_cleanup tears down their AS backing storage. */
   prom_ray_query_scene_runtime_destroy_all(handle);
   prom_fft_diag_forget_handle(handle);
   vk_runtime_cleanup(runtime);
   prom_vk_runtime_destroy_package(&runtime->vulkan);
+  registry_remove(handle);
   free(runtime);
   return PROM_OK;
 }
@@ -8225,5 +8231,15 @@ void* prom_reactor_runtime_concept_reduction_state(void* handle) {
 int prom_reactor_runtime_set_concept_reduction_state(void* handle, void* state) {
   if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
   ((prometheus_runtime*)handle)->concept_reduction_state = state;
+  return PROM_OK;
+}
+
+void* prom_reactor_runtime_concept_norm_state(void* handle) {
+  if (!prom_reactor_runtime_validate_handle(handle)) return NULL;
+  return ((prometheus_runtime*)handle)->concept_norm_state;
+}
+int prom_reactor_runtime_set_concept_norm_state(void* handle, void* state) {
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  ((prometheus_runtime*)handle)->concept_norm_state = state;
   return PROM_OK;
 }

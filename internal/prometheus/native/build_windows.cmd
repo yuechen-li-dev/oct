@@ -85,12 +85,12 @@ if errorlevel 1 call :fail_now "enter repository root" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 set "PUSHD_ACTIVE=1"
 
-call "%CC%" /nologo /TC /std:c11 /experimental:c11atomics /O2 /W4 /DPROMETHEUS_REACTOR_BUILD_DLL %PROMETHEUS_MX5_CONTROL_DEFINE% %PROMETHEUS_M5B_EXPERIMENT_DEFINE% %PROMETHEUS_M5B_GEMINI_EXACT_DEFINE% %PROMETHEUS_M5B_GEMINI_INPLACE_DEFINE% /c %VULKAN_INCLUDE% %CONCEPT_INCLUDE% /Fo"%OBJ_DIR%\\" %PROMETHEUS_COMMON_C_SRCS%
-if errorlevel 1 call :fail_now "compile common native sources" %ERRORLEVEL%
-if errorlevel 1 exit /b %ERRORLEVEL%
-
 go run ./tools/prometheus_concept -build-package
 if errorlevel 1 call :fail_now "build Concept package" %ERRORLEVEL%
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+call "%CC%" /nologo /TC /std:c11 /experimental:c11atomics /O2 /W4 /DPROMETHEUS_REACTOR_BUILD_DLL %PROMETHEUS_MX5_CONTROL_DEFINE% %PROMETHEUS_M5B_EXPERIMENT_DEFINE% %PROMETHEUS_M5B_GEMINI_EXACT_DEFINE% %PROMETHEUS_M5B_GEMINI_INPLACE_DEFINE% /c %VULKAN_INCLUDE% %CONCEPT_INCLUDE% /I"%ROOT_DIR%\internal\prometheus\.native-build" /Fo"%OBJ_DIR%\\" %PROMETHEUS_COMMON_C_SRCS%
+if errorlevel 1 call :fail_now "compile common native sources" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 
 link /nologo /DLL @"%NATIVE_DIR%\native_objects_windows.rsp" %PROMETHEUS_CONCEPT_ARCHIVES% /OUT:"%REACTOR_DLL%" /IMPLIB:"%REACTOR_LIB%" /PDB:"%REACTOR_PDB%" %VULKAN_LIBPATH% vulkan-1.lib

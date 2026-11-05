@@ -6,50 +6,65 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// Checking deployment integrity needs no compiler checkout. Native builds
-// resolve the Concept library dependency separately through manifest.concept.
-func TestCheckedDeploymentMatchesConceptSourceAndOutputs(t *testing.T) {
-	root := filepath.Join("..", "..")
-	for _, stem := range []string{"prometheusreduction", "prometheusexecution"} {
-		t.Run(stem, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join(root, destination, stem+".provenance.json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var provenance struct {
-				Source         string            `json:"source"`
-				SHA256         string            `json:"source_sha256"`
-				Revision       string            `json:"concept_revision"`
-				CompilerInputs string            `json:"concept_source_tree_sha256"`
-				Inputs         map[string]string `json:"inputs_sha256"`
-				Outputs        map[string]string `json:"outputs_sha256"`
-			}
-			if err := json.Unmarshal(data, &provenance); err != nil {
-				t.Fatal(err)
-			}
-			if provenance.Source == "" || len(provenance.Revision) != 40 || len(provenance.CompilerInputs) != 64 || len(provenance.Outputs) != 2 || len(provenance.Inputs) == 0 {
-				t.Fatal("incomplete Concept deployment provenance")
-			}
-			check := func(path, expected string) {
+// Runtime provenance keeps its integrity contract even though its files no
+// longer belong in Git. Exercise stale and missing products in isolation.
+func TestDeploymentProvenanceRejectsStaleInputsAndOutputs(t *testing.T) {
+	for _, corrupt := range []string{"input", "c", "header", "missing"} {
+		t.Run(corrupt, func(t *testing.T) {
+			root, output := t.TempDir(), t.TempDir()
+			sum := func(data []byte) string { value := sha256.Sum256(data); return hex.EncodeToString(value[:]) }
+			write := func(path string, data []byte) {
 				t.Helper()
-				data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, data, 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, stem := range []string{"prometheusreduction", "prometheusexecution", "prometheusrmsnorm"} {
+				input := []byte("opaque source hash fixture")
+				inputPath := filepath.Join("inputs", stem+".concept")
+				write(filepath.Join(root, inputPath), input)
+				outputs := map[string]string{}
+				for _, ext := range []string{"c", "h"} {
+					name := stem + ".generated." + ext
+					data := []byte("opaque generated " + ext + " fixture")
+					write(filepath.Join(output, name), data)
+					outputs[name] = sum(data)
+				}
+				metadata := map[string]any{
+					"compiler_binary_sha256": strings.Repeat("0", 64),
+					"inputs_sha256":          map[string]string{filepath.ToSlash(inputPath): sum(input)},
+					"outputs_sha256":         outputs,
+				}
+				data, err := json.Marshal(metadata)
 				if err != nil {
 					t.Fatal(err)
 				}
-				sum := sha256.Sum256(data)
-				if hex.EncodeToString(sum[:]) != expected {
-					t.Fatalf("stale Concept deployment %s; run go run ./tools/prometheus_concept", path)
+				write(filepath.Join(output, stem+".provenance.json"), data)
+			}
+			if err := verifyDeployment(root, output); err != nil {
+				t.Fatal(err)
+			}
+			switch corrupt {
+			case "input":
+				write(filepath.Join(root, "inputs", "prometheusexecution.concept"), []byte("changed"))
+			case "c":
+				write(filepath.Join(output, "prometheusexecution.generated.c"), []byte("changed"))
+			case "header":
+				write(filepath.Join(output, "prometheusexecution.generated.h"), []byte("changed"))
+			case "missing":
+				if err := os.Remove(filepath.Join(output, "prometheusexecution.generated.c")); err != nil {
+					t.Fatal(err)
 				}
 			}
-			check(provenance.Source, provenance.SHA256)
-			for path, expected := range provenance.Inputs {
-				check(path, expected)
-			}
-			for _, name := range []string{stem + ".generated.c", stem + ".generated.h"} {
-				check(filepath.Join(destination, name), provenance.Outputs[name])
+			if err := verifyDeployment(root, output); err == nil {
+				t.Fatal("stale or missing deployment accepted")
 			}
 		})
 	}

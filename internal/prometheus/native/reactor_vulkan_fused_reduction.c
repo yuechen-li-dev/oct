@@ -271,14 +271,9 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
     prom_vk_destroy_buffer(device, &slot->m47_up);
     prom_vk_destroy_buffer(device, &slot->m47_gate);
     prom_vk_destroy_buffer(device, &slot->m47_n_packed);
-    prom_vk_destroy_buffer(device, &slot->m46_readback);
-    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_rope_readback);
-    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_rope_output);
-    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_bf16_roundtrip);
-    prom_vk_destroy_buffer(device, &slot->m49a_m46_z);
-    prom_vk_destroy_buffer(device, &slot->m46_output);
-    prom_vk_destroy_buffer(device, &slot->m46_inv_rms);
-    prom_vk_destroy_buffer(device, &slot->m46_partials);
+    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_readback);
+    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_rope_input);
+    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_output);
     prom_vk_destroy_buffer(device, &slot->m45_x_readback);
     prom_vk_destroy_buffer(device, &slot->m45_output);
     prom_vk_destroy_buffer(device, &slot->m44_readback);
@@ -316,10 +311,6 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
   for (pipeline_index = 0u; pipeline_index < PROM_M42_PIPELINE_COUNT; ++pipeline_index) {
     prom_reduction_destroy_pipeline(device, &state->m42_pipelines[pipeline_index]);
   }
-  for (pipeline_index = 0u; pipeline_index < PROM_M46_PIPELINE_COUNT; ++pipeline_index) {
-    prom_reduction_destroy_pipeline(device, &state->m46_pipelines[pipeline_index]);
-  }
-  prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_bf16_roundtrip_pipeline);
   prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_rope_pipeline);
   prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_attention_scores_pipeline);
   for (pipeline_index = 0u; pipeline_index < PROM_M47_PIPELINE_COUNT; ++pipeline_index) {
@@ -353,8 +344,6 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
   prom_vk_destroy_buffer(device, &state->m43_resident_x_f16);
   prom_vk_destroy_buffer(device, &state->m43_resident_x_f32);
   prom_vk_destroy_buffer(device, &state->m43_resident_x_upload);
-  prom_vk_destroy_buffer(device, &state->m46_weight);
-  prom_vk_destroy_buffer(device, &state->m46_weight_upload);
   for (pipeline_index = 0u; pipeline_index < PROM_M47_WEIGHT_COUNT; ++pipeline_index) {
     prom_vk_destroy_buffer(device, &state->m47_weight_f16[pipeline_index]);
     prom_vk_destroy_buffer(device, &state->m47_weight_f32[pipeline_index]);
@@ -759,12 +748,6 @@ prom_reduction_slot* prom_reduction_acquire_slot(prom_reduction_runtime_state* s
   for (offset = 0u; offset < state->ring_depth; ++offset) {
     uint32_t index = (state->acquire_cursor + offset) % state->ring_depth;
     prom_reduction_slot* slot = &state->slots[index];
-    if ((state->gemma4e2b_m1_rope_q_valid != 0u &&
-         slot->slot_id == state->gemma4e2b_m1_rope_q_slot_id &&
-         slot->generation == state->gemma4e2b_m1_rope_q_slot_generation) ||
-        (state->gemma4e2b_m1_rope_k_valid != 0u &&
-         slot->slot_id == state->gemma4e2b_m1_rope_k_slot_id &&
-         slot->generation == state->gemma4e2b_m1_rope_k_slot_generation)) continue;
     if (slot->state == PROM_ASYNC_PHYSICAL_READY) {
       slot->state = PROM_ASYNC_PHYSICAL_EMPTY;
       state->diagnostics.physical_recycle_count += 1u;
@@ -782,12 +765,6 @@ prom_reduction_slot* prom_reduction_acquire_slot(prom_reduction_runtime_state* s
   prom_reduction_reap_slots(state, 1u);
   for (offset = 0u; offset < state->ring_depth; ++offset) {
     prom_reduction_slot* slot = &state->slots[offset];
-    if ((state->gemma4e2b_m1_rope_q_valid != 0u &&
-         slot->slot_id == state->gemma4e2b_m1_rope_q_slot_id &&
-         slot->generation == state->gemma4e2b_m1_rope_q_slot_generation) ||
-        (state->gemma4e2b_m1_rope_k_valid != 0u &&
-         slot->slot_id == state->gemma4e2b_m1_rope_k_slot_id &&
-         slot->generation == state->gemma4e2b_m1_rope_k_slot_generation)) continue;
     if (slot->state == PROM_ASYNC_PHYSICAL_READY) {
       slot->state = PROM_ASYNC_PHYSICAL_PREPARING;
       slot->generation += 1u;

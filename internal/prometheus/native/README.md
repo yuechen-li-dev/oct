@@ -29,14 +29,23 @@ Current Vulkan reactor file topology (P12 M5 baseline):
 - `reactor_concept_reduction_abi.c` and `reactor_concept_reduction.cpp`
   - an opaque C11 facade and C++23 public/package adapters. Generated private
     class layouts and C11 atomics do not cross into C++.
+- `../reactors/PrometheusRmsNorm.concept`
+  - RMSNorm weights, reusable buffers, FP32/BF16 normalization, and the resident
+    head-normalization → RoPE tail. Three semantic slots retain ordinary output,
+    Q, and K independently. Submitted work stays owned until completion.
+- `reactor_concept_rmsnorm_abi.c` and `reactor_concept_rmsnorm.cpp`
+  - C11 packet projection and C++23 boundary/package adaptation. The existing
+    pure RMSNorm planner supplies strategy and admission policy. Legacy
+    attention borrows completed Concept-owned Q/K without a host detour.
 - `reactor_vulkan_queue.cpp`
   - the common host queue API synchronization boundary for all native families.
 - `reactor_vulkan_fused_reduction.c`
   - public plan serialization, ABI validation, CPU oracles, and still-live model
     resource support. Its standalone C reduction executor has been removed.
 - `reactor_vulkan_gemma4e2b.c`
-  - the Gemma 4 E2B M1 operations (input/head RMSNorm, RoPE, attention
-    scores) and the M46 RMSNorm executor they run on. The M42-M49b
+  - pure RMSNorm planning/oracles, standalone legacy RoPE, and legacy attention
+    scores. The C RMSNorm executor and its weight ownership were removed in
+    [Concept M2](../../../docs/internal/prometheus_concept_rmsnorm_m2.md). The M42-M49b
     transformer executors, the numerical-research shadow, and the
     transformer control module were removed in Phase 0, and the file was
     renamed from `reactor_vulkan_transformer.c` (see
@@ -102,9 +111,16 @@ Concept distribution's `libraries`; the development default is the sibling
 PATH, or keep the sibling Concept compiler checkout for the Go bootstrap.
 The foundational Vulkan implementation is compiled from that dependency.
 
-Regenerate deployment with `go run ./tools/prometheus_concept -concept-root
-../Concept`; verify with `-check`. Checked provenance identifies actual compiler
-and library input bytes as well as the checkout revision. See
+The native helpers regenerate Concept C, headers, and provenance into ignored
+`internal/prometheus/.native-build/generated/` before compiling any consumer.
+For a clean package build, run `go run ./tools/prometheus_concept -build-package`;
+this emits source, validates source/output hashes, then invokes the manifest
+builder. Direct `concept package build internal/prometheus` consumes those
+materialized inputs and therefore follows emission. Standalone emission is
+`go run ./tools/prometheus_concept -concept-root ../Concept`; `-check` compares
+fresh generation. These generated C/JSON files are build products and do not
+belong in Git. Provenance records the actual compiler binary and, when built
+from a checkout, its revision and source/library hashes. See
 [shared-device migration evidence](../../../docs/internal/prometheus_concept_shared_device_m1.md).
 
 Expected Windows outputs:
