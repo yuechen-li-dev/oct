@@ -15,6 +15,8 @@ const (
 
 	KeywordNamespace Kind = "KeywordNamespace"
 	KeywordUse       Kind = "KeywordUse"
+	KeywordImport    Kind = "KeywordImport"
+	KeywordExport    Kind = "KeywordExport"
 	KeywordType      Kind = "KeywordType"
 	KeywordRecord    Kind = "KeywordRecord"
 	KeywordBoard     Kind = "KeywordBoard"
@@ -125,6 +127,10 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordNamespace
 	case "use":
 		return KeywordUse
+	case "import":
+		return KeywordImport
+	case "export":
+		return KeywordExport
 	case "type":
 		return KeywordType
 	case "record":

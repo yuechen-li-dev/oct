@@ -13,6 +13,7 @@ This is the repository ownership guide. Language truth remains in
 | `Language/SDSL-V/conformance/` | canonical shared/compute/graphics acceptance, diagnostics, manifests, and golden artifacts | no |
 | `Language/SDSL-V/M36a/` | permanent benchmark corpus and canonical artifacts | benchmark/audit tooling only |
 | `internal/prometheus/shaders/sdslv/production/` | sole Prometheus SDSL-V source authority | yes |
+| `internal/prometheus/shaders/sdslv/production/shared/` | imported helpers; no standalone shader entries | through importing production shaders |
 | `internal/prometheus/shaders/sdslv/production/reduction/` | M39b row-wise sum/max/softmax source authority | yes |
 | `internal/prometheus/shaders/sdslv/experimental/` | bounded candidates, including the M40a/M40b cooperative SGEMM | bounded experimental runtime only |
 | `internal/prometheus/shaders/sdslv/historical/` | policy pointer to audit evidence | no |
@@ -29,6 +30,13 @@ tables or production native build inputs. The manifest's
 `experimental_shader_assets` inventory records provenance and capability
 contracts without assigning a production numeric shader/implementation ID.
 Historical evidence is audit-only.
+
+Files under `production/shared/` are imported libraries, reached from explicit
+production shader roots. They have namespaces and exports, not standalone entry
+points or numeric shader IDs. Their source hashes travel with the root's
+compiled artifact. Package staging rejects a generated header whose recorded
+source graph no longer matches an imported file, and package provenance retains
+the complete graph. The package remains inert SPIR-V and metadata.
 
 The M40a proof lives at
 `internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/`. Its

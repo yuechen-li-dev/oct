@@ -1,0 +1,23 @@
+namespace Prometheus.Shared.Bf16;
+
+// Round finite values to nearest-even; preserve infinities and quiet NaN payloads.
+export fn RoundtripBF16(value: f32) -> f32 {
+    let bits: u32 = Bitcast<u32>(value);
+    let exponent: u32 = bits & 0x7f800000u;
+    let mantissa: u32 = bits & 0x007fffffu;
+    if exponent == 0x7f800000u {
+        if mantissa == 0u { return value; }
+        let bf16: u32 = (bits >> 16u) | 0x0040u;
+        return Bitcast<f32>(bf16 << 16u);
+    }
+    let lsb: u32 = (bits >> 16u) & 1u;
+    let bf16: u32 = (bits + 0x00007fffu + lsb) >> 16u;
+    return Bitcast<f32>(bf16 << 16u);
+}
+
+// Select the exact packed lane without rounding or arithmetic conversion.
+export fn WidenBF16(word: u32, element: u32) -> f32 {
+    var bf16Bits: u32 = word >> 16u;
+    if element % 2u == 0u { bf16Bits = word & 0xffffu; }
+    return Bitcast<f32>(bf16Bits << 16u);
+}

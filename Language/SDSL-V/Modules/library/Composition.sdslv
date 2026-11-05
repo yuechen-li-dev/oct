@@ -1,0 +1,9 @@
+namespace Shader.Composition;
+import "Shader/Arithmetic.sdslv" as Arithmetic;
+import "Other.sdslv" as Other;
+
+export type Score = u32;
+export fn Score(value: u32) -> u32 { return value + 1u; }
+export fn Combine(value: u32) -> u32 {
+    return Arithmetic.TwicePlusOne(value) + Other.Triple(value);
+}

@@ -18,7 +18,7 @@ struct Bf16RoundtripParams
 [[vk::binding(1, 0)]] RWStructuredBuffer<float> Reserved0;
 [[vk::binding(2, 0)]] RWStructuredBuffer<float> Reserved1;
 
-float RoundtripBF16(float value)
+float __sdslv_module_fb02e18c0ec0_RoundtripBF16(float value)
 {
     uint bits = asuint(value);
     uint exponent = (bits & 2139095040u);
@@ -45,7 +45,7 @@ void Gemma4E2BM1Bf16Roundtrip_CS(uint3 DispatchThreadID : SV_DispatchThreadID)
     uint element = DispatchThreadID.x;
     if ((element < params.ElementCount))
     {
-        Output[element] = RoundtripBF16(Input[element]);
+        Output[element] = __sdslv_module_fb02e18c0ec0_RoundtripBF16(Input[element]);
     }
     return;
 }

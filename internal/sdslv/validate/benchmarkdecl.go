@@ -29,6 +29,9 @@ type ValidatedBenchmark struct {
 }
 
 func ValidatedBenchmarks(module ast.Module, identity string) ([]ValidatedBenchmark, []diagnostic.Diagnostic) {
+	if module.DependencyIdentity != "" {
+		identity += "\x00modules:" + module.DependencyIdentity
+	}
 	issues := Diagnostics(module)
 	if len(issues) != 0 {
 		return nil, issues

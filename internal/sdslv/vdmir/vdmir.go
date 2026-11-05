@@ -3,7 +3,9 @@ package vdmir
 import "github.com/yuechen-li-dev/oct/internal/source"
 
 type Module struct {
-	Provenance Provenance
+	Provenance         Provenance
+	Dependencies       []Dependency
+	DependencyIdentity string
 	// ForeignTargets is the explicit portability requirement collected during
 	// lowering. A backend must reject a module that names a target it cannot own.
 	ForeignTargets []string
@@ -25,6 +27,13 @@ type Module struct {
 	GraphicsEntryPoints []GraphicsEntryPoint
 	GraphicsPrograms    []GraphicsProgram
 	Flows               []Flow
+}
+
+// Dependency is a frontend-neutral source input to the compiled module.
+type Dependency struct {
+	Path      string `json:"path"`
+	Namespace string `json:"namespace"`
+	SHA256    string `json:"sha256"`
 }
 
 type CapabilityRequirement struct {

@@ -15,11 +15,9 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/emit/hlsl"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lower"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/modules"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
-	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 const hostSchemaVersion = 1
@@ -167,7 +165,7 @@ func isolatedModule(module ast.Module, c Case) ast.Module {
 			}
 		case ast.FunctionDecl:
 			if c.Shader == "" {
-				if d.Name == c.EntryPoint {
+				if d.Name == c.EntryPoint || (d.Span.Path != "" && d.Span.Path != module.Source.Path) {
 					out.Decls = append(out.Decls, d)
 				}
 			} else {
@@ -180,15 +178,7 @@ func isolatedModule(module ast.Module, c Case) ast.Module {
 	return out
 }
 func loadBenchmarkModule(path string) (ast.Module, error) {
-	file, err := source.Load(path)
-	if err != nil {
-		return ast.Module{}, err
-	}
-	tokens, err := lex.Analyze(file)
-	if err != nil {
-		return ast.Module{}, err
-	}
-	m, err := parse.BuildModule(tokens)
+	m, err := modules.Load(path)
 	if err != nil {
 		return ast.Module{}, err
 	}

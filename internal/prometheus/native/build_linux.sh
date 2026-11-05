@@ -17,6 +17,11 @@ OBJ_DIR="$OUT_DIR/obj"
 mkdir -p "$OUT_DIR" "$REACTOR_DIR" "$OBJ_DIR"
 
 LIB_NAME="libprometheus_reactor.so"
+CONCEPT_LIBRARY_ROOT="${CONCEPT_LIBRARY_ROOT:-$ROOT_DIR/../Concept/libraries}"
+if [[ ! -f "$CONCEPT_LIBRARY_ROOT/Vulkan/native/concept_vulkan.h" ]]; then
+  echo "error: set CONCEPT_LIBRARY_ROOT to the Concept distribution libraries directory." >&2
+  exit 1
+fi
 
 go run ./tools/prometheus_native_manifest -check
 source "$NATIVE_DIR/native_sources_linux.sh"
@@ -40,14 +45,16 @@ for src in "${PROMETHEUS_COMMON_C[@]}"; do
     cc -std=c11 -fPIC -O2 "${WARN_FLAGS[@]}" -c "$src" -o "$obj" 2>/dev/null
   fi
 done
+go run ./tools/prometheus_concept -build-package
+COMMON_OBJS+=("${PROMETHEUS_CONCEPT_ARCHIVES[@]}")
 echo "[1/5] Done."
 
 # Step 2: Link the shared reactor library
 echo "[2/5] Linking $LIB_NAME..."
 if [[ "$VERBOSE" == "1" ]]; then
-  cc -std=c11 -shared "${COMMON_OBJS[@]}" -pthread -lm -lvulkan -o "$OUT_DIR/$LIB_NAME"
+  c++ -shared "${COMMON_OBJS[@]}" -pthread -lm -lvulkan -o "$OUT_DIR/$LIB_NAME"
 else
-  cc -std=c11 -shared "${COMMON_OBJS[@]}" -pthread -lm -lvulkan -o "$OUT_DIR/$LIB_NAME" 2>/dev/null
+  c++ -shared "${COMMON_OBJS[@]}" -pthread -lm -lvulkan -o "$OUT_DIR/$LIB_NAME" 2>/dev/null
 fi
 cp "$OUT_DIR/$LIB_NAME" "$REACTOR_DIR/$LIB_NAME"
 echo "Built reactor library: $OUT_DIR/$LIB_NAME"

@@ -1,0 +1,14 @@
+namespace Conformance.ImportedGraphics;
+import "library/Graphics.sdslv" as Graphics;
+
+shader ImportedGraphics {
+    stage vertex fn VS() -> Graphics.Varyings {
+        return Graphics.Varyings {
+            Position: Graphics.Origin();
+            Color: float4(0.2, 0.4, 0.6, 1.0);
+        };
+    }
+    stage pixel fn PS(input: Graphics.Varyings) -> Graphics.Output {
+        return Graphics.Output { Color: input.Color; };
+    }
+}

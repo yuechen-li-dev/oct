@@ -11,6 +11,13 @@
 extern "C" {
 #endif
 
+/* External host synchronization shared by legacy and Concept submissions. */
+VkResult prom_vk_queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo* submits, VkFence fence);
+VkResult prom_vk_device_wait_idle(VkDevice device);
+int prom_reactor_runtime_concept_reduction_detach(void* handle);
+void* prom_reactor_runtime_concept_reduction_state(void* handle);
+int prom_reactor_runtime_set_concept_reduction_state(void* handle, void* state);
+
 typedef enum prom_vk_cooperative_matrix_state {
   PROM_VK_COOPERATIVE_MATRIX_UNAVAILABLE = 0u,
   PROM_VK_COOPERATIVE_MATRIX_EXTENSION_NO_USEFUL_TUPLE = 1u,
@@ -52,6 +59,7 @@ typedef struct prom_vk_runtime_services {
   uint32_t transfer_queue_family_index;
   VkCommandPool transfer_command_pool;
   uint32_t transfer_queue_available;
+  uint32_t concept_enabled_features;
   uint32_t backend_available;
   uint32_t backend_reason_code;
   uint32_t test_flags;

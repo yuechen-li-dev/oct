@@ -29,8 +29,9 @@ type ConstValue struct {
 	Span       source.Span
 }
 type TestStableIdentity struct {
-	Source, Function string
-	Kind             TestKind
+	Source, Function   string
+	Kind               TestKind
+	DependencyIdentity string
 }
 type TestAttributeSpans struct {
 	Fact, Theory                  source.Span
@@ -103,7 +104,7 @@ func ValidatedTests(module ast.Module) ([]ValidatedTestDecl, []diagnostic.Diagno
 		if !ok {
 			continue
 		}
-		d := ValidatedTestDecl{Function: fn, Kind: kind, StableIdentity: TestStableIdentity{Source: module.Source.Path, Function: fn.Name, Kind: kind}, TestInput: NoTestInput(), FunctionSpan: fn.Span, AttributeSpans: spans, Launch: ValidatedLaunchMetadata{WorkgroupSize: [3]uint32{1, 1, 1}, DispatchGroups: [3]uint32{1, 1, 1}}}
+		d := ValidatedTestDecl{Function: fn, Kind: kind, StableIdentity: TestStableIdentity{Source: module.Source.Path, Function: fn.Name, Kind: kind, DependencyIdentity: module.DependencyIdentity}, TestInput: NoTestInput(), FunctionSpan: fn.Span, AttributeSpans: spans, Launch: ValidatedLaunchMetadata{WorkgroupSize: [3]uint32{1, 1, 1}, DispatchGroups: [3]uint32{1, 1, 1}}}
 		for i := range fn.Attributes {
 			a := fn.Attributes[i]
 			switch a.Name {
@@ -310,6 +311,9 @@ func ValidatedTestCases(tests []ValidatedTestDecl, source string) []ValidatedTes
 }
 func newValidatedCase(d ValidatedTestDecl, row *ValidatedTheoryRow) ValidatedTestCase {
 	identity := d.StableIdentity.Source + "\x00" + d.StableIdentity.Function + "\x00" + string(d.Kind)
+	if d.StableIdentity.DependencyIdentity != "" {
+		identity += "\x00modules:" + d.StableIdentity.DependencyIdentity
+	}
 	display := d.StableIdentity.Function
 	if row != nil {
 		identity += "\x00" + row.Identity

@@ -1,0 +1,163 @@
+document:
+  name: cpp-primer-examples
+  format: yaml
+  version: 2
+  kind: examples
+profile: cpp-primer.yaml
+cases:
+  - id: CPP-TYPED-ERROR-AND-COMMIT
+    language: cpp
+    mode: run
+    demonstrates: [CPP-ERRORS, CPP-NUMERIC, CPP-STATE]
+    description: Full-input parsing, typed errors, and a command that preserves state on failure.
+    code: |
+      #include <cassert>
+      #include <charconv>
+      #include <expected>
+      #include <string_view>
+      #include <system_error>
+      #include <version>
+      static_assert(__cpp_lib_expected >= 202202L);
+
+      enum class CountError { invalid_text, out_of_range };
+      class Count {
+          unsigned value_;
+          explicit Count(unsigned value) : value_(value) {}
+      public:
+          [[nodiscard]] static std::expected<Count, CountError> parse(std::string_view text) {
+              if (text.empty()) return std::unexpected(CountError::invalid_text);
+              unsigned value{};
+              const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+              if (error == std::errc::result_out_of_range)
+                  return std::unexpected(CountError::out_of_range);
+              if (error != std::errc{} || end != text.data() + text.size())
+                  return std::unexpected(CountError::invalid_text);
+              if (value > 100) return std::unexpected(CountError::out_of_range);
+              return Count{value};
+          }
+          unsigned value() const noexcept { return value_; }
+      };
+      [[nodiscard]] std::expected<void, CountError> set_count(unsigned& destination, std::string_view text) {
+          auto count = Count::parse(text);
+          if (!count) return std::unexpected(count.error());
+          destination = count->value();
+          return {};
+      }
+      int main() {
+          unsigned current = 7;
+          auto invalid = set_count(current, "12x");
+          assert(!invalid && invalid.error() == CountError::invalid_text && current == 7);
+          auto large = set_count(current, "101");
+          assert(!large && large.error() == CountError::out_of_range && current == 7);
+          assert(!Count::parse("99999999999999999999999999999999999999"));
+          assert(!Count::parse("-1"));
+          assert(!Count::parse(""));
+          auto zero = set_count(current, "0");
+          assert(zero && current == 0);
+          auto maximum = set_count(current, "100");
+          assert(maximum && current == 100);
+      }
+  - id: CPP-RAII-EARLY-RETURN
+    language: cpp
+    mode: run
+    demonstrates: [CPP-OWNERSHIP, CPP-ERRORS]
+    description: A real C file handle is moved once and closed on an error return.
+    code: |
+      #include <cassert>
+      #include <cstdio>
+      #include <expected>
+      #include <memory>
+      #include <utility>
+      enum class FileError { open, write };
+      struct CloseFile {
+          int* close_count;
+          void operator()(std::FILE* file) const noexcept {
+              (void)std::fclose(file);
+              ++*close_count;
+          }
+      };
+      [[nodiscard]] std::expected<void, FileError> work(int& closed) {
+          std::unique_ptr<std::FILE, CloseFile> file{std::tmpfile(), CloseFile{&closed}};
+          if (!file) return std::unexpected(FileError::open);
+          auto owner = std::move(file);
+          assert(!file && owner);
+          if (std::fputs("data", owner.get()) < 0) return std::unexpected(FileError::write);
+          // Simulate a later domain failure, after the real acquisition and write.
+          return std::unexpected(FileError::write);
+      }
+      int main() {
+          int closed = 0;
+          auto result = work(closed);
+          assert(!result && result.error() == FileError::write);
+          assert(closed == 1);
+      }
+  - id: CPP-CONSTRAINED-CHECKED-ADD
+    language: cpp
+    mode: run
+    demonstrates: [CPP-GENERICS, CPP-NUMERIC, CPP-ERRORS]
+    description: A constrained algorithm checks overflow before arithmetic, including small promoted integers.
+    code: |
+      #include <cassert>
+      #include <concepts>
+      #include <cstdint>
+      #include <expected>
+      #include <limits>
+      template<class T>
+      concept Counter = std::unsigned_integral<T> && !std::same_as<T, bool>;
+      enum class AddError { overflow };
+      template<Counter T>
+      [[nodiscard]] std::expected<T, AddError> checked_add(T left, T right) {
+          if (right > std::numeric_limits<T>::max() - left)
+              return std::unexpected(AddError::overflow);
+          return static_cast<T>(left + right);
+      }
+      static_assert(Counter<unsigned> && !Counter<int> && !Counter<bool>);
+      int main() {
+          auto sum = checked_add(2U, 3U);
+          assert(sum && *sum == 5U);
+          auto overflow = checked_add(std::numeric_limits<unsigned>::max(), 1U);
+          assert(!overflow && overflow.error() == AddError::overflow);
+          auto byte_overflow = checked_add(std::uint8_t{255}, std::uint8_t{1});
+          assert(!byte_overflow);
+          auto edge = checked_add(std::uint8_t{254}, std::uint8_t{1});
+          assert(edge && *edge == 255);
+      }
+  - id: CPP-MONADIC-PROPAGATION
+    language: cpp
+    mode: run
+    demonstrates: [CPP-ERRORS]
+    description: A monadic pipeline preserves typed errors and never invokes later steps after failure.
+    code: |
+      #include <cassert>
+      #include <expected>
+      #include <version>
+      static_assert(__cpp_lib_expected >= 202211L, "monadic expected support required by this example");
+      enum class HalfError { negative, odd };
+      [[nodiscard]] std::expected<int, HalfError> half_even(int value) {
+          if (value < 0) return std::unexpected(HalfError::negative);
+          if (value % 2 != 0) return std::unexpected(HalfError::odd);
+          return value / 2;
+      }
+      int main() {
+          auto success = half_even(8).and_then(half_even).transform([](int value) { return value + 1; });
+          assert(success && *success == 3);
+          auto second_step_failure = half_even(6).and_then(half_even);
+          assert(!second_step_failure && second_step_failure.error() == HalfError::odd);
+          int later_calls = 0;
+          auto failure = half_even(-2).and_then([&](int value) {
+              ++later_calls;
+              return half_even(value);
+          }).transform([&](int value) { ++later_calls; return value + 1; });
+          assert(!failure && failure.error() == HalfError::negative && later_calls == 0);
+      }
+  - id: CPP-IGNORED-RESULT
+    language: cpp
+    mode: compile_fail
+    demonstrates: [CPP-ERRORS]
+    description: Ignoring the fallible result is rejected with warnings treated as errors.
+    diagnostic: nodiscard
+    code: |
+      #include <expected>
+      enum class Error { failed };
+      [[nodiscard]] std::expected<void, Error> commit() { return std::unexpected(Error::failed); }
+      int main() { commit(); }

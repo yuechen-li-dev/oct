@@ -3,6 +3,7 @@
 #endif
 
 #include "reactor_vulkan_sgemm_internal.h"
+#include <stdio.h>
 #include "reactor_batch.h"
 
 typedef struct prom_vk_push {
@@ -1329,6 +1330,7 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->instance = rt->vulkan.instance;
   out_services->physical_device = rt->vulkan.physical_device;
   out_services->device = rt->vulkan.device;
+  out_services->concept_enabled_features = rt->vulkan.concept_enabled_features;
   out_services->compute_queue = rt->vulkan.compute_queue;
   out_services->compute_queue_family_index = rt->vulkan.queue_family_index;
   out_services->compute_command_pool = rt->vulkan.command_pool;
@@ -2528,6 +2530,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->vulkan.device != VK_NULL_HANDLE) {
     (void)prom_async_reap_quarantined_slots(rt, 1u);
     prom_vk_runtime_wait_idle(&rt->vulkan);
+  }
+  if (prom_reactor_runtime_concept_reduction_detach(rt) != PROM_OK) {
+    fputs("Prometheus: reduction completion could not be established during teardown\n", stderr);
+    abort();
   }
   if (rt->reduction_state != NULL) {
     prom_reactor_runtime_reduction_cleanup_state(rt->reduction_state, rt->vulkan.device);
@@ -4308,7 +4314,7 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     if (vk_result != VK_SUCCESS) goto cleanup;
     memset(&submit_info, 0, sizeof(submit_info)); submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.commandBufferCount = 1u; submit_info.pCommandBuffers = &rt->command_buffer;
-    vk_result = vkQueueSubmit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
+    vk_result = prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
     if (vk_result != VK_SUCCESS) goto cleanup;
     vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) goto cleanup;
@@ -5496,7 +5502,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
       return PROM_ERROR;
     }
-    vk_result = vkQueueSubmit(rt->vulkan.transfer_queue, 1u, &transfer_submit_info, rt->transfer_submit_fence);
+    vk_result = prom_vk_queue_submit(rt->vulkan.transfer_queue, 1u, &transfer_submit_info, rt->transfer_submit_fence);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
@@ -5820,7 +5826,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
-  vk_result = vkQueueSubmit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
+  vk_result = prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
@@ -6269,7 +6275,7 @@ int prom_sgemm_ring_submit_slot(prometheus_runtime* rt, prom_sgemm_submission_sl
   result = (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u ? VK_ERROR_INITIALIZATION_FAILED : vkResetFences(rt->vulkan.device, 1u, &slot->fence);
   if (result != VK_SUCCESS) goto failed;
   memset(&info, 0, sizeof(info)); info.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; info.commandBufferCount=1u; info.pCommandBuffers=&slot->command_buffer;
-  result = (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u ? VK_ERROR_INITIALIZATION_FAILED : vkQueueSubmit(rt->vulkan.compute_queue, 1u, &info, slot->fence);
+  result = (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u ? VK_ERROR_INITIALIZATION_FAILED : prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &info, slot->fence);
   if (result != VK_SUCCESS) goto failed;
   slot->state=PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED; rt->submission_ring_diag.total_submits += 1u; rt->submission_ring_diag.outstanding += 1u;
   if (rt->submission_ring_diag.outstanding > rt->submission_ring_diag.max_outstanding) rt->submission_ring_diag.max_outstanding=rt->submission_ring_diag.outstanding;
@@ -6459,7 +6465,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &rt->command_buffer;
   dispatch_submit_begin_ns = prom_wall_clock_now_ns();
-  vk_result = vkQueueSubmit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
+  vk_result = prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
   dispatch_submit_end_ns = prom_wall_clock_now_ns();
   rt->px16_m8_last_dispatch_submit_wall_ns =
       prom_wall_clock_elapsed_ns(dispatch_submit_begin_ns, dispatch_submit_end_ns);
@@ -6588,7 +6594,7 @@ static int prom_sgemm_resident_readback_once(prometheus_runtime* rt,
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &rt->command_buffer;
-  vk_result = vkQueueSubmit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
+  vk_result = prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
     return PROM_ERROR;
@@ -8209,5 +8215,15 @@ int prom_reactor_runtime_sgemm_batch_diagnostics_impl(void* handle, PrometheusSg
     return PROM_INVALID_HANDLE;
   }
   *out_diag = rt->batch_diag;
+  return PROM_OK;
+}
+
+void* prom_reactor_runtime_concept_reduction_state(void* handle) {
+  if (!prom_reactor_runtime_validate_handle(handle)) return NULL;
+  return ((prometheus_runtime*)handle)->concept_reduction_state;
+}
+int prom_reactor_runtime_set_concept_reduction_state(void* handle, void* state) {
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  ((prometheus_runtime*)handle)->concept_reduction_state = state;
   return PROM_OK;
 }

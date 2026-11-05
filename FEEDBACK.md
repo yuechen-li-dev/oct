@@ -14,15 +14,55 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 7 |
+| Open | 9 |
 | Deferred | 11 |
-| Resolved | 90 |
+| Resolved | 91 |
 | Superseded | 1 |
 
 ## Open issues
 
 Newest first. These entries remain open; their presence is not an instruction
 to change the implementation during unrelated work.
+
+### FB-112 — Concept call arguments do not supply context for Result constructors
+
+Date: 2026-11-05
+
+Status: Open
+
+Observation: With `enum SampleError { Failed, }` and
+`int Consume(Result<void, SampleError> result) { return 0; }`, the call
+`Consume(Result::Error(SampleError::Failed))` rejects with
+`CV4540: Result constructor requires an Option/Result expected type`.
+The callee's declared parameter does not provide the constructor context.
+The production reduction API observes an already available `VulkanError`
+directly, so it does not need to construct and immediately unwrap a carrier.
+This language typing gap remains independently reproducible.
+
+Suggestion: Supply the selected parameter type to ordinary call argument
+validation. Preserve overload ambiguity diagnostics and error type checking.
+
+---
+
+### FB-110 — Top-level GPU benchmarks admit invocation builtins without emitting them
+
+Date: 2026-11-05
+
+Status: Open
+
+Observation: A top-level `.sdslvbench` function can use `DispatchThreadID.x`
+and pass discovery, validation, and lowering, but native benchmark compilation
+fails in DXC with `use of undeclared identifier 'DispatchThreadID'`. Reproduced
+with `[Benchmark] fn InvocationIndex() -> void { let value: u32 = DispatchThreadID.x; return; }`.
+`hlsl.EmitBenchmark` emits the ordinary function outside the dispatch wrapper's
+builtin parameter scope. The imported benchmark qualification exposed this
+existing profile boundary; its final source uses an ordinary constant argument.
+
+Suggestion: Thread required invocation builtins through top-level benchmark
+functions and their calls, or reject the unsupported form during validation.
+Keep the existing shader-method benchmark path as a separate supported case.
+
+---
 
 ### FB-109 — Inline HLSL expressions rewrite only the first return
 
@@ -358,6 +398,30 @@ Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. 
 ## Resolved issues
 
 Recorded fixes and their narrow evidence. These are prior dispositions, not a claim that this organization pass reran every qualification.
+
+### FB-111 — Concept reduction port exposes incomplete generated ownership cleanup
+
+Date: 2026-11-05
+
+Status: Resolved in the Concept working tree, with consumer qualification here.
+
+The first production executor exposed three compiler defects: fallible numeric
+conversion inside a record update omitted its generated Result declaration;
+a borrowed match copied and destroyed an owned payload; and structural carrier
+cleanup/reference replacement omitted resource drops. The borrowed-match defect
+freed a live Vulkan buffer before upload and caused an access violation.
+
+The fixes belong to Concept's shared typed traversal, borrowed payload binding,
+and existing cleanup lowerer. Runtime contracts are
+`tests/runtime/record_failure.concept_test`,
+`tests/runtime/borrowed_owned_match.concept_test`, and the Vulkan library's
+borrowed-buffer replacement fact in that repository. Production reductions now
+pass real Vulkan numerical, failure, shared-device, detach, and leak checks.
+Deployment provenance for both generated modules is explicitly allowed through
+this repository's JSON ignore rule so clean checkouts retain the evidence.
+See [the milestone report](docs/internal/prometheus_concept_shared_device_m1.md).
+
+---
 
 ### FB-105 — Packed BF16 boundaries lack ordinary typed bit operations
 
@@ -1750,7 +1814,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-110**. Put a new open issue at
+Use the next unused identifier, currently **FB-113**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

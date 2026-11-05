@@ -722,7 +722,7 @@ int prom_reactor_runtime_m46_prepare_weight(void* handle,
   submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit.commandBufferCount = 1u;
   submit.pCommandBuffers = &slot->command_buffer;
-  result = vkQueueSubmit(state->queue, 1u, &submit, slot->fence);
+  result = prom_vk_queue_submit(state->queue, 1u, &submit, slot->fence);
   if (result != VK_SUCCESS) goto m46_weight_submit_fail;
   slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
   result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
@@ -1572,7 +1572,7 @@ int prom_reactor_runtime_m49a_execute_m46(
   submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit.commandBufferCount = 1u;
   submit.pCommandBuffers = &slot->command_buffer;
-  vk_result = vkQueueSubmit(state->queue, 1u, &submit, slot->fence);
+  vk_result = prom_vk_queue_submit(state->queue, 1u, &submit, slot->fence);
   if (vk_result != VK_SUCCESS) goto m49a_m46_submit_fail;
   slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
   vk_result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
@@ -1867,7 +1867,7 @@ int prom_reactor_runtime_gemma4e2b_m1_rope(
   submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit.commandBufferCount = 1u;
   submit.pCommandBuffers = &slot->command_buffer;
-  if (vkQueueSubmit(state->queue, 1u, &submit, slot->fence) != VK_SUCCESS)
+  if (prom_vk_queue_submit(state->queue, 1u, &submit, slot->fence) != VK_SUCCESS)
     goto rope_submit_fail;
   slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
   vk_result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
@@ -2063,7 +2063,7 @@ int prom_reactor_runtime_gemma4e2b_m1_attention_scores(
   submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit.commandBufferCount = 1u;
   submit.pCommandBuffers = &score_slot->command_buffer;
-  if (vkQueueSubmit(state->queue, 1u, &submit, score_slot->fence) != VK_SUCCESS)
+  if (prom_vk_queue_submit(state->queue, 1u, &submit, score_slot->fence) != VK_SUCCESS)
     goto score_submit_fail;
   score_slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
   vk_result = vkWaitForFences(state->device, 1u, &score_slot->fence, VK_TRUE, UINT64_MAX);

@@ -1,0 +1,7 @@
+import Shader.Arithmetic;
+shader NamespaceImport {
+    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void {
+        let result: u32 = Arithmetic.TwicePlusOne(7u);
+        return;
+    }
+}

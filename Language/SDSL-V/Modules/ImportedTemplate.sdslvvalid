@@ -1,0 +1,4 @@
+namespace Conformance.ImportedTemplate;
+import "library/Tiles.sdslv" as Tiles;
+
+compile Tiles.Tile<Tiles.Four> as ImportedTile;

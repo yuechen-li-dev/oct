@@ -17,8 +17,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/diagnostic"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/modules"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
@@ -49,14 +48,16 @@ type Resource struct {
 	SentinelBase64 string `json:"sentinelBase64,omitempty"`
 }
 type Manifest struct {
-	SchemaVersion int    `json:"schemaVersion"`
-	Source        string `json:"source"`
-	Benchmarks    []Case `json:"benchmarks"`
+	SchemaVersion      int              `json:"schemaVersion"`
+	Source             string           `json:"source"`
+	Benchmarks         []Case           `json:"benchmarks"`
+	Dependencies       []ast.Dependency `json:"dependencies,omitempty"`
+	DependencyIdentity string           `json:"dependencyIdentity,omitempty"`
 }
 type Options struct {
-	List   bool
-	CaseID string
-	JSON   bool
+	List    bool
+	CaseID  string
+	JSON    bool
 	Backend string
 }
 
@@ -64,15 +65,7 @@ func Discover(path string) (Manifest, error) {
 	if filepath.Ext(path) != ".sdslvbench" {
 		return Manifest{}, fmt.Errorf("sdslv bench expects a .sdslvbench file")
 	}
-	file, err := source.Load(path)
-	if err != nil {
-		return Manifest{}, err
-	}
-	tokens, err := lex.Analyze(file)
-	if err != nil {
-		return Manifest{}, err
-	}
-	module, err := parse.BuildModule(tokens)
+	module, err := modules.Load(path)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -85,7 +78,7 @@ func Discover(path string) (Manifest, error) {
 	if len(issues) != 0 {
 		return Manifest{}, diagnostic.Error(issues)
 	}
-	m := Manifest{SchemaVersion: SchemaVersion, Source: identity}
+	m := Manifest{SchemaVersion: SchemaVersion, Source: identity, Dependencies: module.Dependencies, DependencyIdentity: module.DependencyIdentity}
 	for _, v := range values {
 		c := Case{ID: v.StableID, Name: v.Name, Shader: v.Shader, EntryPoint: v.Name, WorkgroupSize: v.Launch.WorkgroupSize, DispatchGroups: v.Launch.DispatchGroups, Warmup: v.WarmupCount, Iterations: v.IterationCount, SourceSpan: v.SourceSpan, Resources: projectResources(v.Resources, v.Launch.WorkgroupSize, v.Launch.DispatchGroups)}
 		sum := sha256.Sum256([]byte(c.ID + "\x00" + c.EntryPoint))

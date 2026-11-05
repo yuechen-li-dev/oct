@@ -133,3 +133,7 @@ work/
 
 # Local verification logs
 tools/prometheus_phase0/out/
+
+# Concept package build products and checked deployment provenance.
+.native-build/
+!internal/prometheus/native/generated/*.provenance.json

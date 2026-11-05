@@ -24,6 +24,12 @@ PROMETHEUS_COMMON_C=(
   "$NATIVE_DIR/reactor_vulkan_model_block.c"
   "$NATIVE_DIR/reactor_vulkan_gemma4e2b.c"
 )
+PROMETHEUS_COMMON_CPP=(
+)
+PROMETHEUS_CONCEPT_ARCHIVES=(
+  "$ROOT_DIR/internal/prometheus/.native-build/libprometheus_concept_cpp.a"
+  "$ROOT_DIR/internal/prometheus/.native-build/libprometheus_concept_c.a"
+)
 PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/test_harness.cpp"
   "$NATIVE_DIR/Marionette/test_doom.cpp"

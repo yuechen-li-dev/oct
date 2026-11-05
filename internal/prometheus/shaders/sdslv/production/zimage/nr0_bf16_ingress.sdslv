@@ -1,4 +1,5 @@
 namespace Prometheus.Production.ZImage;
+import "../shared/Bf16.sdslv" as Bf16;
 
 // ABI-only ingress. Packed BF16 payload words are widened by moving the exact
 // sixteen source bits into the high half of an IEEE-754 binary32 bit pattern.
@@ -15,22 +16,16 @@ record Bf16IngressParams {
     TimestepElements: u32;
 }
 
-fn WidenBF16(word: u32, element: u32) -> f32 {
-    var bf16Bits: u32 = word >> 16u;
-    if element % 2u == 0u { bf16Bits = word & 0xffffu; }
-    return Bitcast<f32>(bf16Bits << 16u);
-}
-
 shader Nr0Bf16Ingress {
     resources Bf16IngressIO;
 
     stage compute [numthreads(256u, 1u, 1u)] fn CS(params: Bf16IngressParams) -> void {
         let lane: u32 = DispatchThreadID.x;
         if lane < params.InputElements {
-            InputF32[lane] = WidenBF16(InputBF16[lane / 2u], lane);
+            InputF32[lane] = Bf16.WidenBF16(InputBF16[lane / 2u], lane);
         }
         if lane < params.TimestepElements {
-            TimestepF32[lane] = WidenBF16(TimestepBF16[lane / 2u], lane);
+            TimestepF32[lane] = Bf16.WidenBF16(TimestepBF16[lane / 2u], lane);
         }
         return;
     }

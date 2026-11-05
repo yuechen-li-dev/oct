@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/emit/hlsl"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lower"
 )
@@ -22,24 +23,26 @@ import (
 const CanonicalArtifactSchemaVersion = 1
 
 type CanonicalArtifact struct {
-	SchemaVersion  int        `json:"schemaVersion"`
-	Name           string     `json:"name"`
-	BenchmarkID    string     `json:"benchmarkId"`
-	Source         string     `json:"source"`
-	SourceSHA256   string     `json:"sourceSha256"`
-	Compiler       string     `json:"compiler"`
-	DXCPath        string     `json:"dxcPath"`
-	DXCVersion     string     `json:"dxcVersion"`
-	DXCArgs        []string   `json:"dxcArgs"`
-	VulkanTarget   string     `json:"vulkanTarget"`
-	EntryPoint     string     `json:"entryPoint"`
-	WorkgroupSize  [3]uint32  `json:"workgroupSize"`
-	DispatchGroups [3]uint32  `json:"dispatchGroups"`
-	Resources      []Resource `json:"resources"`
-	PushConstants  int        `json:"pushConstantsBytes"`
-	SPIRVPath      string     `json:"spirvPath"`
-	SPIRVBytes     int        `json:"spirvBytes"`
-	SPIRVSHA256    string     `json:"spirvSha256"`
+	Dependencies       []ast.Dependency `json:"dependencies,omitempty"`
+	DependencyIdentity string           `json:"dependencyIdentity,omitempty"`
+	SchemaVersion      int              `json:"schemaVersion"`
+	Name               string           `json:"name"`
+	BenchmarkID        string           `json:"benchmarkId"`
+	Source             string           `json:"source"`
+	SourceSHA256       string           `json:"sourceSha256"`
+	Compiler           string           `json:"compiler"`
+	DXCPath            string           `json:"dxcPath"`
+	DXCVersion         string           `json:"dxcVersion"`
+	DXCArgs            []string         `json:"dxcArgs"`
+	VulkanTarget       string           `json:"vulkanTarget"`
+	EntryPoint         string           `json:"entryPoint"`
+	WorkgroupSize      [3]uint32        `json:"workgroupSize"`
+	DispatchGroups     [3]uint32        `json:"dispatchGroups"`
+	Resources          []Resource       `json:"resources"`
+	PushConstants      int              `json:"pushConstantsBytes"`
+	SPIRVPath          string           `json:"spirvPath"`
+	SPIRVBytes         int              `json:"spirvBytes"`
+	SPIRVSHA256        string           `json:"spirvSha256"`
 }
 type CanonicalManifest struct {
 	SchemaVersion int                 `json:"schemaVersion"`
@@ -97,6 +100,8 @@ func GenerateCanonicalArtifacts(sourcePath, outDir string) (CanonicalManifest, e
 		sum := sha256.Sum256(spv)
 		dxc, _ := exec.LookPath("dxc")
 		manifest.Artifacts = append(manifest.Artifacts, CanonicalArtifact{SchemaVersion: CanonicalArtifactSchemaVersion, Name: c.Name, BenchmarkID: c.ID, Source: sourceIdentity(sourcePath), SourceSHA256: hex.EncodeToString(sourceSum[:]), Compiler: compilerRevision(), DXCPath: filepath.ToSlash(dxc), DXCVersion: toolVersion(dxc), DXCArgs: []string{"-T", "cs_6_0", "-E", "main", "-spirv", "-fspv-target-env=vulkan1.0", "-Fo", filepath.ToSlash(spvPath), filepath.ToSlash(hlslPath)}, VulkanTarget: "vulkan1.0", EntryPoint: "main", WorkgroupSize: c.WorkgroupSize, DispatchGroups: c.DispatchGroups, Resources: c.Resources, PushConstants: 0, SPIRVPath: filepath.ToSlash(filepath.Join("Language", "SDSL-V", "M36a", "artifacts", filepath.Base(spvPath))), SPIRVBytes: len(spv), SPIRVSHA256: hex.EncodeToString(sum[:])})
+		manifest.Artifacts[len(manifest.Artifacts)-1].Dependencies = module.Dependencies
+		manifest.Artifacts[len(manifest.Artifacts)-1].DependencyIdentity = module.DependencyIdentity
 	}
 	if len(manifest.Artifacts) != 2 {
 		return CanonicalManifest{}, fmt.Errorf("canonical M36b cases missing from %s", sourcePath)

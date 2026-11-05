@@ -1,0 +1,2 @@
+import "library/Shader/Arithmetic.sdslv" as Arithmetic;
+fn Rejected() -> u32 { let Arithmetic: u32 = 1u; return Arithmetic; }

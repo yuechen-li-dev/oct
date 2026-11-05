@@ -12,10 +12,10 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/diagnostic"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lower"
-	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/modules"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
@@ -62,11 +62,13 @@ type Case struct {
 	SPIRVPath        string                           `json:"spirv_path,omitempty"`
 }
 type Manifest struct {
-	SchemaVersion    int    `json:"schema_version"`
-	ResultABIVersion uint32 `json:"result_abi_version"`
-	Source           string `json:"source"`
-	Cases            []Case `json:"cases"`
-	Interface        struct {
+	Dependencies       []vdmir.Dependency `json:"dependencies,omitempty"`
+	DependencyIdentity string             `json:"dependency_identity,omitempty"`
+	SchemaVersion      int                `json:"schema_version"`
+	ResultABIVersion   uint32             `json:"result_abi_version"`
+	Source             string             `json:"source"`
+	Cases              []Case             `json:"cases"`
+	Interface          struct {
 		DescriptorSet uint32 `json:"descriptor_set"`
 		Binding       uint32 `json:"binding"`
 		Resource      string `json:"resource"`
@@ -88,15 +90,7 @@ func Discover(path string) (Manifest, error) {
 // consumes ordinary lexer/parser nodes; M29b will consume the same functions
 // for assertion/body lowering.
 func Prepare(path string) (Suite, error) {
-	file, err := source.Load(path)
-	if err != nil {
-		return Suite{}, err
-	}
-	tokens, err := lex.Analyze(file)
-	if err != nil {
-		return Suite{}, err
-	}
-	module, err := parse.BuildModule(tokens)
+	module, err := modules.Load(path)
 	if err != nil {
 		return Suite{}, err
 	}
@@ -127,7 +121,7 @@ func Prepare(path string) (Suite, error) {
 // ProjectManifest is a one-way host serialization projection from canonical
 // suite/group data. It contains no validation, defaults, or identity logic.
 func ProjectManifest(suite Suite, artifacts []Group) Manifest {
-	m := Manifest{SchemaVersion: 4, ResultABIVersion: ResultABIVersion, Source: suite.Source}
+	m := Manifest{SchemaVersion: 4, ResultABIVersion: ResultABIVersion, Source: suite.Source, Dependencies: suite.MIR.Dependencies, DependencyIdentity: suite.MIR.DependencyIdentity}
 	m.Interface.DescriptorSet = 0
 	m.Interface.Binding = 0
 	m.Interface.Resource = "compiler-owned assertion result buffer"

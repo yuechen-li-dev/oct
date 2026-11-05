@@ -1418,7 +1418,11 @@ func (v *validator) validateTypeRef(ref ast.TypeRef, allowSpace bool) {
 		}
 		return
 	}
-	if _, ok := v.types[ref.Name]; !ok {
+	if info, ok := v.types[ref.Name]; ok && info.kind == "concept" {
+		v.errorAt(ref.Span, "SDSL-V4410", "concept %s describes compile-time config requirements, not a GPU value type; use a type alias or record for values", ref.Name)
+	} else if _, ok := v.configs[ref.Name]; ok {
+		v.errorAt(ref.Span, "SDSL-V4410", "config %s supplies compile-time values, not a GPU value type", ref.Name)
+	} else if _, ok := v.types[ref.Name]; !ok {
 		v.errorf("unknown type %s", ref.Name)
 	}
 }

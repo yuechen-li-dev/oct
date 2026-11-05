@@ -1312,7 +1312,7 @@ static int prom_model_block_submit_and_wait(prom_reduction_runtime_state* state,
     return 0;
   }
   phase_begin_ns = prom_reduction_now_ns();
-  result = vkQueueSubmit(state->queue, 1u, &submit_info, block->fence);
+  result = prom_vk_queue_submit(state->queue, 1u, &submit_info, block->fence);
   block->last_queue_submit_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
   block->vk_queue_submit_count += 1u;
   if (result != VK_SUCCESS) return 0;
@@ -1432,7 +1432,7 @@ static int prom_model_block_record_prefetch_upload(prom_reduction_runtime_state*
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &block->prefetch_command_buffer;
   block->vk_queue_submit_count += 1u;
-  if (vkQueueSubmit(block->prefetch_queue, 1u, &submit_info, block->prefetch_fence) != VK_SUCCESS) return 0;
+  if (prom_vk_queue_submit(block->prefetch_queue, 1u, &submit_info, block->prefetch_fence) != VK_SUCCESS) return 0;
   block->vk_fence_wait_count += 1u;
   if (vkWaitForFences(state->device, 1u, &block->prefetch_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return 0;
   return 1;
@@ -4946,7 +4946,7 @@ static int prom_compiled_session_submit_and_wait(prom_reduction_runtime_state* s
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &session->command_buffer;
-  if (vkQueueSubmit(state->queue, 1u, &submit_info, session->fence) != VK_SUCCESS ||
+  if (prom_vk_queue_submit(state->queue, 1u, &submit_info, session->fence) != VK_SUCCESS ||
       vkWaitForFences(state->device, 1u, &session->fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
     session->quarantined = 1u;
     session->last_detail_code = PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN;

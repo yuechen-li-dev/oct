@@ -1,0 +1,25 @@
+import "library/Values.sdslv" as Values;
+
+[WorkgroupSize(1, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[TestInputUInt(7u)]
+[Fact]
+fn ImportedRecordsAndPayloadEnumsKeepTheirOwner() -> void {
+    let value: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 0u;
+    let sample: Values.Sample = Values.Make(value);
+    let constructed: Values.Sample = Values.Sample { Bits: value + 2u; };
+    Assert.Equal(7u, sample.Bits, "an imported return retains its declaring record type");
+    Assert.Equal(9u, constructed.Bits, "qualified aggregate construction resolves the exported type");
+    let decision: Values.Decision = Values.Choose(value);
+    let selected: u32 = match decision {
+        Values.Decision.Keep => 0u
+        Values.Decision.Stop(payload) => payload.Value
+    };
+    Assert.Equal(7u, selected, "qualified match patterns retain enum and payload identity");
+    let direct: Values.Decision = Values.Decision.Stop { Value: 11u; };
+    let directValue: u32 = match direct {
+        Values.Decision.Keep => 0u
+        Values.Decision.Stop(payload) => payload.Value
+    };
+    Assert.Equal(11u, directValue, "qualified payload construction resolves its origin enum");
+}

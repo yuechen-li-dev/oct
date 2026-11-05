@@ -6,7 +6,8 @@
     "reactor_dominatus_prestage.c", "reactor_dominatus_sgemm_adapter.c",
     "reactor_dominatus_slot_adapter.c", "reactor_policy_memory.c", "reactor_slot_hfsm.c",
     "reactor_vulkan_common.c", "reactor_vulkan_runtime.c", "reactor_shader_registry.c", "reactor_shader_package.c", "reactor_vulkan_sgemm.c", "reactor_vulkan_ray_query.c", "reactor_batch.c", "reactor_vulkan_fft.c",
-    "reactor_vulkan_fused_reduction.c", "reactor_vulkan_model_block.c",
+    "generated/prometheusreduction.generated.c", "generated/prometheusexecution.generated.c",
+    "reactor_concept_reduction_abi.c", "reactor_concept_reduction.cpp", "reactor_vulkan_queue.cpp", "reactor_vulkan_fused_reduction.c", "reactor_vulkan_model_block.c",
     "reactor_vulkan_gemma4e2b.c"
   ],
   "native_test_sources": [
@@ -39,6 +40,8 @@
   },
   "sdslv_test_host_source": "sdslv_test_host.c",
   "generated_headers": [
+    "generated/prometheusreduction.generated.h",
+    "generated/prometheusexecution.generated.h",
     "reactor_shader_ids.generated.h",
     "reactor_vulkan_a2x4_row_biased_accum8_spirv.h",
     "reactor_vulkan_b2x2_row_major_biased_spirv.h",
@@ -100,6 +103,59 @@
     "reactor_vulkan_zimage_nr0_q_norm_rope_spirv.h"
   ],
   "generated_artifact_sets": [
+    {
+      "id": "concept-reduction-planner",
+      "paths": [
+        "internal/prometheus/native/generated/prometheusreduction.generated.c",
+        "internal/prometheus/native/generated/prometheusreduction.generated.h",
+        "internal/prometheus/native/generated/prometheusreduction.provenance.json"
+      ],
+      "generator": "go run ./tools/prometheus_concept -concept-root <Concept checkout>",
+      "declared_input_authority": [
+        "internal/prometheus/reactors/PrometheusReduction.concept",
+        "internal/prometheus/native/generated/prometheusreduction.provenance.json"
+      ],
+      "required_for_clean_clone": true,
+      "required_for_build": true,
+      "reproducibility_check": "go run ./tools/prometheus_concept -concept-root <Concept checkout> -check",
+      "source_controlled_intentionally": true,
+      "packaged": false,
+      "content_addressed": false,
+      "bytes_authoritative": "derived strict C11 deployment; Concept source owns semantics",
+      "known_consumers": [
+        "internal/prometheus/native/reactor_vulkan_fused_reduction.c",
+        "native production build manifests"
+      ],
+      "delete_regenerate_result": "regenerated and byte-compared using the pinned Concept compiler",
+      "status": "normative"
+    },
+    {
+      "id": "concept-reduction-executor",
+      "paths": [
+        "internal/prometheus/native/generated/prometheusexecution.generated.c",
+        "internal/prometheus/native/generated/prometheusexecution.generated.h",
+        "internal/prometheus/native/generated/prometheusexecution.provenance.json"
+      ],
+      "generator": "go run ./tools/prometheus_concept -concept-root <Concept checkout>",
+      "declared_input_authority": [
+        "internal/prometheus/reactors/PrometheusExecution.concept",
+        "internal/prometheus/reactors/PrometheusReduction.concept",
+        "Concept libraries/Vulkan, DragonGod and Standard"
+      ],
+      "required_for_clean_clone": true,
+      "required_for_build": true,
+      "reproducibility_check": "go run ./tools/prometheus_concept -concept-root <Concept checkout> -check",
+      "source_controlled_intentionally": true,
+      "packaged": false,
+      "content_addressed": false,
+      "bytes_authoritative": "derived strict C11 deployment; Concept source owns semantics",
+      "known_consumers": [
+        "internal/prometheus/native/reactor_vulkan_fused_reduction.c",
+        "native production build manifests"
+      ],
+      "delete_regenerate_result": "regenerated and byte-compared using the pinned Concept compiler",
+      "status": "normative"
+    },
     {
       "id": "native-generated-headers-declared",
       "paths": [
@@ -215,7 +271,9 @@
     },
     {
       "id": "native-build-fragments",
-      "paths": ["internal/prometheus/native/native_sources_linux.sh", "internal/prometheus/native/native_sources_windows.cmd"],
+      "paths": ["internal/prometheus/native/native_sources_linux.sh",
+        "internal/prometheus/native/native_tests_windows.rsp",
+        "internal/prometheus/native/native_objects_windows.rsp", "internal/prometheus/native/native_sources_windows.cmd"],
       "generator": "go run ./tools/prometheus_native_manifest -write",
       "declared_input_authority": ["internal/prometheus/native/native_manifest.json"],
       "required_for_clean_clone": true,
@@ -316,5 +374,19 @@
       "status": "legacy_disputed"
     }
   ],
+  "concept_package": {
+    "root": "internal/prometheus",
+    "sources": [
+      "generated/prometheusreduction.generated.c",
+      "generated/prometheusexecution.generated.c",
+      "reactor_concept_reduction_abi.c",
+      "reactor_concept_reduction.cpp",
+      "reactor_vulkan_queue.cpp"
+    ],
+    "archives": [
+      "internal/prometheus/.native-build/libprometheus_concept_cpp.a",
+      "internal/prometheus/.native-build/libprometheus_concept_c.a"
+    ]
+  },
   "platform_exceptions": {"windows": [], "linux": []}
 }

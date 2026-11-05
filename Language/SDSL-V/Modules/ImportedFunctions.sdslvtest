@@ -1,0 +1,10 @@
+import "library/Shader/Arithmetic.sdslv" as Arithmetic;
+
+[WorkgroupSize(1, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[TestInputUInt(7u)]
+[Fact]
+fn ImportedFunctionIncludesItsPrivateHelper() -> void {
+    let value: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 0u;
+    Assert.Equal(15u, Arithmetic.TwicePlusOne(value), "an imported function resolves its private helper in its owning module");
+}

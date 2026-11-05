@@ -10,6 +10,12 @@
     "explicit-golden-byte-parity"
   ],
   "valid": [
+    {"id": "compute.imported-type-only", "source": "Language/SDSL-V/Modules/ImportedTypeOnly.sdslvvalid", "profile": "compute", "entry_points": ["ImportedTypeOnly_CS"], "stages": ["compute"], "stream_roles": {}, "coordinate_spaces": [], "bindings": [], "locations": [], "builtins": [], "required_capabilities": [], "reference_artifacts": []},
+    {"id": "graphics.imported-streams", "source": "Language/SDSL-V/Modules/ImportedGraphics.sdslvvalid", "profile": "graphics", "entry_points": ["ImportedGraphics_VS", "ImportedGraphics_PS"], "stages": ["vertex", "pixel"], "stream_roles": {}, "coordinate_spaces": ["clip.position"], "bindings": [], "locations": [], "builtins": [], "required_capabilities": ["graphics-vertex-pixel"], "reference_artifacts": []},
+    {"id": "compute.namespace-import", "source": "Language/SDSL-V/Modules/library/NamespaceImport.sdslvvalid", "profile": "compute", "entry_points": ["NamespaceImport_CS"], "stages": ["compute"], "stream_roles": {}, "coordinate_spaces": [], "bindings": [], "locations": [], "builtins": [], "required_capabilities": [], "reference_artifacts": []},
+
+    {"id": "compute.type-and-concept", "source": "Language/SDSL-V/Modules/TypeAndConcept.sdslvvalid", "profile": "compute", "entry_points": ["TypeAndConcept_CS"], "stages": ["compute"], "stream_roles": {}, "coordinate_spaces": [], "bindings": ["Output:set0/binding0"], "locations": [], "builtins": [], "required_capabilities": [], "reference_artifacts": []},
+    {"id": "compute.imported-template", "source": "Language/SDSL-V/Modules/ImportedTemplate.sdslvvalid", "profile": "compute", "entry_points": ["ImportedTile_CS"], "stages": ["compute"], "stream_roles": {}, "coordinate_spaces": [], "bindings": ["Output:set0/binding0"], "locations": [], "builtins": [], "required_capabilities": [], "reference_artifacts": []},
     {
       "id": "compute.bitwise-constants",
       "source": "Language/SDSL-V/conformance/compute/BitwiseConstants.sdslvvalid",
@@ -178,6 +184,20 @@
     }
   ],
   "invalid": [
+    {"source": "Language/SDSL-V/Modules/ImportedDiagnostic.sdslvinvalid", "code": "SDSL-V1504", "line": 2, "column": 46, "category": "imported-diagnostic-provenance"},
+    {"source": "Language/SDSL-V/Modules/ConceptAsValue.sdslvinvalid", "code": "SDSL-V4410", "line": 2, "column": 20, "category": "static-concept-value-boundary"},
+    {"source": "Language/SDSL-V/Modules/ConceptAsAlias.sdslvinvalid", "code": "SDSL-V4410", "line": 2, "column": 14, "category": "static-concept-value-boundary"},
+    {"source": "Language/SDSL-V/Modules/ConfigAsValue.sdslvinvalid", "code": "SDSL-V4410", "line": 3, "column": 20, "category": "static-concept-value-boundary"},
+
+    {"source": "Language/SDSL-V/Modules/PrivateFunction.sdslvinvalid", "code": "SDSL-V4403", "line": 2, "column": 31, "category": "module-import"},
+    {"source": "Language/SDSL-V/Modules/PrivateOverload.sdslvinvalid", "code": "SDSL-V4403", "line": 2, "column": 31, "category": "module-import"},
+    {"source": "Language/SDSL-V/Modules/MissingImport.sdslvinvalid", "code": "SDSL-V4401", "line": 1, "column": 1, "category": "module-import"},
+    {"source": "Language/SDSL-V/Modules/MissingMember.sdslvinvalid", "code": "SDSL-V4407", "line": 2, "column": 31, "category": "module-import"},
+    {"source": "Language/SDSL-V/Modules/AliasCollision.sdslvinvalid", "code": "SDSL-V4405", "line": 2, "column": 28, "category": "module-import"},
+    {"source": "Language/SDSL-V/Modules/ImportCycle.sdslvinvalid", "code": "SDSL-V4402", "line": 2, "column": 1, "category": "module-import"},
+    {"source": "Language/SDSL-V/Modules/NamespaceCollision.sdslvinvalid", "code": "SDSL-V4404", "line": 2, "column": 1, "category": "module-import"},
+    {"source": "Language/SDSL-V/Modules/ConcreteImport.sdslvinvalid", "code": "SDSL-V4406", "line": 2, "column": 1, "category": "module-import"},
+
     {"source": "Language/SDSL-V/conformance/invalid/BitwiseFloat.sdslvinvalid", "code": "SDSL-V4311", "line": 2, "column": 30, "category": "bitwise-operations"},
     {"source": "Language/SDSL-V/conformance/invalid/BitwiseBoolean.sdslvinvalid", "code": "SDSL-V4311", "line": 2, "column": 31, "category": "bitwise-operations"},
     {"source": "Language/SDSL-V/conformance/invalid/BitwiseMixedSignedness.sdslvinvalid", "code": "SDSL-V4311", "line": 2, "column": 30, "category": "bitwise-operations"},

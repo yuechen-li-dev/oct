@@ -19,6 +19,12 @@ set "MARIONETTE_BENCH_PDB=%OUT_DIR%\marionette_benchmarks.pdb"
 set "SDSLV_TEST_HOST=%OUT_DIR%\sdslv_test_host.exe"
 set "VSDEVCMD_BAT=C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat"
 set "CC=cl"
+if not defined CONCEPT_LIBRARY_ROOT set "CONCEPT_LIBRARY_ROOT=%ROOT_DIR%\..\Concept\libraries"
+if not exist "%CONCEPT_LIBRARY_ROOT%\Vulkan\native\concept_vulkan.h" (
+  echo error: set CONCEPT_LIBRARY_ROOT to the Concept distribution libraries directory.
+  exit /b 1
+)
+set "CONCEPT_INCLUDE=/I%CONCEPT_LIBRARY_ROOT%\Vulkan\native"
 set "PROMETHEUS_MX5_CONTROL_DEFINE="
 if "%PROMETHEUS_DVT2_MX5_VULKAN10_CONTROL%"=="1" set "PROMETHEUS_MX5_CONTROL_DEFINE=/DPROMETHEUS_DVT2_MX5_VULKAN10_CONTROL"
 set "PROMETHEUS_M5B_EXPERIMENT_DEFINE="
@@ -79,15 +85,19 @@ if errorlevel 1 call :fail_now "enter repository root" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 set "PUSHD_ACTIVE=1"
 
-call "%CC%" /nologo /TC /std:c11 /O2 /W4 /DPROMETHEUS_REACTOR_BUILD_DLL %PROMETHEUS_MX5_CONTROL_DEFINE% %PROMETHEUS_M5B_EXPERIMENT_DEFINE% %PROMETHEUS_M5B_GEMINI_EXACT_DEFINE% %PROMETHEUS_M5B_GEMINI_INPLACE_DEFINE% /c %VULKAN_INCLUDE% /Fo"%OBJ_DIR%\\" %PROMETHEUS_COMMON_C_SRCS%
+call "%CC%" /nologo /TC /std:c11 /experimental:c11atomics /O2 /W4 /DPROMETHEUS_REACTOR_BUILD_DLL %PROMETHEUS_MX5_CONTROL_DEFINE% %PROMETHEUS_M5B_EXPERIMENT_DEFINE% %PROMETHEUS_M5B_GEMINI_EXACT_DEFINE% %PROMETHEUS_M5B_GEMINI_INPLACE_DEFINE% /c %VULKAN_INCLUDE% %CONCEPT_INCLUDE% /Fo"%OBJ_DIR%\\" %PROMETHEUS_COMMON_C_SRCS%
 if errorlevel 1 call :fail_now "compile common native sources" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-link /nologo /DLL %PROMETHEUS_COMMON_OBJS% /OUT:"%REACTOR_DLL%" /IMPLIB:"%REACTOR_LIB%" /PDB:"%REACTOR_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
+go run ./tools/prometheus_concept -build-package
+if errorlevel 1 call :fail_now "build Concept package" %ERRORLEVEL%
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+link /nologo /DLL @"%NATIVE_DIR%\native_objects_windows.rsp" %PROMETHEUS_CONCEPT_ARCHIVES% /OUT:"%REACTOR_DLL%" /IMPLIB:"%REACTOR_LIB%" /PDB:"%REACTOR_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
 if errorlevel 1 call :fail_now "link reactor library" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-call "%CC%" /nologo /TC /std:c11 /O2 /W4 %VULKAN_INCLUDE% "%PROMETHEUS_SDSLV_TEST_HOST%" /link /OUT:"%SDSLV_TEST_HOST%" %VULKAN_LIBPATH% vulkan-1.lib
+call "%CC%" /nologo /TC /std:c11 /experimental:c11atomics /O2 /W4 %VULKAN_INCLUDE% "%PROMETHEUS_SDSLV_TEST_HOST%" /link /OUT:"%SDSLV_TEST_HOST%" %VULKAN_LIBPATH% vulkan-1.lib
 if errorlevel 1 call :fail_now "build SDSL-V test host" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 
@@ -130,11 +140,11 @@ set "OUTPUT_PDB=%~2"
 set "MAIN_CPP=%~3"
 set "EXTRA_DEFINES=%~4"
 set "EXTRA_SRCS=%~5"
-call "%CC%" /nologo /TP /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% /DMARIONETTE_TEST_REPO_ROOT="\"%ROOT_DIR_FORWARD%\"" %EXTRA_DEFINES% ^
-  %PROMETHEUS_MARIONETTE_CPP_SRCS% ^
+call "%CC%" /nologo /std:c++latest /EHsc /O2 /W4 %VULKAN_INCLUDE% %CONCEPT_INCLUDE% /DMARIONETTE_TEST_REPO_ROOT="\"%ROOT_DIR_FORWARD%\"" %EXTRA_DEFINES% ^
+  @"%NATIVE_DIR%\native_tests_windows.rsp" ^
   %EXTRA_SRCS% ^
   "%MAIN_CPP%" ^
-  /link %PROMETHEUS_COMMON_OBJS% /OUT:"%OUTPUT_EXE%" /PDB:"%OUTPUT_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
+  @"%NATIVE_DIR%\native_objects_windows.rsp" /link %PROMETHEUS_CONCEPT_ARCHIVES% /OUT:"%OUTPUT_EXE%" /PDB:"%OUTPUT_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
 exit /b %ERRORLEVEL%
 
 :fail_now

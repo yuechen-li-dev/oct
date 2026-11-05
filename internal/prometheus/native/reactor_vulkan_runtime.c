@@ -101,6 +101,9 @@ VkResult prom_vk_runtime_init(prom_vk_runtime* rt, uint32_t test_flags) {
   const char* optional_device_extensions[4];
   uint32_t optional_device_extension_count = 0u;
   void* optional_device_feature_chain = NULL;
+  VkPhysicalDeviceVulkan13Features concept13 = {0};
+  VkPhysicalDeviceVulkan14Features concept14 = {0};
+  VkPhysicalDeviceFeatures2 concept_features = {0};
 
   if (rt == NULL) return VK_ERROR_INITIALIZATION_FAILED;
   rt->test_flags = test_flags;
@@ -554,6 +557,25 @@ VkResult prom_vk_runtime_init(prom_vk_runtime* rt, uint32_t test_flags) {
     }
   }
 #endif
+  concept_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  concept13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+  concept14.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES;
+  concept_features.pNext = &concept13;
+  concept13.pNext = &concept14;
+  vkGetPhysicalDeviceFeatures2(rt->physical_device, &concept_features);
+  /* Report capabilities only when they enter the actual device enable chain. */
+  if (concept13.synchronization2 && concept14.pushDescriptor) {
+    memset(&concept13, 0, sizeof concept13);
+    memset(&concept14, 0, sizeof concept14);
+    concept13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    concept14.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES;
+    concept13.synchronization2 = VK_TRUE;
+    concept14.pushDescriptor = VK_TRUE;
+    concept13.pNext = &concept14;
+    concept14.pNext = optional_device_feature_chain;
+    optional_device_feature_chain = &concept13;
+    rt->concept_enabled_features = 3u;
+  }
   device_info.pNext = optional_device_feature_chain;
   device_info.enabledExtensionCount = optional_device_extension_count;
   device_info.ppEnabledExtensionNames = optional_device_extension_count == 0u ? NULL : optional_device_extensions;
@@ -637,7 +659,7 @@ VkResult prom_vk_runtime_enable_validation(prom_vk_runtime* rt) {
 
 void prom_vk_runtime_wait_idle(prom_vk_runtime* rt) {
   if (rt != NULL && rt->device != VK_NULL_HANDLE) {
-    (void)vkDeviceWaitIdle(rt->device);
+    (void)prom_vk_device_wait_idle(rt->device);
   }
 }
 

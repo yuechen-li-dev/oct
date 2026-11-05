@@ -163,7 +163,7 @@ static const char* const k_kernel_fields[] = {"id", "name", "stage", "authority"
 static const char* const k_variant_fields[] = {"id", "kernel_id", "artifact_sha256", "entry_point", "workgroup", "descriptor_bindings", "push_constant_bytes", "stage_role", "row_width_envelope"};
 static const char* const k_requirement_fields[] = {"variant_id", "kind", "name"};
 static const char* const k_implementation_fields[] = {"id", "name", "authority", "operation", "variant_id", "dispatch", "benchmark_enabled", "selector_eligible", "dispatchable"};
-static const char* const k_provenance_fields[] = {"variant_id", "source", "source_sha256", "generator"};
+static const char* const k_provenance_fields[] = {"variant_id", "source", "source_sha256", "generator", "dependencies", "dependency_identity"};
 static int prom_manifest_tables(prom_shader_package* p,prom_json_range tables,prom_shader_package_diagnostic* d){
   prom_json_range a,k,v,r,im,pr,x; size_t i,n; int found;
   if(!jobject_allowed(tables,k_tables_fields,sizeof(k_tables_fields)/sizeof(k_tables_fields[0]))||!jfield(tables,"artifacts",&a)||!jfield(tables,"kernels",&k)||!jfield(tables,"variants",&v)||!jfield(tables,"requirements",&r)||!jfield(tables,"implementations",&im)||!jfield(tables,"provenance",&pr))goto malformed;

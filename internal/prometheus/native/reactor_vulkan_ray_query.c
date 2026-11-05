@@ -198,7 +198,7 @@ static int prom_ray_submit_command(const prom_ray_query_scene* scene, VkCommandB
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &command_buffer;
-  result = vkQueueSubmit(scene->services.compute_queue, 1u, &submit_info, fence);
+  result = prom_vk_queue_submit(scene->services.compute_queue, 1u, &submit_info, fence);
   if (result == VK_SUCCESS) {
     result = vkWaitForFences(scene->services.device, 1u, &fence, VK_TRUE, UINT64_MAX);
   }

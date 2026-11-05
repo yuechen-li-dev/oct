@@ -1,0 +1,12 @@
+namespace Shader.ImportedBenchmark;
+import "library/Shader/Arithmetic.sdslv" as Arithmetic;
+
+[Benchmark]
+[Warmup(1)]
+[Iterations(2)]
+[WorkgroupSize(1, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+fn ImportedArithmetic() -> void {
+    let value: u32 = Arithmetic.TwicePlusOne(7u);
+    return;
+}

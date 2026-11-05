@@ -1,22 +1,4 @@
-fn RoundtripBF16(value: f32) -> f32 {
-    let bits: u32 = Bitcast<u32>(value);
-    let exponent: u32 = bits & 0x7f800000u;
-    let mantissa: u32 = bits & 0x007fffffu;
-    if exponent == 0x7f800000u {
-        if mantissa == 0u { return value; }
-        let bf16: u32 = (bits >> 16u) | 0x0040u;
-        return Bitcast<f32>(bf16 << 16u);
-    }
-    let lsb: u32 = (bits >> 16u) & 1u;
-    let bf16: u32 = (bits + 0x00007fffu + lsb) >> 16u;
-    return Bitcast<f32>(bf16 << 16u);
-}
-
-fn WidenBF16(word: u32, element: u32) -> f32 {
-    var bf16Bits: u32 = word >> 16u;
-    if element % 2u == 0u { bf16Bits = word & 0xffffu; }
-    return Bitcast<f32>(bf16Bits << 16u);
-}
+import "../../../internal/prometheus/shaders/sdslv/production/shared/Bf16.sdslv" as Bf16;
 
 [WorkgroupSize(1, 1, 1)]
 [DispatchGroups(1, 1, 1)]
@@ -44,7 +26,7 @@ fn WidenBF16(word: u32, element: u32) -> f32 {
 [InlineData(19u, 0x00020000u)]
 fn Bf16RoundtripPreservesPrecisionPolicy(index: u32, expected: u32) -> void {
     let bits: u32 = read TestInput.UInt[index] when index < TestInput.Length else 0u;
-    let actual: u32 = Bitcast<u32>(RoundtripBF16(Bitcast<f32>(bits)));
+    let actual: u32 = Bitcast<u32>(Bf16.RoundtripBF16(Bitcast<f32>(bits)));
     Assert.Equal(expected, actual, "BF16 keeps nearest-even rounding, signed zero, infinities, and quiet NaN payloads");
 }
 
@@ -62,5 +44,5 @@ fn Bf16RoundtripPreservesPrecisionPolicy(index: u32, expected: u32) -> void {
 [InlineData(3u, 1u, 0x7f810000u)]
 fn PackedBf16WideningPreservesExactLaneBits(index: u32, element: u32, expected: u32) -> void {
     let word: u32 = read TestInput.UInt[index] when index < TestInput.Length else 0u;
-    Assert.Equal(expected, Bitcast<u32>(WidenBF16(word, element)), "packed BF16 widening selects the exact low or high lane without rounding");
+    Assert.Equal(expected, Bitcast<u32>(Bf16.WidenBF16(word, element)), "packed BF16 widening selects the exact low or high lane without rounding");
 }

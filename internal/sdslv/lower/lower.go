@@ -113,10 +113,19 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 	l.seedBuiltins()
 	l.collect(module)
 	out := vdmir.Module{
-		Provenance: l.provenance,
-		Namespace:  module.Namespace,
+		Provenance:         l.provenance,
+		Namespace:          module.Namespace,
+		DependencyIdentity: module.DependencyIdentity,
+	}
+	for _, dep := range module.Dependencies {
+		out.Dependencies = append(out.Dependencies, vdmir.Dependency{Path: dep.Path, Namespace: dep.Namespace, SHA256: dep.SHA256})
 	}
 	for _, decl := range module.Decls {
+		_, origin := ast.Declaration(decl)
+		l.provenance = vdmir.ProvenanceFromFile(module.Source)
+		if origin.Path != "" {
+			l.provenance.Path = origin.Path
+		}
 		switch d := decl.(type) {
 		case ast.TypeAliasDecl:
 			out.TypeAliases = append(out.TypeAliases, vdmir.TypeAlias{

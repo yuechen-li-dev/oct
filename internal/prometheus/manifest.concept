@@ -1,0 +1,57 @@
+module Prometheus.Manifest;
+profile Core;
+import Standard.Build.Metadata;
+
+comptime PackageManifest Manifest = PackageManifest{
+    "Prometheus", "Yuechen Li", Version{0, 2, 0}, PackageKind::Library,
+    [Dependency{"Vulkan"}], 1
+};
+
+// This is the bounded native consumer package. The Concept compiler emits the
+// reactor modules; the native toolchain compiles their deployment and foreign
+// adapter. Legacy operations remain in the existing launcher during the port.
+// Fixed-capacity input arrays may end in empty padding.
+enum NativeLanguage { C, Cpp, }
+enum NativeStandard { C11, C17, Cpp17, Cpp20, Cpp23, }
+enum NativeOutputKind { Executable, StaticLibrary, }
+enum NativeToolchain { Clang, ClangCL, MSVC, GCC, }
+record struct NativeDefine { string name; string value; bool hasValue; };
+record struct NativeTarget {
+    string name; NativeLanguage language; NativeStandard standard;
+    NativeOutputKind kind; string output;
+    string<array>[4] sources;
+    string<array>[3] includes;
+    NativeDefine<array>[1] defines;
+    string<array>[1] linkInputs;
+};
+record struct NativeAbiClaim {
+    string header; string typeName; string companion; int size; int alignment;
+    string<array>[1] fields; int<array>[1] offsets;
+};
+record struct NativeVersion { int major; int minor; int patch; };
+record struct NativeProjectManifest {
+    string name; string author; NativeVersion version; NativeToolchain toolchain;
+    string<array>[2] sourceRoots;
+    NativeTarget<array>[2] targets;
+    string<array>[1] companions; string<array>[1] tests;
+    NativeAbiClaim<array>[0] abi;
+};
+comptime NativeProjectManifest Native = NativeProjectManifest{
+    "Prometheus", "Yuechen Li", NativeVersion{0, 2, 0}, NativeToolchain::Clang,
+    ["native", "@Vulkan/native"],
+    [NativeTarget{
+        "prometheus_concept_c", NativeLanguage::C, NativeStandard::C11,
+        NativeOutputKind::StaticLibrary, ".native-build/libprometheus_concept_c.a",
+        ["native/generated/prometheusexecution.generated.c", "native/generated/prometheusreduction.generated.c",
+         "native/reactor_concept_reduction_abi.c", "@Vulkan/native/device_runtime.c"],
+        ["native", "@Vulkan/native", "@VulkanSDK/include"],
+        [NativeDefine{"PROMETHEUS_REACTOR_BUILD_DLL", "1", true}], [""]
+    }, NativeTarget{
+        "prometheus_concept_cpp", NativeLanguage::Cpp, NativeStandard::Cpp23,
+        NativeOutputKind::StaticLibrary, ".native-build/libprometheus_concept_cpp.a",
+        ["native/reactor_concept_reduction.cpp", "native/reactor_vulkan_queue.cpp", "", ""],
+        ["native", "@Vulkan/native", "@VulkanSDK/include"],
+        [NativeDefine{"PROMETHEUS_REACTOR_BUILD_DLL", "1", true}], [""]
+    }],
+    [""], [""], []
+};

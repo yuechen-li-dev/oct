@@ -1,0 +1,16 @@
+namespace Shader.Tiles;
+
+export concept TileConfig { WIDTH: u32; }
+export config Four: TileConfig { WIDTH: 4u; }
+export stream OutputIO { [binding(0)] Output: readwrite array<f32>; }
+
+export template shader Tile<C: TileConfig> {
+    resources OutputIO;
+    workgroup Scratch: array<f32, C.WIDTH * 2u>;
+    stage compute [numthreads(C.WIDTH, 1u, 1u)] fn CS() -> void {
+        let index: u32 = DispatchThreadID.x;
+        Scratch[index] = Convert<f32>(index);
+        WorkgroupBarrier();
+        Output[index] = Cos(Scratch[index]) + Sqrt(4.0);
+    }
+}

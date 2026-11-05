@@ -22,7 +22,7 @@ VD-MIR. HLSL spellings and `SV_*` semantics are backend details.
 
 ### 2.1 Files, declarations, and names
 
-A module may declare `namespace`, `use`, type aliases, records, streams, enums,
+A module may declare `namespace`, `import`, `use`, type aliases, records, streams, enums,
 concepts, configs, templates, shaders, flows, compile materializations, tests,
 and benchmarks as permitted by its file profile. Names are statically resolved.
 Imports do not redefine language semantics.
@@ -31,7 +31,8 @@ Canonical declarations have complete parser-to-artifact support:
 
 | Surface | Status and meaning |
 |---|---|
-| `namespace`, `use` | implemented/validated/lowered/artifact-proven module identity and imports |
+| `namespace`, `import`, `export` | module identity, local source dependencies, and explicit library visibility |
+| `use` | legacy namespace metadata; does not load another source file |
 | `type` | implemented/validated/lowered/artifact-proven alias, including coordinate spaces |
 | `record`, `with` | implemented/validated/lowered/artifact-proven immutable aggregate value operations |
 | `stream` | implemented/validated/lowered/artifact-proven compiler-owned typed boundary |
@@ -45,6 +46,52 @@ Canonical declarations have complete parser-to-artifact support:
 Historical `interface`, `implements`, and `override` declarations are not part
 of SDSL-V. Source using them is rejected with migration diagnostic
 `SDSL-V4101`; use concepts, templates, and compile materialization.
+
+Libraries declare a namespace and explicitly export their public declarations:
+
+```sdslv
+namespace Scientific.Precision;
+fn PrivateScale(value: f32) -> f32 { return value * 2.0; }
+export fn Scale(value: f32) -> f32 { return PrivateScale(value); }
+```
+
+An individual shader imports that source without copying its helpers:
+
+```sdslv
+import "../shared/Precision.sdslv" as Precision;
+// Inside a shader function: Precision.Scale(value)
+```
+
+Relative paths resolve against the importing file. The `.sdslv` extension may
+be omitted. `import Scientific.Precision;` resolves
+`Scientific/Precision.sdslv` under the entry directory, or the explicit search
+roots supplied to the loader. Its declared namespace must match. Without `as`,
+the last namespace component is the qualifier. Resolution never scans arbitrary
+directories or downloads packages.
+
+Functions, aliases, records, boards, streams, enums, concepts, configs, and shader
+templates can be exported. Types use the same qualifier as calls:
+`Precision.Sample`, `Precision.Scale(value)`, and
+`compile Kernels.Tile<Settings.Four> as Tile4;`. A type and a function may share
+a name; exporting one does not export the other. Private helpers and their
+transitive dependencies remain usable inside their owning library. Distinct
+libraries may use the same private names.
+
+Only declarations reachable from the entry module are emitted. Diamond imports
+load one canonical source once. Imported libraries cannot declare concrete
+shader entries, compile materializations, tests, or benchmarks; those are roots
+owned by the entry file. Missing sources or members, private access, import
+cycles, conflicting namespaces, and alias collisions are source diagnostics
+(`SDSL-V4401`–`4408`). Import aliases cannot be shadowed by local declarations.
+The loader bounds a graph to 256 files, 8 MiB per file, and 64 MiB in total.
+
+Compute and graphics compilation, GPU tests, benchmarks, and generated headers
+share this loader. Diagnostics and VD-MIR provenance retain each declaration's
+owning source. A sorted source graph with SHA-256 hashes includes the entry and
+every transitive import, including unused imports. Its identity participates in
+test/benchmark replay IDs and graphics bundle identities; changing an imported
+source invalidates those identities. Single-file sources keep their existing
+entry names and artifact identities.
 
 ### 2.2 Types and values
 
@@ -165,6 +212,40 @@ Explicit binding values and source order are semantic authority and must survive
 lowering unchanged.
 
 ### 2.5 Static abstraction and comptime
+
+Choose the declaration by what it names:
+
+| Declaration | Meaning | Example use |
+| --- | --- | --- |
+| `type` | An alias for a value type, optionally with a semantic space | Function parameters, locals, fields, resource elements |
+| `record` | A concrete aggregate of value fields | A sample, a transform, or shader parameters |
+| `concept` | A schema and requirements for compile-time configuration | Legal tile dimensions, feature switches, and static invariants |
+| `config` | Named compile-time values declared against one concept | A particular kernel specialization |
+
+```sdslv
+type SampleValue = f32;
+concept TileShape {
+    WIDTH: u32;
+    require WIDTH <= 64u;
+}
+config Tile4: TileShape { WIDTH: 4u; }
+```
+
+`SampleValue` can be stored in a buffer and passed to a function. `TileShape`
+describes which configurations are valid; `Tile4` supplies one. The compiler
+checks the configuration and substitutes its values into a shader template.
+Concepts and configs are erased before GPU execution. They cannot be used as
+runtime value types or alias targets (`SDSL-V4410`). A plain type alias does not
+create a distinct nominal type; `@space` adds the semantic identity described
+above. Use `record` when you need fields in a runtime value.
+
+Concept satisfaction is explicit: a config declares its owning concept.
+Identical fields in two different concepts do not make their configs
+interchangeable. The current shader template parameter is a concept-config
+parameter, not an arbitrary type parameter; concepts do not declare methods,
+inheritance, or general predicates over unrelated types. The
+[executable example](../Language/SDSL-V/Modules/TypeAndConcept.sdslvvalid)
+combines a value alias with a checked static configuration.
 
 Concepts describe required static facts; configs satisfy those facts; templates
 reuse shader structure; `compile Template<Config> as Name;` creates a concrete

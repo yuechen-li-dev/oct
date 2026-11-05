@@ -1,0 +1,130 @@
+document:
+  name: cpp-primer
+  format: yaml
+  version: 2
+  kind: language
+summary: C++23 with value semantics, RAII, checked boundaries, and typed recoverable errors.
+uses:
+  - common-primer.yaml
+baseline: >-
+  Use C++23 and verify compiler AND standard-library support on the repository's
+  supported targets. Check __cpp_lib_expected >= 202202L; monadic operations need
+  >= 202211L. A repository pinned to an older baseline must document its existing
+  error adapter and limits instead of silently using unavailable facilities or
+  inventing a second Result framework. Do not require every C++23 feature.
+examples: cpp-primer-examples.yaml
+rules:
+  - id: CPP-ERRORS
+    level: default
+    scope: Fallible APIs owned by the application
+    rule: >-
+      Return [[nodiscard]] std::expected<T, E> for recoverable failures needing a
+      reason, std::expected<void, E> for fallible commands, and std::optional<T>
+      for absence alone. Use domain error enums or small error records. Inspect
+      the alternative before dereference; propagate or handle errors explicitly.
+      Use and_then/transform when they shorten a clear pipeline, with feature gating.
+    reason: Makes failure and the success value mutually exclusive in the signature.
+    verification: Exercise success, each error class, propagation, and side effects on failure.
+  - id: CPP-EXCEPTIONS
+    level: requirement
+    scope: Exception and foreign ABI boundaries
+    rule: >-
+      Document the exception policy, including allocation failure. An expected
+      return type does not make a function nonthrowing. Adapt known library
+      exceptions at a boundary when the API promises typed errors; preserve useful
+      context. Do not catch everything and report success. No exception may cross
+      an ABI that forbids it. Declare noexcept only when every operation and cleanup
+      satisfies it; destructors must not emit exceptions.
+    reason: Prevents termination or ABI corruption hidden behind an apparently fallible API.
+    verification: Test library failure translation and cleanup; inspect noexcept calls and ABI entry points.
+  - id: CPP-OWNERSHIP
+    level: default
+    scope: Objects and resources
+    rule: >-
+      Use values and Rule of Zero types first; unique_ptr for exclusive heap
+      ownership and RAII handles with correct deleters for foreign resources.
+      Raw pointers/references borrow; T* may be null and T& requires a live object.
+      Use shared_ptr only for actual shared lifetime, with cycle handling and a
+      separate synchronization policy. Keep raw allocation inside resource adapters.
+    reason: Makes release paths and ownership transfer visible during local review.
+    verification: Exercise partial construction, moves, early returns, and exactly-once release.
+  - id: CPP-BORROWS
+    level: requirement
+    scope: References, iterators, spans, views, callbacks, and captures
+    rule: >-
+      Establish owner lifetime and invalidation rules before retaining a borrow.
+      Never return a view into a local or temporary, retain a view across invalidating
+      mutation, or capture a reference in work that can outlive it. span/string_view
+      carry bounds or length, not ownership. Lazy ranges can also retain borrows.
+    reason: C++ generally cannot prove these lifetime relationships for the author.
+    verification: Review escape and mutation sites; exercise reallocation and teardown with supported sanitizers.
+  - id: CPP-STATE
+    level: default
+    scope: Domain models and public APIs
+    rule: >-
+      Use enum class, validated value types, variant alternatives, and constructors
+      or factories that establish invariants. Prefer composition and free functions.
+      Use virtual interfaces where runtime substitution is useful; use a virtual
+      destructor when deletion through the base is allowed. Expose mutation deliberately.
+    reason: Prevents contradictory flags and partially initialized domain objects.
+    verification: Test state transitions and invalid construction, including unknown external enum values.
+  - id: CPP-NUMERIC
+    level: requirement
+    scope: Sizes, indices, arithmetic, and external numbers
+    rule: >-
+      Validate range and units before narrowing, indexing, allocation, or arithmetic.
+      static_cast does not prove range. Check overflow before the operation; do not
+      rely on signed overflow or assume unsigned wrap is a valid domain result.
+      Handle nonfinite floating inputs where the domain requires finite values.
+    reason: Prevents plausible casts and size calculations from creating undefined or wrong behavior.
+    verification: Test zero, maxima, negatives, mixed signedness, overflow, and nonfinite inputs as applicable.
+  - id: CPP-GENERICS
+    level: default
+    scope: Reusable algorithms and type constraints
+    rule: >-
+      Use concepts/requires to state the operations a generic algorithm needs;
+      prefer them to SFINAE plumbing. Use constexpr, ranges, explicit object
+      parameters, mdspan, and templates when they express the real contract more
+      directly on the supported toolchain. A concept checks syntax/type properties;
+      semantic laws, view lifetimes, and multidimensional layout still need evidence.
+    reason: Modern constraints improve diagnostics without making advanced syntax a goal or a prohibition.
+    verification: Compile intended and rejected types; test algorithm laws and documented layout assumptions.
+  - id: CPP-CONCURRENCY
+    level: requirement
+    scope: Threads, jobs, callbacks, and shared state
+    rule: >-
+      Give every task an owner, completion path, and cancellation/shutdown policy.
+      Prefer scoped joining (such as jthread) over detached threads. Protect shared
+      mutation; shared_ptr and const alone do not supply synchronization. Document
+      lock ordering and any atomic memory-order proof. Do not hold locks across unknown callbacks.
+    reason: Prevents races, deadlocks, and access after owner destruction.
+    verification: Test cancellation, overlapping operations, and teardown; use race tools where supported.
+  - id: CPP-INTEROP
+    level: requirement
+    scope: Byte storage, platform code, serialization, and FFI
+    rule: >-
+      Isolate unsafe representation work. Prove alignment, object lifetime, bounds,
+      aliasing, endianness, calling convention, and ABI layout. Use memcpy/bit_cast
+      only where their own preconditions hold; neither validates wire data. Do not
+      read unaligned bytes through a typed pointer. Keep macros and vendor intrinsics
+      at necessary build/platform boundaries with a supported fallback or named limit.
+    reason: A cast can compile while violating the object model or external format.
+    verification: Test malformed/truncated data, layout assertions, and the real supported ABI.
+  - id: CPP-BUILD
+    level: requirement
+    scope: Changed native targets
+    rule: >-
+      Keep headers self-contained and dependencies explicit. Enable useful warnings
+      and treat newly introduced warnings as failures; scope unavoidable suppressions
+      to an explained boundary. Run the supported compiler matrix and suitable
+      sanitizers/static analysis. Do not claim MSVC, Clang, or GCC support from a
+      single compiler run, or release correctness from debug-only assertions.
+    reason: Portability and runtime safety require evidence beyond one successful build.
+    verification: Record compiler/library versions, target configurations, checks run, and unavailable checks.
+references:
+  - title: WG21 expected proposal and rationale
+    url: https://wg21.link/P0323R12
+  - title: WG21 monadic operations for expected
+    url: https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p2505r5.html
+  - title: C++ Core Guidelines (ownership, RAII, interfaces, concurrency)
+    url: https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines

@@ -42,8 +42,10 @@ type GraphicsBundle struct {
 }
 
 type BundleSource struct {
-	Path   string `json:"path"`
-	SHA256 string `json:"sha256"`
+	Path               string             `json:"path"`
+	SHA256             string             `json:"sha256"`
+	Dependencies       []vdmir.Dependency `json:"dependencies,omitempty"`
+	DependencyIdentity string             `json:"dependency_identity,omitempty"`
 }
 
 type BundleCompiler struct {
@@ -187,7 +189,7 @@ func CompileGraphicsBundle(opts GraphicsBundleOptions) (GraphicsBundle, error) {
 	bundle := GraphicsBundle{
 		Schema:               GraphicsBundleSchema,
 		Program:              program.Name,
-		Source:               BundleSource{Path: filepath.ToSlash(opts.InputPath), SHA256: hashBytes(sourceBytes)},
+		Source:               BundleSource{Path: filepath.ToSlash(opts.InputPath), SHA256: hashBytes(sourceBytes), Dependencies: mir.Dependencies, DependencyIdentity: mir.DependencyIdentity},
 		Compiler:             BundleCompiler{Name: filepath.Base(vertexResult.DXCPath), SHA256: hashFile(vertexResult.DXCPath)},
 		Vertex:               vertexArtifact,
 		Pixel:                pixelArtifact,

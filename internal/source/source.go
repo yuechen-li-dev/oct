@@ -24,6 +24,9 @@ type Position struct {
 type Span struct {
 	Start Position
 	End   Position
+	// Path identifies the owning file in a multi-source compilation. Single
+	// source callers may leave it empty and retain their existing file context.
+	Path string `json:"path,omitempty"`
 }
 
 func (s Span) Known() bool { return s.Start.Line != 0 || s.End.Line != 0 }
@@ -32,6 +35,9 @@ func (s Span) Known() bool { return s.Start.Line != 0 || s.End.Line != 0 }
 // considered contained; callers must consciously exempt synthetic nodes.
 func (s Span) Contains(other Span) bool {
 	if !s.Known() || !other.Known() {
+		return false
+	}
+	if s.Path != "" && other.Path != "" && s.Path != other.Path {
 		return false
 	}
 	return s.Start.Offset <= other.Start.Offset && other.End.Offset <= s.End.Offset
