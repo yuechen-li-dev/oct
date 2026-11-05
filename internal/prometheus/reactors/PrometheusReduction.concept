@@ -3,9 +3,9 @@ profile Core;
 
 // The reactor owns shape admission, strategy, stage topology, and temporary
 // lifetimes. Vulkan handles and the public C packet remain at the adapter.
-comptime uint32 Sum = 1;
-comptime uint32 Max = 2;
-comptime uint32 Softmax = 3;
+comptime uint32 ReductionSum = 1;
+comptime uint32 ReductionMax = 2;
+comptime uint32 ReductionSoftmax = 3;
 comptime uint32 Fused = 1;
 comptime uint32 Composed = 2;
 comptime uint32 Packed = 3;
@@ -73,15 +73,15 @@ int ValidateShape(ReductionShape shape)
     if (shape.width > 1048576) { return -6812; }
     uint64 total = (shape.rows as uint64) * (shape.width as uint64);
     if (total > 16777216) { return -6813; }
-    if (shape.operation != Sum and shape.operation != Max and shape.operation != Softmax) { return -6806; }
+    if (shape.operation != ReductionSum and shape.operation != ReductionMax and shape.operation != ReductionSoftmax) { return -6806; }
     uint64 output = shape.rows as uint64;
-    if (shape.operation == Softmax)
+    if (shape.operation == ReductionSoftmax)
     {
         if (shape.finalization != 1) { return -6807; }
         output = total;
     }
     else if (shape.finalization != 0) { return -6807; }
-    if (shape.flags > 2 or (shape.operation != Softmax and shape.flags != 0)) { return -6815; }
+    if (shape.flags > 2 or (shape.operation != ReductionSoftmax and shape.flags != 0)) { return -6815; }
     if (shape.flags == 1 and shape.width > 1056) { return -6815; }
     if (shape.inputCount != total) { return -6809; }
     if (shape.outputCount != output) { return -6810; }
@@ -92,8 +92,8 @@ uint32 Groups(uint32 count, uint32 width) { return (count + width - 1u) / width;
 
 bool UsePacked(ReductionShape shape)
 {
-    if (shape.operation == Softmax) { return shape.flags == 0 and shape.width <= 128; }
-    if (shape.operation != Sum) { return false; }
+    if (shape.operation == ReductionSoftmax) { return shape.flags == 0 and shape.width <= 128; }
+    if (shape.operation != ReductionSum) { return false; }
     return (shape.width <= 96 and shape.rows >= 512) or (shape.width <= 128 and shape.rows >= 1024);
 }
 
@@ -138,11 +138,11 @@ ReductionSchedule BuildSchedule(ReductionShape shape)
     {
         schedule.strategy = Packed;
         uint32 role = 6;
-        if (shape.operation == Softmax) { role = 7; }
+        if (shape.operation == ReductionSoftmax) { role = 7; }
         Append(ref schedule, role, Groups(shape.rows, 8), shape.width, 1, 0, 0);
         return Finish(schedule);
     }
-    if (shape.operation != Softmax)
+    if (shape.operation != ReductionSoftmax)
     {
         Reduce(ref schedule, shape.operation, shape.operation, shape, 0, 0);
         schedule.temporaryBytes = partialBytes;

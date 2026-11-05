@@ -20,10 +20,15 @@ PROMETHEUS_COMMON_C=(
   "$NATIVE_DIR/reactor_vulkan_ray_query.c"
   "$NATIVE_DIR/reactor_batch.c"
   "$NATIVE_DIR/reactor_vulkan_fft.c"
-  "$NATIVE_DIR/generated/prometheusreduction.generated.c"
   "$NATIVE_DIR/reactor_vulkan_fused_reduction.c"
   "$NATIVE_DIR/reactor_vulkan_model_block.c"
   "$NATIVE_DIR/reactor_vulkan_gemma4e2b.c"
+)
+PROMETHEUS_COMMON_CPP=(
+)
+PROMETHEUS_CONCEPT_ARCHIVES=(
+  "$ROOT_DIR/internal/prometheus/.native-build/libprometheus_concept_cpp.a"
+  "$ROOT_DIR/internal/prometheus/.native-build/libprometheus_concept_c.a"
 )
 PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/test_harness.cpp"

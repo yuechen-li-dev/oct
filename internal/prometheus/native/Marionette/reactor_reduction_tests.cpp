@@ -2,6 +2,7 @@
 
 #include "../reactor_api.h"
 #include "../reactor_vulkan.h"
+#include "concept_vulkan.h"
 
 #include <algorithm>
 #include <cmath>
@@ -789,4 +790,89 @@ FACT(PrometheusReduction_LogicalFailuresPreservePhysicalRecyclability)
     ASSERT_EQUAL(0u, diagnostics.quarantined_slots, "recovery must leave no physical slot quarantined");
     ASSERT_EQUAL(0u, diagnostics.validation_error_count, "failure and recovery path must remain validation clean");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "fault-injection runtime destroy must succeed");
+}
+
+FACT(PrometheusReduction_ConceptBorrowCoexistsWithLegacySgemmAndIndependentDevices)
+{
+    const int contexts = ConceptVkTestLiveContexts();
+    const int buffers = ConceptVkTestLiveBuffers();
+    const int pipelines = ConceptVkTestLivePipelines();
+    void* owners[2]{};
+    prom_vk_runtime_services original[2]{};
+    for (int index = 0; index < 2; ++index) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &owners[index]), "shared owner creates");
+        ASSERT_TRUE(runtime_available(owners[index]), "shared-device qualification requires real Vulkan");
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(owners[index], &original[index]), "owner exposes borrowed services");
+        ASSERT_EQUAL(3u, original[index].concept_enabled_features, "sync2 and push descriptors were actually enabled");
+    }
+    ASSERT_TRUE(original[0].device != original[1].device, "independent owners exercise per-device dispatch");
+    const auto sgemm = [&context](void* owner) {
+        std::vector<float> a(12u, 2.0f), b(20u, 3.0f), c(15u, -99.0f);
+        uint32_t stage{}; int detail{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(owner, a.data(), b.data(), c.data(), 3, 5, 4, &stage, &detail),
+            "legacy SGEMM uses the owner's queue");
+        for (const float value : c) ASSERT_NEAR(24.0f, value, 1e-5f, "legacy SGEMM remains numerically correct");
+    };
+    for (unsigned repeat = 0; repeat < 6; ++repeat) {
+        for (void* owner : owners) {
+            sgemm(owner);
+            const unsigned width = repeat % 2 == 0 ? 33u : 2048u;
+            std::vector<float> input(3u * width, 1.0f), output(3u, -99.0f);
+            auto request = make_request(input, output, 3u, width, PROM_REDUCTION_OPERATION_SUM);
+            PrometheusReductionExecutionResult result{};
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction(owner, &request, &result), "Concept reduction shares existing device");
+            for (const float value : output) ASSERT_EQUAL(static_cast<float>(width), value, "shared-device reduction is correct");
+            ASSERT_TRUE(prom_reactor_runtime_concept_reduction_state(owner) != nullptr, "production Concept executor is attached");
+            ASSERT_TRUE(prom_reactor_runtime_reduction_state(owner) == nullptr, "standalone reduction never creates legacy model executor");
+        }
+    }
+    ASSERT_EQUAL(contexts + 2, ConceptVkTestLiveContexts(), "two borrowed attachments own only local resources");
+    ASSERT_EQUAL(pipelines + 14, ConceptVkTestLivePipelines(), "each attachment owns seven reusable pipelines");
+    for (int index = 0; index < 2; ++index) {
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_reduction_detach(owners[index]), "borrower drains and detaches");
+        sgemm(owners[index]);
+        prom_vk_runtime_services after{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(owners[index], &after), "owner survives borrower destruction");
+        ASSERT_TRUE(after.device == original[index].device && after.compute_queue == original[index].compute_queue,
+            "device and queue identity survive borrower destruction");
+        ASSERT_EQUAL(0u, after.validation_error_count, "shared-device execution and detach are validation clean");
+        if (index == 0) {
+            std::vector<float> input(17u, 1.0f), output(1u, -99.0f);
+            auto request = make_request(input, output, 1u, 17u, PROM_REDUCTION_OPERATION_SUM);
+            PrometheusReductionExecutionResult result{};
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction(owners[index], &request, &result), "owner supports a fresh attachment after detach");
+            ASSERT_EQUAL(17.0f, output[0], "reattached executor produces correct output");
+            ASSERT_EQUAL(static_cast<uint64_t>(1u), result.logical_request_id, "fresh attachment owns a fresh request sequence");
+            sgemm(owners[index]);
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_reduction_detach(owners[index]), "fresh borrower also detaches cleanly");
+        }
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(owners[index]), "owner destroys after borrower");
+    }
+    ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "all borrowed attachments retired");
+    ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "buffer growth and detach retain no allocations");
+    ASSERT_EQUAL(pipelines, ConceptVkTestLivePipelines(), "all Concept pipelines retired");
+    ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "no submission outlives its attachment");
+}
+
+FACT(PrometheusReduction_ConceptDetachDrainsQuarantineBeforeLegacyOwnerContinues)
+{
+    const int buffers = ConceptVkTestLiveBuffers();
+    PrometheusReactorConfig config{}; config.struct_size = sizeof config;
+    config.reduction_test_flags = PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION;
+    void* owner{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &owner), "quarantine owner creates");
+    ASSERT_TRUE(runtime_available(owner), "quarantine detach qualification requires real Vulkan");
+    std::vector<float> input(4096u, 1.0f), output(1u, -99.0f);
+    auto request = make_request(input, output, 1u, 4096u, PROM_REDUCTION_OPERATION_SUM);
+    PrometheusReductionExecutionResult result{};
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_reduction(owner, &request, &result), "uncertainty preserves pending ownership");
+    ASSERT_EQUAL(PROM_REDUCTION_DETAIL_COMPLETION_UNCERTAIN, result.detail_code, "uncertainty is explicit");
+    ASSERT_EQUAL(-99.0f, output[0], "uncertain output is never published");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_reduction_detach(owner), "detach observes completion before release");
+    ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "quarantined resources retire after completion");
+    ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "detach drains the pending fence");
+    float a = 2.0f, b = 3.0f, c = 0.0f; uint32_t stage{}; int detail{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(owner, &a, &b, &c, 1, 1, 1, &stage, &detail), "SGEMM survives quarantine drain and detach");
+    ASSERT_EQUAL(6.0f, c, "legacy output remains correct");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(owner), "owner remains independently destroyable");
 }

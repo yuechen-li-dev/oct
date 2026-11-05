@@ -37,6 +37,7 @@ typedef struct prom_vk_runtime {
 
   VkPhysicalDevice physical_device;
   VkDevice device;
+  uint32_t concept_enabled_features;
   uint32_t queue_family_index;
   uint32_t transfer_queue_family_index;
   uint32_t dedicated_transfer_available;

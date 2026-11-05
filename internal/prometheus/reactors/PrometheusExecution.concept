@@ -1,0 +1,384 @@
+module PrometheusExecution;
+profile Vulkan;
+import PrometheusReduction;
+import Vulkan;
+import Standard.Math;
+import DragonGod.Scheduling.Queue;
+
+extern "C" handle PromReductionHost;
+extern "C" PipelineCreation PromReductionLoadPipeline(PromReductionHost host, VkDevice device,
+    VkPipelineCache cache, uint32 role);
+foreign concept PackagePipelineAllocation on PromReductionLoadPipeline
+{
+    requires compiler.Allocates(PromReductionLoadPipeline);
+}
+
+enum ReductionSlotState { Ready, Pending, Quarantined, }
+
+class ReductionSlot
+{
+public:
+    owned Buffer<float> input;
+    owned Buffer<float> output;
+    owned Buffer<float> partials;
+    owned Buffer<float> maximum;
+    owned Buffer<float> sum;
+    Option<owned Submission> submission;
+    ReductionSlotState state;
+    uint32 generation;
+};
+
+class ReductionExecutor
+{
+public:
+    owned BorrowedContext context;
+    Option<owned Pipeline><array>[7] pipelines;
+    Option<owned ReductionSlot><array>[4] slots;
+    FifoReadyQueue<4> ready;
+    uint32 depth;
+    uint32 testFlags;
+    bool timed;
+    uint64 nextRequest;
+    uint64 requests;
+    uint64 successes;
+    uint64 failures;
+    uint64 recycles;
+    uint64 quarantines;
+    uint64 reaped;
+    uint64 allocations;
+    uint64 reuses;
+    uint64 descriptorUpdates;
+    uint64 recordings;
+    uint64 submissions;
+    uint64 temporaryCapacity;
+    int lastDetail;
+    bool deviceLost;
+};
+
+bool SlotExists(ref const Option<owned ReductionSlot> slot)
+{
+    return match (ref const slot) { Option::Some(value) => true, Option::None => false, };
+}
+
+[[repr(C)]]
+record struct ExecutionOutcome
+{
+    int detail;
+    uint32 stage;
+    uint32 slot;
+    uint32 generation;
+    uint32 recyclable;
+    uint32 timed;
+    uint64 request;
+    uint64 gpuNanoseconds;
+    uint64 firstNonfinite;
+};
+
+ExecutionOutcome Outcome(int detail, uint32 stage, uint32 slot, uint32 generation,
+    uint32 recyclable, uint64 request)
+{
+    return ExecutionOutcome{detail, stage, slot, generation, recyclable, 0, request, 0, 18446744073709551615};
+}
+
+Result<ReductionExecutor, VulkanError> CreateExecutor(PromReductionHost host, DeviceBorrow device,
+    uint32 depth, uint32 testFlags, bool timed)
+{
+    if (depth < 1 or depth > 4) { return Result::Error(VulkanError::InitializationFailed); }
+    owned BorrowedContext context = BorrowDevice(device)?;
+    Option<owned Pipeline><array>[7] pipelines = [Option::None ...];
+    for (index in 0..7)
+    {
+        PipelineCreation created = PromReductionLoadPipeline(host, device.device, context.view.cache, (index + 1) as uint32);
+        Check(created.code)?;
+        owned Pipeline pipeline = Pipeline{device.device, created.shader, created.setLayout,
+            created.layout, created.pipeline, created.pushBytes};
+        Option<owned Pipeline> entry = Option::Some(move pipeline);
+        pipelines[index] = move entry;
+    }
+    Option<owned ReductionSlot><array>[4] slots = [Option::None ...];
+    ContextId<array>[4] entries = [ContextId{0} ...];
+    FifoReadyQueue<4> ready = FifoReadyQueue<4>{move entries, 0, 0};
+    for (index in 0..(depth as int)) { ready.Enqueue(ContextId{index + 1})!; }
+    owned ReductionExecutor executor = ReductionExecutor{move context, move pipelines, move slots,
+        move ready, depth, testFlags, timed, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false};
+    return Result::Ok(move executor);
+}
+
+Result<ReductionSlot, VulkanError> CreateSlot(DeviceView device)
+{
+    owned Buffer<float> input = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> output = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> partials = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> maximum = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    owned Buffer<float> sum = CreateBufferOn<float>(device, 1, Placement::Shared)?;
+    Option<owned Submission> pending = Option::None;
+    owned ReductionSlot slot = ReductionSlot{move input, move output, move partials,
+        move maximum, move sum, move pending, ReductionSlotState::Ready, 0};
+    return Result::Ok(move slot);
+}
+
+bool TakeTest(ref ReductionExecutor executor, uint32 flag)
+{
+    if ((executor.testFlags & flag) == 0) { return false; }
+    executor.testFlags = executor.testFlags & ~flag;
+    return true;
+}
+
+Result<void, VulkanError> EnsureBuffer(ref ReductionExecutor executor, ref Buffer<float> buffer, usize count)
+{
+    if (count <= buffer.count) { executor.reuses = executor.reuses + 1; return Result::Ok(); }
+    owned Buffer<float> larger = CreateBufferOn<float>(executor.context.view, count, Placement::Shared)?;
+    buffer = move larger;
+    executor.allocations = executor.allocations + 1;
+    return Result::Ok();
+}
+
+Result<void, VulkanError> Reap(ref ReductionExecutor executor, bool wait)
+{
+    for (index in 0..(executor.depth as int))
+    {
+        if (SlotExists(ref const executor.slots[index]))
+        {
+            ref ReductionSlot slot = OptionValue(ref executor.slots[index]);
+            if (slot.state != ReductionSlotState::Ready)
+            {
+                ref Submission submission = OptionValue(ref slot.submission);
+                int status = ConceptVkPoll(submission.device, submission.fence);
+                if (executor.deviceLost) { submission.waited = true; status = 0; }
+                if (wait or status == 0)
+                {
+                    Result<void, VulkanError> completion = Wait(ref submission);
+                    match (completion) {
+                        Result::Ok => { }
+                        Result::Error(error) => {
+                            if (CodeFromError(error) == -4) { executor.deviceLost = true; }
+                            else { return Result::Error(error); }
+                        }
+                    }
+                    slot.submission = Option::None;
+                    slot.state = ReductionSlotState::Ready;
+                    executor.ready.Enqueue(ContextId{index + 1})!;
+                    executor.reaped = executor.reaped + 1;
+                }
+                else if (status != 1) { return Check(status); }
+            }
+        }
+    }
+    return Result::Ok();
+}
+
+void RecordSchedule(ref Recording recording, ref ReductionExecutor executor, ref const ReductionSlot slot,
+    ReductionShape shape, ReductionSchedule schedule)
+{
+    for (index in 0..(schedule.count as int))
+    {
+        ReductionStage stage = schedule.stages[index];
+        Binding input = Bind(0, ref const slot.input, Access::Read);
+        Binding output = Bind(3, ref const slot.output, Access::Write);
+        if (schedule.partials > 1 and stage.outputPartials == 1 and (stage.role == 1 or stage.role == 2))
+        { input = Bind(0, ref const slot.partials, Access::Read); }
+        if (stage.temporaryRole == 1) { output = Bind(3, ref const slot.partials, Access::Write); }
+        if (stage.temporaryRole == 2) { output = Bind(3, ref const slot.maximum, Access::Write); }
+        if (stage.temporaryRole == 3) { output = Bind(3, ref const slot.sum, Access::Write); }
+        Binding<array>[4] bindings = [input, Bind(1, ref const slot.maximum, Access::Read),
+            Bind(2, ref const slot.sum, Access::Read), output];
+        uint32<array>[8] push = [shape.rows, stage.inputWidth, stage.outputPartials,
+            stage.inputWidth, 1024, shape.rows * shape.width, stage.role, 0];
+        ref const Pipeline pipeline = OptionValue(ref const executor.pipelines[(stage.role - 1u) as int]);
+        executor.descriptorUpdates = executor.descriptorUpdates + 1;
+        DispatchWith(ref recording, ref const pipeline, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), stage.groups, 1, 1);
+    }
+}
+
+ExecutionOutcome Failed(ref ReductionExecutor executor, int detail, uint32 stage, uint32 index,
+    uint32 generation, uint32 recyclable, uint64 request)
+{
+    executor.failures = executor.failures + 1;
+    executor.lastDetail = detail;
+    return Outcome(detail, stage, index, generation, recyclable, request);
+}
+
+Result<void, VulkanError> PrepareBuffers(ref ReductionExecutor executor, ref ReductionSlot slot,
+    ReductionShape shape, ReductionSchedule schedule)
+{
+    EnsureBuffer(ref executor, ref slot.input, shape.inputCount as usize)?;
+    EnsureBuffer(ref executor, ref slot.output, shape.outputCount as usize)?;
+    EnsureBuffer(ref executor, ref slot.partials, (shape.rows * schedule.partials) as usize)?;
+    EnsureBuffer(ref executor, ref slot.maximum, shape.rows as usize)?;
+    EnsureBuffer(ref executor, ref slot.sum, shape.rows as usize)?;
+    executor.temporaryCapacity = 0;
+    for (index in 0..(executor.depth as int)) {
+        if (SlotExists(ref const executor.slots[index])) {
+            ref const ReductionSlot entry = OptionValue(ref const executor.slots[index]);
+            executor.temporaryCapacity = executor.temporaryCapacity +
+                ((entry.partials.count + entry.maximum.count + entry.sum.count) as uint64) * 4;
+        }
+    }
+    return Result::Ok();
+}
+
+ExecutionOutcome ValidateInput(ReductionShape shape, ReadOnlySpan<float> input, Span<float> output)
+{
+    int detail = ValidateShape(shape);
+    if (detail != 0) { return Outcome(detail, 1, 4294967295, 0, 0, 0); }
+    if ((Len(input) as uint64) != shape.inputCount or (Len(output) as uint64) != shape.outputCount)
+    { return Outcome(-6809, 1, 4294967295, 0, 0, 0); }
+    for (index in 0..Len(input)) {
+        if (not IsFinite(input[index]))
+        { return Outcome(-6814, 2, 4294967295, 0, 0, 0) with { firstNonfinite = index as uint64; }; }
+    }
+    return Outcome(0, 0, 4294967295, 0, 0, 0);
+}
+
+// The public operation is synchronous. Only an uncertain observation retains
+// work in a physical slot; later calls poll it before admitting reuse.
+ExecutionOutcome Execute(ref ReductionExecutor executor, ReductionShape shape,
+    ReadOnlySpan<float> input, Span<float> output)
+{
+    ExecutionOutcome admission = ValidateInput(shape, input, output);
+    if (admission.detail != 0) { return admission; }
+    if (executor.deviceLost) { return Outcome(-6822, 3, 4294967295, 0, 0, 0); }
+    uint64 request = executor.nextRequest;
+    executor.nextRequest = request + 1;
+    executor.requests = executor.requests + 1;
+    ReductionSchedule schedule = BuildSchedule(shape);
+    if (TakeTest(ref executor, 16)) { return Failed(ref executor, -6816, 1, 4294967295, 0, 0, request); }
+    if (schedule.temporaryBytes > 0 and TakeTest(ref executor, 8))
+    { return Failed(ref executor, -6817, 1, 4294967295, 0, 0, request); }
+    if (ExecutionCode(ref executor, Reap(ref executor, false)) != 0)
+    { return Failed(ref executor, -6822, 3, 4294967295, 0, 0, request); }
+    if (executor.ready.IsEmpty())
+    { return Failed(ref executor, -6822, 3, 4294967295, 0, 0, request); }
+    int index = executor.ready.Dequeue()!.value - 1;
+    if (not SlotExists(ref const executor.slots[index]))
+    {
+        Result<ReductionSlot, VulkanError> creation = CreateSlot(executor.context.view);
+        match (move creation)
+        {
+            Result::Ok(created) => {
+                Option<owned ReductionSlot> entry = Option::Some(move created);
+                executor.slots[index] = move entry;
+                executor.allocations = executor.allocations + 5;
+            }
+            Result::Error(error) => {
+            discard ObserveError(ref executor, error);
+                executor.ready.Enqueue(ContextId{index + 1})!;
+                return Failed(ref executor, -6818, 2, index as uint32, 0, 1, request);
+            }
+        }
+    }
+    ref ReductionSlot slot = OptionValue(ref executor.slots[index]);
+    slot.generation = slot.generation + 1;
+    executor.recycles = executor.recycles + 1;
+    if (ExecutionCode(ref executor, PrepareBuffers(ref executor, ref slot, shape, schedule)) != 0 or
+        ExecutionCode(ref executor, UploadOn(executor.context.view, ref const slot.input, input)) != 0)
+    {
+        executor.ready.Enqueue(ContextId{index + 1})!;
+        return Failed(ref executor, -6818, 2, index as uint32, slot.generation, 1, request);
+    }
+    if (TakeTest(ref executor, 1))
+    {
+        executor.ready.Enqueue(ContextId{index + 1})!;
+        return Failed(ref executor, -6820, 3, index as uint32, slot.generation, 1, request);
+    }
+    uint32 queries = 0;
+    if (executor.timed) { queries = 2; }
+    Result<Recording, VulkanError> begun = BeginRecordingOn(executor.context.view, queries);
+    match (move begun)
+    {
+        Result::Error(error) => {
+            discard ObserveError(ref executor, error);
+            executor.ready.Enqueue(ContextId{index + 1})!;
+            return Failed(ref executor, -6820, 3, index as uint32, slot.generation, 1, request);
+        }
+        Result::Ok(recording) => {
+            if (executor.timed) { discard Timestamp(ref recording); }
+            RecordSchedule(ref recording, ref executor, ref const slot, shape, schedule);
+            if (executor.timed) { discard Timestamp(ref recording); }
+            executor.recordings = executor.recordings + 1;
+            if (TakeTest(ref executor, 2))
+            {
+                executor.ready.Enqueue(ContextId{index + 1})!;
+                return Failed(ref executor, -6821, 3, index as uint32, slot.generation, 1, request);
+            }
+            Result<Submission, VulkanError> submitted = Submit(move recording);
+            match (move submitted)
+            {
+                Result::Error(error) => {
+            discard ObserveError(ref executor, error);
+                    executor.ready.Enqueue(ContextId{index + 1})!;
+                    return Failed(ref executor, -6821, 3, index as uint32, slot.generation, 1, request);
+                }
+                Result::Ok(submission) => {
+                    Option<owned Submission> pending = Option::Some(move submission);
+                    slot.submission = move pending;
+                    slot.state = ReductionSlotState::Pending;
+                    executor.submissions = executor.submissions + 1;
+                }
+            }
+        }
+    }
+    bool uncertain = TakeTest(ref executor, 4);
+    ref Submission work = OptionValue(ref slot.submission);
+    if (uncertain or ExecutionCode(ref executor, Wait(ref work)) != 0)
+    {
+        slot.state = ReductionSlotState::Quarantined;
+        executor.quarantines = executor.quarantines + 1;
+        return Failed(ref executor, -6822, 3, index as uint32, slot.generation, 0, request);
+    }
+    ExecutionOutcome result = Outcome(0, 0, index as uint32, slot.generation, 1, request);
+    if (executor.timed)
+    {
+        Result<double, VulkanError> elapsed = ElapsedNanoseconds(ref const work, 0, 1);
+        match (elapsed)
+        {
+            Result::Ok(value) => { result = result with { timed = 1; gpuNanoseconds = TruncTo<uint64>(value)!; }; }
+            Result::Error(error) => {
+            discard ObserveError(ref executor, error); result = result with { detail = -6823; stage = 4; }; }
+        }
+    }
+    if (result.detail == 0 and ExecutionCode(ref executor, DownloadOn(executor.context.view, ref const slot.output, output)) != 0)
+    { result = result with { detail = -6824; stage = 4; }; }
+    slot.submission = Option::None;
+    slot.state = ReductionSlotState::Ready;
+    executor.ready.Enqueue(ContextId{index + 1})!;
+    executor.lastDetail = result.detail;
+    if (result.detail == 0) { executor.successes = executor.successes + 1; }
+    else { executor.failures = executor.failures + 1; }
+    return result;
+}
+
+int ObserveError(ref ReductionExecutor executor, VulkanError error)
+{
+    int code = CodeFromError(error);
+    if (code == -4) { executor.deviceLost = true; }
+    return code;
+}
+
+int ExecutionCode(ref ReductionExecutor executor, Result<void, VulkanError> result)
+{
+    return match (result) {
+        Result::Ok => 0,
+        Result::Error(error) => ObserveError(ref executor, error),
+    };
+}
+
+int DrainExecutor(ref ReductionExecutor executor)
+{
+    return ExecutionCode(ref executor, Reap(ref executor, true));
+}
+
+void DisposeExecutor(owned ReductionExecutor executor) { }
+
+uint32 OutstandingSlots(ref const ReductionExecutor executor, bool quarantined)
+{
+    uint32 count = 0;
+    for (index in 0..(executor.depth as int)) {
+        if (SlotExists(ref const executor.slots[index])) {
+            ref const ReductionSlot slot = OptionValue(ref const executor.slots[index]);
+            if ((quarantined and slot.state == ReductionSlotState::Quarantined) or
+                (not quarantined and slot.state == ReductionSlotState::Pending)) { count = count + 1; }
+        }
+    }
+    return count;
+}

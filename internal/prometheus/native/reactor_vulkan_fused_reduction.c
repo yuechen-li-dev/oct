@@ -1,5 +1,6 @@
-/* M39b fused reduction runtime: plans, execution, diagnostics, CPU
-   validation, and the shared Vulkan lifecycle used by transformer recording. */
+/* Public reduction plan serialization, validation/oracles, and the legacy
+   model resource lifecycle. Production standalone reduction execution lives
+   in reactors/PrometheusExecution.concept and its generated deployment. */
 #include "reactor_vulkan_runtime_internal.h"
 #include "reactor_shader_registry.h"
 #include "reactor_shader_package.h"
@@ -735,46 +736,6 @@ int prom_reduction_ensure_buffer(prom_reduction_runtime_state* state,
   return 1;
 }
 
-static void prom_reduction_refresh_temporary_capacity(prom_reduction_runtime_state* state) {
-  uint64_t total = 0u;
-  uint32_t slot_index;
-  for (slot_index = 0u; slot_index < state->ring_depth; ++slot_index) {
-    total += (uint64_t)state->slots[slot_index].scratch.size;
-    total += (uint64_t)state->slots[slot_index].row_max.size;
-    total += (uint64_t)state->slots[slot_index].row_sum.size;
-  }
-  state->diagnostics.temporary_capacity_bytes = total;
-}
-
-static int prom_reduction_prepare_slot_buffers(prom_reduction_runtime_state* state,
-                                               prom_reduction_slot* slot,
-                                               const PrometheusReductionRequest* request,
-                                               const PrometheusReductionPlan* plan,
-                                               uint64_t total_elements,
-                                               uint64_t output_elements) {
-  VkDeviceSize input_bytes = (VkDeviceSize)(total_elements * sizeof(float));
-  VkDeviceSize output_bytes = (VkDeviceSize)(output_elements * sizeof(float));
-  VkDeviceSize scratch_bytes = plan->partial_count > 1u
-                                   ? (VkDeviceSize)((uint64_t)request->row_count * plan->partial_count * sizeof(float))
-                                   : PROM_REDUCTION_MIN_BINDING_BYTES;
-  VkDeviceSize row_bytes = plan->operation == PROM_REDUCTION_OPERATION_SOFTMAX &&
-                                   plan->strategy == PROM_REDUCTION_STRATEGY_COMPOSED
-                               ? (VkDeviceSize)((uint64_t)request->row_count * sizeof(float))
-                               : PROM_REDUCTION_MIN_BINDING_BYTES;
-  if (!prom_reduction_ensure_buffer(state, &slot->input, input_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1)) return 0;
-  if (!prom_reduction_ensure_buffer(state, &slot->output, output_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1)) return 0;
-  if (!prom_reduction_ensure_buffer(state, &slot->scratch, scratch_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) return 0;
-  if (!prom_reduction_ensure_buffer(state, &slot->row_max, row_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) return 0;
-  if (!prom_reduction_ensure_buffer(state, &slot->row_sum, row_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) return 0;
-  prom_reduction_refresh_temporary_capacity(state);
-  return 1;
-}
-
 void prom_reduction_reap_slots(prom_reduction_runtime_state* state, uint32_t allow_wait) {
   uint32_t slot_index;
   for (slot_index = 0u; slot_index < state->ring_depth; ++slot_index) {
@@ -880,13 +841,6 @@ void prom_reduction_stage_bindings_for_io(const prom_reduction_slot* slot,
   (void)stage;
 }
 
-static void prom_reduction_stage_bindings(const prom_reduction_slot* slot,
-                                          const PrometheusReductionPlan* plan,
-                                          uint32_t stage_index,
-                                          prom_reduction_buffer_bindings* out) {
-  prom_reduction_stage_bindings_for_io(slot, plan, stage_index, &slot->input, &slot->output, out);
-}
-
 void prom_reduction_update_descriptor_set(prom_reduction_runtime_state* state,
                                                  VkDescriptorSet descriptor_set,
                                                  const prom_reduction_buffer_bindings* bindings) {
@@ -920,63 +874,6 @@ void prom_reduction_record_barrier(VkCommandBuffer command_buffer) {
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 1u, &barrier, 0u, NULL, 0u, NULL);
 }
 
-static int prom_reduction_record_request(prom_reduction_runtime_state* state,
-                                         prom_reduction_slot* slot,
-                                         const PrometheusReductionRequest* request,
-                                         const PrometheusReductionPlan* plan,
-                                         uint32_t total_elements) {
-  VkCommandBufferBeginInfo begin_info;
-  uint32_t stage_index;
-  VkResult result;
-  if (prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
-  result = vkResetCommandBuffer(slot->command_buffer, 0u);
-  if (result != VK_SUCCESS) return 0;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  result = vkBeginCommandBuffer(slot->command_buffer, &begin_info);
-  if (result != VK_SUCCESS) return 0;
-  if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE) {
-    vkCmdResetQueryPool(slot->command_buffer, state->query_pool,
-                        slot->slot_id * PROM_REDUCTION_QUERY_STRIDE, 2u);
-    vkCmdWriteTimestamp(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        state->query_pool, slot->slot_id * PROM_REDUCTION_QUERY_STRIDE);
-  }
-  for (stage_index = 0u; stage_index < plan->stage_count; ++stage_index) {
-    const PrometheusReductionStageDispatch* stage = &plan->stages[stage_index];
-    prom_reduction_buffer_bindings bindings;
-    prom_reduction_push_constants push;
-    VkPipeline pipeline = prom_reduction_pipeline_for_implementation(state, stage->implementation_id);
-    if (pipeline == VK_NULL_HANDLE) return 0;
-    prom_reduction_stage_bindings(slot, plan, stage_index, &bindings);
-    prom_reduction_update_descriptor_set(state, slot->descriptor_sets[stage_index], &bindings);
-    memset(&push, 0, sizeof(push));
-    push.row_count = request->row_count;
-    push.elements_per_row = stage->input_elements_per_row;
-    push.partials_per_row = stage->output_partials_per_row;
-    push.input_row_stride = stage->input_elements_per_row;
-    push.chunk_elements = PROM_REDUCTION_ELEMENTS_PER_PARTIAL;
-    push.total_elements = total_elements;
-    push.stage_role = stage->stage_role;
-    vkCmdBindPipeline(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-    vkCmdBindDescriptorSets(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, state->pipeline_layout,
-                            0u, 1u, &slot->descriptor_sets[stage_index], 0u, NULL);
-    vkCmdPushConstants(slot->command_buffer, state->pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
-                       0u, sizeof(push), &push);
-    vkCmdDispatch(slot->command_buffer, stage->groups_x, stage->groups_y, stage->groups_z);
-    if (stage_index + 1u < plan->stage_count) prom_reduction_record_barrier(slot->command_buffer);
-  }
-  if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE) {
-    vkCmdWriteTimestamp(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        state->query_pool, slot->slot_id * PROM_REDUCTION_QUERY_STRIDE + 1u);
-  }
-  result = vkEndCommandBuffer(slot->command_buffer);
-  if (result != VK_SUCCESS) return 0;
-  slot->state = PROM_ASYNC_PHYSICAL_RECORDED;
-  state->diagnostics.command_record_count += 1u;
-  return 1;
-}
-
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state) {
   uint32_t index;
   prom_reduction_reap_slots(state, 1u);
@@ -989,13 +886,6 @@ int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state) {
     if (slot->state != PROM_ASYNC_PHYSICAL_EMPTY && slot->state != PROM_ASYNC_PHYSICAL_READY) return 0;
   }
   return 1;
-}
-
-static void prom_reduction_result_failure(PrometheusReductionExecutionResult* result,
-                                          uint32_t stage,
-                                          int32_t detail) {
-  result->stage = stage;
-  result->detail_code = detail;
 }
 
 int prom_reduction_find_nonfinite(const float* input, uint64_t count, uint64_t* out_index) {
@@ -1132,218 +1022,6 @@ int prom_reactor_runtime_row_wise_softmax_impl(
   result->physical_dispatch_count = 1u;
   result->physical_submission_count = 1u;
   result->output_written = 1u;
-  return PROM_OK;
-}
-
-int prom_reactor_runtime_reduction_impl(void* handle,
-                                        const PrometheusReductionRequest* request,
-                                        PrometheusReductionExecutionResult* out_result) {
-  PrometheusReductionExecutionResult local_result;
-  PrometheusReductionExecutionResult* result = out_result != NULL ? out_result : &local_result;
-  PrometheusReductionPlan plan;
-  prom_reduction_runtime_state* state;
-  prom_reduction_slot* slot;
-  prom_vk_runtime_services services_before;
-  prom_vk_runtime_services services_after;
-  uint64_t total_elements = 0u;
-  uint64_t output_elements = 0u;
-  uint64_t begin_ns = prom_reduction_now_ns();
-  uint64_t end_ns;
-  uint64_t timestamps[2];
-  uint64_t available_temporary;
-  uint32_t malformed_injected = 0u;
-  int32_t detail = 0;
-  VkSubmitInfo submit_info;
-  VkResult vk_result;
-  memset(result, 0, sizeof(*result));
-  result->struct_size = sizeof(*result);
-  result->physical_slot_id = UINT32_MAX;
-  result->first_nonfinite_index = UINT64_MAX;
-  if (!prom_reactor_runtime_validate_handle(handle)) {
-    prom_reduction_result_failure(result, PROM_STAGE_INIT, PROM_REDUCTION_DETAIL_RUNTIME_UNAVAILABLE);
-    return PROM_INVALID_HANDLE;
-  }
-  if (!prom_reduction_validate_request(request, 1u, &total_elements, &output_elements, &detail)) {
-    prom_reduction_result_failure(result, PROM_STAGE_INIT, detail);
-    return PROM_ERROR;
-  }
-  if (prom_reduction_find_nonfinite(request->input, total_elements, &result->first_nonfinite_index)) {
-    prom_reduction_result_failure(result, PROM_STAGE_TRANSFER_IN, PROM_REDUCTION_DETAIL_NONFINITE_INPUT);
-    return PROM_ERROR;
-  }
-  if (prom_reactor_reduction_plan_impl(request, &plan) != PROM_OK) {
-    prom_reduction_result_failure(result, PROM_STAGE_INIT, PROM_REDUCTION_DETAIL_MALFORMED_PLAN);
-    return PROM_ERROR;
-  }
-  state = prom_reduction_ensure_state(handle, &detail);
-  if (state == NULL) {
-    prom_reduction_result_failure(result, PROM_STAGE_INIT, detail);
-    return PROM_ERROR;
-  }
-  state->diagnostics.total_requests += 1u;
-  result->logical_request_id = state->next_logical_request_id++;
-  state->diagnostics.next_logical_request_id = state->next_logical_request_id;
-  result->plan = plan;
-  if (prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_MALFORMED_STAGE_METADATA)) {
-    result->plan.stages[0].shader_id = 0u;
-    malformed_injected = 1u;
-  }
-  available_temporary = result->plan.temporary_bytes;
-  if (malformed_injected == 0u &&
-      prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_TEMPORARY_UNDERSIZED) &&
-      available_temporary > 0u) {
-    available_temporary -= 1u;
-  }
-  if (prom_reduction_validate_plan_for_test(&result->plan, available_temporary, &detail) != PROM_OK) {
-    prom_reduction_result_failure(result, PROM_STAGE_INIT, detail);
-    state->diagnostics.logical_failure_count += 1u;
-    state->diagnostics.last_detail_code = detail;
-    return PROM_ERROR;
-  }
-  if (prom_reactor_runtime_get_vk_services(handle, &services_before) == PROM_OK) {
-    result->validation_error_count_before = services_before.validation_error_count;
-  }
-  slot = prom_reduction_acquire_slot(state, result->logical_request_id);
-  if (slot == NULL) {
-    prom_reduction_result_failure(result, PROM_STAGE_SUBMIT, PROM_REDUCTION_DETAIL_COMPLETION_UNCERTAIN);
-    state->diagnostics.logical_failure_count += 1u;
-    return PROM_ERROR;
-  }
-  result->physical_slot_id = slot->slot_id;
-  result->physical_slot_generation = slot->generation;
-  if (!prom_reduction_prepare_slot_buffers(state, slot, request, &plan, total_elements, output_elements)) {
-    slot->state = PROM_ASYNC_PHYSICAL_READY;
-    result->physical_slot_recyclable = 1u;
-    prom_reduction_result_failure(result, PROM_STAGE_TRANSFER_IN, PROM_REDUCTION_DETAIL_RESOURCE_CREATE_FAILED);
-    state->diagnostics.logical_failure_count += 1u;
-    return PROM_ERROR;
-  }
-  memcpy(slot->input.mapped, request->input, (size_t)(total_elements * sizeof(float)));
-  memset(slot->output.mapped, 0, (size_t)(output_elements * sizeof(float)));
-  if (!prom_reduction_record_request(state, slot, request, &plan, (uint32_t)total_elements)) {
-    slot->state = PROM_ASYNC_PHYSICAL_READY;
-    result->physical_slot_recyclable = 1u;
-    prom_reduction_result_failure(result, PROM_STAGE_SUBMIT, PROM_REDUCTION_DETAIL_COMMAND_RECORD_FAILED);
-    state->diagnostics.logical_failure_count += 1u;
-    return PROM_ERROR;
-  }
-  vk_result = vkResetFences(state->device, 1u, &slot->fence);
-  if (vk_result != VK_SUCCESS) {
-    slot->state = PROM_ASYNC_PHYSICAL_READY;
-    result->physical_slot_recyclable = 1u;
-    prom_reduction_result_failure(result, PROM_STAGE_SUBMIT, PROM_REDUCTION_DETAIL_QUEUE_SUBMIT_FAILED);
-    state->diagnostics.logical_failure_count += 1u;
-    return PROM_ERROR;
-  }
-  if (prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT)) {
-    slot->state = PROM_ASYNC_PHYSICAL_READY;
-    result->physical_slot_recyclable = 1u;
-    prom_reduction_result_failure(result, PROM_STAGE_SUBMIT, PROM_REDUCTION_DETAIL_QUEUE_SUBMIT_FAILED);
-    state->diagnostics.logical_failure_count += 1u;
-    return PROM_ERROR;
-  }
-  memset(&submit_info, 0, sizeof(submit_info));
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_info.commandBufferCount = 1u;
-  submit_info.pCommandBuffers = &slot->command_buffer;
-  vk_result = vkQueueSubmit(state->queue, 1u, &submit_info, slot->fence);
-  if (vk_result != VK_SUCCESS) {
-    slot->state = PROM_ASYNC_PHYSICAL_READY;
-    result->physical_slot_recyclable = 1u;
-    prom_reduction_result_failure(result, PROM_STAGE_SUBMIT, PROM_REDUCTION_DETAIL_QUEUE_SUBMIT_FAILED);
-    state->diagnostics.logical_failure_count += 1u;
-    return PROM_ERROR;
-  }
-  slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
-  state->diagnostics.queue_submit_count += 1u;
-  if (prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION)) {
-    slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
-    state->diagnostics.quarantine_count += 1u;
-    state->diagnostics.logical_failure_count += 1u;
-    result->physical_slot_recyclable = 0u;
-    prom_reduction_result_failure(result, PROM_STAGE_SUBMIT, PROM_REDUCTION_DETAIL_COMPLETION_UNCERTAIN);
-    return PROM_ERROR;
-  }
-  vk_result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
-  if (vk_result != VK_SUCCESS) {
-    slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
-    state->diagnostics.quarantine_count += 1u;
-    state->diagnostics.logical_failure_count += 1u;
-    prom_reduction_result_failure(result, PROM_STAGE_SUBMIT, PROM_REDUCTION_DETAIL_COMPLETION_UNCERTAIN);
-    return PROM_ERROR;
-  }
-  slot->state = PROM_ASYNC_PHYSICAL_COMPLETE;
-  if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE) {
-    memset(timestamps, 0, sizeof(timestamps));
-    vk_result = vkGetQueryPoolResults(state->device, state->query_pool,
-                                      slot->slot_id * PROM_REDUCTION_QUERY_STRIDE, 2u,
-                                      sizeof(timestamps), timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
-    if (vk_result != VK_SUCCESS || timestamps[1] <= timestamps[0]) {
-      slot->state = PROM_ASYNC_PHYSICAL_READY;
-      result->physical_slot_recyclable = 1u;
-      state->diagnostics.logical_failure_count += 1u;
-      prom_reduction_result_failure(result, PROM_STAGE_TRANSFER_OUT, PROM_REDUCTION_DETAIL_QUERY_FAILED);
-      return PROM_ERROR;
-    }
-    result->gpu_timestamp_valid = 1u;
-    result->gpu_duration_ns = (uint64_t)((double)(timestamps[1] - timestamps[0]) * state->timestamp_period_ns);
-  }
-  memcpy(request->output, slot->output.mapped, (size_t)(output_elements * sizeof(float)));
-  slot->state = PROM_ASYNC_PHYSICAL_READY;
-  result->physical_slot_recyclable = 1u;
-  result->stage = PROM_STAGE_NONE;
-  result->detail_code = 0;
-  end_ns = prom_reduction_now_ns();
-  result->end_to_end_ns = prom_reduction_elapsed_ns(begin_ns, end_ns);
-  if (prom_reactor_runtime_get_vk_services(handle, &services_after) == PROM_OK) {
-    result->validation_error_count_after = services_after.validation_error_count;
-    state->diagnostics.validation_enabled = services_after.validation_enabled;
-    state->diagnostics.validation_error_count = services_after.validation_error_count;
-  }
-  state->diagnostics.successful_requests += 1u;
-  state->diagnostics.last_replay_id = plan.replay_id;
-  state->diagnostics.last_gpu_duration_ns = result->gpu_duration_ns;
-  state->diagnostics.last_end_to_end_ns = result->end_to_end_ns;
-  state->diagnostics.last_stage_count = plan.stage_count;
-  state->diagnostics.last_physical_slot_id = slot->slot_id;
-  state->diagnostics.last_physical_slot_generation = slot->generation;
-  state->diagnostics.last_detail_code = 0;
-  return PROM_OK;
-}
-
-int prom_reactor_runtime_reduction_diagnostics_impl(void* handle,
-                                                    PrometheusReductionDiagnostics* out_diag) {
-  prom_reduction_runtime_state* state;
-  prom_vk_runtime_services services;
-  uint32_t slot_index;
-  if (out_diag == NULL) return PROM_ERROR;
-  memset(out_diag, 0, sizeof(*out_diag));
-  out_diag->struct_size = sizeof(*out_diag);
-  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
-  state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
-  if (state == NULL) {
-    out_diag->configured_ring_depth = 2u;
-    out_diag->physical_slot_count = out_diag->configured_ring_depth;
-    if (prom_reactor_runtime_get_vk_services(handle, &services) == PROM_OK) {
-      out_diag->configured_ring_depth = services.reduction_ring_depth;
-      out_diag->physical_slot_count = services.reduction_ring_depth;
-      out_diag->validation_enabled = services.validation_enabled;
-      out_diag->validation_error_count = services.validation_error_count;
-    }
-    return PROM_OK;
-  }
-  *out_diag = state->diagnostics;
-  out_diag->struct_size = sizeof(*out_diag);
-  out_diag->outstanding_slots = 0u;
-  out_diag->quarantined_slots = 0u;
-  for (slot_index = 0u; slot_index < state->ring_depth; ++slot_index) {
-    if (state->slots[slot_index].state == PROM_ASYNC_PHYSICAL_SUBMITTED) out_diag->outstanding_slots += 1u;
-    if (state->slots[slot_index].state == PROM_ASYNC_PHYSICAL_QUARANTINED) out_diag->quarantined_slots += 1u;
-  }
-  if (prom_reactor_runtime_get_vk_services(handle, &services) == PROM_OK) {
-    out_diag->validation_enabled = services.validation_enabled;
-    out_diag->validation_error_count = services.validation_error_count;
-  }
   return PROM_OK;
 }
 

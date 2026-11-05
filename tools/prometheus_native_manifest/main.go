@@ -16,10 +16,15 @@ import (
 )
 
 type manifest struct {
-	Production []string `json:"production_sources"`
-	Tests      []string `json:"native_test_sources"`
-	Slow       []string `json:"slow_only_test_sources"`
-	Mains      struct {
+	Production     []string `json:"production_sources"`
+	ConceptPackage struct {
+		Root     string   `json:"root"`
+		Sources  []string `json:"sources"`
+		Archives []string `json:"archives"`
+	} `json:"concept_package"`
+	Tests []string `json:"native_test_sources"`
+	Slow  []string `json:"slow_only_test_sources"`
+	Mains struct {
 		Normal     string `json:"normal"`
 		Slow       string `json:"slow"`
 		Benchmarks string `json:"benchmarks"`
@@ -73,6 +78,28 @@ func checkUnique(kind string, paths []string) error {
 func validate(root string, m manifest) error {
 	if err := checkUnique("production", m.Production); err != nil {
 		return err
+	}
+	if err := checkUnique("Concept package", m.ConceptPackage.Sources); err != nil {
+		return err
+	}
+	production := map[string]bool{}
+	for _, source := range m.Production {
+		production[source] = true
+	}
+	for _, source := range m.ConceptPackage.Sources {
+		if !production[source] {
+			return fmt.Errorf("Concept package source absent from production inventory: %s", source)
+		}
+	}
+	if len(m.ConceptPackage.Sources) > 0 {
+		if _, err := os.Stat(filepath.Join(root, m.ConceptPackage.Root, "manifest.concept")); err != nil {
+			return fmt.Errorf("Concept package manifest missing: %w", err)
+		}
+		for _, archive := range m.ConceptPackage.Archives {
+			if !filepath.IsLocal(archive) {
+				return fmt.Errorf("Concept archive output must remain in repository: %s", archive)
+			}
+		}
 	}
 	if err := checkUnique("test", m.Tests); err != nil {
 		return err
@@ -186,6 +213,24 @@ func validateGeneratedInventory(root string, m manifest) error {
 	return nil
 }
 
+func nativeLanguages(m manifest) (c, cpp []string) {
+	managed := map[string]bool{}
+	for _, path := range m.ConceptPackage.Sources {
+		managed[path] = true
+	}
+	for _, path := range m.Production {
+		if managed[path] {
+			continue
+		}
+		if strings.HasSuffix(path, ".cpp") {
+			cpp = append(cpp, path)
+		} else {
+			c = append(c, path)
+		}
+	}
+	return
+}
+
 func qWin(p string) string { return `"%NATIVE_DIR%\` + strings.ReplaceAll(p, "/", `\`) + `"` }
 func qSh(p string) string  { return `"$NATIVE_DIR/` + p + `"` }
 
@@ -202,12 +247,22 @@ func windows(m manifest) []byte {
 		}
 		b.WriteString("\"\r\n")
 	}
-	write("PROMETHEUS_COMMON_C_SRCS", m.Production)
+	c, cpp := nativeLanguages(m)
+	write("PROMETHEUS_COMMON_C_SRCS", c)
+	write("PROMETHEUS_COMMON_CPP_SRCS", cpp)
 	objs := make([]string, 0, len(m.Production))
-	for _, p := range m.Production {
-		objs = append(objs, `"%OBJ_DIR%\`+strings.TrimSuffix(filepath.Base(p), ".c")+`.obj"`)
+	for _, p := range append(c, cpp...) {
+		objs = append(objs, `"%OBJ_DIR%\`+strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))+`.obj"`)
+	}
+	for _, archive := range m.ConceptPackage.Archives {
+		objs = append(objs, `"%ROOT_DIR%\`+strings.ReplaceAll(archive, "/", `\`)+`"`)
 	}
 	fmt.Fprintf(&b, "set \"PROMETHEUS_COMMON_OBJS=%s\"\r\n", strings.Join(objs, " "))
+	b.WriteString("set \"PROMETHEUS_CONCEPT_ARCHIVES=")
+	for _, archive := range m.ConceptPackage.Archives {
+		fmt.Fprintf(&b, "\"%%ROOT_DIR%%\\%s\" ", strings.ReplaceAll(archive, "/", `\`))
+	}
+	b.WriteString("\"\r\n")
 	write("PROMETHEUS_MARIONETTE_CPP_SRCS", m.Tests)
 	write("PROMETHEUS_MARIONETTE_SLOW_ONLY_SRCS", m.Slow)
 	fmt.Fprintf(&b, "set \"PROMETHEUS_MARIONETTE_MAIN=%s\"\r\n", qWin(m.Mains.Normal))
@@ -231,7 +286,14 @@ func shell(m manifest) []byte {
 		}
 		b.WriteString(")\n")
 	}
-	write("PROMETHEUS_COMMON_C", m.Production)
+	c, cpp := nativeLanguages(m)
+	write("PROMETHEUS_COMMON_C", c)
+	write("PROMETHEUS_COMMON_CPP", cpp)
+	b.WriteString("PROMETHEUS_CONCEPT_ARCHIVES=(\n")
+	for _, archive := range m.ConceptPackage.Archives {
+		fmt.Fprintf(&b, "  \"$ROOT_DIR/%s\"\n", archive)
+	}
+	b.WriteString(")\n")
 	write("PROMETHEUS_MARIONETTE_CPP", m.Tests)
 	write("PROMETHEUS_MARIONETTE_SLOW_ONLY", m.Slow)
 	fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_MAIN=%s\n", qSh(m.Mains.Normal))
@@ -242,6 +304,24 @@ func shell(m manifest) []byte {
 	}
 	fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_BENCH_MAIN=%s\n", qSh(m.Mains.Benchmarks))
 	fmt.Fprintf(&b, "PROMETHEUS_SDSLV_TEST_HOST=%s\n", qSh(m.TestHost))
+	return []byte(b.String())
+}
+
+// Response files avoid cmd.exe's expanded command-length limit as the
+// production and test inventories grow. All paths are relative to repo root.
+func windowsTestResponse(m manifest) []byte {
+	var b strings.Builder
+	for _, source := range m.Tests {
+		fmt.Fprintf(&b, "\"internal/prometheus/native/%s\"\r\n", source)
+	}
+	return []byte(b.String())
+}
+func windowsObjectResponse(m manifest) []byte {
+	var b strings.Builder
+	c, cpp := nativeLanguages(m)
+	for _, source := range append(c, cpp...) {
+		fmt.Fprintf(&b, "\"out/prometheus/native/obj/%s.obj\"\r\n", strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)))
+	}
 	return []byte(b.String())
 }
 
@@ -266,6 +346,8 @@ func main() {
 	}{
 		{filepath.Join(root, "internal", "prometheus", "native", "native_sources_windows.cmd"), windows(m)},
 		{filepath.Join(root, "internal", "prometheus", "native", "native_sources_linux.sh"), shell(m)},
+		{filepath.Join(root, "internal", "prometheus", "native", "native_tests_windows.rsp"), windowsTestResponse(m)},
+		{filepath.Join(root, "internal", "prometheus", "native", "native_objects_windows.rsp"), windowsObjectResponse(m)},
 	}
 	if !*write && !*check {
 		*check = true

@@ -25,3 +25,7 @@ internal/octjson/testdata/JSONTestSuite/test_parsing/* -text
 *.golden text eol=lf
 # Completed oracle campaign witnesses preserve the bytes pinned by its ledger.
 internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle/* -text
+
+# Native package sources and byte-compared Windows compiler response files.
+*.cpp text eol=lf
+internal/prometheus/native/native_*_windows.rsp text eol=crlf

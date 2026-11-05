@@ -1,0 +1,14 @@
+{
+  "source": "internal/prometheus/reactors/PrometheusReduction.concept",
+  "source_sha256": "1fcc17cc448b5cd8e1f11989b0c8fa194cd0cabe41f9893285ea1b9a221e2f3d",
+  "concept_revision": "f3bff8463d00dad231936c4c2e1cf228d1aded5b",
+  "concept_source_tree_sha256": "d21c4b523800d75df12d27a64c4bfbf3010ccfee1932938dd8cd930081accd88",
+  "inputs_sha256": {
+    "internal/prometheus/reactors/PrometheusReduction.concept": "1fcc17cc448b5cd8e1f11989b0c8fa194cd0cabe41f9893285ea1b9a221e2f3d"
+  },
+  "regenerate": "go run ./tools/prometheus_concept -concept-root \u003cConcept checkout\u003e",
+  "outputs_sha256": {
+    "prometheusreduction.generated.c": "6180143d6414cb8ab79d3ebda5748caf336c6d712bb4ecb50ebd0193e2bd074c",
+    "prometheusreduction.generated.h": "5e8948ae979391b4e5abd3aadb65ec88748056ca24c52090625bce67e973632b"
+  }
+}

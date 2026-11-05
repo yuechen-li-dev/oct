@@ -1,5 +1,9 @@
 # Prometheus Concept reactor migration: modules and first production capability
 
+This is the M0 historical checkpoint. The subsequent
+[shared-device execution milestone](prometheus_concept_shared_device_m1.md)
+replaces the standalone C reduction executor and resolves the device blocker.
+
 Date: 2026-11-05
 
 ## Accepted direction

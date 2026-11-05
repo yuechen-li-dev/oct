@@ -21,10 +21,19 @@ Current Vulkan reactor file topology (P12 M5 baseline):
 - `reactor_vulkan_fft.c`
   - M5/M6 Complex32 radix-2 Vulkan execution family; production qualification
     remains unclaimed until its required RTX 3070 evidence is recorded.
+- `../reactors/PrometheusReduction.concept` and `PrometheusExecution.concept`
+  - production row-wise FP32 sum/max/stable-softmax planning and execution,
+    reusable slot buffers, package-created pipelines, completion, quarantine,
+    and retirement. The executor uses DragonGod's FIFO ready queue and Standard
+    spans/math over a borrowed Concept Vulkan device attachment.
+- `reactor_concept_reduction_abi.c` and `reactor_concept_reduction.cpp`
+  - an opaque C11 facade and C++23 public/package adapters. Generated private
+    class layouts and C11 atomics do not cross into C++.
+- `reactor_vulkan_queue.cpp`
+  - the common host queue API synchronization boundary for all native families.
 - `reactor_vulkan_fused_reduction.c`
-  - production M39b row-wise FP32 sum/max/stable-softmax family: deterministic
-    plans, one-workgroup and staged dispatch, persistent family ring,
-    device-local reusable temporaries, timestamps, validation, and CPU oracle.
+  - public plan serialization, ABI validation, CPU oracles, and still-live model
+    resource support. Its standalone C reduction executor has been removed.
 - `reactor_vulkan_gemma4e2b.c`
   - the Gemma 4 E2B M1 operations (input/head RMSNorm, RoPE, attention
     scores) and the M46 RMSNorm executor they run on. The M42-M49b
@@ -82,6 +91,21 @@ Supported native build helpers:
 - Compatibility: `build_stub.sh` prints a deprecation warning and forwards to `build_linux.sh`.
 - Windows: `internal\prometheus\native\build_windows_launcher.cmd` (authoritative launcher; locates Visual Studio, initializes x64 MSVC, and writes `out\test-artifacts\prometheus_native_windows_build.log`).
 - Low-level Windows build body: `internal\prometheus\native\build_windows.cmd` (called by the launcher; do not duplicate its source lists or build logic).
+
+The consumer package is [`../manifest.concept`](../manifest.concept). The
+helpers build its C11 and C++23 archives through `concept package build`, then
+link them with the remaining legacy operations. Clang/LLVM (including
+`llvm-ar`), a C++23 standard library with `std::expected`, and the Vulkan SDK
+are required alongside the platform tools. Set `CONCEPT_LIBRARY_ROOT` to the
+Concept distribution's `libraries`; the development default is the sibling
+`Concept/libraries`. Set `CONCEPT_BIN` to a built driver, install `concept` on
+PATH, or keep the sibling Concept compiler checkout for the Go bootstrap.
+The foundational Vulkan implementation is compiled from that dependency.
+
+Regenerate deployment with `go run ./tools/prometheus_concept -concept-root
+../Concept`; verify with `-check`. Checked provenance identifies actual compiler
+and library input bytes as well as the checkout revision. See
+[shared-device migration evidence](../../../docs/internal/prometheus_concept_shared_device_m1.md).
 
 Expected Windows outputs:
 
