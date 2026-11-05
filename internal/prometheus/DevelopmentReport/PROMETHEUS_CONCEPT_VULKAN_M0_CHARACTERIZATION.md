@@ -81,7 +81,7 @@ Production and contract paths inspected:
 
 Compiler/reference paths inspected:
 
-- `Language/reference/language/18-concepts.md`;
+- `Language/reference/language/concepts-and-refinements.md`;
 - SDSL-V M5/M6/M13/M14/M14a/M16 documents and language fixtures;
 - `internal/concept`, Oct parser/typechecker/build MIR paths;
 - `internal/sdslv/{lex,token,parse,ast,validate,consteval,lower,vdmir,emit,toolchain}`;

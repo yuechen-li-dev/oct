@@ -93,7 +93,7 @@ which fails compiled on the base commit.
 
 **`Clamp01` was not in the reference.** It is a builtin with a fixture, and
 the thirteen probes above broke on it with no document to say why.
-`09-builtins.md` now has it, with two `.octfail` contracts for the rules it
+`builtins.md` now has it, with two `.octfail` contracts for the rules it
 states: the argument is a `Float`, and the name cannot be declared.
 
 ### Not fixed: decisions for you
@@ -102,7 +102,7 @@ All are in `FEEDBACK.md` with reproductions.
 
 1. **UI in the compiled lane.** 164 compiled failures in 22 directories of
    `ControlPanel`, `SignalLab` and `Storefront` are "compiled mode does not yet
-   support builtin UIButton". The rule in `31-octest.md` is that a test for a
+   support builtin UIButton". The rule in `testing.md` is that a test for a
    feature a lane lacks fails there until the feature exists, so I did not
    restrict them. If UI is meant to stay interpreted, that is a specified
    difference and `[Interpreted]` is the right mark; the reference's own

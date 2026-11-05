@@ -147,7 +147,7 @@ No `Assert.True(false, ...)` dispatch stub remains in the v2 sources
 - Oct `Assert.Equal` does not accept arrays, so the tests compare arrays
   element by element through small helpers.
 - The v1 code used `0.0 - x` for negation. The v2 library uses unary `-x`,
-  which `Language/reference/language/03-expressions.md` documents.
+  which `Language/reference/language/expressions.md` documents.
 - `Libraries/Random/README.md` pointed at the deleted
   `Random.Distributions.octest`; it now describes the v2 surface and says v1 is
   being retired. The three v1 pages under `internal/random/` carry a

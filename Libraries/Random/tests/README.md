@@ -1,7 +1,7 @@
 Random tests execute from `Libraries/Random/*.octest` and `*.octfail`.
 
 - Keep assertion helpers (`Assert.*`) in `.octest` files only.
-- Production `Libraries/Random/*.oct` files use `Assert.True` only for runtime preconditions, as `Language/reference/language/09-builtins.md` allows. Test assertions stay in `.octest` files.
+- Production `Libraries/Random/*.oct` files use `Assert.True` only for runtime preconditions, as `Language/reference/language/builtins.md` allows. Test assertions stay in `.octest` files.
 - Nested `Libraries/Random/tests/*.octest` files are documentation-only for now because `oct test Libraries/Random` resolves package symbols per directory.
 
 - Random package `.octest` files run in same-package scope; use unqualified symbols (`RollDice`) instead of `Random.RollDice` inside `package Random` tests.

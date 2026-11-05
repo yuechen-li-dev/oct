@@ -75,5 +75,5 @@ shell/MCP workflow, or a `Main()` smoke test. Local Codex should use the CLI;
 bounded hosted source submission is the separate MCP path in `oct-workflow`.
 
 Read `docs/REPO_STRUCTURE.md`, `docs/NEW_EXPERIMENT_AUTHORING_CHECKLIST.md`,
-and `Language/reference/tooling/31-octest.md` before extending a nontrivial
+and `Language/reference/tooling/testing.md` before extending a nontrivial
 experiment.

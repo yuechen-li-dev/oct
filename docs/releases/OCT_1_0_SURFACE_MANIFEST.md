@@ -9,7 +9,7 @@ conformance promises in `OCT_1_0_CONTRACT.md`.
 | Surface | Status | Compatibility / execution promise |
 | --- | --- | --- |
 | Syntax, types, functions, arrays/ranges, records/enums, control flow, errors, units, named function values, vectors/matrices, and Octomata as documented in `Language/reference/` | Stable | Meaning is preserved in 1.x; valid stable programs interpret and compile through GoOct. |
-| Core compiler-owned builtins in `Language/reference/language/09-builtins.md` | Stable | Same language compatibility promise; compiled conformance covers the applicable core forms. |
+| Core compiler-owned builtins in `Language/reference/language/builtins.md` | Stable | Same language compatibility promise; compiled conformance covers the applicable core forms. |
 | `oct run`, `build`, `test`, `fmt`, `new`, `init`, `pkg`, `artifact`, `bench`, and `version` | Stable essential tooling | Compatible command behavior in 1.x, subject to documented environmental prerequisites. |
 | Local/source-controlled package registry, exact dependency sync, and optional `lock.octagon` | Stable tooling | Current documented MVP behavior is compatible; hosted publishing, solver ranges, federation, and integrity guarantees are not promised. |
 

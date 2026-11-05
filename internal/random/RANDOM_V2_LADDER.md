@@ -45,7 +45,7 @@ Audit findings that drive this ladder (2026-10-01):
 | D4 | **Parameter order:** `(stream, index, params...)`. |
 | D5 | **Native core is Go only**, in one package `internal/octrandom`, imported by both the interpreter and generated programs (precedent: `internal/prometheus`, `internal/octxiliary`, `internal/dimension`). No C/C++. No second hand-written copy. |
 | D6 | **Crypto randomness moves to a separate `Entropy` package.** `Random` becomes fully deterministic. |
-| D7 | **Runtime preconditions use `Assert.True`** (the sanctioned non-recoverable runtime path per `09-builtins.md`). `Require` is compile-time only and is **not** used for argument validation. `! Error` is reserved for genuine environmental failure (OS entropy). |
+| D7 | **Runtime preconditions use `Assert.True`** (the sanctioned non-recoverable runtime path per `builtins.md`). `Require` is compile-time only and is **not** used for argument validation. `! Error` is reserved for genuine environmental failure (OS entropy). |
 | D8 | **Clean break.** No deprecated v1 wrappers survive M6. Seeded sequences change; recorded experiment outputs are regenerated. |
 
 ## 3. Normative specification

@@ -145,7 +145,7 @@ Final command ledger:
 - language contracts: all 11 files under `Language/Types/ConceptsM1`;
 - production/specimen code: `Libraries/UI/UI.Style.oct`, `Libraries/Geometry/Geometry.Refinements.oct`, `Geometry.Planar.oct`, and `Geometry.Solids.oct`;
 - production tests: `Libraries/UI/UI.ConceptsM1.octest`, `Libraries/UI/UI.ConceptsM1InvalidChannel.octfail`, `Libraries/Geometry/Geometry.Planar.octest`, and `Geometry.Solids.octest`;
-- evidence and documentation: `Examples/ConceptsM1/main.oct`, `Language/reference/language/18-concepts.md`, and `CONCEPTS_M1.md`.
+- evidence and documentation: `Examples/ConceptsM1/main.oct`, `Language/reference/language/concepts-and-refinements.md`, and `CONCEPTS_M1.md`.
 
 ## Limitations and rejected alternatives
 

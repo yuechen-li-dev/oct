@@ -69,7 +69,7 @@ Out of scope for Mx103d:
 
 ## 7) Explicit inconsistency/doc-gap notes
 
-- Language reference still groups plotting as builtin-oriented behavior while this wave introduces an `Image.Core` standard-library-first foundation. This report and updated `17-standard-libraries.md` make the new ownership explicit.
+- Language reference still groups plotting as builtin-oriented behavior while this wave introduces an `Image.Core` standard-library-first foundation. This report and updated `standard-libraries.md` make the new ownership explicit.
 - User-request signatures used `Unit`; Oct reference types use `Void`. This wave keeps established wrapper return posture (`Int ! Error`) for side-effect wrappers, consistent with existing Mx103 wrapper families.
 
 ## 8) What this enables next

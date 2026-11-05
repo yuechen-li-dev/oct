@@ -39,7 +39,7 @@ then wrote whatever the text rules produced.
 ## What it does now
 
 `internal/ocfmt/layout.go`. The rules are in
-`Language/reference/tooling/32-ocfmt.md`.
+`Language/reference/tooling/formatting.md`.
 
 - **Indentation** follows bracket nesting over the real tokens: one level
   inside the line that holds the innermost open bracket; a line that starts
@@ -128,9 +128,9 @@ Recorded in `FEEDBACK.md`:
 - The repository is not formatted, and nothing checks that it is.
 - The reference and the CLI disagreed about the mode names. The CLI and its
   tests treat `en-llm` and `en-llm-compact` as canonical and `readable` and
-  `compact` as legacy; `32-ocfmt.md` and `35-cli.md` said the reverse. Both
+  `compact` as legacy; `formatting.md` and `cli.md` said the reverse. Both
   pages now state what the CLI does.
-- The formatter rewrote `=>` as `->` everywhere, which `32-ocfmt.md`
+- The formatter rewrote `=>` as `->` everywhere, which `formatting.md`
   documented, while the reference's own examples write match arms with `=>`.
   Changed after this report: the formatter now keeps each arrow as written,
   and `--arrows thin|fat` is an optional setting.

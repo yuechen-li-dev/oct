@@ -6,13 +6,13 @@ This pass updates the user-facing `Language/reference` docs after W5 package sca
 
 Docs touched:
 
-- `Language/reference/tooling/35-cli.md`
-- `Language/reference/tooling/31-octest.md`
-- `Language/reference/tooling/33-oct-pkg.md`
-- `Language/reference/language/11-records.md`
-- `Language/reference/runtime/21-octomata.md`
-- `Language/reference/language/16-vectors-and-matrices.md`
-- `Language/reference/00-overview.md`
+- `Language/reference/tooling/cli.md`
+- `Language/reference/tooling/testing.md`
+- `Language/reference/tooling/packages-and-dependencies.md`
+- `Language/reference/language/records-and-tables.md`
+- `Language/reference/runtime/flows-and-state-machines.md`
+- `Language/reference/language/vectors-matrices-and-tensors.md`
+- `Language/reference/overview.md`
 
 ## Fixed stale statements
 
@@ -22,12 +22,12 @@ Docs touched:
 
 ## Records and `with`
 
-- Made `Language/reference/language/11-records.md` the owner of immutable record `with` updates.
+- Made `Language/reference/language/records-and-tables.md` the owner of immutable record `with` updates.
 - Kept Octomata docs focused on behavior/data separation and cross-linked to the records page instead of teaching the full `with` concept there.
 
 ## Testing reference structure
 
-- Restructured `31-octest.md` into scannable sections for overview, `[Fact]`, `[Theory]`, suites, assertions, fallible tests, skips/timeouts, execution modes, file/layout conventions, and lane policy.
+- Restructured `testing.md` into scannable sections for overview, `[Fact]`, `[Theory]`, suites, assertions, fallible tests, skips/timeouts, execution modes, file/layout conventions, and lane policy.
 
 ## Package tooling updates
 

@@ -1,0 +1,16 @@
+package ReferenceExamples
+
+[Artifact]
+fn PublishReferenceSummary() -> Void {
+    let squares = [1, 4, 9]
+    StaticAssert.Equal(3, Len(squares), "publication has three samples")
+    Artifact.WriteOctagon("reference/squares.octagon", squares)
+    Artifact.WriteText("reference/summary.txt", "Three squared samples")
+}
+
+[Benchmark]
+fn MeasureReferenceCalculation() -> Void {
+    var total = 0
+    for i in 0..10000 { total = total + i }
+    Assert.Equal(49995000, total, "consume and check the calculated result")
+}

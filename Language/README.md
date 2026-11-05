@@ -20,7 +20,7 @@ A new fixture directory needs no registration. If it does not pass in both lanes
 
 ### Fixtures that belong to one lane
 
-A fact whose subject is one execution lane says so in the source, with the reason: `[Interpreted("...")]` or `[Compiled("...")]`. The other lane reports it as skipped. Use this only when the two lanes are specified to behave differently. A feature that one lane is missing is not a reason; that fixture should fail until the feature exists. `Language/reference/tooling/31-octest.md` has the rules.
+A fact whose subject is one execution lane says so in the source, with the reason: `[Interpreted("...")]` or `[Compiled("...")]`. The other lane reports it as skipped. Use this only when the two lanes are specified to behave differently. A feature that one lane is missing is not a reason; that fixture should fail until the feature exists. `Language/reference/tooling/testing.md` has the rules.
 
 ### Fixtures that must fail
 

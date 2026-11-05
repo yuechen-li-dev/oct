@@ -75,7 +75,7 @@ Three things follow, all done:
 An `.octfail` may begin with `expect runtime error: "text"`. The source must
 compile, and running its `Main` must stop with a failure containing the text.
 Under `--execution auto` both lanes must fail that way; a named lane is
-checked alone. `Language/reference/tooling/31-octest.md` has the rules.
+checked alone. `Language/reference/tooling/testing.md` has the rules.
 
 An `.octfail` may now also `import` a library of its repository, so a contract
 for misusing a library from another package can be written.

@@ -361,11 +361,11 @@ Parser likely needs no syntax change because `IndexExpr` already represents `v[i
 
 Recommended documentation changes after M31:
 
-1. Retitle `Language/reference/language/16-vectors-and-matrices.md` from **Vectors and Matrices** to **Vectors, Matrices, and Tensors**.
+1. Retitle `Language/reference/language/vectors-matrices-and-tensors.md` from **Vectors and Matrices** to **Vectors, Matrices, and Tensors**.
 2. Keep the file path unless the reference index convention allows renaming without breaking links. A title-only change is safer as the first doc implementation milestone.
 3. Move the substantive tensor content from `Language/reference/tensors.md` into the retitled vector/matrix page.
 4. Convert `Language/reference/tensors.md` into a short pointer page during the transition:
-   - “Tensor notation is documented in [Vectors, Matrices, and Tensors](./language/16-vectors-and-matrices.md).”
+   - “Tensor notation is documented in [Vectors, Matrices, and Tensors](./language/vectors-matrices-and-tensors.md).”
    - Include a brief note that the page is retained for link stability.
 5. If a later docs cleanup has a clear link-update convention, remove the pointer only then.
 

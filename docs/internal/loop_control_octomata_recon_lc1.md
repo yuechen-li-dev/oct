@@ -402,10 +402,10 @@ Primary files inspected in this pass:
 
 - `README.md`
 - `AGENTS.md`
-- `Language/reference/language/04-control-flow.md`
-- `Language/reference/runtime/21-octomata.md`
-- `Language/reference/language/11-records.md`
-- `Language/reference/language/13-packages.md`
+- `Language/reference/language/control-flow.md`
+- `Language/reference/runtime/flows-and-state-machines.md`
+- `Language/reference/language/records-and-tables.md`
+- `Language/reference/language/packages-and-imports.md`
 - `internal/lex/lex.go`
 - `internal/parse/parse.go`
 - `internal/ast/program.go`

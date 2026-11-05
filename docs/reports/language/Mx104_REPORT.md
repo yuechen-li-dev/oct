@@ -131,7 +131,7 @@ Production tests now cover:
 Documentation now states explicit production JSON posture in:
 
 - `Libraries/IO/README.md`
-- `Language/reference/language/09-builtins.md`
+- `Language/reference/language/builtins.md`
 
 ## 8) Consistency notes
 

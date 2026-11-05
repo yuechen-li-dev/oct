@@ -29,7 +29,7 @@ Under the hood these call new backend-support plot builtins:
 
 ## 4) Documentation updates for the split
 
-Updated `Language/reference/language/17-standard-libraries.md` and `Language/reference/language/09-builtins.md` to explicitly state:
+Updated `Language/reference/language/standard-libraries.md` and `Language/reference/language/builtins.md` to explicitly state:
 
 - convenience plotting builtins are direct/no-import
 - advanced plotting requires `Plot.Core`

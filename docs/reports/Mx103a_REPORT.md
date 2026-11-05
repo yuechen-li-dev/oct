@@ -65,5 +65,5 @@ Targets like file/path/directory, CSV, regex, hashing, time, and HTTP client now
 
 ## Language/reference consistency note
 
-- `Xlsx*` and `JsonNormalize` wrapper builtins are runtime/typechecker surfaces, but they are not currently documented in `Language/reference/language/09-builtins.md`.
+- `Xlsx*` and `JsonNormalize` wrapper builtins are runtime/typechecker surfaces, but they are not currently documented in `Language/reference/language/builtins.md`.
 - Per repository policy, this is a documentation gap and should be resolved in a follow-up language-reference update.

@@ -20,7 +20,7 @@ data-parallel map lowering.
 
 ## 3. Existing language semantics
 
-`Language/reference/runtime/22-batch.md` remains authority: array input; one
+`Language/reference/runtime/batch.md` remains authority: array input; one
 output per input; exact length/order; implicit join; any item failure fails the
 whole batch; no partial output. M0 specifies the previously unstated concurrent
 failure rule: the lowest failing input index supplies the visible error.

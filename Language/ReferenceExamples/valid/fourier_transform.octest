@@ -1,0 +1,15 @@
+package ReferenceExamples
+
+[Fact]
+fn FourierTransformHasAnExplicitBoundary() -> Void ! Error {
+    let impulse = [Complex(1.0, 0.0), Complex(0.0, 0.0) ... 3]
+    let spectrum = FFT(impulse)?
+    Assert.Equal(4, Len(spectrum), "one output for each input")
+    for i in 0..Len(spectrum) {
+        Assert.Equal(1.0, Real(spectrum[i]), "unit impulse has constant real spectrum")
+        Assert.Equal(0.0, Imag(spectrum[i]), "unit impulse has zero imaginary spectrum")
+    }
+    let empty: Complex[] = []
+    Assert.Error(FFT(empty), "an empty transform is rejected")
+    Assert.Error(FFT([Complex(0.0, 0.0) ... 3]), "length must be a power of two")
+}

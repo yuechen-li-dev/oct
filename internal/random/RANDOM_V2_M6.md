@@ -82,10 +82,10 @@ The builtin table now holds eleven rows: seven for `Random`, four for
 
 - `internal/random/Random.md`: the specification, with a table from each v1
   name to its replacement.
-- `Language/reference/language/17-standard-libraries.md`: `Random`, `Entropy`
+- `Language/reference/language/standard-libraries.md`: `Random`, `Entropy`
   and "Compiler-owned namespaces" sections. The examples in them were run in
   both lanes.
-- `Language/reference/tooling/31-octest.md` and `runtime/21-octomata.md`: two
+- `Language/reference/tooling/testing.md` and `runtime/flows-and-state-machines.md`: two
   sentences that said "crypto-random" and "RNG state" now name `Entropy` and
   streams.
 - READMEs of `Random`, `Random/tests`, `RandomUsage`, `Entropy`.

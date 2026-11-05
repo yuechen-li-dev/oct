@@ -422,7 +422,7 @@ If generalized analysis finds three or more free labels, compiled mode should re
 
 After implementation, update:
 
-- `Language/reference/language/16-vectors-and-matrices.md`:
+- `Language/reference/language/vectors-matrices-and-tensors.md`:
   - add vector rank-1 symbolic indexing section;
   - specify `v[Int]` versus `v[Index]` overload behavior;
   - add dot, outer, matrix-vector, and vector-matrix examples;

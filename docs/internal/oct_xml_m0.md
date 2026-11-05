@@ -11,7 +11,7 @@ first substantial consumer; the `UiNode` language fixture is the independent
 non-Document proof.
 
 The authoritative language contract is
-[`Language/reference/language/21-oct-xml.md`](../../Language/reference/language/21-oct-xml.md).
+[`Language/reference/language/typed-markup.md`](../../Language/reference/language/typed-markup.md).
 
 ## Front-end shape
 

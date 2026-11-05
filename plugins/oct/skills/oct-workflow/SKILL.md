@@ -82,6 +82,6 @@ once, submit `.octest` files to `oct_test`, repair its structured result, run
 validation authority. Do not send host paths, shell commands, package installs,
 native libraries, or network requests.
 
-See `Language/reference/tooling/31-octest.md`,
-`Language/reference/tooling/34-octagon.md`, and
-`Language/reference/tooling/35-cli.md` for canonical detail.
+See `Language/reference/tooling/testing.md`,
+`Language/reference/tooling/octagon.md`, and
+`Language/reference/tooling/cli.md` for canonical detail.

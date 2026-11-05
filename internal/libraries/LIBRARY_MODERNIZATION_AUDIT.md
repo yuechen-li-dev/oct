@@ -111,7 +111,7 @@ The current reference confirms these modern surfaces as canonical:
 
 | File path | Symbol/API | Current pattern | Recommended change | Confidence | Risk | Notes |
 |---|---|---|---|---|---|---|
-| `Libraries/LinearAlgebra/README.md` | “nested array types (`Float[][]`) are currently not supported by the Oct parser” | Stale documentation versus current reference (`T[][]` supported) | Update docs to current parser/reference reality | High | Low | Explicit inconsistency with `Language/reference/07-arrays.md` |
+| `Libraries/LinearAlgebra/README.md` | “nested array types (`Float[][]`) are currently not supported by the Oct parser” | Stale documentation versus current reference (`T[][]` supported) | Update docs to current parser/reference reality | High | Low | Explicit inconsistency with `Language/reference/arrays.md` |
 | `Libraries/Wireless/Wireless.Core.oct` comment | “Frequency values are plain Float, unit is Hz” | Legacy workaround-era guidance | Update after typed-frequency decision and migration | High | Low | Should not teach old style once unit migration lands |
 | `Libraries/*` | old fallible syntax/package forms | No stale syntax found in audited files | No action | High | Low | Current `! Error`, `package`, `import` forms look aligned |
 
@@ -346,7 +346,7 @@ No public API signatures were changed in this pass. In particular, the following
 
 ### Reference alignment note
 
-- This change aligns with `Language/reference/language/09-builtins.md` where `Pow(base: Int | Float, exponent: Int | Float) -> Float` is documented as a core builtin and builtin names are reserved.
+- This change aligns with `Language/reference/language/builtins.md` where `Pow(base: Int | Float, exponent: Int | Float) -> Float` is documented as a core builtin and builtin names are reserved.
 
 ## 8. M4 Require precondition modernization (implemented 2026-04-30)
 

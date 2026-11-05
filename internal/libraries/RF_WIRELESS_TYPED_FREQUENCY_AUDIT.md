@@ -15,7 +15,7 @@ Audit totals:
 - Unclear / needs design decision: **1**
 
 Reference alignment notes:
-- `Language/reference/language/08-units.md` explicitly supports signed exponents and `Hz` as alias of `s^-1`; therefore frequency-like public concepts should prefer `Float<Hz>` over untyped `Float`.
+- `Language/reference/language/units.md` explicitly supports signed exponents and `Hz` as alias of `s^-1`; therefore frequency-like public concepts should prefer `Float<Hz>` over untyped `Float`.
 - No explicit special type for dB/dBm is documented in `Language/reference`; these remain dimensionless `Float` with naming/docs discipline.
 
 ## 2) RF findings
@@ -291,7 +291,7 @@ Date: 2026-04-30
   - `go run ./cmd/oct test Libraries/Wireless`
 
 Reference consistency note surfaced:
-- This migration uses `Hz` typed literals/arrays and signed-exponent-compatible unit behavior per `Language/reference/language/08-units.md` (`Hz = s^-1`).
+- This migration uses `Hz` typed literals/arrays and signed-exponent-compatible unit behavior per `Language/reference/language/units.md` (`Hz = s^-1`).
 
 ## M5c execution update (RF.SParameters typed-frequency migration)
 

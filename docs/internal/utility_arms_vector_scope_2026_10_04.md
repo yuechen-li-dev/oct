@@ -129,7 +129,7 @@ Two smaller findings from the same reading:
 
 **A. Source is the definition for the standard libraries.** They become
 ordinary Oct libraries over builtins, which is how
-`Language/reference/language/17-standard-libraries.md` already describes them.
+`Language/reference/language/standard-libraries.md` already describes them.
 The compiled lane learns to run those builtins through the first-party
 sidecars, as it does today for `CsvRead` and `FileReadText`
 (`__octGenericFallible` in the generated runtime). Manifest wrapper

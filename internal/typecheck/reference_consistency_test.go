@@ -8,7 +8,7 @@ import (
 )
 
 func TestOctomataReferenceDocumentsPersistentBoardValues(t *testing.T) {
-	path := filepath.Join("..", "..", "Language", "reference", "runtime", "21-octomata.md")
+	path := filepath.Join("..", "..", "Language", "reference", "runtime", "flows-and-state-machines.md")
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read Octomata reference: %v", err)

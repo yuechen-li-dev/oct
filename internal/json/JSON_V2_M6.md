@@ -35,14 +35,14 @@ Four things are not in the ladder's M6:
 | `internal/cli/json.go` | The command: arguments, the file, the streams, the exit status |
 | `internal/octjson` | `MemberPath` and `ElementPath`: the spelling of a place, exported so a tool names a place as a Json error does |
 | `Language/Tooling/JsonInfer` | 26 contracts in 6 directories |
-| `Language/reference/tooling/35-cli.md` | The command and its rules |
+| `Language/reference/tooling/cli.md` | The command and its rules |
 
 `internal/jsoninfer` holds no rule about what a declaration reads. Those are
 `octjson`'s, and the output is checked against them.
 
 **After the ladder closed (2026-10-07):** an object is printed as a
 record-shaped `concept`, not a `record`. M6 printed `record`, which
-`Language/reference/language/18-concepts.md` does not prefer for a named
+`Language/reference/language/concepts-and-refinements.md` does not prefer for a named
 value shape; the reference is the authority and the tool now follows it.
 Where this report says "record" of the output, read "record-shaped concept".
 A table is still a `record table`. The goldens and the 26 contracts were

@@ -75,7 +75,7 @@ M25 deliberately did not change these deferred areas:
 - Package-manager sidecar build lifecycle.
 - Public Statistics or Analysis APIs.
 
-Documentation gap surfaced: `Language/reference/language/03-expressions.md` lists logical operators and deterministic evaluation order, but does not explicitly state the short-circuit contract for `and` and `or`. The compiler now matches the behavior that existing Oct code relies on; the reference should make that explicit in a future syntax/reference cleanup.
+Documentation gap surfaced: `Language/reference/language/expressions.md` lists logical operators and deterministic evaluation order, but does not explicitly state the short-circuit contract for `and` and `or`. The compiler now matches the behavior that existing Oct code relies on; the reference should make that explicit in a future syntax/reference cleanup.
 
 ## Recommended next milestone
 

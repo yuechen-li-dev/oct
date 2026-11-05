@@ -68,4 +68,4 @@ No hidden mutable RNG behavior was introduced.
 
 ## Reference inconsistency surfaced
 
-Task framing referenced `with` mutable bindings. Current reference authority (`Language/reference/language/14-variables.md`) specifies `let`/`var` mutability. M5 follows the reference authority and uses `var`.
+Task framing referenced `with` mutable bindings. Current reference authority (`Language/reference/language/variables-and-values.md`) specifies `let`/`var` mutability. M5 follows the reference authority and uses `var`.

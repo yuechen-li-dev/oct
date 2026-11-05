@@ -57,7 +57,7 @@ let none = Option<Float>.None          // nothing declares the type, so it is wr
   parameters, turn inputs and `yield`, results, template arguments, enum
   payloads, `when utility Option<T>`.
 
-The reference is `Language/reference/language/12-enums.md`, section "Option".
+The reference is `Language/reference/language/enums-and-options.md`, section "Option".
 
 ## How `T` reaches the two lanes
 
@@ -114,7 +114,7 @@ one more lookup function either way.
 | `internal/build/option.go` (new), `lower_expr.go`, `emit_go.go`, `emit_go_value.go`, `emit_go_runtime.go` | Type strings, the Go type and its declarations, construction, `match`, `switch` labels, equality by value, the Octagon loader's description of an option type. |
 | `internal/build/lower_value.go` | **Compiled-lane bug fix, not specific to Option.** See "Bugs found". |
 | `tools/vscode-oct/syntaxes/oct.tmLanguage.json` | `Option` is a type name. |
-| `Language/reference/language/12-enums.md`, `02-types.md`, `tooling/34-octagon.md` | Reference. |
+| `Language/reference/language/enums-and-options.md`, `types.md`, `tooling/octagon.md` | Reference. |
 
 `oct fmt` needed no change. It works from tokens, and formats all four
 spellings.

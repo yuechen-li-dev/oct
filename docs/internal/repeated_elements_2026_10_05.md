@@ -70,7 +70,7 @@ All four are in `FEEDBACK.md` with a reproduction. None was introduced here.
 1. **An `Int` where a `Float` is declared.** `let x: Float = 1` followed by
    `x / 2` is `0` interpreted and `0.5` compiled. The typechecker accepts the
    `Int`, the compiled lane converts it, the interpreter keeps it, and
-   `Language/reference/language/03-expressions.md` says "Implicit conversion is
+   `Language/reference/language/expressions.md` says "Implicit conversion is
    not allowed". The same holds for an `Int` variable, an argument, and an
    `Int` array literal used as `Float[]`. This is the most serious of the four:
    the two lanes compute different numbers from an accepted program. It needs

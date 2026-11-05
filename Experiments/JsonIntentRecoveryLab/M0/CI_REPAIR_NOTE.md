@@ -39,4 +39,4 @@ Covers all M0 corpus files for load + normalize determinism and representative r
 
 ## Inconsistency surfaced explicitly
 
-`Language/reference/language/09-builtins.md` still points to `Libraries/IO/IO.Json.octest` for corpus-oriented validation language that was historically experiment-heavy. After this repair, corpus validation ownership is now split with explicit experiment-local tests at `Experiments/JsonIntentRecoveryLab/M0/corpus_validation.octest`.
+`Language/reference/language/builtins.md` still points to `Libraries/IO/IO.Json.octest` for corpus-oriented validation language that was historically experiment-heavy. After this repair, corpus validation ownership is now split with explicit experiment-local tests at `Experiments/JsonIntentRecoveryLab/M0/corpus_validation.octest`.

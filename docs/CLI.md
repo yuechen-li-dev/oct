@@ -34,7 +34,7 @@ links, compiler-known symbol/Fact/Theory/Artifact references, relation categorie
 cycles, and project policies. `build` writes deterministic `atlas.octagon`; `show`,
 `explain`, `affected-by`, and `coverage` provide bounded deterministic queries.
 Atlas does not alter ordinary runtime codegen. See the authoritative
-[`Language/reference/tooling/37-atlas.md`](../Language/reference/tooling/37-atlas.md)
+[`Language/reference/tooling/atlas.md`](../Language/reference/tooling/atlas.md)
 for the complete M0 contract.
 
 ## `oct make` and `Make.octest`
@@ -167,7 +167,7 @@ into, and the `Json.Load<T>` call that loads it. The output is Oct source and
 comments and can be pasted as it is. `--explain` adds the score of each
 choice that had two readings. A value with no declaration is listed with its
 place and the command fails. The rules are in
-`Language/reference/tooling/35-cli.md`.
+`Language/reference/tooling/cli.md`.
 
 ## `oct templates` discovery
 

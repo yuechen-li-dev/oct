@@ -18,11 +18,11 @@ Convergence state: **success for design**. This milestone intentionally does not
 F2 was written against the current F1 report, reference surface, and implementation shape:
 
 - `docs/internal/array_map_generics_friction_f1.md`
-- `Language/reference/language/07-arrays.md`
-- `Language/reference/language/04-control-flow.md`
-- `Language/reference/language/03-expressions.md`
-- `Language/reference/language/09-builtins.md`
-- `Language/reference/language/16-vectors-and-matrices.md`
+- `Language/reference/language/arrays.md`
+- `Language/reference/language/control-flow.md`
+- `Language/reference/language/expressions.md`
+- `Language/reference/language/builtins.md`
+- `Language/reference/language/vectors-matrices-and-tensors.md`
 - `Language/Types/Arrays/...`
 - `Language/ControlFlow/Loops/...`
 - `Experiments/LanguageFriction/ArrayMapGenerics/...`

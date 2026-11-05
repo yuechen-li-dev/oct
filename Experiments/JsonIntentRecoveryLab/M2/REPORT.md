@@ -415,6 +415,6 @@ Operationally:
 
 ## 5) Language/reference consistency note
 
-`Language/reference/language/07-arrays.md` explicitly documents nested arrays (`T[][]` and deeper), so M2’s constrained nested-array use for matrix/grid cases is language-consistent.
+`Language/reference/language/arrays.md` explicitly documents nested arrays (`T[][]` and deeper), so M2’s constrained nested-array use for matrix/grid cases is language-consistent.
 
 No `Dynamic` or null-based type semantics were introduced in M2; sparse handling remains explicit via presence/value columns.

@@ -33,7 +33,7 @@ Date: 2026-04-30
 
 ## Language/reference consistency note
 
-- M6 uses `enum` + `switch` as documented in `Language/reference/language/04-control-flow.md` and record usage in `Language/reference/language/11-records.md`.
+- M6 uses `enum` + `switch` as documented in `Language/reference/language/control-flow.md` and record usage in `Language/reference/language/records-and-tables.md`.
 - Documentation gap observed: enum-specific reference content location was not found at `Language/reference/language/08-enums.md` during this pass; this should be tracked separately as reference organization gap.
 
 ## Validation results

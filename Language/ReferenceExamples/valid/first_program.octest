@@ -1,0 +1,15 @@
+package ReferenceExamples
+
+fn SumSquares(values: Int[]) -> Int {
+    var total = 0
+    for i in 0..Len(values) {
+        total = total + values[i] * values[i]
+    }
+    return total
+}
+
+[Fact]
+fn AFirstOctProgram() -> Void {
+    Assert.Equal(14, SumSquares([1, 2, 3]), "sum of squares")
+    Assert.Equal(0, SumSquares([]), "an empty input has no terms")
+}

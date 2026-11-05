@@ -54,5 +54,5 @@
 - Existing fallible `match` statement form (`ok/err`) remains supported.
 
 ## 7) Explicit consistency notes
-- `Language/reference/language/12-enums.md` and `04-control-flow.md` now describe enum payload + enum `match` roles.
-- `Language/reference/language/06-errors.md` still documents fallible `match`; this is intentionally called out as a separate form to avoid ambiguity with enum `match`.
+- `Language/reference/language/enums-and-options.md` and `control-flow.md` now describe enum payload + enum `match` roles.
+- `Language/reference/language/errors.md` still documents fallible `match`; this is intentionally called out as a separate form to avoid ambiguity with enum `match`.

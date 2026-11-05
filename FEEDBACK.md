@@ -228,7 +228,7 @@ Add a test form for expected runtime failure, for example `Assert.Fails(<express
 Status: Resolved
 
 Resolution:
-An `.octfail` may begin with `expect runtime error: "..."`. The source must compile and its `Main` must fail with that text, in both lanes under `--execution auto`. `Language/reference/tooling/31-octest.md`; fixtures under `testdata/octfail_runtime`, `Language/Expressions/ArrayScalarBroadcast/invalid` and `Libraries/RandomUsage`. The Random and Entropy precondition fixtures still use the older Go-driven form.
+An `.octfail` may begin with `expect runtime error: "..."`. The source must compile and its `Main` must fail with that text, in both lanes under `--execution auto`. `Language/reference/tooling/testing.md`; fixtures under `testdata/octfail_runtime`, `Language/Expressions/ArrayScalarBroadcast/invalid` and `Libraries/RandomUsage`. The Random and Entropy precondition fixtures still use the older Go-driven form.
 
 ---
 
@@ -246,7 +246,7 @@ The copy resolves imports against the import roots of the fixture's own director
 ---
 
 Observation:
-`Language/reference` has no page for the Random library or for compiler-owned library builtins in general; Random is described only in `Libraries/Random/README.md` and `internal/random/`. Separately, `Libraries/Random/tests/README.md` says production `Libraries/Random/*.oct` files must not depend on `Assert`, while those files use `Assert.True` for runtime validation and `Language/reference/language/09-builtins.md` explicitly allows that.
+`Language/reference` has no page for the Random library or for compiler-owned library builtins in general; Random is described only in `Libraries/Random/README.md` and `internal/random/`. Separately, `Libraries/Random/tests/README.md` says production `Libraries/Random/*.oct` files must not depend on `Assert`, while those files use `Assert.True` for runtime validation and `Language/reference/language/builtins.md` explicitly allows that.
 
 Suggestion:
 Document compiler-owned library builtins in the reference (which names are builtins, the qualified-only rule outside the owning package), and correct the Random tests README when the v1 library layer is replaced.
@@ -254,12 +254,12 @@ Document compiler-owned library builtins in the reference (which names are built
 Status: Resolved
 
 Resolution:
-`Language/reference/language/17-standard-libraries.md` has `Random`, `Entropy` and "Compiler-owned namespaces" sections, and the tests README is corrected.
+`Language/reference/language/standard-libraries.md` has `Random`, `Entropy` and "Compiler-owned namespaces" sections, and the tests README is corrected.
 
 ---
 
 Observation:
-`Language/reference/language/06-errors.md` documents fallible `match` as an expression with value arms, `return match ParseRetries(raw) { ok(v) => v  err(_) => 3 }`, in three "Valid" examples. The parser rejects all of them with `expected 'case' in match`: `parseMatchExpr` only parses the enum form. The form that works is the statement with block arms, `match ParseRetries(raw) { ok(v) => { return v } err(e) => { return 3 } }`, which is what the fixtures under `Language/` use. The Entropy contracts use the statement form.
+`Language/reference/language/errors.md` documents fallible `match` as an expression with value arms, `return match ParseRetries(raw) { ok(v) => v  err(_) => 3 }`, in three "Valid" examples. The parser rejects all of them with `expected 'case' in match`: `parseMatchExpr` only parses the enum form. The form that works is the statement with block arms, `match ParseRetries(raw) { ok(v) => { return v } err(e) => { return 3 } }`, which is what the fixtures under `Language/` use. The Entropy contracts use the statement form.
 
 Suggestion:
 Either implement the expression form of fallible `match` or correct the reference examples to the statement form, and add the chosen form to the `Language/` corpus.
@@ -272,7 +272,7 @@ The reference is corrected: fallible `match` is a statement with block arms. Its
 ---
 
 Observation:
-In the compiled lane, a fallible `match` whose `err` arm discards its binding, `err(_) => { ... }`, generates Go that fails to build: `cannot use _ as value or type`. The interpreted lane accepts it. `err(_)` is the spelling the reference uses in `06-errors.md`. Found while writing `Language/Builtins/Entropy/valid/entropy_builtins.octest`, which names the binding instead.
+In the compiled lane, a fallible `match` whose `err` arm discards its binding, `err(_) => { ... }`, generates Go that fails to build: `cannot use _ as value or type`. The interpreted lane accepts it. `err(_)` is the spelling the reference uses in `errors.md`. Found while writing `Language/Builtins/Entropy/valid/entropy_builtins.octest`, which names the binding instead.
 
 Suggestion:
 Lower a discarded `ok`/`err` binding without assigning from it, and add a both-lanes fixture for `ok(_)` and `err(_)`.
@@ -285,7 +285,7 @@ A discarded binding binds nothing, in functions and in flow states. `Language/Er
 ---
 
 Observation:
-`Entropy` is a second compiler-owned library namespace after `Artifact` and, like `Random`, is not described in `Language/reference`. The reference's capability list in `18-concepts.md` names a future `Crypto.Random` capability family; `Entropy` is the surface that family would govern, and today it is guarded only by the interpreter's artifact and discovery checks.
+`Entropy` is a second compiler-owned library namespace after `Artifact` and, like `Random`, is not described in `Language/reference`. The reference's capability list in `concepts-and-refinements.md` names a future `Crypto.Random` capability family; `Entropy` is the surface that family would govern, and today it is guarded only by the interpreter's artifact and discovery checks.
 
 Suggestion:
 When the reference gains a page for compiler-owned library builtins, state there which namespaces need no import (`Array`, `Artifact`, `Entropy`) and tie `Entropy` to the `Crypto.Random` capability family.
@@ -324,7 +324,7 @@ The eight under `Language/` are repaired and run in both lanes. `Libraries/IfErr
 ---
 
 Observation:
-`oct fmt` rewrites every `=>` as `->`, as `Language/reference/tooling/32-ocfmt.md` says it does. The reference's own examples in `06-errors.md` and `12-enums.md`, and most match and switch arms in the repository, are written with `=>`. Formatting the tree would change all of them.
+`oct fmt` rewrites every `=>` as `->`, as `Language/reference/tooling/formatting.md` says it does. The reference's own examples in `errors.md` and `enums-and-options.md`, and most match and switch arms in the repository, are written with `=>`. Formatting the tree would change all of them.
 
 Suggestion:
 Either keep the arrow the author wrote, or change the reference examples to `->`, so that the reference and the formatter describe one style.
@@ -449,7 +449,7 @@ Do not let a nested `Packages/` hide the repository's `Libraries/`.
 Status: Resolved
 
 Resolution:
-The walk continues to the nearest ancestor with `Libraries/`; a `Packages/` on the way is searched first. `Language/reference/language/13-packages.md`. The stub is removed and `Libraries/Markdown` has a manifest.
+The walk continues to the nearest ancestor with `Libraries/`; a `Packages/` on the way is searched first. `Language/reference/language/packages-and-imports.md`. The stub is removed and `Libraries/Markdown` has a manifest.
 
 ---
 
@@ -462,7 +462,7 @@ Either load a directory's test files the same way in both lanes, or document the
 Status: Open
 
 Resolution:
-Documented in `Language/reference/tooling/31-octest.md`: shared declarations go in a `.oct` file or in a `.octest` with no test entry points. The lanes still differ.
+Documented in `Language/reference/tooling/testing.md`: shared declarations go in a `.oct` file or in a `.octest` with no test entry points. The lanes still differ.
 
 ---
 
@@ -514,7 +514,7 @@ Let a test state the lane it belongs to, with a reason.
 Status: Resolved
 
 Resolution:
-`[Interpreted("reason")]` and `[Compiled("reason")]` on a `[Fact]` or `[Theory]`. The reason is required. The other lane reports the test as skipped and does not build it, and under `--execution auto` a `[Compiled]` test does not fall back to the interpreter. `Language/reference/tooling/31-octest.md` says when not to use it: a feature one lane is missing is not a reason.
+`[Interpreted("reason")]` and `[Compiled("reason")]` on a `[Fact]` or `[Theory]`. The reason is required. The other lane reports the test as skipped and does not build it, and under `--execution auto` a `[Compiled]` test does not fall back to the interpreter. `Language/reference/tooling/testing.md` says when not to use it: a feature one lane is missing is not a reason.
 
 ---
 
@@ -530,12 +530,12 @@ The two kinds of call are also governed differently during artifact evaluation: 
 So "a wrapper name has one definition" cannot be enforced by deleting one side. Removing the source bodies makes the interpreted lane need sidecars for every use of these libraries and makes those calls native operations in artifacts. Removing the manifest entries leaves the compiled lane without the libraries until it can run the builtins.
 
 Suggestion:
-Make the standard libraries ordinary source over builtins, as `Language/reference/language/17-standard-libraries.md` describes them, and teach the compiled lane to run those builtins through the first-party sidecars, as it already does for `CsvRead` and `FileReadText`. Keep manifest wrapper functions for native code outside the toolchain, with no source body, dispatched to the sidecar in both lanes. Then reject a name that has both. The 20 functions whose two signatures differ need the sidecar to accept the builtin's arguments, or an adapter in the compiled lane.
+Make the standard libraries ordinary source over builtins, as `Language/reference/language/standard-libraries.md` describes them, and teach the compiled lane to run those builtins through the first-party sidecars, as it already does for `CsvRead` and `FileReadText`. Keep manifest wrapper functions for native code outside the toolchain, with no source body, dispatched to the sidecar in both lanes. Then reject a name that has both. The 20 functions whose two signatures differ need the sidecar to accept the builtin's arguments, or an adapter in the compiled lane.
 
 Status: Resolved
 
 Resolution:
-Done as suggested. The eleven libraries declare no wrappers; the compiled lane lowers 39 library builtins to sidecar calls from the table in `internal/builtin/sidecar.go`, which `TestSidecarBuiltinTableAgreesWithTypechecker` checks against the typechecker. A handle is an `Int` in the builtin and a typed handle on the wire. The `pdf` and `plot` sidecars take the builtins' flat arguments in place of records. A source function with the name of a manifest wrapper function is a compile error (`Language/Testing/CompiledOctxiliary/invalid/wrapper_function_defined_twice.octfail`), and the reference states the rule in `tooling/33-oct-pkg.md`. Each library gives the same results as before in both lanes with sidecars present.
+Done as suggested. The eleven libraries declare no wrappers; the compiled lane lowers 39 library builtins to sidecar calls from the table in `internal/builtin/sidecar.go`, which `TestSidecarBuiltinTableAgreesWithTypechecker` checks against the typechecker. A handle is an `Int` in the builtin and a typed handle on the wire. The `pdf` and `plot` sidecars take the builtins' flat arguments in place of records. A source function with the name of a manifest wrapper function is a compile error (`Language/Testing/CompiledOctxiliary/invalid/wrapper_function_defined_twice.octfail`), and the reference states the rule in `tooling/packages-and-dependencies.md`. Each library gives the same results as before in both lanes with sidecars present.
 
 Three defects had been hidden by the stub bodies, since no function with record arguments was ever defined by its manifest alone: the typechecker could not resolve a transport type that a manifest qualified with its own package's name; the interpreter refused such a record ("expects record Main.TestOptions, got TestOptions"); and the compiled lane could not resolve a call to an imported package's wrapper function. All three are fixed, and the generic wrapper fixture that was compiled-only runs in both lanes.
 
@@ -749,14 +749,14 @@ Status: Open
 ---
 
 Observation:
-An `Int` is accepted where a `Float` is declared, and the two lanes then disagree about the value. `let x: Float = 1` followed by `x / 2` is `0` interpreted and `0.5` compiled. The same holds for an `Int` variable bound as `Float`, an `Int` argument to a `Float` parameter, and an `Int` array literal used as a `Float[]` local, argument, return value or record field. The typechecker accepts all of them, the compiled lane converts, and the interpreter keeps the `Int`. `Language/reference/language/03-expressions.md` says "Implicit conversion is not allowed", and `docs/COMPILED_SUPPORT.md` (M28a) records the compiled conversion as a fix. Found while writing contracts for `[1 ... n]` in a `Float[]` context; no contract was written for it.
+An `Int` is accepted where a `Float` is declared, and the two lanes then disagree about the value. `let x: Float = 1` followed by `x / 2` is `0` interpreted and `0.5` compiled. The same holds for an `Int` variable bound as `Float`, an `Int` argument to a `Float` parameter, and an `Int` array literal used as a `Float[]` local, argument, return value or record field. The typechecker accepts all of them, the compiled lane converts, and the interpreter keeps the `Int`. `Language/reference/language/expressions.md` says "Implicit conversion is not allowed", and `docs/COMPILED_SUPPORT.md` (M28a) records the compiled conversion as a fix. Found while writing contracts for `[1 ... n]` in a `Float[]` context; no contract was written for it.
 
 Suggestion:
 Decide which of the three is the language. If an `Int` does not convert, reject it in the typechecker and say to write `1.0` or `Float(n)`. If it does, the interpreter has to convert at every place the typechecker accepts it, and the reference has to say so.
 
 Status: Resolved
 
-Resolution: The declaration decides: `let x: Float = 1` binds the `Float`. The interpreter now converts at every place the typechecker admits an `Int` for a `Float`, or an `Int` or `Float` for a `Complex` (`internal/interpret/conform.go`), and the compiled lane converts at the places where it did not build or panicked: flow sites, row and element assignment, record update fields, enum payloads, nested arrays, vectors and matrices. The rule is in "Declared types and numeric values" in `02-types.md`; contracts are under `Language/Types/DeclaredNumericTypes`, 30 facts in both lanes.
+Resolution: The declaration decides: `let x: Float = 1` binds the `Float`. The interpreter now converts at every place the typechecker admits an `Int` for a `Float`, or an `Int` or `Float` for a `Complex` (`internal/interpret/conform.go`), and the compiled lane converts at the places where it did not build or panicked: flow sites, row and element assignment, record update fields, enum payloads, nested arrays, vectors and matrices. The rule is in "Declared types and numeric values" in `types.md`; contracts are under `Language/Types/DeclaredNumericTypes`, 30 facts in both lanes.
 
 ---
 
@@ -803,7 +803,7 @@ Status: Open
 ---
 
 Observation:
-A state local read after a `suspend` is accepted, and the two lanes give different values. `state Run { var x = 7  suspend  return x }` returns `7` interpreted and `0` compiled. `Language/reference/runtime/21-octomata.md` says state locals "do not cross `goto`, `suspend`, `yield`, or turn boundaries". The typechecker enforces this for `yield` only, and only for the block the `yield` stands in: a local of an enclosing block stays in scope after a nested `yield`, and a loop that contains one is not treated as a boundary. `Experiments/RfAdaptiveLinkControllerProbe/M0` kept its index and its result in locals across a `suspend`; its test passed interpreted on a result of two elements where one per sample was meant, and failed compiled. It now keeps them on the board. No other source in the repository reads a local after a `suspend`.
+A state local read after a `suspend` is accepted, and the two lanes give different values. `state Run { var x = 7  suspend  return x }` returns `7` interpreted and `0` compiled. `Language/reference/runtime/flows-and-state-machines.md` says state locals "do not cross `goto`, `suspend`, `yield`, or turn boundaries". The typechecker enforces this for `yield` only, and only for the block the `yield` stands in: a local of an enclosing block stays in scope after a nested `yield`, and a loop that contains one is not treated as a boundary. `Experiments/RfAdaptiveLinkControllerProbe/M0` kept its index and its result in locals across a `suspend`; its test passed interpreted on a result of two elements where one per sample was meant, and failed compiled. It now keeps them on the board. No other source in the repository reads a local after a `suspend`.
 
 Suggestion:
 Treat `suspend` as `yield` is treated, and drop the locals of every enclosing block of the state body, not only the innermost. When a name fails to resolve for this reason, say that it was a state local before a turn boundary and belongs on the board; today the message is "undefined variable".
@@ -867,7 +867,7 @@ Resolution: The cause was the record, not `Append`: a record field, a `with` rep
 ---
 
 Observation:
-The reference says "Implicit conversion is not allowed" (`03-expressions.md`), and mixed `Int` and `Float` arithmetic and comparison are accepted and give a `Float` result in both lanes: `3 + 1.5`, `3 * 1.5`, `3 > 1.5`, `[1.5, 2.5] * 3`. One contract pins it, `Language/Expressions/Arithmetic/valid/mixed_division_promotes_to_float.octest`, for `/` only. The reference does not state the promotion.
+The reference says "Implicit conversion is not allowed" (`expressions.md`), and mixed `Int` and `Float` arithmetic and comparison are accepted and give a `Float` result in both lanes: `3 + 1.5`, `3 * 1.5`, `3 > 1.5`, `[1.5, 2.5] * 3`. One contract pins it, `Language/Expressions/Arithmetic/valid/mixed_division_promotes_to_float.octest`, for `/` only. The reference does not state the promotion.
 
 Suggestion:
 Decide whether `1.5 + 1` is the language. If it is, the reference should say so beside the declared-type rule, and the other operators need contracts. If it is not, the typechecker should reject it and say to write `1.0`.
@@ -1027,7 +1027,7 @@ One rule in both lanes: an array loads as what the declared type says it is.
 
 Status: Resolved
 
-Resolution: Both materialisers load an array as the declared vector, matrix (rows of one length) or refined array (admitted whole). Contracts: `Language/Data/Octagon/Load/valid/load_octagon_arrays_as_declared.octest` and `Language/Data/Octagon/Load/invalid/load_octagon_refined_array_refused.octfail`, both lanes. Reference: `34-octagon.md`.
+Resolution: Both materialisers load an array as the declared vector, matrix (rows of one length) or refined array (admitted whole). Contracts: `Language/Data/Octagon/Load/valid/load_octagon_arrays_as_declared.octest` and `Language/Data/Octagon/Load/invalid/load_octagon_refined_array_refused.octfail`, both lanes. Reference: `octagon.md`.
 
 ---
 
@@ -1095,7 +1095,7 @@ Observation:
 A file can hold a value whose type is declared in a package the file does not import, and then cannot read its fields: with `Config.Service { Listen: Net.Address }` and only `import Config`, `service.Listen.Host` reports "type 'Net.Address' has no field 'Host' ... 'service.Listen' has type Net.Address, which has no fields". The typechecker of a package knows the declarations of the packages it imports and no others. The message does not say that an import is what is missing. Relatedly, a transparent alias (`concept Count = Int`) cannot be named from another package at all ("package 'Net' has no type 'Count'"), which the reference does not say.
 
 Suggestion:
-Say "import Net to read the fields of Net.Address" in the diagnostic; and state in `18-concepts.md` that a transparent alias is local to its package, or let it be named.
+Say "import Net to read the fields of Net.Address" in the diagnostic; and state in `concepts-and-refinements.md` that a transparent alias is local to its package, or let it be named.
 
 Status: Open
 
@@ -1119,7 +1119,7 @@ Permit a propagated call as a statement, as an unwrapped one is.
 
 Status: Resolved
 
-Resolution: The typechecker permits it; both lanes already ran it. Contract: `Language/Errors/Fallible/valid/propagation_as_a_statement.octest`, both lanes. Reference: `06-errors.md`.
+Resolution: The typechecker permits it; both lanes already ran it. Contract: `Language/Errors/Fallible/valid/propagation_as_a_statement.octest`, both lanes. Reference: `errors.md`.
 
 ---
 
@@ -1163,7 +1163,7 @@ Give `Json.Load<T>` the rule the text readers have, and document it.
 
 Status: Resolved
 
-Resolution: `Json.Load<T>` goes through `prepareArtifactRead`. Contracts: `Language/Builtins/Json/artifact/json_artifact.octest` and `Language/Builtins/Json/invalid/artifact_evaluation_refuses_load.octfail`. Documented in `Language/reference/tooling/31-octest.md`.
+Resolution: `Json.Load<T>` goes through `prepareArtifactRead`. Contracts: `Language/Builtins/Json/artifact/json_artifact.octest` and `Language/Builtins/Json/invalid/artifact_evaluation_refuses_load.octfail`. Documented in `Language/reference/tooling/testing.md`.
 
 ---
 
@@ -1178,7 +1178,7 @@ Status: Open
 ---
 
 Observation:
-An `.octfail` expectation cannot contain a double quote. `expect artifact error: "... read \"data/tickets.json\"; only ..."` is matched with the backslashes in it, so it never matches a message that quotes a path. The expectation for `Language/Builtins/Json/invalid/artifact_evaluation_refuses_load.octfail` had to stop before the quoted path. `31-octest.md` does not say how the substring is read.
+An `.octfail` expectation cannot contain a double quote. `expect artifact error: "... read \"data/tickets.json\"; only ..."` is matched with the backslashes in it, so it never matches a message that quotes a path. The expectation for `Language/Builtins/Json/invalid/artifact_evaluation_refuses_load.octfail` had to stop before the quoted path. `testing.md` does not say how the substring is read.
 
 Suggestion:
 Read the substring as an Oct string literal, with `\"` and `\\`, or say in the reference that it is taken verbatim up to the last quote.
@@ -1259,7 +1259,7 @@ Status: Open
 
 ---
 Observation:
-`oct json infer` printed `record` for an object, the Json section of `Language/reference/language/17-standard-libraries.md` said "a JSON object is a `record`", and every Json contract declared records, while `Language/reference/language/18-concepts.md` says `concept` is preferred when a declaration names a valid domain value shape. A record-shaped concept already read and wrote as a record in both lanes, with no contract that said so. The tree has about 1860 `record` declarations and 30 record-shaped concepts, so the habit and the reference disagree well beyond Json.
+`oct json infer` printed `record` for an object, the Json section of `Language/reference/language/standard-libraries.md` said "a JSON object is a `record`", and every Json contract declared records, while `Language/reference/language/concepts-and-refinements.md` says `concept` is preferred when a declaration names a valid domain value shape. A record-shaped concept already read and wrote as a record in both lanes, with no contract that said so. The tree has about 1860 `record` declarations and 30 record-shaped concepts, so the habit and the reference disagree well beyond Json.
 
 Suggestion:
 Print `concept`, state in the Json section that a concept with fields is the declaration of a document, and hold it with a contract.

@@ -88,6 +88,7 @@ Native compilation uses the Go toolchain. Release archives and their installatio
 - [Science libraries](docs/science/README.md) — numerical, physical, statistical, and domain packages by task.
 - [Documentation](docs/README.md) — CLI, architecture, testing, and development guides.
 - [Language reference](Language/reference/README.md) — authoritative syntax and supported features.
+- [Learn Oct](Language/reference/learn/01-first-program.md) — five runnable lessons for programmers, from everyday syntax to Oct's unusual features.
 - [Language contracts](Language/README.md) — valid and invalid executable specimens.
 
 Concept Vulkan language and compiler development has moved to the [Concept repository](https://github.com/yuechen-li-dev/Concept). Oct retains the historical Prometheus artifacts that consume its output.

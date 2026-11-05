@@ -48,7 +48,7 @@ value. A `Void ! Error` call could be propagated only through a `match`.
 The typechecker now permits a propagated call as a statement, as it permits
 an unwrapped one. Both lanes already ran it; the change is one case in one
 function. It is a language change, so it has its own commit (`2d1a7ef`), a
-contract under `Language/Errors/Fallible`, and a line in `06-errors.md`.
+contract under `Language/Errors/Fallible`, and a line in `errors.md`.
 
 Still open, in `FEEDBACK.md`: a `Void ! Error` function cannot
 `return error("...")`; it can only fail by propagating.

@@ -55,6 +55,6 @@ allowed. No package may declare a function named `Load`, `Parse`, `Save` or
 to start from.
 
 The full rules, with the table of types, are in
-`Language/reference/language/17-standard-libraries.md` under "Json". The
+`Language/reference/language/standard-libraries.md` under "Json". The
 contracts are in `Language/Builtins/Json`. The specification is
 `internal/json/JSON_V2_LADDER.md`.

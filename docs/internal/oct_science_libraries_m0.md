@@ -30,7 +30,7 @@ The audit covered 50 direct `Libraries/` directories: 154 `.oct` files (includin
 
 Changes were narrow additions or correctness repairs in established packages. Exact templates removed type duplication only where the algorithm stayed ordinary. Refined Concepts now own reusable single-value domains; relational and algorithmic failures remain fallible. `batch` is used only for independent ordered mapping. `with` configures immutable simulation scenarios.
 
-A follow-up validation audit found that `StaticAssert` is not a general library-precondition mechanism: it executes only in the compiler-owned artifact/compiled-data static phase. Ordinary `Require(parameter condition)` is also invalid because parameters are outside its bounded proof evaluator. This conflicts with the older `internal/libraries/LIBRARY_MODERNIZATION_M7_RETURN_ERROR_AUDIT.md`, which labels parameter guards as direct `Require` candidates. The current `Language/reference/language/18-concepts.md` is authoritative, so this pass uses refined Concept constructors for reusable scalar domains instead.
+A follow-up validation audit found that `StaticAssert` is not a general library-precondition mechanism: it executes only in the compiler-owned artifact/compiled-data static phase. Ordinary `Require(parameter condition)` is also invalid because parameters are outside its bounded proof evaluator. This conflicts with the older `internal/libraries/LIBRARY_MODERNIZATION_M7_RETURN_ERROR_AUDIT.md`, which labels parameter guards as direct `Require` candidates. The current `Language/reference/language/concepts-and-refinements.md` is authoritative, so this pass uses refined Concept constructors for reusable scalar domains instead.
 
 ## 5. Algorithms
 

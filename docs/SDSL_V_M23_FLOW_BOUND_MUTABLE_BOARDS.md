@@ -9,10 +9,10 @@ This keeps the Oct distinction intact:
 
 Reference files used:
 
-- `Language/reference/runtime/21-octomata.md`
-- `Language/reference/language/04-control-flow.md`
-- `Language/reference/language/11-records.md`
-- `Language/reference/language/10-rules.md`
+- `Language/reference/runtime/flows-and-state-machines.md`
+- `Language/reference/language/control-flow.md`
+- `Language/reference/language/records-and-tables.md`
+- `Language/reference/language/rules-and-style.md`
 
 ## Syntax
 

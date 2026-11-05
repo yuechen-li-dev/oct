@@ -88,4 +88,4 @@ Potential future wrapper waves may add:
 
 ## Explicit inconsistency notes
 
-The user request used `Unit` in several signatures, while `Language/reference/language/02-types.md` defines `Void` (not `Unit`). For side-effecting wrapper helpers, this wave keeps the established Mx103b wrapper style (`Int ! Error`) to preserve call-site ergonomics in non-fallible facts while still remaining within the reference type surface.
+The user request used `Unit` in several signatures, while `Language/reference/language/types.md` defines `Void` (not `Unit`). For side-effecting wrapper helpers, this wave keeps the established Mx103b wrapper style (`Int ! Error`) to preserve call-site ergonomics in non-fallible facts while still remaining within the reference type surface.

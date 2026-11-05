@@ -105,7 +105,7 @@ let somebody = Option<String>.Some("sam")
   and `Assert.Equal`, the second argument of `Append`, a flow turn input and
   `yield`, and a candidate of `when utility Option<T>`; and an `if`, `match` or
   `switch` expression passes the type to its arms. The full list is in
-  `Language/reference/language/12-enums.md`.)*
+  `Language/reference/language/enums-and-options.md`.)*
   Where the site declares none it is written, `Option<Float>.Some(1.5)`.
   `let x = Option.Some(1.5)` is an error that says to write one or the other.
   This is the rule template applications already follow.
@@ -155,7 +155,7 @@ is written inside package `Json` but its marker.)*
 *(M4: `Json.Save(path, value)?` is a statement. The language refused a
 propagated call as a statement while it accepted an unwrapped one, which
 left a `Void ! Error` call with no way to propagate; D14 needs one. The rule
-is now the same for `?` as for `!`: `06-errors.md`.)*
+is now the same for `?` as for `!`: `errors.md`.)*
 
 ### 3.3 JSON-representable types
 
@@ -426,7 +426,7 @@ The whole-tree sweeps run once more when the ladder closes.
   - 3.1, in the typechecker and both lanes, and as Octagon data in both
     loaders and the writer.
   - `oct fmt` and the editor grammar.
-  - Reference: `12-enums.md`, `02-types.md`, `34-octagon.md`.
+  - Reference: `enums-and-options.md`, `types.md`, `octagon.md`.
   - The Verilog profile and the WebAssembly target refuse it as they refuse
     any payload enum; checked, not assumed.
 - **Tests:**
@@ -517,7 +517,7 @@ The whole-tree sweeps run once more when the ladder closes.
   files under `Experiments` and the 7 under `Libraries/IO/testdata`. For each file whose output has no refused shape,
   the printed declarations compile and `Json.Load` of that file succeeds with
   them.
-- **Exit:** The command is in `35-cli.md`. The loop "infer, paste, load" works
+- **Exit:** The command is in `cli.md`. The loop "infer, paste, load" works
   on every corpus file it accepts.
 - **Verdict:** SUCCESS, 2026-10-07. See `JSON_V2_M6.md`. The golden for each
   document that loads is a contract under `Language/Tooling/JsonInfer`: the

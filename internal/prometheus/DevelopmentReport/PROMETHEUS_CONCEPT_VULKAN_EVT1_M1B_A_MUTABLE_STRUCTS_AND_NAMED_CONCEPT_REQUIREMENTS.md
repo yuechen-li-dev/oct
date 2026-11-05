@@ -31,7 +31,7 @@ Inspected before implementation:
 - `Examples/Concept-Vulkan/evt1_m1a_language.concept`
 - `Examples/Concept-Vulkan/evt1_m1a_vulkan.concept`
 - checked M1A generated outputs under `internal/conceptvulkan/generated/`
-- Oct concept terminology in `Language/reference/language/18-concepts.md`
+- Oct concept terminology in `Language/reference/language/concepts-and-refinements.md`
 - historical Oct concept background in `docs/experiments/CONCEPTS_M0.md`
 
 ## 3. Inspected ownership and `immovable` authority

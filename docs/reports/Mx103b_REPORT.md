@@ -58,6 +58,6 @@ Also wired a command-level Go test that verifies new fact pass markers are prese
 
 ## Explicit inconsistency notes
 
-`Language/reference/language/02-types.md` does not currently define `Dynamic` or `Bytes` primitive types. Mx103b therefore uses `String` and `Int[]` contracts for JSON/bytes payloads in this wave. This is a deliberate scope-compatible fallback and should be reconciled in a future language-reference/API alignment pass.
+`Language/reference/language/types.md` does not currently define `Dynamic` or `Bytes` primitive types. Mx103b therefore uses `String` and `Int[]` contracts for JSON/bytes payloads in this wave. This is a deliberate scope-compatible fallback and should be reconciled in a future language-reference/API alignment pass.
 
-`Language/reference/language/05-functions.md` does not define variadic function parameters, so `IO.Path.JoinPath` is currently exposed as `JoinPath(parts: String[])` rather than `Join(a, b, ...rest)`.
+`Language/reference/language/functions.md` does not define variadic function parameters, so `IO.Path.JoinPath` is currently exposed as `JoinPath(parts: String[])` rather than `Join(a, b, ...rest)`.

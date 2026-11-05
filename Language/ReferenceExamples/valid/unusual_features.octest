@@ -1,0 +1,42 @@
+package ReferenceExamples
+
+template record ReadingBox<T> { Value: T }
+
+query PositiveReadings(source: Int[], limit: Int) yields Int {
+    filter { item > 0 }
+    take limit
+}
+
+enum ReadingAction { Wait Review Urgent }
+
+fn ChooseReadingAction(level: Int) -> ReadingAction {
+    return when utility ReadingAction {
+        case ReadingAction.Urgent when level > 90 score 100
+        case ReadingAction.Review when level > 50 score 60
+        else ReadingAction.Wait
+    }
+}
+
+flow ReadingCounter() accepts amount: Int yields Int -> Int {
+    board { Total: Int }
+    state Count {
+        board.Total = board.Total + amount
+        yield board.Total
+        goto Count
+    }
+}
+
+[Fact]
+fn UnusualFeaturesUseOrdinaryTypedValues() -> Void ! Error {
+    let boxed = ReadingBox<Int> { Value: 7 }
+    Assert.Equal(7, boxed.Value, "templates specialize to concrete records")
+    Assert.Equal(2, Query.Count(PositiveReadings([-1, 2, 0, 3, 4], 2)), "queries stop at take")
+    Assert.Equal(ReadingAction.Urgent, ChooseReadingAction(95), "the highest eligible score wins")
+
+    let counter = ReadingCounter()
+    Step(counter, 2)
+    Assert.Equal(2, Yielded(counter)?, "the first turn yields a value")
+    Step(counter, 5)
+    Assert.Equal(7, Yielded(counter)?, "the board persists between turns")
+    Assert.False(Complete(counter), "yield does not complete the flow")
+}

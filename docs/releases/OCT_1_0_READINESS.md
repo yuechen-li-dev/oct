@@ -36,7 +36,7 @@ than Go unit tests that duplicate language behavior.
    compiled compatibility promise. RC2 must either close a bounded set of
    core-language gaps or explicitly constrain the stable compiled promise with
    an owner-approved language/tooling boundary.
-4. **API-001 (P1):** `17-standard-libraries.md` identifies practical modules,
+4. **API-001 (P1):** `standard-libraries.md` identifies practical modules,
    but no release manifest separates stable library APIs from experimental or
    wrapper-dependent APIs. RC2 needs that list; it does not require library
    expansion.

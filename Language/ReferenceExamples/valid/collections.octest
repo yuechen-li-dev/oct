@@ -1,0 +1,22 @@
+package ReferenceExamples
+
+[Fact]
+fn CollectionsChooseTheirOwnOperations() -> Void {
+    let samples = [1.0, 2.0, 3.0]
+    let doubled = samples * 2.0
+    let selected = Array.Where(doubled, doubled > 3.0)
+    Assert.Equal(2, Len(selected), "an eager mask keeps the matching elements")
+    Assert.Equal(4.0, selected[0], "array order is preserved")
+
+    var changed = samples
+    changed[0] = 9.0
+    Assert.Equal(1.0, samples[0], "arrays have value semantics")
+
+    let direction = vector[1.0, 2.0]
+    let identity = matrix[[1.0, 0.0] [0.0, 1.0]]
+    let projected = identity @ direction
+    Assert.Equal(2.0, projected[1], "@ contracts a matrix with a vector")
+
+    let zeros: Float[] = [0.0 ... 3]
+    Assert.Equal(3, Len(zeros), "a repeated element constructs an array")
+}

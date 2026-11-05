@@ -1,0 +1,27 @@
+package ReferenceExamples
+
+concept Distance = Float<m>
+concept Duration = Float<s>
+concept Speed = Float<m/s>
+
+concept Journey {
+    Length: Distance
+    Elapsed: Duration
+}
+
+fn JourneySpeed(journey: Journey) -> Speed ! Error {
+    if journey.Elapsed <= 0.0s {
+        return error("elapsed time must be positive")
+    }
+    return journey.Length / journey.Elapsed
+}
+
+[Fact]
+fn DomainValuesKeepTheirMeaning() -> Void ! Error {
+    let walk = Journey { Length: 12.0m Elapsed: 3.0s }
+    let longer = walk with { Length: 20.0m }
+    Assert.Equal(4.0m/s, JourneySpeed(walk)?, "dimensions compose")
+    Assert.Equal(12.0m, walk.Length, "with preserves the original")
+    Assert.Equal(20.0m, longer.Length, "with constructs an updated value")
+    Assert.Error(JourneySpeed(walk with { Elapsed: 0.0s }), "bad input is explicit")
+}

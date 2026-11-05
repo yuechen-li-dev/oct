@@ -9,7 +9,7 @@ Scope: audit/design only (no runner behavior changes)
 - Test/benchmark/artifact executors in `internal/tester/`.
 - Project/package loading in `internal/project/project.go`.
 - Attribute parse/validation in `internal/parse/parse.go`.
-- Language reference contracts in `Language/reference/tooling/31-octest.md` and `35-cli.md`.
+- Language reference contracts in `Language/reference/tooling/testing.md` and `cli.md`.
 - Representative command-level tests under `cmd/oct/` (including mixed discovery and execution-mode tests).
 - Attribute usage across `Libraries/**/*.octest` and `Experiments/**/*.octest`.
 
@@ -174,7 +174,7 @@ Policy alignment: current architecture already strongly supports a distinct perf
 ### 7.5 Determinism/schema guidance
 
 - Discovery and publication order are deterministic; ambient effects are rejected and seeded Oct randomness remains deterministic.
-- `.octagon` emission/load contracts remain the structured-output convention; phase and path rules are normative in `31-octest.md`.
+- `.octagon` emission/load contracts remain the structured-output convention; phase and path rules are normative in `testing.md`.
 
 ---
 

@@ -1,7 +1,7 @@
 # Library Modernization M7 Audit — `return error(...)` vs `Require(...)`
 
 > **Historical audit warning (2026-08-23):** the current authority is
-> `Language/reference/language/18-concepts.md`. Ordinary `Require` cannot inspect
+> `Language/reference/language/concepts-and-refinements.md`. Ordinary `Require` cannot inspect
 > function parameters and has no runtime fallback, so the table's direct
 > “migrate to Require” recommendations are not mechanically valid. Use refined
 > Concepts for reusable single-value scalar domains; keep cross-argument,

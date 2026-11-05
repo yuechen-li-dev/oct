@@ -198,7 +198,7 @@ All 48 are now caught.
 
 Recorded in `FEEDBACK.md`:
 
-- `Language/reference/language/06-errors.md` shows fallible `match` as an
+- `Language/reference/language/errors.md` shows fallible `match` as an
   expression, `return match F() { ok(v) => v  err(_) => 3 }`, in three examples
   marked valid. The parser rejects them. Only the statement form with block
   arms works. The Entropy tests use the statement form.

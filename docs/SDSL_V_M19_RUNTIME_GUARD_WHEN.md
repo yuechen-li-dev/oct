@@ -6,8 +6,8 @@ SDSL-V follows Oct guard `when` syntax for bounded shader flow. This is not a ne
 
 Reference files used:
 
-- `Language/reference/language/04-control-flow.md`: decision-surface split, `switch`/`when` arrow spelling, semantic boolean operators, and ordinary-vs-flow context.
-- `Language/reference/runtime/21-octomata.md`: guard `when`, ordered first-true semantics, action blocks, `flow`/`state`, `goto`, `remember`, `resume`, `suspend`, board state, `when policy`, `hysteresis`, and `min_commit`.
+- `Language/reference/language/control-flow.md`: decision-surface split, `switch`/`when` arrow spelling, semantic boolean operators, and ordinary-vs-flow context.
+- `Language/reference/runtime/flows-and-state-machines.md`: guard `when`, ordered first-true semantics, action blocks, `flow`/`state`, `goto`, `remember`, `resume`, `suspend`, board state, `when policy`, `hysteresis`, and `min_commit`.
 - `Language/Expressions/UtilityWhen/M80_REPORT.md`: standalone `when utility` remains expression-level ranked choice, while `when policy` remains controller-bound and requires explicit policy fields.
 
 ## Syntax

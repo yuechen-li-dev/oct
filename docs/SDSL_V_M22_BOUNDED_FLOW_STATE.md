@@ -6,9 +6,9 @@ This milestone follows Oct reference syntax where practical, but it does not imp
 
 Reference files used:
 
-- `Language/reference/runtime/21-octomata.md`
-- `Language/reference/language/04-control-flow.md`
-- `Language/reference/language/11-records.md`
+- `Language/reference/runtime/flows-and-state-machines.md`
+- `Language/reference/language/control-flow.md`
+- `Language/reference/language/records-and-tables.md`
 - `Language/Expressions/UtilityWhen/M80_REPORT.md`
 
 ## Syntax

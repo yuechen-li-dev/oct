@@ -185,8 +185,8 @@ All are in `FEEDBACK.md` with reproductions.
 5. **Interpreted element assignment is quadratic** (above).
 
 Documentation gaps closed here, both for behaviour that already had
-contracts: arrays are values (`07-arrays.md`), and the declared-type rule
-(`02-types.md`).
+contracts: arrays are values (`arrays.md`), and the declared-type rule
+(`types.md`).
 
 ## Evidence
 

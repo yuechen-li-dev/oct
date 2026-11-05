@@ -1,0 +1,29 @@
+package ReferenceExamples
+
+fn MakeOffset(offset: Int) -> fn(Int) -> Int {
+    return fn(value: Int) -> Int with { offset: offset } {
+        return value + offset
+    }
+}
+
+fn FirstPositive(values: Int[]) -> Option<Int> {
+    for i in 0..Len(values) {
+        if values[i] > 0 { return Option.Some(values[i]) }
+    }
+    return Option.None
+}
+
+fn PositiveOrZero(values: Int[]) -> Int {
+    return match FirstPositive(values) {
+        case Option.Some(value) => value
+        case Option.None => 0
+    }
+}
+
+[Fact]
+fn FunctionsAndMissingValuesAreExplicit() -> Void {
+    let addFive = MakeOffset(5)
+    Assert.Equal(8, addFive(3), "a function keeps its captured value")
+    Assert.Equal(4, PositiveOrZero([-2, 0, 4]), "match reads the payload")
+    Assert.Equal(0, PositiveOrZero([]), "absence is an ordinary alternative")
+}

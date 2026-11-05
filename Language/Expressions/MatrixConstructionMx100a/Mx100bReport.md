@@ -12,8 +12,8 @@ These were chosen because they are benchmark/experiment-facing or repeated-diago
 
 ## Docs updated
 
-- `Language/reference/language/16-vectors-and-matrices.md` now documents constructor APIs, literal-vs-constructor guidance, shape accessors (`rows`, `cols`), and compiled parity for `m[r, c]`.
-- `Language/reference/language/08-units.md` now shows a dimensioned matrix example using `Matrix.tabulate(...)`.
+- `Language/reference/language/vectors-matrices-and-tensors.md` now documents constructor APIs, literal-vs-constructor guidance, shape accessors (`rows`, `cols`), and compiled parity for `m[r, c]`.
+- `Language/reference/language/units.md` now shows a dimensioned matrix example using `Matrix.tabulate(...)`.
 
 ## What intentionally remained as literals
 

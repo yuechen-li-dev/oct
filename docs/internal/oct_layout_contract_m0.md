@@ -93,7 +93,7 @@ evidence only where current code agrees.
 
 ### Records and record tables
 
-`Language/reference/language/11-records.md` defines ordinary records as nominal,
+`Language/reference/language/records-and-tables.md` defines ordinary records as nominal,
 immutable product values. Declaration field order is type/schema information,
 but record construction order is explicitly irrelevant.
 
@@ -122,7 +122,7 @@ AST/typechecker state.
 
 ### Concepts
 
-`Language/reference/language/18-concepts.md` defines:
+`Language/reference/language/concepts-and-refinements.md` defines:
 
 - transparent aliases over existing concrete types;
 - record-shaped Concepts lowered to ordinary nominal records;
@@ -139,11 +139,11 @@ O” without widening Concept semantics.
 
 ### Arrays, vectors, and matrices
 
-`Language/reference/language/07-arrays.md` makes arrays homogeneous ordered
+`Language/reference/language/arrays.md` makes arrays homogeneous ordered
 containers. Runtime length and integer index order are observable. Arrays can
 be jagged, so nested-array rectangular shape is not a semantic default.
 
-`Language/reference/language/16-vectors-and-matrices.md` separates arrays from
+`Language/reference/language/vectors-matrices-and-tensors.md` separates arrays from
 mathematical vectors/matrices. Matrix row/column shape and contraction axes are
 semantic mathematical structure. Current ordinary MIR carries element types
 and operation-specific structure but has no general data-object contract for
@@ -153,7 +153,7 @@ not the mathematical meaning.
 
 ### Batch and `MIRBatchMap`
 
-`Language/reference/runtime/22-batch.md` defines a one-input-item to
+`Language/reference/runtime/batch.md` defines a one-input-item to
 one-output-item mapping over arrays. Output length and index order equal input
 length/order; the lowest failing input index wins and no partial output is
 published.
@@ -173,7 +173,7 @@ range execution and direct indexed result writes.
 
 ### FLOW and board state
 
-`Language/reference/runtime/21-octomata.md` defines board memory as private,
+`Language/reference/runtime/flows-and-state-machines.md` defines board memory as private,
 fixed-field-shape, behavior-local control memory. It is not general application
 storage. Fields are declared up front, default initialized, mutated only inside
 states, and observable through detached typed `BoardSnapshot` values. Yield,
@@ -189,7 +189,7 @@ semantic compatibility identity than for physical memory layout.
 
 ### Octagon
 
-`Language/reference/tooling/34-octagon.md` defines `.octagon` as a data-only,
+`Language/reference/tooling/octagon.md` defines `.octagon` as a data-only,
 single-value typed interchange format. It carries scalar/array/record/enum
 surface data. A record table is represented by its nominal table literal and
 complete column arrays. The loader materializes against an expected Oct type.

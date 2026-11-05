@@ -480,7 +480,7 @@ No Prometheus-scoped `.octbin` assumption was found in active scripts/docs. Gene
 
 | Class | Existing material and current truth | Treatment |
 |---|---|---|
-| 1. Public current | `Language/reference/runtime/23-prometheus.md` is canonical but minimal; `docs/SDSL_V_LANGUAGE_SPEC.md` is the current shader-language spec | retain authority; expand/link from stable Prometheus docs in R2 |
+| 1. Public current | `Language/reference/runtime/prometheus.md` is canonical but minimal; `docs/SDSL_V_LANGUAGE_SPEC.md` is the current shader-language spec | retain authority; expand/link from stable Prometheus docs in R2 |
 | 2. Internal architecture | Marionette README/test-lane guide; native README/build notes are partly current and partly superseded | rewrite current internal guides separately; preserve replaced versions through history |
 | 3. Historical milestone | all `DevelopmentReport`, `ValidationReport`, `docs/reports/prometheus`, M/P/PX/SDSL milestone reports | preserve verbatim and index by capability/date |
 | 4. Experiment records | six Prometheus experiment labs, especially 312-file SGEMM lab | preserve; add indexes explaining question, status, and runtime relevance |

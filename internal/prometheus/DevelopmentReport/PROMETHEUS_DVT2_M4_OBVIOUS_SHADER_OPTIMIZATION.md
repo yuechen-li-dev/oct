@@ -216,7 +216,7 @@ payload roots.
 
 ## Reference/documentation gap
 
-`Language/reference/language/16-vectors-and-matrices.md` describes tensor
+`Language/reference/language/vectors-matrices-and-tensors.md` describes tensor
 statement lowering as deferred historical work, while current production SDSL-V
 supports `tile`, `reg_tile`, `matrix_view`, and cooperative contraction
 intrinsics. The reference remains authoritative for Oct syntax, but it does not

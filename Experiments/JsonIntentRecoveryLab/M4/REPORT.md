@@ -151,5 +151,5 @@ Still out of scope after M4:
 
 ## Language/reference consistency notes
 
-- `when utility` usage aligns with `Language/reference/runtime/21-octomata.md` expression-form guidance.
+- `when utility` usage aligns with `Language/reference/runtime/flows-and-state-machines.md` expression-form guidance.
 - M4 introduces compatibility `Kind == "null"` node handling in library code, while `Language/reference` does not define a general Oct null value. This is intentional and documented as a compatibility-only sentinel boundary.

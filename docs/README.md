@@ -4,6 +4,7 @@ Start with [Architecture](ARCHITECTURE.md) for the implementation map and [Repos
 
 | Task | Start here |
 | --- | --- |
+| Learn Oct or look up a language feature | [Five runnable lessons](../Language/reference/README.md), [coverage map](../Language/reference/coverage.md), [glossary](../Language/reference/glossary.md) |
 | Use the CLI or run tests | [CLI](CLI.md), [Testing](TESTING.md), [Go test lanes](GO_TEST_LANES.md) |
 | Build or release | [Compiled support](COMPILED_SUPPORT.md), [Backends](BACKENDS.md), [1.1 release notes](releases/OCT_1_1_RELEASE_NOTES.md), [1.1 installation](releases/INSTALL_1_1.md) |
 | Explore examples | [Examples guide](../Examples/README.md) |

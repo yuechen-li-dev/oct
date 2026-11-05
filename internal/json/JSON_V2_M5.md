@@ -97,7 +97,7 @@ wrote, not the staging directory (`octjson.LoadFileAs`). Its own commit:
 `b5c6f4e`.
 
 The rule was in the code and not in the reference for any reader. It is in
-`31-octest.md` now. The CSV readers are still refused outright, which is why
+`testing.md` now. The CSV readers are still refused outright, which is why
 `FmBrownNoiseKalman/M2` cannot be evaluated; that is in `FEEDBACK.md`.
 
 ## Keys

@@ -37,8 +37,8 @@ Repo surfaces inspected:
 - `tools/build_sidecars`
 - `cmd/oct/generic_octxiliary_test.go`
 - `Language/Testing/CompiledOctxiliary`
-- `Language/reference/tooling/34-octagon.md`
-- `Language/reference/runtime/uibridge.md`
+- `Language/reference/tooling/octagon.md`
+- `Language/reference/tooling/uibridge-protocol.md`
 - `Language/Data/Octagon/...` fixtures
 - `internal/octagon`
 
@@ -531,7 +531,7 @@ Read first:
 - docs/internal/cabi_chimera_make_recon_make6.md
 - docs/internal/oct_make_status_make5c.md
 - docs/internal/octxiliary.md
-- Language/reference/tooling/34-octagon.md
+- Language/reference/tooling/octagon.md
 
 Implement the first opt-in Rust Octxiliary Chimera proof only.
 
