@@ -147,6 +147,31 @@ func TestNamespaceResolutionUsesExplicitRoots(t *testing.T) {
 	if len(module.Dependencies) != 2 {
 		t.Fatalf("dependencies: %#v", module.Dependencies)
 	}
+	found := false
+	for _, dependency := range module.Dependencies {
+		if dependency.Path == "@root/0/Shader/Arithmetic.sdslv" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("external root lost portable identity: %#v", module.Dependencies)
+	}
+	// Relocating an explicit library root must preserve replay identity, even
+	// when the CI checkout and OS temp directory reside on different volumes.
+	moved := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(moved, "Shader"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(moved, "Shader", "Arithmetic.sdslv"), library, 0644); err != nil {
+		t.Fatal(err)
+	}
+	relocated, err := modules.LoadWithOptions(entry, modules.Options{SearchPaths: []string{moved}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if module.DependencyIdentity != relocated.DependencyIdentity {
+		t.Fatal("library root relocation changed replay identity")
+	}
 }
 
 func TestImportedDiagnosticUsesTheDeclaringFile(t *testing.T) {

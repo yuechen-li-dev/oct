@@ -19,6 +19,8 @@ extern "C" {
 VkResult prom_vk_queue_submit(VkQueue queue, uint32_t count, const VkSubmitInfo* submits, VkFence fence);
 VkResult prom_vk_device_wait_idle(VkDevice device);
 int32_t prom_vk_concept_queue_submit(void* owner, VkQueue queue, VkCommandBuffer commands, VkFence fence);
+int32_t prom_vk_concept_queue_submit_sync(void *, VkQueue, VkCommandBuffer, VkFence, VkSemaphore,
+                                          VkSemaphore);
 int prom_reactor_runtime_concept_reduction_detach(void* handle);
 void* prom_reactor_runtime_concept_reduction_state(void* handle);
 int prom_reactor_runtime_set_concept_reduction_state(void* handle, void* state);
@@ -2122,6 +2124,7 @@ int prom_reactor_runtime_compiled_model_session_test_inject_create_fault_impl(
     void* handle, uint32_t fault);
 /* Native-only: fail one synchronous binding after preceding weights transferred.
    1 record, 2 submit, 4 completion observation, 8 descriptor admission. */
+int prom_reactor_runtime_model_block_test_inject_prefetch_fault_impl(void *, uint64_t, uint32_t, uint32_t);
 int prom_reactor_runtime_model_block_test_inject_weight_fault_impl(
     void* handle,uint64_t block_id,uint32_t index,uint32_t fault);
 int prom_reactor_runtime_model_block_test_inject_impl(void* handle, uint64_t block_id,

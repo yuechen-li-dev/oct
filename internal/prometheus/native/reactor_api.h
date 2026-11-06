@@ -2803,6 +2803,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_owner_create(
 PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_retarget(
     void* handle, const PrometheusCompiledModelRetargetRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+/* May run concurrently with active compute. Prefetch evidence reports operation
+   status/creation; query active compute counters after joining the scoped task.
+   Activation, reset and destruction require that join and remain serialized. */
 PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_prefetch(
     void* handle, const PrometheusCompiledModelPrefetchRequest* request,
     PrometheusModelBlockEvidence* out_evidence);

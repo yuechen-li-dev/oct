@@ -138,7 +138,7 @@ func LoadWithOptions(path string, options Options) (ast.Module, error) {
 	}
 	out.Decls = append(dependencies, out.Decls...)
 	for _, u := range l.order {
-		relative, err := filepath.Rel(filepath.Dir(l.entry), u.abs)
+		relative, err := l.dependencyPath(u.abs)
 		if err != nil {
 			return ast.Module{}, err
 		}
@@ -153,6 +153,30 @@ func LoadWithOptions(path string, options Options) (ast.Module, error) {
 	sum := sha256.Sum256(encoded)
 	out.DependencyIdentity = hex.EncodeToString(sum[:])
 	return out, nil
+}
+
+// Identity paths describe graph placement, never a machine's drive or checkout
+// location. Sources under explicit external roots use their ordered root slot.
+func (l *loader) dependencyPath(path string) (string, error) {
+	relative, err := filepath.Rel(filepath.Dir(l.entry), path)
+	inside := func(p string, err error) bool {
+		return err == nil && p != ".." && !strings.HasPrefix(p, ".."+string(filepath.Separator))
+	}
+	if inside(relative, err) {
+		return relative, nil
+	}
+	for index, root := range l.options.SearchPaths {
+		abs, rootErr := canonical(root)
+		if rootErr != nil {
+			continue // Resolution already selected an existing source root.
+		}
+		candidate, candidateErr := filepath.Rel(abs, path)
+		if inside(candidate, candidateErr) {
+			return fmt.Sprintf("@root/%d/%s", index, filepath.ToSlash(candidate)), nil
+		}
+	}
+	// Relative imports outside the entry tree retain their existing identity.
+	return relative, err
 }
 
 func canonical(path string) (string, error) {

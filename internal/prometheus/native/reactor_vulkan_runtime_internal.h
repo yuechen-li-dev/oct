@@ -344,10 +344,10 @@ typedef struct prom_model_block_state {
      immediate successor. */
   prom_model_block_weight_resource prefetch_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   prom_vk_buffer prefetch_weight_upload;
-  VkCommandBuffer prefetch_command_buffer;
-  VkFence prefetch_fence;
+  void *concept_prefetch_owner;
+  uint32_t prefetch_test_index;
+  uint32_t prefetch_test_flags;
   VkQueue prefetch_queue;
-  VkCommandPool prefetch_command_pool;
   uint32_t prefetch_queue_family;
   uint32_t active_weight_window;
   uint32_t prefetch_state;

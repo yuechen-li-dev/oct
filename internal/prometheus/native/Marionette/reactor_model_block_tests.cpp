@@ -18,6 +18,9 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <future>
+#include <atomic>
+#include <thread>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -2555,10 +2558,12 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
         incoming[t] = t < 1024 ? Row{1.0 + t % 5, -1.0 - .5 * (t % 5), .75, -1.25}
                                : Row{.5 * (1 + t % 7), -.75, 1.25, -2};
     const auto expected = reference(incoming);
-    for (const unsigned policy :
-         {PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32,
-          PROM_MAIN_ATTENTION_ROUTE_AUTO})
+    for (const unsigned scenario : std::array<unsigned, 4>{
+             PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32,
+             PROM_MAIN_ATTENTION_ROUTE_AUTO, 4u})
     {
+        const bool prefetch = scenario == 4u;
+        const unsigned policy = prefetch ? PROM_MAIN_ATTENTION_ROUTE_AUTO : scenario;
         const bool standalone = policy == PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32;
         const int buffersBefore = ConceptVkTestLiveBuffers(),
                   pipelinesBefore = ConceptVkTestLivePipelines();
@@ -2575,7 +2580,8 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
         PrometheusCompiledModelSessionCreateRequest session{};
         session.struct_size = sizeof(session);
         session.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
-        session.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
+        session.execution_profile = prefetch ? PROM_MODEL_EXECUTION_PROFILE_PREFETCH
+                                             : PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
         session.main_attention_route_policy = policy;
         std::uint64_t sessionID{}, id{};
         PrometheusCompiledModelSessionEvidence sessionEvidence{};
@@ -2604,6 +2610,27 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
             "create all three disjoint Concept portfolios");
         if (!id)
             return;
+        if (prefetch)
+        {
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_get_evidence(
+                             raw, sessionID, &sessionEvidence),
+                         "read admitted profile");
+            ASSERT_EQUAL(PROM_MODEL_EXECUTION_PROFILE_PREFETCH,
+                         sessionEvidence.selected_execution_profile,
+                         "qualification requires an actual independent transfer family");
+            if (sessionEvidence.selected_execution_profile != PROM_MODEL_EXECUTION_PROFILE_PREFETCH)
+                return;
+            prom_vk_runtime_services services{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(raw, &services),
+                         "read actual queue owners");
+            ASSERT_TRUE(services.compute_queue != services.transfer_queue &&
+                            services.compute_queue_family_index !=
+                                services.transfer_queue_family_index,
+                        "compute and transfer use distinct Vulkan queues/families");
+            std::cout << "M11 compute_family=" << services.compute_queue_family_index
+                      << " transfer_family=" << services.transfer_queue_family_index << '\n';
+        }
         ASSERT_EQUAL(pipelinesBefore + 37, ConceptVkTestLivePipelines(),
                      "Noise, Context and Main retain their own Concept pipelines");
         std::vector<std::uint16_t> image(1024u * 3840u), timestep(256, 0);
@@ -2628,8 +2655,10 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
         ASSERT_EQUAL(PROM_OK,
                      prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &noise, &evidence),
                      "zero preparation weights preserve exact BF16 image ingress");
-        const auto imageGeneration = evidence.output_generation;
+        auto imageGeneration = evidence.output_generation;
         bool weightFailuresExercised = false;
+        bool prefetchFailuresExercised = false;
+        bool restartingEvaluation = false;
         const auto retarget = [&](unsigned block, const PrometheusModelBlockWeightUpload *data,
                                   unsigned count) {
             PrometheusCompiledModelRetargetRequest request{};
@@ -2639,6 +2668,96 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
             request.model_local_block_id = block;
             request.upload_count = count;
             request.uploads = data;
+            if (prefetch && !restartingEvaluation)
+            {
+                const auto binding = evidence.binding_generation,
+                           allocations = evidence.cold_buffer_allocation_count;
+                PrometheusModelBlockEvidence transferEvidence{};
+                if (!prefetchFailuresExercised)
+                {
+                    for (const auto point : {3u, 12u})
+                    {
+                        for (const unsigned fault : {1u, 2u, 4u})
+                        {
+                            ASSERT_EQUAL(
+                                PROM_OK,
+                                prom_reactor_runtime_model_block_test_inject_prefetch_fault_impl(
+                                    raw, id, point, fault),
+                                "inject transfer phase failure");
+                            ASSERT_EQUAL(PROM_ERROR,
+                                         prometheus_reactor_runtime_compiled_model_prefetch(
+                                             raw, &request, &transferEvidence),
+                                         "incomplete prefetch cannot activate");
+                            ASSERT_EQUAL(
+                                fault == 1u   ? PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED
+                                : fault == 2u ? PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED
+                                              : PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                transferEvidence.detail_code, "transfer preserves failure phase");
+                            ASSERT_EQUAL(
+                                PROM_ERROR,
+                                prometheus_reactor_runtime_compiled_model_activate_prefetch(
+                                    raw, sessionID, &evidence),
+                                "failed transfer cannot publish a binding");
+                        }
+                    }
+                    std::atomic<bool> entered = false;
+                    auto work = std::async(std::launch::async, [&] {
+                        entered.store(true, std::memory_order_release);
+                        return prometheus_reactor_runtime_compiled_model_prefetch(
+                            raw, &request, &transferEvidence);
+                    });
+                    while (!entered.load(std::memory_order_acquire))
+                        std::this_thread::yield();
+                    const int computed = prometheus_reactor_runtime_noise_refiner0_execute(
+                        raw, id, &noise, &evidence);
+                    const int uploaded = work.get();
+                    ASSERT_EQUAL(PROM_OK, computed,
+                                 "active Noise compute coexists with independent prefetch");
+                    imageGeneration = evidence.output_generation;
+                    ASSERT_EQUAL(PROM_OK, uploaded,
+                                 "scoped asynchronous transfer joins before activation");
+                    auto malformed=request;
+                    std::array<PrometheusModelBlockWeightUpload,13> malformedUploads{};
+                    std::copy(data,data+count,malformedUploads.begin());
+                    malformedUploads[count-1].binding_index=99;malformed.uploads=malformedUploads.data();
+                    ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_compiled_model_prefetch(raw,&malformed,&transferEvidence),"late malformed tensor is rejected before any overwrite");
+                    ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_compiled_model_prefetch(raw,&request,&transferEvidence),"ready inactive window cannot be overwritten before activation");
+
+                    for (const unsigned fault : {1u, 2u, 4u, 8u})
+                    {
+                        ASSERT_EQUAL(
+                            PROM_OK,
+                            prom_reactor_runtime_model_block_test_inject_prefetch_fault_impl(
+                                raw, id, 13, fault),
+                            "inject acquire/descriptor failure");
+                        ASSERT_EQUAL(PROM_ERROR,
+                                     prometheus_reactor_runtime_compiled_model_activate_prefetch(
+                                         raw, sessionID, &evidence),
+                                     "failed acquire cannot commit");
+                        ASSERT_EQUAL(binding, evidence.binding_generation,
+                                     "failed handoff preserves active generation");
+                        ASSERT_EQUAL(1u, evidence.weights_uploaded,
+                                     "active window survives failed acquire");
+                    }
+                    prefetchFailuresExercised = true;
+                }
+                else
+                {
+                    ASSERT_EQUAL(PROM_OK,
+                                 prometheus_reactor_runtime_compiled_model_prefetch(
+                                     raw, &request, &transferEvidence),
+                                 "prefetch the closed successor");
+                }
+                const int code = prometheus_reactor_runtime_compiled_model_activate_prefetch(
+                    raw, sessionID, &evidence);
+                ASSERT_EQUAL(PROM_OK, code,
+                             "Concept handoff publishes the completed inactive window");
+                ASSERT_EQUAL(binding + 1, evidence.binding_generation,
+                             "exactly one binding publication per activation");
+                ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count,
+                             "prefetch reuses two fixed windows and one staging buffer");
+                return code == PROM_OK;
+            }
             if (!weightFailuresExercised && policy == PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL)
             {
                 const auto binding = evidence.binding_generation,
@@ -3109,7 +3228,48 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
             PROM_ERROR,
             prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
             "old joint generations cannot replay after chain publication");
-        if (standalone)
+        if (prefetch)
+        {
+            PrometheusCompiledModelPrefetchRequest pending{};
+            pending.struct_size = sizeof(pending);
+            pending.session_identity = sessionID;
+            pending.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+            pending.model_local_block_id = 2;
+            pending.upload_count = 13;
+            pending.uploads = uploads.data();
+            PrometheusModelBlockEvidence transfer{};
+            ASSERT_EQUAL(
+                PROM_OK,
+                prom_reactor_runtime_model_block_test_inject_prefetch_fault_impl(raw, id, 12, 4),
+                "leave final transfer signal unobserved");
+            ASSERT_EQUAL(
+                PROM_ERROR,
+                prometheus_reactor_runtime_compiled_model_prefetch(raw, &pending, &transfer),
+                "retain canceled producer at reset");
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_evaluation_reset(
+                             raw, sessionID, &sessionEvidence),
+                         "reset cancels and joins inactive handoff");
+            ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(),
+                         "reset retires every transfer and compute submission");
+            restartingEvaluation = true;
+            if (!retarget(0, uploads.data(), 13))
+                return;
+            restartingEvaluation = false;
+            pending.model_local_block_id = 1;
+            ASSERT_EQUAL(
+                PROM_OK,
+                prom_reactor_runtime_model_block_test_inject_prefetch_fault_impl(raw, id, 12, 4),
+                "retain producer at owner teardown");
+            ASSERT_EQUAL(
+                PROM_ERROR,
+                prometheus_reactor_runtime_compiled_model_prefetch(raw, &pending, &transfer),
+                "teardown receives an unobserved semaphore signal");
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_destroy(raw, sessionID),
+                         "release session while independent transfer remains owned");
+        }
+        else if (standalone)
         {
             execute.required_joint_generation += 1;
             ASSERT_EQUAL(PROM_OK,

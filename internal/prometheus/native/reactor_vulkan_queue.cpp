@@ -11,6 +11,27 @@ extern "C" int32_t prom_vk_concept_queue_submit(void*, VkQueue queue, VkCommandB
     info.commandBufferCount = 1u; info.pCommandBuffers = &commands;
     return prom_vk_queue_submit(queue, 1u, &info, fence);
 }
+extern "C" int32_t prom_vk_concept_queue_submit_sync(void *, VkQueue queue,
+                                                     VkCommandBuffer commands, VkFence fence,
+                                                     VkSemaphore wait, VkSemaphore signal)
+{
+    VkSubmitInfo info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    VkPipelineStageFlags stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    info.commandBufferCount = 1;
+    info.pCommandBuffers = &commands;
+    if (wait)
+    {
+        info.waitSemaphoreCount = 1;
+        info.pWaitSemaphores = &wait;
+        info.pWaitDstStageMask = &stage;
+    }
+    if (signal)
+    {
+        info.signalSemaphoreCount = 1;
+        info.pSignalSemaphores = &signal;
+    }
+    return prom_vk_queue_submit(queue, 1, &info, fence);
+}
 #include <system_error>
 
 namespace { std::mutex queue_api; }
