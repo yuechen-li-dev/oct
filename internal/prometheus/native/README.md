@@ -54,17 +54,21 @@ Current Vulkan reactor file topology:
     AdaLN, normalization/modulation, QKV projection, and Q/K normalization/RoPE;
     its attention and FFN stages complete standalone NoiseRefiner execution.
     Typed capture plans include the split W3 intermediate. Static C audit replay
-    borrows the same Concept stage implementations and resources.
+    borrows the same Concept stage implementations and resources. ContextRefiner
+    reuses those stages with its own text-position head contract, unit modulation
+    and eleven logical weights. Separate pipeline banks retain both portfolios
+    in the shared owner.
 - `reactor_concept_model_block_abi.c` and `reactor_concept_model_block.cpp`
   - C11 packet/view transport and C++23 shader-package adaptation. All thirteen
-    standalone NoiseRefiner model pipelines belong to Concept; admission,
-    generation bookkeeping, and the larger model/session executors remain
-    migration seams. See [Concept M6](../../../docs/internal/prometheus_concept_model_tail_m6.md).
+    standalone NoiseRefiner and eleven ContextRefiner model pipelines belong to
+    Concept; admission, generation bookkeeping, and the larger model/session
+    executors remain migration seams. See [Concept M7](../../../docs/internal/prometheus_concept_context_m7.md)
+    for the stage reuse, recovery fixes and explicit shared memory tradeoff.
 - `reactor_vulkan_model_block.c`
   - the remaining model/session policy and execution paths. Closed-block and
-    standalone NoiseRefiner execution now delegate to Concept. Pipeline
-    interfaces are checked against the selected shader-package variant, while
-    the small native shader registry supplies selector metadata.
+    standalone NoiseRefiner and ContextRefiner execution now delegate to Concept.
+    Pipeline interfaces are checked against the selected shader-package variant,
+    while the small native shader registry supplies selector metadata.
 - `reactor_vulkan_queue.cpp`
   - the common host queue API synchronization boundary for all native families.
 - `reactor_vulkan_fused_reduction.c`

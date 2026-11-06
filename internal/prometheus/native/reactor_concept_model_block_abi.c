@@ -63,6 +63,7 @@ int prom_concept_block_drain(prom_model_block_state* block) {
 }
 static int load(prom_model_block_state* block, int slot, uint32_t kernel, uint32_t bindings, uint32_t push) {
     block_attachment* a = block->concept_owner;
+    if (!a) return 0;
     if ((block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) return 0;
     if (!PromBlockLoad(&a->owner, a->host, slot, kernel, bindings, push)) return 0;
     block->pipeline_create_count++;
@@ -106,6 +107,23 @@ int prom_concept_block_attention_pipelines(prom_model_block_state* block) {
 int prom_concept_block_ffn_pipelines(prom_model_block_state* block) {
     return tail_pipelines(block, block->m1d_pipelines, 3, 4);
 }
+int prom_concept_block_context_pipelines(prom_model_block_state* block) {
+    static const int slots[] = {2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13};
+    static const uint32_t kernels[] = {25, 26, 38, 38, 39, 31, 32, 33, 34, 35, 36};
+    static const uint32_t bindings[] = {5, 3, 3, 3, 3, 3, 5, 5, 7, 4, 7};
+    prom_model_block_m1b_pipeline* views[] = {&block->m1b_pipelines[0], &block->m1b_pipelines[1],
+        &block->m1b_pipelines[2], &block->m1b_pipelines[3], &block->m1c_pipelines[0],
+        &block->m1c_pipelines[1], &block->m1c_pipelines[2], &block->m1d_pipelines[0],
+        &block->m1d_pipelines[1], &block->m1d_pipelines[2], &block->m1d_pipelines[3]};
+    for (int i = 0; i < 11; ++i) {
+        const uint32_t push = (i == 2 || i == 3) ? 20u : 16u;
+        if (!load(block, 14 + slots[i], kernels[i], bindings[i], push)) return 0;
+        views[i]->shader_id = kernels[i]; views[i]->binding_count = bindings[i];
+        views[i]->push_constant_bytes = push;
+        views[i]->concept_block = block; views[i]->concept_role = 20u + (uint32_t)i;
+    }
+    return 1;
+}
 static concept_buffer_range range(const prom_vk_buffer* view) {
     const concept_buffer_range result = {view->buffer, view->size}; return result;
 }
@@ -116,10 +134,10 @@ static concept_block_frame frame_of(const prom_model_block_state* block) {
         &block->attention_gate, &block->mlp_scale, &block->mlp_gate, &block->modulated,
         &block->norm_audit, &block->qkv, &block->attention, &block->audit_readback,
         &block->output_device, &block->output_readback, &block->audit_device, &block->weight_upload,
-        &block->attention_projection, &block->attention_residual};
+        &block->attention_projection, &block->attention_residual, &block->context_w3, &block->context_unit};
     concept_block_frame frame;
-    for (int i = 0; i < 23; ++i) frame.buffers.data[i] = range(views[i]);
-    for (int i = 0; i < 13; ++i) frame.weights.data[i] = range(&block->weights[i].device);
+    for (int i = 0; i < 25; ++i) frame.buffers.data[i] = range(views[i]);
+    for (uint32_t i = 0; i < 13; ++i) frame.weights.data[i] = range(prom_model_block_weight_view(block, i));
     return frame;
 }
 void prom_concept_block_record_stage(prom_model_block_state* block, VkCommandBuffer commands, uint32_t role) {
@@ -138,7 +156,7 @@ int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block
     const concept_block_frame frame = frame_of(block);
     uint64_t begin = prom_reduction_now_ns();
     const uint64_t recordings = PromBlockRecordings(&a->owner), submissions = PromBlockSubmissions(&a->owner), waits = PromBlockWaits(&a->owner);
-    if (mode > CONCEPT_BLOCK_PROGRAM_FFN) { *detail = PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST; return 0; }
+    if (mode > CONCEPT_BLOCK_PROGRAM_CONTEXT) { *detail = PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST; return 0; }
     uint32_t flags = 0;
     if ((state->reduction_test_flags & PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD) != 0u) flags |= 1u;
     if ((block->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u ||
@@ -168,6 +186,7 @@ int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block
             for (int i = 0; i < 6; ++i) { block->m1b_boundary_gpu_ns[i] = PromBlockTiming(&a->owner, i); block->gpu_compute_ns += block->m1b_boundary_gpu_ns[i]; }
         }
         if (mode == 3 || mode == 4) block->gpu_compute_ns = PromBlockTiming(&a->owner, mode == 3 ? 6 : 7);
+        if (mode == 5) block->gpu_compute_ns = PromBlockTiming(&a->owner, 8);
         block->last_execution_ns = prom_reduction_elapsed_ns(begin, prom_reduction_now_ns());
     }
     return *detail == 0;
@@ -179,4 +198,8 @@ int prom_concept_block_attention_run(prom_reduction_runtime_state* state, prom_m
 int prom_concept_block_ffn_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
     uint32_t stage, int capture, int32_t* detail) {
     return prom_concept_block_run(state, block, CONCEPT_BLOCK_PROGRAM_FFN, 0, capture ? stage : 0, 0, detail);
+}
+int prom_concept_block_context_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
+    uint32_t resident, int32_t* detail) {
+    return prom_concept_block_run(state, block, CONCEPT_BLOCK_PROGRAM_CONTEXT, 0, 0, resident, detail);
 }

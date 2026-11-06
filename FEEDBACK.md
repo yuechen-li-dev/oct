@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 100 |
+| Resolved | 102 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,50 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-121 — Shared model aliases overwrote audit packets and pinned predecessors
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The compound model owner aliased Context W3 with the static-audit
+arena, and the resident predecessor with the attention residual. Their GPU
+lifetimes overlap. M7's nonzero shared witness produced corrupted stage IDs and
+projection keys, 133 assertion failures, and a second resident replay maximum
+output error of 0.852277. Synchronization validation reported no hazard: ordering
+cannot preserve bytes overwritten through a logically invalid alias.
+
+Resolution: Give both resources distinct Concept-owned device-local storage,
+account for them and release them exactly once. The compound reservation grows
+by 17,039,360 bytes (16.25 MiB); no host activation bounce replaces device-local
+residency. The new witness exercises coexisting Noise/Context portfolios, shared
+weight-role mapping, all sixteen audit packets, two identical-input resident
+replays and complete teardown. See
+`docs/internal/prometheus_concept_context_m7.md`; the failed reproduction is
+`.tmp/m7-context-shared.log`.
+
+---
+
+### FB-120 — ContextRefiner quarantine admission prevented completion recovery
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Context execution and static audit rejected a quarantined owner
+before reaching the existing reap operation. M7's command/submit/completion
+failure matrix passed the first two retries, then failed the uncertain-completion
+retry even though the submitted work could be safely observed and retired.
+
+Resolution: Reap through the existing Concept/native completion owner before
+reusing the resources. Do not discard the pending submission or restore output
+validity on failure. The independent Context witness checks precise phase
+diagnostics, output invalidation, shared-device SGEMM, successful retry and
+numerical output. Evidence: `.tmp/m7-context-owned.log` and
+`docs/internal/prometheus_concept_context_m7.md`.
+
+---
 
 ### FB-119 — Resident NoiseRefiner read timestamps from an unused legacy query pool
 

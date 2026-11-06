@@ -744,6 +744,8 @@ int prom_reactor_runtime_context_refiner_audit_final_impl(
 int prom_reactor_runtime_main_transformer_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusMainTransformerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+/* Borrow the active package's logical tensor role, including shared portfolios. */
+const prom_vk_buffer* prom_model_block_weight_view(const prom_model_block_state* block, uint32_t index);
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state);
 VkPipeline prom_reduction_pipeline_for_implementation(const prom_reduction_runtime_state* state,
                                                        uint32_t implementation_id);

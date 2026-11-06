@@ -17,6 +17,9 @@ int prom_concept_block_pipelines(struct prom_model_block_state* block);
 int prom_concept_block_identity_pipeline(struct prom_model_block_state* block);
 int prom_concept_block_attention_pipelines(struct prom_model_block_state* block);
 int prom_concept_block_ffn_pipelines(struct prom_model_block_state* block);
+int prom_concept_block_context_pipelines(struct prom_model_block_state* block);
+int prom_concept_block_context_run(struct prom_reduction_runtime_state* state,
+    struct prom_model_block_state* block, uint32_t resident, int32_t* detail);
 /* Record one stage into a legacy-owned command buffer. The caller owns the
    surrounding synchronization, submission, completion, and recording lifetime. */
 void prom_concept_block_record_stage(struct prom_model_block_state* block, VkCommandBuffer commands, uint32_t role);
