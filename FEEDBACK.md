@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 8 |
 | Deferred | 11 |
-| Resolved | 125 |
+| Resolved | 126 |
 | Superseded | 1 |
 
 ## Open issues
@@ -377,6 +377,28 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-146 — Hosted MCP transport qualification budgets a cold compiler as a short execution
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: Windows CI run `42285398625` failed
+`TestStdioGoldenFlowAndArtifactRetrieval` with `OCT-MCP-TIMEOUT` while compiling
+the repaired contract in a fresh workspace. Each request deliberately receives
+an empty Go build cache; the transport workflow inherited the production
+15-second execution limit. Linux passed the same head.
+
+Resolution: The stdio workflow uses a test-only server process with a 90-second
+cold-build budget and the real compiled CLI child. It now requires exactly one
+compiled case and zero interpreted fallbacks, in addition to diagnostic and
+artifact retrieval checks. A separate real-command startup check retains the
+15-second production default. Two blocked-child tests independently prove the
+server cap and the lower requested deadline terminate execution. The local MCP
+package passes; the original failed hosted run remains evidence.
+
+---
 
 ### FB-145 — Feedforward GPU tests skip their own injected no-wait failure
 
