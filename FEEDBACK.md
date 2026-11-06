@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 8 |
 | Deferred | 11 |
-| Resolved | 119 |
+| Resolved | 126 |
 | Superseded | 1 |
 
 ## Open issues
@@ -377,6 +377,147 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-146 — Hosted MCP transport qualification budgets a cold compiler as a short execution
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: Windows CI run `42285398625` failed
+`TestStdioGoldenFlowAndArtifactRetrieval` with `OCT-MCP-TIMEOUT` while compiling
+the repaired contract in a fresh workspace. Each request deliberately receives
+an empty Go build cache; the transport workflow inherited the production
+15-second execution limit. Linux passed the same head.
+
+Resolution: The stdio workflow uses a test-only server process with a 90-second
+cold-build budget and the real compiled CLI child. It now requires exactly one
+compiled case and zero interpreted fallbacks, in addition to diagnostic and
+artifact retrieval checks. A separate real-command startup check retains the
+15-second production default. Two blocked-child tests independently prove the
+server cap and the lower requested deadline terminate execution. The local MCP
+package passes; the original failed hosted run remains evidence.
+
+---
+
+### FB-145 — Feedforward GPU tests skip their own injected no-wait failure
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: Two hardware feedforward integration cases selected
+`PROM_TESTCFG_SKIP_SUBMIT_WAIT`, then skipped when their ordinary synchronous
+SGEMM correctly rejected an unobserved submission. The broad native run's skip
+list exposed these self-disabled integration paths.
+
+Resolution: The cases require real GPU completion and report unexpected dispatch
+failure as failure, retaining the genuine Vulkan-unavailable skip. Constant-input
+products are checked numerically. Reconciliation compares executed dispatch to
+the baseline execution authority, allowing its real policy fallback; mismatch
+reasons come from the immutable dispatch snapshot, since completion can create
+a later future reservation. All 14 feedforward facts pass with no skips.
+
+---
+
+### FB-144 — Reduction registry qualification dereferences absent package provenance
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: The M13 broad native run reached 188 passes and four skips, then
+exited with `0xC0000005` in `PrometheusM39bReductionRegistryIsProductionOwnedAndIsolated`.
+Its source-root assertion constructed `std::string` from `asset->source_path`,
+which is intentionally null in the compact selector projection.
+
+Resolution: Native qualification checks exact package variant identity and
+retains production authority, family, dispatch metadata and stable-ID checks.
+The source-root invariant now lives in the package's Go inventory test, using
+the existing JSON record model and checking all seven real production sources.
+The native test also bounds its expected table and reports missing rows safely.
+The failed broad-run log is retained; later reruns do not erase that evidence.
+
+---
+
+### FB-143 — Native package builds omit the old SGEMM host optimization mode
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: Moving the SGEMM host from the legacy `/O2` compile command into
+`manifest.concept` produced native compile commands without an optimization
+flag. That would silently make the migrated host an unoptimized build.
+
+Resolution: [Concept PR #194](https://github.com/yuechen-li-dev/Concept/pull/194)
+adds an optional boolean `NativeTarget.optimize` field. Prometheus selects
+`true` for both C11 and C++23 targets. The mode is included in build identity
+and applied to ABI probes, with no fast-math flag. C11/C++23 fixture compilation
+and its independent ABI probe require optimization; malformed settings are
+rejected and three fresh plans agree. Legacy nine-field manifests are unchanged.
+
+---
+
+### FB-142 — Polling a Concept Vulkan submission bypasses retirement accounting
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: The M13 real-device ownership lane completed its async products,
+but `ConceptVkTestPendingSubmissions()` retained two entries after teardown.
+The native counter retires through `Wait`; a consumer that polled the fence and
+set `Submission.waited` directly bypassed that retirement path.
+
+Resolution: [Concept PR #194](https://github.com/yuechen-li-dev/Concept/pull/194)
+adds ordinary `Poll(ref Submission)`. Not-ready and failed observations retain
+ownership; a successful observation uses the immediate wait/retirement path.
+Repeated Poll/Wait is idempotent and cannot retire another submission. All 19
+GPU-free Vulkan facts pass in Normal and Verify, including injected pending,
+error, recovery and independent-submission cases. SGEMM uses this operation.
+
+---
+
+### FB-141 — Consumed public SGEMM tasks leave stale singleton admission state
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: The multi-token submit path also set the old singleton async state
+but consume retired only its task-table entry. A later ordinary synchronous
+SGEMM could remain rejected after every public task had been consumed.
+
+Resolution: Public task admission now reads actual outstanding task ownership;
+the singleton is reserved for its separate compatibility seam. The M13 shared
+device integration test submits two distinct products, executes FFT while they
+remain owned, consumes both, and then verifies a synchronous product against
+an independent binary64 accumulation. Busy/unconsumed rejection remains covered.
+
+---
+
+### FB-140 — SGEMM portfolio metadata shifts fields after omitting workgroup Z
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: The tiled, 2x2 and 2x4 registry metadata used eight positional
+initializers for an eleven-field record, omitting `threads_z`. The shifted
+`outputs_per_invocation_n` caused dispatch to cover too few output columns.
+Before M13, the SGEMM native lane reported seven failing tests and 126 failing
+assertions; two additional occupancy/safe-policy numerical tests also failed
+unchanged in the original executable.
+
+Resolution: Those rows use named fields with the actual three-dimensional
+workgroup and per-invocation output footprint. The existing rectangular,
+tail, explicit-variant, resident and submission-ring numerical oracles remain
+the acceptance checks. This fixes host dispatch metadata; shader arithmetic
+and tolerances are unchanged. Evidence and qualification commands are in
+[the M13 report](docs/internal/prometheus_concept_sgemm_m13.md).
+
+---
 
 ### FB-138 — Portable corpus did not register FFT environment lanes
 

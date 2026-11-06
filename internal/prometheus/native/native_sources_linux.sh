@@ -16,7 +16,6 @@ PROMETHEUS_COMMON_C=(
   "$NATIVE_DIR/reactor_vulkan_runtime.c"
   "$NATIVE_DIR/reactor_shader_registry.c"
   "$NATIVE_DIR/reactor_shader_package.c"
-  "$NATIVE_DIR/reactor_vulkan_sgemm.c"
   "$NATIVE_DIR/reactor_vulkan_ray_query.c"
   "$NATIVE_DIR/reactor_batch.c"
   "$NATIVE_DIR/reactor_vulkan_fft.c"
@@ -80,6 +79,7 @@ PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/reactor_concept_rmsnorm_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_model_block_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_fft64_tests.cpp"
+  "$NATIVE_DIR/Marionette/reactor_concept_sgemm_tests.cpp"
 )
 PROMETHEUS_MARIONETTE_SLOW_ONLY=(
 )

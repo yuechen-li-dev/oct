@@ -18,8 +18,13 @@ Current Vulkan reactor file topology:
   - shared internal Vulkan reactor declarations and stable `prom_reactor_runtime_*_impl` declarations used by `reactor_api.c`.
 - `reactor_vulkan_common.c`
   - shared Vulkan plumbing helpers used by reactor families.
-- `reactor_vulkan_sgemm.c`
-  - synchronous/async SGEMM runtime support and shared M29/M30 lifecycle helpers.
+- `../reactors/PrometheusSgemm.concept`, `reactor_concept_sgemm.cpp`, and `reactor_sgemm.cpp`
+  - one Concept recording/submission owner for sync, resident, async, batch and
+    placement-audit work. C++23 retains package instances, mapped allocation
+    metadata, the shared runtime host, and existing judgment/diagnostic policy.
+    C11 transports the generated job layout. The old C executor is deleted;
+    ordinary Oct `@` keeps its existing dispatch pending M14. See
+    [M13 qualification](../../../docs/internal/prometheus_concept_sgemm_m13.md).
 - `reactor_batch.c`
   - the sole production batch engine: immutable logical plans, centralized
     shared-ring refill, deterministic failure reduction, staged atomic commit,
@@ -153,7 +158,8 @@ implemented concurrency expansion.
 Scope guardrails for this topology:
 
 - `reactor_vulkan_common.c` is for genuinely shared Vulkan plumbing only.
-- SGEMM policy/runtime behavior stays localized in `reactor_vulkan_sgemm.c` for auditability.
+- SGEMM policy and allocation metadata stay in `reactor_sgemm.cpp`; physical
+  recording/submission ownership lives in `PrometheusSgemm.concept`.
 - Both native FFT precisions require GPU completion. The bounded binary64
   forward path requires enabled `shaderFloat64`; Oct's ordinary builtin owns
   measured CPU/GPU selection. Strict `PROMETHEUS` calls never use CPU fallback.

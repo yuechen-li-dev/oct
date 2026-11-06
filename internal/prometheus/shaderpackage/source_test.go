@@ -1,11 +1,44 @@
 package shaderpackage
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestReductionSourceAuthorityLivesInPackageInventory(t *testing.T) {
+	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(repo, "internal", "prometheus", "native", "shaders", "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inventory sourceManifest
+	if err := json.Unmarshal(data, &inventory); err != nil {
+		t.Fatal(err)
+	}
+	found := map[uint32]bool{}
+	for _, asset := range inventory.ShaderAssets {
+		if asset.ID < 16 || asset.ID > 22 {
+			continue
+		}
+		if found[asset.ID] || asset.Authority != "production" || asset.SourceLanguage != "sdslv" ||
+			!strings.HasPrefix(asset.Source, "internal/prometheus/shaders/sdslv/production/reduction/") {
+			t.Fatalf("invalid reduction source authority: %+v", asset)
+		}
+		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(asset.Source))); err != nil {
+			t.Fatalf("reduction %d source: %v", asset.ID, err)
+		}
+		found[asset.ID] = true
+	}
+	if len(found) != 7 {
+		t.Fatalf("reduction source inventory has %d entries, want all seven", len(found))
+	}
+}
 
 func TestImportedProductionSourceGraphRejectsStaleHeaders(t *testing.T) {
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))

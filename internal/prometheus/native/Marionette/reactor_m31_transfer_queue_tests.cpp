@@ -122,7 +122,7 @@ FACT(PrometheusReactor_M31_TransferQueuePath_EnabledWhenDedicatedAndLarge)
     ASSERT_EQUAL(1u, diag.m31_transfer_queue_used, "dedicated transfer queue should be used for qualifying upload-only staged work");
     ASSERT_EQUAL(PROM_TRANSFER_FALLBACK_NONE, diag.m31_transfer_fallback_reason, "enabled transfer path should not report fallback reason");
     ASSERT_TRUE(diag.m31_transfer_compute_wait_count >= 1u, "compute should wait on transfer completion");
-    ASSERT_TRUE(diag.m31_queue_family_handoff_count >= 2u, "queue-family ownership release/acquire handoff must be observed");
+    ASSERT_TRUE(diag.m31_queue_family_handoff_count >= 2u, "paired cross-family semaphore handoff must be observed");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }

@@ -3,7 +3,7 @@
 
 /*
  * Test-only SPIR-V audit vocabulary.  This header is intentionally absent from
- * reactor_vulkan_sgemm.c and reactor_shader_registry.c: production selection
+ * reactor_sgemm.cpp and reactor_shader_registry.c: production selection
  * has no route to these descriptors.
  */
 
