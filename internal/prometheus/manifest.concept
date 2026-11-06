@@ -19,10 +19,11 @@ record struct NativeDefine { string name; string value; bool hasValue; };
 record struct NativeTarget {
     string name; NativeLanguage language; NativeStandard standard;
     NativeOutputKind kind; string output;
-    string<array>[10] sources;
+    string<array>[12] sources;
     string<array>[4] includes;
     NativeDefine<array>[1] defines;
     string<array>[1] linkInputs;
+    bool optimize;
 };
 record struct NativeAbiClaim {
     string header; string typeName; string companion; int size; int alignment;
@@ -46,15 +47,16 @@ comptime NativeProjectManifest Native = NativeProjectManifest{
          ".native-build/generated/prometheusrmsnorm.generated.c", "native/reactor_concept_reduction_abi.c",
          "native/reactor_concept_rmsnorm_abi.c", "@Vulkan/native/device_runtime.c",
          ".native-build/generated/prometheusmodelblock.generated.c", "native/reactor_concept_model_block_abi.c",
-         ".native-build/generated/prometheusfft.generated.c", "native/reactor_concept_fft_abi.c"],
+         ".native-build/generated/prometheusfft.generated.c", "native/reactor_concept_fft_abi.c",
+         ".native-build/generated/prometheussgemm.generated.c", "native/reactor_concept_sgemm_abi.c"],
         ["native", ".native-build", "@Vulkan/native", "@VulkanSDK/include"],
-        [NativeDefine{"PROMETHEUS_REACTOR_BUILD_DLL", "1", true}], [""]
+        [NativeDefine{"PROMETHEUS_REACTOR_BUILD_DLL", "1", true}], [""], true
     }, NativeTarget{
         "prometheus_concept_cpp", NativeLanguage::Cpp, NativeStandard::Cpp23,
         NativeOutputKind::StaticLibrary, ".native-build/libprometheus_concept_cpp.a",
-        ["native/reactor_concept_reduction.cpp", "native/reactor_concept_rmsnorm.cpp", "native/reactor_vulkan_queue.cpp", "native/reactor_concept_model_block.cpp", "native/reactor_concept_fft.cpp", "", "", "", "", ""],
+        ["native/reactor_concept_reduction.cpp", "native/reactor_concept_rmsnorm.cpp", "native/reactor_vulkan_queue.cpp", "native/reactor_concept_model_block.cpp", "native/reactor_concept_fft.cpp", "native/reactor_concept_sgemm.cpp", "native/reactor_sgemm.cpp", "", "", "", "", ""],
         ["native", ".native-build", "@Vulkan/native", "@VulkanSDK/include"],
-        [NativeDefine{"PROMETHEUS_REACTOR_BUILD_DLL", "1", true}], [""]
+        [NativeDefine{"PROMETHEUS_REACTOR_BUILD_DLL", "1", true}], [""], true
     }],
     [""], [""], []
 };

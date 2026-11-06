@@ -48,7 +48,9 @@ for src in "${PROMETHEUS_COMMON_C[@]}"; do
     cc -std=c11 -fPIC -O2 "${WARN_FLAGS[@]}" -I"$ROOT_DIR/internal/prometheus/.native-build" -c "$src" -o "$obj" 2>/dev/null
   fi
 done
-COMMON_OBJS+=("${PROMETHEUS_CONCEPT_ARCHIVES[@]}")
+# The Concept C11 transport and C++ driver callbacks form one consumer link
+# unit. GNU linkers need an archive group to resolve both directions.
+COMMON_OBJS+=("-Wl,--start-group" "${PROMETHEUS_CONCEPT_ARCHIVES[@]}" "-Wl,--end-group")
 echo "[1/5] Done."
 
 # Step 2: Link the shared reactor library

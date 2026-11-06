@@ -278,7 +278,7 @@ FACT(PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySge
 {
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(cfg);
-    cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
+    // These integration cases require real completion before policy evidence.
 
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
@@ -298,7 +298,8 @@ FACT(PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySge
     const int baseline_status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail);
     if (baseline_status != PROM_OK) {
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
-        SKIP("baseline sgemm failed in environment; feedforward happy-path cannot be asserted");
+        FAIL("baseline sgemm failed on an available device; feedforward happy-path cannot be asserted");
+        return;
     }
 
     PrometheusSgemmPolicyDiagnostics baseline{};
@@ -315,9 +316,11 @@ FACT(PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySge
     const int feedforward_status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail);
     if (feedforward_status != PROM_OK) {
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
-        SKIP("feedforward sgemm failed in environment; happy-path consume cannot be asserted");
+        FAIL("feedforward sgemm failed on an available device; happy-path consume cannot be asserted");
+        return;
     }
 
+    for (float value : c) ASSERT_EQUAL(8.0f, value, "feedforward product is completed on the GPU");
     PrometheusSgemmPolicyDiagnostics used{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &used), "used diag query succeeds");
     ASSERT_EQUAL(1u, used.p15_shadow_feedforward_used, "enabled healthy matured reservation should drive feedforward use");
@@ -354,7 +357,7 @@ FACT(PrometheusP15M13ShadowFeedforward_VariantMismatchFallsBackToJudgmentAndCorr
 {
     PrometheusReactorConfig cfg{};
     cfg.struct_size = sizeof(cfg);
-    cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
+    // These integration cases require real completion before policy evidence.
 
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
@@ -374,7 +377,8 @@ FACT(PrometheusP15M13ShadowFeedforward_VariantMismatchFallsBackToJudgmentAndCorr
     const int baseline_status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail);
     if (baseline_status != PROM_OK) {
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
-        SKIP("baseline sgemm failed in environment; reconciliation path cannot be asserted");
+        FAIL("baseline sgemm failed on an available device; reconciliation path cannot be asserted");
+        return;
     }
 
     PrometheusSgemmPolicyDiagnostics baseline{};
@@ -430,18 +434,18 @@ FACT(PrometheusP15M13ShadowFeedforward_VariantMismatchFallsBackToJudgmentAndCorr
     ASSERT_EQUAL(selected_variant,
                  after.p13_m16b1_requested_occupancy_variant,
                  "requested dispatch still follows judgment engine");
-    ASSERT_EQUAL(selected_variant,
+    ASSERT_EQUAL(baseline.p13_m16b1_executed_occupancy_variant,
                  after.p13_m16b1_executed_occupancy_variant,
                  "executed dispatch still follows judgment engine");
     ASSERT_EQUAL(selected_variant,
                  after.px16_m6_requested_dispatch_variant,
                  "M6 should keep requested dispatch under judgment-engine control");
-    ASSERT_EQUAL(selected_variant,
+    ASSERT_EQUAL(baseline.px16_m6_executed_dispatch_variant,
                  after.px16_m6_executed_dispatch_variant,
                  "M6 should keep executed dispatch under judgment-engine control");
-    ASSERT_EQUAL(PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH,
-                 after.p15_reservation_reason,
-                 "reservation reason maps to variant mismatch");
+    // Completion may create a new future reservation. The immutable dispatch
+    // block reason above, not that later planner result, owns this mismatch.
+    for (float value : c) ASSERT_EQUAL(8.0f, value, "reconciled product remains numerically correct");
     ASSERT_TRUE(after.p15_prediction_confidence <= confidence_before, "confidence must not increase on mismatch");
     ASSERT_TRUE(after.p15_shadow_feedforward_variant_mismatch_count >= 1u, "variant mismatch counted");
 

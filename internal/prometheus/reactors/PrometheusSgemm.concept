@@ -1,0 +1,179 @@
+module PrometheusSgemm;
+profile Vulkan;
+import Vulkan;
+
+extern "C" handle SgemmDescriptorSet;
+// The C++ package host owns immutable shader instances and descriptor storage.
+// These are borrowed for recording; Concept owns all recording/submission state.
+[[repr(C)]]
+record struct SgemmShader {
+    VkPipeline pipeline;
+    VkPipelineLayout layout;
+    SgemmDescriptorSet descriptors;
+    VkQueryPool queries;
+    uint32 queryBase;
+    uint32 timed;
+};
+[[repr(C)]]
+record struct SgemmJob {
+    BufferRange<array>[7] buffers;
+    SgemmShader shader;
+    uint32 m; uint32 n; uint32 k;
+    uint32 x; uint32 y; uint32 z;
+    uint32 dispatches;
+    // 0 direct, 1 upload, 2 upload/readback, 3 resident, 4 readback only.
+    uint32 path;
+    uint32 dedicated;
+    uint32 computeFamily;
+    uint32 transferFamily;
+    uint32 uploadMask;
+    uint32 readback;
+    uint32 perturbWord;
+};
+extern "C" void PromSgemmBind(VkCommandBuffer commands, SgemmShader shader,
+    uint32 m, uint32 n, uint32 k);
+extern "C" void PromSgemmDispatch(VkCommandBuffer commands, uint32 x, uint32 y, uint32 z);
+extern "C" void PromSgemmTimestamp(VkCommandBuffer commands, SgemmShader shader, uint32 end);
+extern "C" void PromSgemmOwnership(VkCommandBuffer commands, SgemmJob job, uint32 acquire);
+extern "C" uint64 PromSgemmNow();
+
+enum SgemmPhase { Prepared, Executing, }
+class SgemmWork {
+public:
+    SgemmJob job;
+    SgemmPhase phase;
+    Option<owned Submission> submission;
+    Option<owned QueueHandoff> handoff;
+    uint64 recordNanoseconds;
+    uint64 submitNanoseconds;
+};
+class SgemmExecutor {
+public:
+    owned BorrowedContext compute;
+    owned BorrowedContext transfer;
+    Option<owned SgemmWork><array>[5] slots;
+};
+Result<SgemmExecutor,VulkanError> CreateSgemm(DeviceBorrow compute, DeviceBorrow transfer) {
+    owned BorrowedContext computeContext = BorrowDevice(compute)?;
+    owned BorrowedContext transferContext = BorrowDevice(transfer)?;
+    Option<owned SgemmWork><array>[5] slots = [Option::None ...];
+    return Result::Ok(SgemmExecutor{move computeContext, move transferContext, move slots});
+}
+Result<void,VulkanError> WaitSgemm(ref SgemmExecutor executor, int slot) {
+    match (ref executor.slots[slot]) {
+        Option::Some(work) => {
+            match (ref work.submission) { Option::Some(pending) => { Wait(ref pending)?; } Option::None => { } }
+            match (ref work.handoff) { Option::Some(pending) => { WaitHandoff(ref pending)?; } Option::None => { } }
+        }
+        Option::None => { }
+    }
+    return Result::Ok();
+}
+Result<void,VulkanError> DrainSgemm(ref SgemmExecutor executor) {
+    for (slot in 0..5) { WaitSgemm(ref executor, slot)?; }
+    return Result::Ok();
+}
+// Return Vulkan's success/not-ready convention without waiting. An observation
+// failure does not remove the owner; its resources remain quarantined by the host.
+int PollSubmission(ref Submission work) {
+    match (Poll(ref work)) {
+        Result::Ok(ready) => { if (ready) { return 0; } return 1; }
+        Result::Error(error) => { return CodeFromError(error); }
+    }
+}
+int PollSgemm(ref SgemmExecutor executor, int slot) {
+    match (ref executor.slots[slot]) {
+        Option::Some(work) => {
+            match (ref work.submission) { Option::Some(pending) => { return PollSubmission(ref pending); } Option::None => { } }
+            match (ref work.handoff) {
+                Option::Some(handoff) => {
+                    match (ref handoff.consumer) { Option::Some(pending) => { return PollSubmission(ref pending); } Option::None => { } }
+                }
+                Option::None => { }
+            }
+        }
+        Option::None => { }
+    }
+    return 0;
+}
+Result<void,VulkanError> RecordSgemm(ref SgemmExecutor executor, int slot, SgemmJob job) {
+    WaitSgemm(ref executor, slot)?;
+    executor.slots[slot] = Option::None;
+    Option<owned Submission> submitted = Option::None;
+    Option<owned QueueHandoff> handoff = Option::None;
+    owned SgemmWork work = SgemmWork{job, SgemmPhase::Prepared, move submitted, move handoff, 0, 0};
+    executor.slots[slot] = Option::Some(move work);
+    return Result::Ok();
+}
+Result<void,VulkanError> SubmitSgemm(ref SgemmExecutor executor, int slot) {
+    ref SgemmWork work = OptionValue(ref executor.slots[slot]);
+    if (work.phase != SgemmPhase::Prepared) { return Result::Error(ErrorFromCode(-3)); }
+    work.phase = SgemmPhase::Executing;
+    SgemmJob job = work.job;
+    uint64 recordStart = PromSgemmNow();
+    owned Recording recording = BeginRecordingOn(executor.compute.view, 0)?;
+    // Borrowed resources may have been produced by another reactor/recording.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        HostStage().raw | ComputeStage().raw | TransferStage().raw, 1,
+        ComputeStage().raw | TransferStage().raw);
+    if (job.path == 5) {
+        PromSgemmTimestamp(recording.commands, job.shader, 0);
+        if ((job.uploadMask & 1u) != 0) { CopyBytes(ref recording, job.buffers[3], 0, job.buffers[0], 0, job.buffers[0].bytes)?; }
+        if ((job.uploadMask & 2u) != 0) { CopyBytes(ref recording, job.buffers[4], 0, job.buffers[1], 0, job.buffers[1].bytes)?; }
+        if (job.buffers[6].bytes != 0) {
+            Use<array>[1] perturb = [Use{job.buffers[6].buffer, TransferStage(), true}];
+            Touch(ref recording, ReadOnlySpan(perturb));
+            ConceptVkCmdFill(recording.commands, job.buffers[6].buffer, job.buffers[6].bytes, job.perturbWord);
+            ConceptVkCmdBarrier(recording.device, recording.commands, TransferStage().raw, 1, ComputeStage().raw);
+        }
+    }
+    if (job.path == 1 or job.path == 2) {
+        if (job.dedicated != 0) {
+            owned Recording upload = BeginRecordingOn(executor.transfer.view, 0)?;
+            ConceptVkCmdBarrier(upload.device, upload.commands, HostStage().raw, 1, TransferStage().raw);
+            CopyBytes(ref upload, job.buffers[3], 0, job.buffers[0], 0, job.buffers[3].bytes)?;
+            CopyBytes(ref upload, job.buffers[4], 0, job.buffers[1], 0, job.buffers[4].bytes)?;
+            PromSgemmOwnership(upload.commands, job, 0);
+            owned QueueHandoff pending = SignalHandoff(move upload)?;
+            work.handoff = Option::Some(move pending);
+            PromSgemmOwnership(recording.commands, job, 1);
+        } else {
+            CopyBytes(ref recording, job.buffers[3], 0, job.buffers[0], 0, job.buffers[3].bytes)?;
+            CopyBytes(ref recording, job.buffers[4], 0, job.buffers[1], 0, job.buffers[4].bytes)?;
+        }
+    }
+    if (job.path != 4) {
+        PromSgemmBind(recording.commands, job.shader, job.m, job.n, job.k);
+        uint32 begin = 0;
+        if (job.path == 5) { begin = 1; }
+        PromSgemmTimestamp(recording.commands, job.shader, begin);
+        Use<array>[3] uses = [Use{job.buffers[0].buffer, ComputeStage(), false},
+            Use{job.buffers[1].buffer, ComputeStage(), false}, Use{job.buffers[2].buffer, ComputeStage(), true}];
+        for (dispatch in 0..(job.dispatches as int)) {
+            Touch(ref recording, ReadOnlySpan(uses));
+            PromSgemmDispatch(recording.commands, job.x, job.y, job.z);
+        }
+        uint32 end = 1;
+        if (job.path == 5) { end = 2; }
+        PromSgemmTimestamp(recording.commands, job.shader, end);
+    }
+    if (job.path == 2 or job.path == 4 or (job.path == 5 and job.readback != 0)) {
+        CopyBytes(ref recording, job.buffers[2], 0, job.buffers[5], 0, job.buffers[5].bytes)?;
+    }
+    if (job.path == 5) { PromSgemmTimestamp(recording.commands, job.shader, 3); }
+    work.recordNanoseconds = PromSgemmNow() - recordStart;
+    uint64 submitStart = PromSgemmNow();
+    if (job.dedicated != 0 and (job.path == 1 or job.path == 2)) {
+        ref QueueHandoff handoff = OptionValue(ref work.handoff);
+        ReceiveHandoff(ref handoff, move recording)?;
+    } else {
+        owned Submission submission = Submit(move recording)?;
+        work.submission = Option::Some(move submission);
+    }
+    work.submitNanoseconds = PromSgemmNow() - submitStart;
+    return Result::Ok();
+}
+int SgemmCode(Result<void,VulkanError> result) {
+    return match (result) { Result::Ok => 0, Result::Error(error) => CodeFromError(error), };
+}
+void DisposeSgemm(owned SgemmExecutor executor) { }

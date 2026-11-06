@@ -813,6 +813,8 @@ FACT(PrometheusReduction_ConceptBorrowCoexistsWithLegacySgemmAndIndependentDevic
             "legacy SGEMM uses the owner's queue");
         for (const float value : c) ASSERT_NEAR(24.0f, value, 1e-5f, "legacy SGEMM remains numerically correct");
     };
+    for (void* owner : owners) sgemm(owner);
+    const int sgemmContexts = ConceptVkTestLiveContexts();
     for (unsigned repeat = 0; repeat < 6; ++repeat) {
         for (void* owner : owners) {
             sgemm(owner);
@@ -826,7 +828,7 @@ FACT(PrometheusReduction_ConceptBorrowCoexistsWithLegacySgemmAndIndependentDevic
             ASSERT_TRUE(prom_reactor_runtime_reduction_state(owner) == nullptr, "standalone reduction never creates legacy model executor");
         }
     }
-    ASSERT_EQUAL(contexts + 2, ConceptVkTestLiveContexts(), "two borrowed attachments own only local resources");
+    ASSERT_EQUAL(sgemmContexts + 2, ConceptVkTestLiveContexts(), "two reduction attachments add only their own contexts alongside SGEMM");
     ASSERT_EQUAL(pipelines + 14, ConceptVkTestLivePipelines(), "each attachment owns seven reusable pipelines");
     for (int index = 0; index < 2; ++index) {
         ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_reduction_detach(owners[index]), "borrower drains and detaches");
