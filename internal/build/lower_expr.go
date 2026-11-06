@@ -186,8 +186,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					ret := "Matrix<" + elemType + ">"
 					tmp := c.temp(ret)
 					callee := "MatMulMM"
-					if c.inPrometheus && leftElem == "Float" && rightElem == "Float" {
-						callee = "PrometheusMatMulMM"
+					if c.inPrometheus {
+						if leftElem != "Float" || rightElem != "Float" {
+							return "", "", false, fmt.Errorf("PROMETHEUS matrix execution requires Matrix<Float>")
+						}
+						callee = "PrometheusMatMulMMStrict"
 					}
 					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 						Target:  tmp,
@@ -554,9 +557,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					return "", "", false, fmt.Errorf("PrometheusMatMul expects Matrix<Float> arguments")
 				}
 				tmp := c.temp("Matrix<Float>")
+				callee := "PrometheusMatMulMM"
+				if c.inPrometheus {
+					callee = "PrometheusMatMulMMStrict"
+				}
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
 					Target:  tmp,
-					Callee:  "PrometheusMatMulMM",
+					Callee:  callee,
 					Args:    lowerMIRValues([]string{leftArg, rightArg}, nil),
 					Builtin: true,
 					RetType: "Matrix<Float>",
@@ -2589,6 +2596,9 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			return "Complex", "Complex", true, false, nil
 		}
 		if x.Name == "FFT" {
+			if c.inPrometheus {
+				return "FFTGPU", "Complex[]", true, true, nil
+			}
 			return "FFT", "Complex[]", true, true, nil
 		}
 		if x.Name == "Contains" || x.Name == "StartsWith" || x.Name == "EndsWith" {
@@ -3307,7 +3317,7 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			}
 		}
 		return "Matrix<" + unifyLinearElemType(leftElem, rightElem) + ">", nil
-	case "FFT":
+	case "FFT", "FFTGPU":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function 'FFT' expects 1 arguments, got %d", len(argTypes))
 		}

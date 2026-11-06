@@ -1,0 +1,28 @@
+package PrometheusFftContract
+
+[Fact]
+fn AutomaticFftPreservesBinary64AndInput() -> Void ! Error {
+    let delta = 0.0000000000291038304567337
+    let input = [Complex(1.0 + delta, 0.0), Complex(1.0, 0.0)]
+    let output = FFT(input)?
+    Assert.True(Real(output[0]) > 2.0, "DC retains bits smaller than FP32 precision")
+    Assert.Near(delta, Real(output[1]), 0.000000000000001, "difference retains binary64 precision")
+    Assert.Equal(1.0 + delta, Real(input[0]), "source is immutable")
+    Assert.Equal(2, Len(output), "shape is preserved")
+}
+
+[Fact]
+fn PrometheusIsAnOrdinaryLexicalBlock() -> Void {
+    var count = 0
+    PROMETHEUS { count = count + 1 }
+    Assert.Equal(1, count, "block can appear in ordinary functions")
+}
+
+[Fact]
+fn ForcedFftValidationRemainsRecoverable() -> Void {
+    PROMETHEUS {
+        let empty: Complex[] = []
+        Assert.Error(FFT(empty), "invalid input is rejected before GPU admission")
+        Assert.Error(FFT([Complex(0.0, 0.0) ... 3]), "unsupported shape is a recoverable error")
+    }
+}

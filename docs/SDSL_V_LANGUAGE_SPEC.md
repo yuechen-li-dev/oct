@@ -95,12 +95,26 @@ entry names and artifact identities.
 
 ### 2.2 Types and values
 
-Runtime scalar types are `bool`, `i32`, `u32`, `f16`, `f32`, and their accepted
+Runtime scalar types are `bool`, `i32`, `u32`, `f16`, `f32`, `f64`, and their accepted
 aliases. Closed vector and matrix families, fixed arrays, records, payload
 enums, resource handles, `ndarray`, and `tensor` retain their validated GoOct
 contracts. Array/tensor dimensions and storage layout are static. Tensor and
 ndarray meaning is coordinate-independent; graphics coordinate spaces do not
 alter tensor semantics.
+
+`f64` is IEEE binary64 storage and arithmetic. A declaration or return context
+of `f64` gives a floating literal binary64 precision; untyped floating literals
+remain `f32`. Arithmetic involving `f64` produces `f64`. Use `Convert<f64>` to
+widen a runtime `f32` or integer and `Convert<f32>` for deliberate narrowing;
+assignment and return do not silently narrow. Scalar arrays of `f64` use
+eight-byte elements. VD-MIR records `shader-float64`; Vulkan consumers must
+query and enable `shaderFloat64` before admitting the resulting SPIR-V.
+
+The scalar arithmetic path does not add `double2` vectors or FP64 transcendental
+intrinsics. `Sin`, `Cos`, and the other existing math intrinsics retain their
+FP32 contracts. The FFT reactor supplies binary64 twiddles from its host plan.
+`Float64.sdslvtest` exercises runtime arithmetic and low-bit preservation, while
+the conformance corpus rejects implicit narrowing and FP64 `Sin`.
 
 `string` is host/static data for tests, diagnostics, assertion reasons, and
 compile-time metadata. It is not ordinary GPU storage. Runtime allocation,

@@ -576,6 +576,11 @@ VkResult prom_vk_runtime_init(prom_vk_runtime* rt, uint32_t test_flags) {
     optional_device_feature_chain = &concept13;
     rt->concept_enabled_features = 3u;
   }
+  /* Float64 is optional; the FFT64 adapter rejects a device without it. */
+  VkPhysicalDeviceFeatures fft_features = {0};
+  fft_features.shaderFloat64 = concept_features.features.shaderFloat64;
+  device_info.pEnabledFeatures = &fft_features;
+  rt->shader_float64_enabled = fft_features.shaderFloat64 == VK_TRUE;
   device_info.pNext = optional_device_feature_chain;
   device_info.enabledExtensionCount = optional_device_extension_count;
   device_info.ppEnabledExtensionNames = optional_device_extension_count == 0u ? NULL : optional_device_extensions;

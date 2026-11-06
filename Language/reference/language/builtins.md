@@ -137,6 +137,14 @@ nonempty and its length a power of two. Invalid input is a recoverable error;
 handle the call just like any other fallible function. The transform preserves
 input length and leaves its source array unchanged.
 
+`Complex` inputs and outputs retain binary64 real and imaginary components on
+both CPU and Vulkan. Ordinary calls calibrate complete CPU/GPU calls for the
+current shape and reuse that decision within a program run. Calibration has a
+first-call cost; it does not imply that every transform benefits from a GPU.
+Inside a [`PROMETHEUS` block](../runtime/prometheus.md), `FFT()` requires Vulkan
+execution and reports an error when that execution cannot complete. There is
+no precision downgrade to the legacy Complex32 native API.
+
 The builtin is the production forward transform. `Mathematics` keeps a readable
 reference implementation and `Mathematics.IFFT` for inverse reconstruction;
 see the [source contracts](../../../Libraries/Mathematics/Mathematics.Transforms.oct).

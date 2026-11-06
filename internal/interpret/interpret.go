@@ -19,6 +19,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/batchplan"
 	"github.com/yuechen-li-dev/oct/internal/builtin"
 	"github.com/yuechen-li-dev/oct/internal/dimension"
+	"github.com/yuechen-li-dev/oct/internal/fft"
 	"github.com/yuechen-li-dev/oct/internal/layoutcontract"
 	machinauiir "github.com/yuechen-li-dev/oct/internal/machina/uiir"
 	"github.com/yuechen-li-dev/oct/internal/octagon"
@@ -347,6 +348,8 @@ func (v Value) String() string {
 }
 
 type interpreter struct {
+	fftEngine    *fft.Engine
+	inPrometheus bool
 	// program is what the maps below index. A Json call describes its type
 	// from it.
 	program                  project.Program
@@ -651,6 +654,7 @@ func newInterpreter(program project.Program, stdout io.Writer) (interpreter, err
 		return interpreter{}, fmt.Errorf("profile Verilog is compile-only; use oct build to emit SystemVerilog")
 	}
 	interp := interpreter{
+		fftEngine:      fft.NewEngine(),
 		program:        program,
 		functions:      make(map[string]ast.FunctionDecl),
 		records:        make(map[string]ast.RecordDecl),
@@ -707,6 +711,7 @@ func newInterpreter(program project.Program, stdout io.Writer) (interpreter, err
 
 func (i interpreter) close() {
 	i.wrapperClients.close()
+	i.fftEngine.Close()
 }
 
 func newEnvironment(parent *environment) *environment {
@@ -844,6 +849,7 @@ func (i interpreter) findMain(entryPackage string) (ast.FunctionDecl, error) {
 }
 
 func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, arguments []Value) (callResult, error) {
+	i.inPrometheus = false
 	if function.IsGoImport {
 		return callResult{}, fmt.Errorf("OctGo import %s.%s is compiled-only; interpreted execution cannot call imported Go functions", pkgName, function.Name)
 	}
@@ -869,6 +875,7 @@ func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, 
 }
 
 func (i interpreter) executeAnonymousFunction(function *AnonymousFunctionValue, arguments []Value) (callResult, error) {
+	i.inPrometheus = false
 	env := newEnvironment(nil)
 	for _, capture := range function.Captures {
 		env.define(capture.Name, cloneValue(capture.Value), false)
@@ -1393,6 +1400,9 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
 		return stmtResult{value: value.value, returned: true}, nil
+	case ast.PrometheusStmt:
+		i.inPrometheus = true
+		return i.executeBlock(env, pkgName, node.Body)
 	case ast.ExprStmt:
 		value, err := i.evalExpr(env, pkgName, node.Value)
 		if err != nil {
@@ -2102,7 +2112,12 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				einTerm: einsteinTermForValue(result, labels),
 			}, nil
 		}
-		value, err := evalBinaryExpr(node.Operator, left.value, right.value)
+		var value Value
+		if i.inPrometheus && node.Operator == "@" && left.value.Kind == ValueMatrix && right.value.Kind == ValueMatrix {
+			value, err = strictPrometheusMatMul(left.value, right.value)
+		} else {
+			value, err = evalBinaryExpr(node.Operator, left.value, right.value)
+		}
 		if err != nil {
 			return evalResult{}, err
 		}
@@ -3463,7 +3478,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if argument.value.Kind != ValueArray {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: FFT expects Complex[] argument")
 		}
-		transformed, err := fftCPU(argument.value.Array)
+		transformed, err := fftTransform(i.fftEngine, argument.value.Array, i.inPrometheus)
 		if err != nil {
 			return evalResult{hasError: true, errorVal: Value{Kind: ValueError, Error: ErrorValue{Message: err.Error()}}}, nil
 		}
@@ -4649,7 +4664,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if leftResult.value.Kind != ValueMatrix || rightResult.value.Kind != ValueMatrix {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: PrometheusMatMul expects matrix arguments")
 		}
-		out, err := evalMatrixMultiply(leftResult.value, rightResult.value)
+		var out Value
+		if i.inPrometheus {
+			out, err = strictPrometheusMatMul(leftResult.value, rightResult.value)
+		} else {
+			out, err = evalMatrixMultiply(leftResult.value, rightResult.value)
+		}
 		if err != nil {
 			return evalResult{}, err
 		}

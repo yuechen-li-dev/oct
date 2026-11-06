@@ -185,14 +185,14 @@ func (v *validator) validateForeignBlock(target, raw string, captures []string, 
 
 func foreignValueType(t ast.TypeRef) bool {
 	switch t.Name {
-	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+	case "bool", "i32", "u32", "f32", "f64", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
 		return true
 	}
 	return false
 }
 
 func (v *validator) seedBuiltins() {
-	for _, name := range []string{"void", "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4"} {
+	for _, name := range []string{"void", "bool", "i32", "u32", "f32", "f64", "float", "float2", "float3", "float4"} {
 		v.types[name] = typeInfo{name: name, kind: "builtin"}
 	}
 	v.types["uint2"] = builtinUintVectorType(2)
@@ -442,7 +442,7 @@ func (v *validator) validateBoardFields(board ast.BoardDecl) {
 func (v *validator) isAllowedBoardFieldType(ref ast.TypeRef) bool {
 	resolved := v.resolveAlias(ref)
 	switch resolved.Name {
-	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+	case "bool", "i32", "u32", "f32", "f64", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
 		return true
 	default:
 		return false
@@ -1626,6 +1626,9 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 		}
 		return ast.TypeRef{Name: "i32"}
 	case ast.FloatLiteral:
+		if expected != nil && v.resolveAlias(*expected).Name == "f64" {
+			return ast.TypeRef{Name: "f64"}
+		}
 		return ast.TypeRef{Name: "f32"}
 	case ast.BoolLiteral:
 		return ast.TypeRef{Name: "bool"}
@@ -1836,6 +1839,9 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			if !isNumeric(left) || !isNumeric(right) {
 				v.errorAt(ast.ExprSpan(e.Right), "SDSL-V1502", "arithmetic operands must be numeric")
 				return ast.TypeRef{Name: "<error>"}
+			}
+			if left.Name == "f64" || right.Name == "f64" {
+				return ast.TypeRef{Name: "f64"}
 			}
 			if isFloat(left) || isFloat(right) {
 				return ast.TypeRef{Name: "f32"}
@@ -2517,7 +2523,9 @@ func convertAllowed(dst, src ast.TypeRef) bool {
 	if dst.Name == src.Name {
 		return false
 	}
-	scalar := func(t ast.TypeRef) bool { return t.Name == "u32" || t.Name == "i32" || t.Name == "f32" }
+	scalar := func(t ast.TypeRef) bool {
+		return t.Name == "u32" || t.Name == "i32" || t.Name == "f32" || t.Name == "f64"
+	}
 	return scalar(dst) && scalar(src)
 }
 
@@ -4142,7 +4150,7 @@ func isComptimeMatchLiteralPattern(expr ast.Expr) bool {
 	}
 }
 
-func isNumeric(ref ast.TypeRef) bool { return isInteger(ref) || isFloat(ref) }
+func isNumeric(ref ast.TypeRef) bool { return isInteger(ref) || isFloat(ref) || ref.Name == "f64" }
 
 func isVectorConstructor(name string) bool {
 	return name == "float2" || name == "float3" || name == "float4" || name == "uint2" || name == "uint3" || name == "uint4"
@@ -4210,7 +4218,7 @@ func builtinUintVectorType(dim int) typeInfo {
 
 func isWorkgroupElementType(ref ast.TypeRef) bool {
 	switch ref.Name {
-	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+	case "bool", "i32", "u32", "f32", "f64", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
 		return true
 	default:
 		return false
@@ -4219,7 +4227,7 @@ func isWorkgroupElementType(ref ast.TypeRef) bool {
 
 func isAllowedNDArrayElementType(ref ast.TypeRef) bool {
 	switch ref.Name {
-	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+	case "bool", "i32", "u32", "f32", "f64", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
 		return true
 	default:
 		return false
@@ -4229,7 +4237,7 @@ func isAllowedNDArrayElementType(ref ast.TypeRef) bool {
 func (v *validator) isAllowedEnumPayloadType(ref ast.TypeRef) bool {
 	resolved := v.resolveAlias(ref)
 	switch resolved.Name {
-	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+	case "bool", "i32", "u32", "f32", "f64", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
 		return true
 	default:
 		return false

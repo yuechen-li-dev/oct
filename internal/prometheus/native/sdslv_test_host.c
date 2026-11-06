@@ -807,6 +807,13 @@ int main(int argc, char **argv) {
     queue_info.pQueuePriorities = &priority;
     device_info.queueCreateInfoCount = 1u;
     device_info.pQueueCreateInfos = &queue_info;
+    /* Test shaders may use binary64 arithmetic. Enable the optional core
+       feature only when supported; Vulkan still rejects unsupported modules. */
+    VkPhysicalDeviceFeatures supported_features = {0};
+    VkPhysicalDeviceFeatures enabled_features = {0};
+    vkGetPhysicalDeviceFeatures(physical, &supported_features);
+    enabled_features.shaderFloat64 = supported_features.shaderFloat64;
+    device_info.pEnabledFeatures = &enabled_features;
     vr = vkCreateDevice(physical, &device_info, 0, &device);
     if (vr != VK_SUCCESS) {
       json("HOST_FAILURE", "vkCreateDevice", stable_id, NULL);

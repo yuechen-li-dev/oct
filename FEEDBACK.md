@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 114 |
+| Resolved | 118 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,96 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-137 — Shader registry validation lost implementation consistency checks
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: M12's native registry rerun failed four assertions. The embedded
+catalog had grown from 40 to 44 entries, while its negative-validation test
+showed that duplicate implementation IDs, mismatched pipeline families, and
+missing dispatch metadata were accepted. The missing checks predated M12.
+
+Resolution: Restore duplicate-ID and operation/family/metadata admission in the
+existing validator, update the reviewed catalog count, and assert that the new
+FP64 FFT asset remains package-only. The five registry facts and all fifteen
+FFT facts pass after the native rebuild, with no Vulkan validation errors.
+Evidence: `.tmp/m12-native-registry.log` retains the failure and
+`.tmp/m12-native-registry-final.log` records the corrected run.
+
+---
+
+### FB-136 — Single-call Windows FFT timings could be zero
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Initial M12 measurements reported zero nanoseconds for small CPU
+and GPU calls on the local Windows clock. Using those samples for automatic
+selection would make the decision depend on clock granularity.
+
+Resolution: Measure complete calls in windows lasting at least 10 ms and select
+from three window medians, with a named 20% stability margin. Retain cold setup
+separately and cache only the current storage shape's decision. Both candidates
+cache their roots of unity. The measurement tool records numerical error and
+the rejection/selection reason. Local results select CPU through 4,096 values
+and GPU at 65,536 and 1,048,576 in the first run. A repeat conservatively kept
+65,536 on CPU when its GPU lead fell below the margin; 1,048,576 still selected
+GPU. These are observations, not portable thresholds.
+Evidence: `docs/internal/prometheus_concept_fft_m12.md` and
+`go run ./tools/fft_measure`.
+
+---
+
+### FB-135 — PROMETHEUS did not enforce GPU execution
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Blocks were restricted to benchmarks, the interpreter had no block
+handler, and compiled matrix execution could fall back to CPU. That could not
+express the requested strict GPU FFT policy.
+
+Resolution: Ordinary lexical blocks require GPU completion for direct FFT and
+matrix-matrix operations. Forced FFT bypasses CPU calibration and propagates
+recoverable errors; strict matrix calls report terminal execution failures.
+The older explicit matrix builtin outside a block retains its fallback API.
+Return propagation through blocks is checked correctly. Contracts in
+`Language/Prometheus` pass in both execution lanes with a real GPU and with an
+explicitly missing reactor. The old benchmark-only assertion was removed from
+the Go checker test; the new behavior is specified by Oct fixtures.
+Software Vulkan is excluded using the runtime's backend classification. The
+benchmark contract now requires CPU success and strict GPU failure when the
+reactor is missing; native benchmark metadata still records its actual device
+environment.
+
+---
+
+### FB-134 — The native FFT could not preserve Oct's binary64 precision
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Oct `Complex[]` uses complex128, but the existing Vulkan FFT API
+and shader arithmetic only supported Complex32. Connecting them directly would
+discard precision. The C executor also rebuilt its resources on every call.
+
+Resolution: Add SDSL-V scalar `f64` with explicit conversion, precision-aware
+literal lowering, capability metadata, and narrowing/intrinsic rejection
+contracts. A separate FP64 native entry point uses binary64 host twiddles and
+requires enabled `shaderFloat64`. Concept now owns execution and reusable
+storage for both native precisions; the handwritten C executor is removed.
+Independent native DFT, low-bit, dynamic-range, failure, warm reuse, and SGEMM
+coexistence tests pass. Normal and Verify FFT builds each pass 15 native tests
+with synchronization validation and no validation errors. The initial inverse
+normalization regression is retained in the M12 evidence and corrected.
+
+---
 
 ### FB-133 — Native launcher failure test depended on an installed Concept distribution
 
@@ -2300,7 +2390,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-134**. Put a new open issue at
+Use the next unused identifier, currently **FB-138**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

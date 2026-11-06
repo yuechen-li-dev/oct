@@ -1319,6 +1319,9 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		e.err = fmt.Errorf("inline HLSL expression bypassed shared materialization")
 		return "0"
 	case vdmir.LiteralExpr:
+		if x.Type().Kind == vdmir.TypeF64 && x.Kind == vdmir.LiteralFloat {
+			return x.Value + "L"
+		}
 		return x.Value
 	case vdmir.VarRefExpr:
 		return hlslIdentifier(x.Name)
@@ -1651,6 +1654,8 @@ func (e *emitter) line(text string) {
 func typeRef(ref vdmir.Type, name string) string {
 	mapped := ref.Name
 	switch ref.Kind {
+	case vdmir.TypeF64:
+		mapped = "double"
 	case vdmir.TypeF32:
 		mapped = "float"
 	case vdmir.TypeI32:

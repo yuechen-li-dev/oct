@@ -1,0 +1,10 @@
+fn Precise(value: f64) -> f64 {
+    let tiny: f64 = 0.0000000000291038304567337;
+    return value + tiny;
+}
+shader Float64 {
+    resources { [binding(0)] Output: readwrite array<f64>; }
+    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void {
+        Output[DispatchThreadID.x] = Precise(Convert<f64>(DispatchThreadID.x));
+    }
+}

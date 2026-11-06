@@ -52,6 +52,7 @@ type CapabilityRequirement struct {
 
 const CapabilityCooperativeMatrixF16F32M16N16K16Subgroup = "cooperative-matrix-f16-f32-m16-n16-k16-subgroup"
 const CapabilityRayQuery = "ray-query"
+const CapabilityShaderFloat64 = "shader-float64"
 
 const (
 	CapabilityGraphicsVertexPixel = "graphics-vertex-pixel"
@@ -1021,6 +1022,7 @@ const (
 	TypeI32                   TypeKind = "i32"
 	TypeU32                   TypeKind = "u32"
 	TypeF32                   TypeKind = "f32"
+	TypeF64                   TypeKind = "f64"
 	TypeUint2                 TypeKind = "uint2"
 	TypeUint3                 TypeKind = "uint3"
 	TypeUint4                 TypeKind = "uint4"

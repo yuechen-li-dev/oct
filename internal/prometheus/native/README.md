@@ -27,8 +27,13 @@ Current Vulkan reactor file topology:
     ownership to M30/M30a and M29; it does not own async tokens, queues, or
     future executors.
 - `reactor_vulkan_fft.c`
-  - M5/M6 Complex32 radix-2 Vulkan execution family; production qualification
-    remains unclaimed until its required RTX 3070 evidence is recorded.
+  - Legacy Complex32 request validation and plan diagnostics. Concept owns its
+    Vulkan executor alongside the binary64 Oct FFT executor; see the
+    [M12 qualification](../../../docs/internal/prometheus_concept_fft_m12.md).
+- `../reactors/PrometheusFft.concept` and `reactor_concept_fft.cpp`
+  - Reusable FFT buffers, package pipelines, submission/completion and retirement
+    in Concept. The C++23 adapter supplies FP64 host twiddles and per-runtime
+    attachment; C11 only transports generated layouts and spans.
 - `../reactors/PrometheusReduction.concept` and `PrometheusExecution.concept`
   - production row-wise FP32 sum/max/stable-softmax planning and execution,
     reusable slot buffers, package-created pipelines, completion, quarantine,
@@ -149,13 +154,20 @@ Scope guardrails for this topology:
 
 - `reactor_vulkan_common.c` is for genuinely shared Vulkan plumbing only.
 - SGEMM policy/runtime behavior stays localized in `reactor_vulkan_sgemm.c` for auditability.
-- FFT executes its bounded Complex32 radix-2 Vulkan route through the generic
-  runtime-services seam. It has no host FFT fallback; hardware qualification is
-  tracked separately from route availability.
+- Both native FFT precisions require GPU completion. The bounded binary64
+  forward path requires enabled `shaderFloat64`; Oct's ordinary builtin owns
+  measured CPU/GPU selection. Strict `PROMETHEUS` calls never use CPU fallback.
 - Fused reduction is row-wise and bounded; it does not own arbitrary tensor
   axes, a graph executor, normalization policy, or SGEMM selection.
 
 ## Native build entrypoints
+
+Stage the source-controlled shader portfolio as a runtime package alongside
+the native binaries (including M12's FP64 FFT shader):
+
+```powershell
+go run ./cmd/oct sdslv package build --manifest internal/prometheus/native/shaders/manifest.json --repo . --out out/prometheus/native/shaders --ids internal/prometheus/native/reactor_shader_ids.generated.h
+```
 
 Supported native build helpers:
 

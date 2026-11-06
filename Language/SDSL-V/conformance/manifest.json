@@ -10,6 +10,7 @@
     "explicit-golden-byte-parity"
   ],
   "valid": [
+    {"id": "compute.float64","source": "Language/SDSL-V/conformance/compute/Float64.sdslvvalid","profile": "compute","entry_points": ["Float64_CS"],"stages": ["compute"],"stream_roles": {},"coordinate_spaces": [],"bindings": ["Output:set0/binding0"],"locations": [],"builtins": [],"required_capabilities": ["shader-float64"],"reference_artifacts": []},
     {"id": "compute.imported-type-only", "source": "Language/SDSL-V/Modules/ImportedTypeOnly.sdslvvalid", "profile": "compute", "entry_points": ["ImportedTypeOnly_CS"], "stages": ["compute"], "stream_roles": {}, "coordinate_spaces": [], "bindings": [], "locations": [], "builtins": [], "required_capabilities": [], "reference_artifacts": []},
     {"id": "graphics.imported-streams", "source": "Language/SDSL-V/Modules/ImportedGraphics.sdslvvalid", "profile": "graphics", "entry_points": ["ImportedGraphics_VS", "ImportedGraphics_PS"], "stages": ["vertex", "pixel"], "stream_roles": {}, "coordinate_spaces": ["clip.position"], "bindings": [], "locations": [], "builtins": [], "required_capabilities": ["graphics-vertex-pixel"], "reference_artifacts": []},
     {"id": "compute.namespace-import", "source": "Language/SDSL-V/Modules/library/NamespaceImport.sdslvvalid", "profile": "compute", "entry_points": ["NamespaceImport_CS"], "stages": ["compute"], "stream_roles": {}, "coordinate_spaces": [], "bindings": [], "locations": [], "builtins": [], "required_capabilities": [], "reference_artifacts": []},
@@ -184,6 +185,9 @@
     }
   ],
   "invalid": [
+    {"source": "Language/SDSL-V/conformance/invalid/Float64Narrowing.sdslvinvalid","code": "SDSL-V1504","line": 2,"column": 12,"category": "precision"},
+    {"source": "Language/SDSL-V/conformance/invalid/Float64Transcendental.sdslvinvalid","code": "SDSL-V4302","line": 2,"column": 12,"category": "precision"},
+
     {"source": "Language/SDSL-V/Modules/ImportedDiagnostic.sdslvinvalid", "code": "SDSL-V1504", "line": 2, "column": 46, "category": "imported-diagnostic-provenance"},
     {"source": "Language/SDSL-V/Modules/ConceptAsValue.sdslvinvalid", "code": "SDSL-V4410", "line": 2, "column": 20, "category": "static-concept-value-boundary"},
     {"source": "Language/SDSL-V/Modules/ConceptAsAlias.sdslvinvalid", "code": "SDSL-V4410", "line": 2, "column": 14, "category": "static-concept-value-boundary"},

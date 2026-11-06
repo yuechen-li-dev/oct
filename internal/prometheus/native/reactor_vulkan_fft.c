@@ -1,5 +1,6 @@
 #include "reactor_vulkan.h"
 #include "reactor_shader_package.h"
+#include "reactor_concept_fft.h"
 
 #include <string.h>
 
@@ -71,6 +72,9 @@ static int prom_fft_validate_request(const PrometheusFftRequest* request, int* o
   { uint32_t stride = request->stride_elements == 0u ? request->element_count : request->stride_elements;
     physical_elements = (uint64_t)(request->batch_count - 1u) * (uint64_t)stride + (uint64_t)request->element_count; }
   if (physical_elements == 0u || physical_elements > UINT64_MAX / sizeof(PrometheusComplex32) || physical_elements * sizeof(PrometheusComplex32) > UINT32_MAX) { *out_detail = PROM_FFT_DETAIL_SIZE_OVERFLOW; return 0; }
+  /* Portable compute dispatch envelope; reject instead of emitting an invalid
+     oversized one-dimensional grid for many small batches. */
+  if ((uint64_t)request->element_count * request->batch_count > 65535ull * 256ull) { *out_detail = PROM_FFT_DETAIL_UNSUPPORTED_SIZE; return 0; }
   *out_direction = (request->flags & PROM_FFT_FLAG_INVERSE) != 0u ? PROM_FFT_DIRECTION_INVERSE : PROM_FFT_DIRECTION_FORWARD;
   *out_bytes = physical_elements * sizeof(PrometheusComplex32); return 1;
 }
@@ -96,69 +100,6 @@ static void prom_fft_apply_plan_diag(PrometheusFftDiagnostics* diag, const prom_
   diag->plan_direction = plan->direction; diag->plan_twiddle_mode = PROM_FFT_TWIDDLE_MODE_NATIVE_SIN_COS;
 }
 
-static void prom_fft_barrier(VkCommandBuffer command, VkBuffer buffer, VkAccessFlags source_access, VkAccessFlags destination_access, VkPipelineStageFlags source_stage, VkPipelineStageFlags destination_stage) {
-  VkBufferMemoryBarrier barrier; memset(&barrier, 0, sizeof(barrier)); barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER; barrier.srcAccessMask = source_access; barrier.dstAccessMask = destination_access; barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; barrier.buffer = buffer; barrier.offset = 0u; barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(command, source_stage, destination_stage, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-}
-
-static VkResult prom_fft_make_pipeline(prom_shader_package* package, VkDevice device, VkPipelineLayout layout, const char* variant_id, VkPipeline* out_pipeline) {
-  VkShaderModule module = VK_NULL_HANDLE; VkComputePipelineCreateInfo pipeline_info; VkResult result; const char* entry = NULL; prom_shader_package_diagnostic diagnostic;
-  memset(out_pipeline, 0, sizeof(*out_pipeline));
-  if (!prom_shader_package_create_module(package, device, variant_id, &module, &entry, &diagnostic)) return VK_ERROR_INITIALIZATION_FAILED;
-  memset(&pipeline_info, 0, sizeof(pipeline_info)); pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO; pipeline_info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO; pipeline_info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT; pipeline_info.stage.module = module; pipeline_info.stage.pName = entry; pipeline_info.layout = layout;
-  result = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, out_pipeline); vkDestroyShaderModule(device, module, NULL); return result;
-}
-
-static void prom_fft_write_descriptors(VkDevice device, VkDescriptorSet set, VkBuffer input, VkBuffer output, VkDeviceSize bytes) {
-  VkDescriptorBufferInfo buffers[2]; VkWriteDescriptorSet writes[2]; memset(buffers, 0, sizeof(buffers)); memset(writes, 0, sizeof(writes));
-  buffers[0].buffer = input; buffers[0].range = bytes; buffers[1].buffer = output; buffers[1].range = bytes;
-  for (uint32_t i = 0u; i < 2u; ++i) { writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet = set; writes[i].dstBinding = i; writes[i].descriptorCount = 1u; writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].pBufferInfo = &buffers[i]; }
-  vkUpdateDescriptorSets(device, 2u, writes, 0u, NULL);
-}
-
-static int prom_fft_execute_vulkan(prom_shader_package* package, const prom_vk_runtime_services* services, const PrometheusFftRequest* request, const prom_fft_plan* plan, uint64_t bytes, uint32_t* out_stage, int* out_detail) {
-  prom_vk_buffer input_stage, output_stage, input_device, ping, pong; VkDescriptorSetLayout set_layout = VK_NULL_HANDLE; VkDescriptorPool pool = VK_NULL_HANDLE; VkDescriptorSet set = VK_NULL_HANDLE; VkPipelineLayout pipeline_layout = VK_NULL_HANDLE; VkPipeline bit_pipeline = VK_NULL_HANDLE, butterfly_pipeline = VK_NULL_HANDLE; VkCommandBuffer command = VK_NULL_HANDLE; VkFence fence = VK_NULL_HANDLE; int detail = PROM_FFT_DETAIL_ALLOCATION_FAILED; int result_status = PROM_ERROR; VkResult result;
-  memset(&input_stage, 0, sizeof(input_stage)); memset(&output_stage, 0, sizeof(output_stage)); memset(&input_device, 0, sizeof(input_device)); memset(&ping, 0, sizeof(ping)); memset(&pong, 0, sizeof(pong));
-  if (services->backend_available == 0u || services->device == VK_NULL_HANDLE || services->compute_queue == VK_NULL_HANDLE || services->compute_command_pool == VK_NULL_HANDLE) { *out_detail = PROM_FFT_DETAIL_VULKAN_UNAVAILABLE; *out_stage = PROM_STAGE_INIT; return PROM_ERROR; }
-  if (package == NULL) { *out_detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; *out_stage = PROM_STAGE_INIT; return PROM_ERROR; }
-  result = prom_vk_create_buffer(services->physical_device, services->device, services->test_flags, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &input_stage); if (result != VK_SUCCESS) goto done;
-  result = prom_vk_create_buffer(services->physical_device, services->device, services->test_flags, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &output_stage); if (result != VK_SUCCESS) goto done;
-  memcpy(input_stage.mapped, request->input, (size_t)bytes); memcpy(output_stage.mapped, request->output, (size_t)bytes);
-  if ((services->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) { detail = PROM_FFT_DETAIL_UPLOAD_FAILED; *out_stage = PROM_STAGE_TRANSFER_IN; goto done; }
-  result = prom_vk_create_buffer(services->physical_device, services->device, services->test_flags, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &input_device); if (result != VK_SUCCESS) goto done;
-  result = prom_vk_create_buffer(services->physical_device, services->device, services->test_flags, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &ping); if (result != VK_SUCCESS) goto done;
-  result = prom_vk_create_buffer(services->physical_device, services->device, services->test_flags, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &pong); if (result != VK_SUCCESS) goto done;
-  { VkDescriptorSetLayoutBinding bindings[2]; VkDescriptorSetLayoutCreateInfo layout_info; VkDescriptorPoolSize pool_size; VkDescriptorPoolCreateInfo pool_info; VkDescriptorSetAllocateInfo set_info; VkPushConstantRange push; VkPipelineLayoutCreateInfo pipe_layout_info; VkCommandBufferAllocateInfo command_info; VkFenceCreateInfo fence_info;
-    memset(bindings, 0, sizeof(bindings)); for (uint32_t i = 0u; i < 2u; ++i) { bindings[i].binding = i; bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; bindings[i].descriptorCount = 1u; bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; }
-    memset(&layout_info, 0, sizeof(layout_info)); layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; layout_info.bindingCount = 2u; layout_info.pBindings = bindings; result = vkCreateDescriptorSetLayout(services->device, &layout_info, NULL, &set_layout); if (result != VK_SUCCESS) goto done;
-    memset(&pool_size, 0, sizeof(pool_size)); pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; pool_size.descriptorCount = 2u; memset(&pool_info, 0, sizeof(pool_info)); pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO; pool_info.maxSets = 1u; pool_info.poolSizeCount = 1u; pool_info.pPoolSizes = &pool_size; result = vkCreateDescriptorPool(services->device, &pool_info, NULL, &pool); if (result != VK_SUCCESS) goto done;
-    memset(&set_info, 0, sizeof(set_info)); set_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO; set_info.descriptorPool = pool; set_info.descriptorSetCount = 1u; set_info.pSetLayouts = &set_layout; result = vkAllocateDescriptorSets(services->device, &set_info, &set); if (result != VK_SUCCESS) goto done;
-    memset(&push, 0, sizeof(push)); push.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; push.size = sizeof(prom_fft_butterfly_push); memset(&pipe_layout_info, 0, sizeof(pipe_layout_info)); pipe_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO; pipe_layout_info.setLayoutCount = 1u; pipe_layout_info.pSetLayouts = &set_layout; pipe_layout_info.pushConstantRangeCount = 1u; pipe_layout_info.pPushConstantRanges = &push; result = vkCreatePipelineLayout(services->device, &pipe_layout_info, NULL, &pipeline_layout); if (result != VK_SUCCESS) goto done;
-    if ((services->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) { detail = PROM_FFT_DETAIL_DISPATCH_FAILED; *out_stage = PROM_STAGE_INIT; goto done; }
-    result = prom_fft_make_pipeline(package, services->device, pipeline_layout, "kernel-52-default", &bit_pipeline); if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; goto done; }
-    result = prom_fft_make_pipeline(package, services->device, pipeline_layout, "kernel-53-default", &butterfly_pipeline); if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; goto done; }
-    memset(&command_info, 0, sizeof(command_info)); command_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO; command_info.commandPool = services->compute_command_pool; command_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; command_info.commandBufferCount = 1u; result = vkAllocateCommandBuffers(services->device, &command_info, &command); if (result != VK_SUCCESS) goto done;
-    memset(&fence_info, 0, sizeof(fence_info)); fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO; result = vkCreateFence(services->device, &fence_info, NULL, &fence); if (result != VK_SUCCESS) goto done;
-  }
-  { VkCommandBufferBeginInfo begin; VkBufferCopy copy; VkSubmitInfo submit; prom_fft_bit_reverse_push bit_push; prom_fft_butterfly_push butterfly_push; prom_vk_buffer* source = &ping; prom_vk_buffer* destination = &pong;
-    memset(&begin, 0, sizeof(begin)); begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; result = vkBeginCommandBuffer(command, &begin); if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_DISPATCH_FAILED; *out_stage = PROM_STAGE_SUBMIT; goto done; }
-    memset(&copy, 0, sizeof(copy)); copy.size = bytes; vkCmdCopyBuffer(command, input_stage.buffer, input_device.buffer, 1u, &copy); vkCmdCopyBuffer(command, output_stage.buffer, ping.buffer, 1u, &copy); vkCmdCopyBuffer(command, output_stage.buffer, pong.buffer, 1u, &copy);
-    prom_fft_barrier(command, input_device.buffer, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT); prom_fft_barrier(command, ping.buffer, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT); prom_fft_barrier(command, pong.buffer, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    prom_fft_write_descriptors(services->device, set, input_device.buffer, ping.buffer, bytes); memset(&bit_push, 0, sizeof(bit_push)); bit_push.element_count = plan->element_count; bit_push.batch_count = plan->batch_count; bit_push.stride_elements = plan->effective_stride_elements; vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, bit_pipeline); vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0u, 1u, &set, 0u, NULL); vkCmdPushConstants(command, pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0u, sizeof(bit_push), &bit_push); vkCmdDispatch(command, (plan->element_count * plan->batch_count + 255u) / 256u, 1u, 1u);
-    prom_fft_barrier(command, ping.buffer, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    for (uint32_t pass_index = 0u; pass_index < plan->pass_count; ++pass_index) { const prom_fft_plan_pass* pass = &plan->passes[pass_index]; if (pass->source_role == PROM_FFT_BUFFER_ROLE_PONG) source = &pong; else source = &ping; if (pass->destination_role == PROM_FFT_BUFFER_ROLE_PONG) destination = &pong; else destination = &ping; prom_fft_write_descriptors(services->device, set, source->buffer, destination->buffer, bytes); memset(&butterfly_push, 0, sizeof(butterfly_push)); butterfly_push.element_count = plan->element_count; butterfly_push.batch_count = plan->batch_count; butterfly_push.stride_elements = plan->effective_stride_elements; butterfly_push.half_span = pass->half_span; butterfly_push.direction = plan->direction; butterfly_push.normalize_inverse = (plan->direction == PROM_FFT_DIRECTION_INVERSE && pass_index + 1u == plan->pass_count) ? 1u : 0u; vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_COMPUTE, butterfly_pipeline); vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0u, 1u, &set, 0u, NULL); vkCmdPushConstants(command, pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0u, sizeof(butterfly_push), &butterfly_push); vkCmdDispatch(command, (plan->element_count * plan->batch_count + 255u) / 256u, 1u, 1u); prom_fft_barrier(command, destination->buffer, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT); }
-    if ((services->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) { detail = PROM_FFT_DETAIL_DISPATCH_FAILED; *out_stage = PROM_STAGE_SUBMIT; goto done; }
-    source = plan->final_output_role == PROM_FFT_BUFFER_ROLE_PONG ? &pong : &ping; prom_fft_barrier(command, source->buffer, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT); vkCmdCopyBuffer(command, source->buffer, output_stage.buffer, 1u, &copy);
-    result = vkEndCommandBuffer(command); if ((services->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) result = VK_ERROR_INITIALIZATION_FAILED; if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_DISPATCH_FAILED; *out_stage = PROM_STAGE_SUBMIT; goto done; }
-    memset(&submit, 0, sizeof(submit)); submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO; submit.commandBufferCount = 1u; submit.pCommandBuffers = &command; result = prom_vk_queue_submit(services->compute_queue, 1u, &submit, fence); if ((services->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) result = VK_ERROR_INITIALIZATION_FAILED; if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_DISPATCH_FAILED; *out_stage = PROM_STAGE_SUBMIT; goto done; } result = vkWaitForFences(services->device, 1u, &fence, VK_TRUE, UINT64_MAX); if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_DISPATCH_FAILED; *out_stage = PROM_STAGE_SUBMIT; goto done; }
-  }
-  if ((services->test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) { detail = PROM_FFT_DETAIL_READBACK_FAILED; *out_stage = PROM_STAGE_TRANSFER_OUT; goto done; }
-  memcpy(request->output, output_stage.mapped, (size_t)bytes); *out_stage = PROM_STAGE_TRANSFER_OUT; *out_detail = 0; result_status = PROM_OK;
-done:
-  if (result_status != PROM_OK) { if (*out_stage == PROM_STAGE_NONE) *out_stage = PROM_STAGE_INIT; *out_detail = detail; }
-  if (fence != VK_NULL_HANDLE) vkDestroyFence(services->device, fence, NULL); if (command != VK_NULL_HANDLE) vkFreeCommandBuffers(services->device, services->compute_command_pool, 1u, &command); if (bit_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(services->device, bit_pipeline, NULL); if (butterfly_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(services->device, butterfly_pipeline, NULL); if (pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(services->device, pipeline_layout, NULL); if (pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(services->device, pool, NULL); if (set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(services->device, set_layout, NULL); prom_vk_destroy_buffer(services->device, &pong); prom_vk_destroy_buffer(services->device, &ping); prom_vk_destroy_buffer(services->device, &input_device); prom_vk_destroy_buffer(services->device, &output_stage); prom_vk_destroy_buffer(services->device, &input_stage); return result_status;
-}
-
 int prom_reactor_runtime_fft_impl(void* handle, const PrometheusFftRequest* request, uint32_t* out_stage, int* out_detail_code) {
   PrometheusFftDiagnostics* diag; prom_fft_plan plan; prom_vk_runtime_services services; prom_shader_package* package = NULL; int detail = PROM_FFT_DETAIL_UNAVAILABLE; uint32_t direction = PROM_FFT_DIRECTION_FORWARD; uint64_t bytes = 0u; int status;
   if (!prom_reactor_runtime_validate_handle(handle)) { prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE); return PROM_INVALID_HANDLE; }
@@ -172,7 +113,7 @@ int prom_reactor_runtime_fft_impl(void* handle, const PrometheusFftRequest* requ
      execution route. A particular call can still fail later at allocation,
      upload, dispatch, or readback; that outcome is recorded separately. */
   diag->capability_reported = 1u; diag->production_enabled = 1u; diag->benchmark_enabled = 1u; diag->last_validation_status = PROM_FFT_PATH_STATUS_BENCHMARK_ENABLED;
-  status = prom_fft_execute_vulkan(package, &services, request, &plan, bytes, out_stage, out_detail_code);
+  status = prom_concept_fft_execute(handle, request, bytes, out_stage, out_detail_code);
   if (status == PROM_OK) { diag->executed_path_id = PROM_FFT_PATH_VULKAN_RADIX2_RESERVED; diag->executed_radix = PROM_FFT_RADIX_BASELINE; diag->last_failure_detail = 0; return PROM_OK; }
   diag->executed_path_id = PROM_FFT_PATH_UNAVAILABLE; diag->last_failure_detail = out_detail_code != NULL ? *out_detail_code : PROM_FFT_DETAIL_DISPATCH_FAILED; return PROM_ERROR;
 }

@@ -2127,7 +2127,7 @@ func (l *lowering) sortedRequirements() []vdmir.CapabilityRequirement {
 }
 
 func (l *lowering) seedBuiltins() {
-	for _, name := range []string{"void", "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4"} {
+	for _, name := range []string{"void", "bool", "i32", "u32", "f32", "f64", "float", "float2", "float3", "float4"} {
 		l.types[name] = typeInfo{kind: "builtin"}
 	}
 	l.types["uint2"] = builtinUintVectorType(2)
@@ -2791,6 +2791,9 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 		}
 		return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: typ, Kind: vdmir.LiteralInteger, Value: e.Value}, nil
 	case ast.FloatLiteral:
+		if expected != nil && l.resolveAlias(*expected).Name == "f64" {
+			return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeF64, Name: "f64"}, Kind: vdmir.LiteralFloat, Value: e.Value}, nil
+		}
 		return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}, Kind: vdmir.LiteralFloat, Value: e.Value}, nil
 	case ast.BoolLiteral:
 		value := "false"
@@ -3377,6 +3380,9 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 		return vdmir.Type{Kind: vdmir.TypeI32, Name: "i32"}
 	case "u32":
 		return vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+	case "f64":
+		l.requirements[vdmir.CapabilityShaderFloat64] = vdmir.CapabilityRequirement{Kind: vdmir.CapabilityShaderFloat64, Scope: "shader"}
+		return vdmir.Type{Kind: vdmir.TypeF64, Name: "f64"}
 	case "f32", "float":
 		return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
 	case "uint2":
@@ -3839,6 +3845,9 @@ func binaryResultType(left vdmir.Type, op string, right vdmir.Type) vdmir.Type {
 	case "&&", "||", "==", "!=", "<", "<=", ">", ">=":
 		return vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}
 	default:
+		if left.Kind == vdmir.TypeF64 || right.Kind == vdmir.TypeF64 {
+			return vdmir.Type{Kind: vdmir.TypeF64, Name: "f64"}
+		}
 		if left.Kind == vdmir.TypeF32 || right.Kind == vdmir.TypeF32 {
 			return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
 		}
@@ -3875,6 +3884,8 @@ func astTypeFromVDMIR(t vdmir.Type) ast.TypeRef {
 		return ast.TypeRef{Name: "i32"}
 	case vdmir.TypeU32:
 		return ast.TypeRef{Name: "u32"}
+	case vdmir.TypeF64:
+		return ast.TypeRef{Name: "f64"}
 	case vdmir.TypeF32:
 		return ast.TypeRef{Name: "f32"}
 	case vdmir.TypeRegTile:
@@ -4258,6 +4269,8 @@ func lowerIntrinsicType(ref ast.TypeRef) vdmir.Type {
 		return vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
 	case "i32":
 		return vdmir.Type{Kind: vdmir.TypeI32, Name: "i32"}
+	case "f64":
+		return vdmir.Type{Kind: vdmir.TypeF64, Name: "f64"}
 	case "f32":
 		return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
 	}

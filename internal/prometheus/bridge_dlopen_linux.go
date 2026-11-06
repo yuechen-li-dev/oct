@@ -47,6 +47,12 @@ static int oct_prom_call_probe(void* symbol, uintptr_t handle, oct_prom_caps* ou
 	return ((oct_prom_probe_fn)symbol)((void*)handle, out_caps);
 }
 
+static int oct_prom_call_fft64(void* symbol, uintptr_t handle,
+    const double* input, double* output, uint32_t count, uint32_t* stage, int* detail) {
+    typedef int (*fft64_fn)(void*, const double*, double*, uint32_t, uint32_t*, int*);
+    return ((fft64_fn)symbol)((void*)handle, input, output, count, stage, detail);
+}
+
 static int oct_prom_call_sgemm(void* symbol,
 	uintptr_t handle,
 	const float* a,
@@ -237,13 +243,13 @@ func (l *dlLibrary) Resolve(symbol string) (any, error) {
 		return reactorCreate(func(cfg reactorCreateConfig) (reactorRuntimeHandle, error) {
 			var raw C.uintptr_t
 			cCfg := C.oct_prom_cfg{
-				struct_size:               C.uint32_t(C.sizeof_oct_prom_cfg),
-				test_flags:                C.uint32_t(cfg.TestFlags),
-				p15_shadow_disabled:       0,
-				async_test_flags:          0,
-				batch_ring_depth:          0,
-				reduction_test_flags:      0,
-				reduction_ring_depth:      C.uint32_t(cfg.ReductionRingDepth),
+				struct_size:          C.uint32_t(C.sizeof_oct_prom_cfg),
+				test_flags:           C.uint32_t(cfg.TestFlags),
+				p15_shadow_disabled:  0,
+				async_test_flags:     0,
+				batch_ring_depth:     0,
+				reduction_test_flags: 0,
+				reduction_ring_depth: C.uint32_t(cfg.ReductionRingDepth),
 			}
 			var cRoot *C.char
 			if cfg.ShaderPackageRoot != "" {
@@ -273,6 +279,28 @@ func (l *dlLibrary) Resolve(symbol string) (any, error) {
 				BackendType: uint32(caps.backend_type),
 				ReasonCode:  uint32(caps.reason_code),
 			}, nil
+		}), nil
+	case "prometheus_reactor_runtime_fft64":
+		return reactorFFT64(func(handle reactorRuntimeHandle, values []complex128) ([]complex128, error) {
+			input := make([]float64, 2*len(values))
+			output := make([]float64, len(input))
+			for i, value := range values {
+				input[2*i] = real(value)
+				input[2*i+1] = imag(value)
+			}
+			var stage C.uint32_t
+			var detail C.int
+			status := C.oct_prom_call_fft64(sym, C.uintptr_t(handle.ptr),
+				(*C.double)(unsafe.Pointer(&input[0])), (*C.double)(unsafe.Pointer(&output[0])),
+				C.uint32_t(len(values)), &stage, &detail)
+			if status != 0 {
+				return nil, fmt.Errorf("Vulkan FFT64 failed: status=%d stage=%d detail=%d", int(status), uint32(stage), int(detail))
+			}
+			result := make([]complex128, len(values))
+			for i := range result {
+				result[i] = complex(output[2*i], output[2*i+1])
+			}
+			return result, nil
 		}), nil
 	case reactorSymbolSGEMM:
 		return reactorSGEMM(func(handle reactorRuntimeHandle, m, n, k int, a, b []float32) ([]float32, reactorCallStatus, error) {

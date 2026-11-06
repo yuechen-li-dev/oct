@@ -1,0 +1,54 @@
+namespace Prometheus.Production.FFT64;
+
+// Interleaved IEEE binary64 real/imaginary pairs. Twiddles are computed in
+// binary64 by the host; no FP32 conversion or shader transcendental is used.
+stream Fft64IO {
+    [binding(0)] Input: readonly array<f64>;
+    [binding(1)] Output: readwrite array<f64>;
+    [binding(2)] Twiddle: readonly array<f64>;
+}
+record Fft64Params {
+    ElementCount: u32;
+    HalfSpan: u32;
+    BitCount: u32;
+    Reserved: u32;
+}
+shader FftRadix2Fp64 {
+    resources Fft64IO;
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: Fft64Params) -> void {
+        let index: u32 = DispatchThreadID.x;
+        if index >= params.ElementCount { return; }
+        if params.HalfSpan == 0u {
+            var value: u32 = index;
+            var reversed: u32 = 0u;
+            for bit in 0u..params.BitCount {
+                reversed = (reversed << 1u) | (value & 1u);
+                value = value >> 1u;
+            }
+            Output[2u * reversed] = Input[2u * index];
+            Output[2u * reversed + 1u] = Input[2u * index + 1u];
+            return;
+        }
+        let span: u32 = 2u * params.HalfSpan;
+        let lane: u32 = index % span;
+        let lower: u32 = lane % params.HalfSpan;
+        let base: u32 = index - lane + lower;
+        let other: u32 = base + params.HalfSpan;
+        let twiddle: u32 = lower * (params.ElementCount / span);
+        let wr: f64 = Twiddle[2u * twiddle];
+        let wi: f64 = Twiddle[2u * twiddle + 1u];
+        let ar: f64 = Input[2u * base];
+        let ai: f64 = Input[2u * base + 1u];
+        let br: f64 = Input[2u * other];
+        let bi: f64 = Input[2u * other + 1u];
+        let tr: f64 = wr * br - wi * bi;
+        let ti: f64 = wr * bi + wi * br;
+        if lane < params.HalfSpan {
+            Output[2u * index] = ar + tr;
+            Output[2u * index + 1u] = ai + ti;
+        } else {
+            Output[2u * index] = ar - tr;
+            Output[2u * index + 1u] = ai - ti;
+        }
+    }
+}

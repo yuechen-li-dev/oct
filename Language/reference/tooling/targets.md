@@ -63,6 +63,10 @@ and `Pow` operates on typed scalar/vector values directly.
 Scalar shader integers also have `&`, `|`, `^`, `~`, `<<`, and `>>`, with
 32-bit rules and hexadecimal masks documented in the shader specification.
 
+The shader scalar `f64` preserves binary64 storage and arithmetic and requires
+Vulkan `shaderFloat64`. Its explicit conversion and FP32 intrinsic boundaries
+are documented in the shader specification.
+
 The [SDSL-V specification](../../../docs/SDSL_V_LANGUAGE_SPEC.md) owns the
 shader rules, and the [workspace guide](../../../docs/SDSL_V_WORKSPACE.md)
 explains compilation and production ownership. Sharing parser mechanics with

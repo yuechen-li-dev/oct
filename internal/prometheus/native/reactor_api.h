@@ -377,6 +377,7 @@ enum {
   PROM_FFT_DETAIL_READBACK_FAILED = -6717,
   PROM_FFT_DETAIL_SHADER_UNAVAILABLE = -6718,
   PROM_FFT_DETAIL_PLAN_DISPATCH_DISAGREEMENT = -6719,
+  PROM_FFT_DETAIL_FLOAT64_UNAVAILABLE = -6720,
 };
 
 /* M39b is deliberately row-wise.  Arbitrary axes, dynamic shapes, and
@@ -2648,6 +2649,10 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_policy_diagnostics_sized(v
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch_diagnostics(void* handle,
                                                                         PrometheusSgemmBatchDiagnostics* out_diag);
 
+/* Interleaved binary64 complex pairs, contiguous forward unnormalized FFT.
+   Input/output each hold count pairs. GPU execution is required; no fallback. */
+PROM_REACTOR_API int prometheus_reactor_runtime_fft64(void* handle, const double* input,
+    double* output, uint32_t count, uint32_t* stage, int* detail);
 PROM_REACTOR_API int prometheus_reactor_runtime_fft(void* handle,
                                                     const PrometheusFftRequest* request,
                                                     uint32_t* out_stage,

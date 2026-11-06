@@ -713,55 +713,11 @@ func __octSymGrad[T __octNumber](v []T) [][]T {
 `
 
 const __octFFTHelpers = `
-func __octFFT(values []complex128) octResult_ComplexSlice {
-	n := len(values)
-	if n == 0 {
-		return octResult_ComplexSlice{Err: "runtime error: FFT requires non-empty input", IsErr: true}
-	}
-	if n&(n-1) != 0 {
-		return octResult_ComplexSlice{Err: "runtime error: FFT requires power-of-two input length", IsErr: true}
-	}
-
-	out := make([]complex128, n)
-	copy(out, values)
-
-	for i := 0; i < n; i++ {
-		j := __octReverseBits(i, n)
-		if j > i {
-			out[i], out[j] = out[j], out[i]
-		}
-	}
-
-	for span := 2; span <= n; span *= 2 {
-		halfSpan := span / 2
-		phaseStep := -2.0 * math.Pi / float64(span)
-		for blockStart := 0; blockStart < n; blockStart += span {
-			for j := 0; j < halfSpan; j++ {
-				angle := phaseStep * float64(j)
-				twiddle := complex(math.Cos(angle), math.Sin(angle))
-				odd := out[blockStart+j+halfSpan]
-				t := twiddle * odd
-				even := out[blockStart+j]
-				out[blockStart+j] = even + t
-				out[blockStart+j+halfSpan] = even - t
-			}
-		}
-	}
-
-	return octResult_ComplexSlice{Value: out}
-}
-
-func __octReverseBits(index int, width int) int {
-	value := index
-	reversed := 0
-	n := width
-	for n > 1 {
-		lowBit := value & 1
-		reversed = reversed*2 + lowBit
-		value /= 2
-		n /= 2
-	}
-	return reversed
+var __octFFTEngine = prometheus.NewFFTEngine()
+func __octFFT(values []complex128, requiredGPU bool) octResult_ComplexSlice {
+    out,err:=__octFFTEngine.Transform(values,requiredGPU)
+    if err!=nil { return octResult_ComplexSlice{Err:err.Error(),IsErr:true} }
+    return octResult_ComplexSlice{Value:out}
 }
 `
 
@@ -829,6 +785,13 @@ func __octDetectPrometheusVulkanEnv() string {
 	return "wsl_vulkan_unknown"
 }
 
+func __octPrometheusMatMulMMStrict(left [][]float64,right [][]float64) [][]float64 {
+    out,env,err:=prometheus.RunCompiledMatMulMMStrict(left,right)
+    if err!=nil { panic(err) }
+    if detected:=__octPrometheusVulkanEnv(); detected!="not_applicable" { env=detected }
+    fmt.Printf("backend_requested=prometheus backend_used=prometheus status=ok vulkan_env=%s\n",env)
+    return out
+}
 func __octPrometheusMatMulMM(left [][]float64, right [][]float64) [][]float64 {
 	out, run, err := prometheus.RunCompiledMatMulMM(left, right)
 	env := __octPrometheusVulkanEnv()

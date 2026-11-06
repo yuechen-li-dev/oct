@@ -84,7 +84,39 @@
     {"id":66,"name":"m47-transformer-silu-gate-pack-f16","authority":"experimental","stage":"compute","source_language":"sdslv","source":"internal/prometheus/shaders/sdslv/experimental/transformer/silu_gate_pack.sdslv","header":"../shaders/sdslv/experimental/transformer/silu_gate_pack_spirv.h","external_package":true,"symbol":"k_prom_m47_silu_gate_pack_spirv","entry_point":"SiluGatePack_CS","workgroup":[256,1,1],"descriptor_bindings":4,"push_constant_bytes":32,"stage_role":"experimental-m47-gate-pack","row_width_envelope":[1,4294967295]},
     {"id":67,"name":"gemma4e2b-m1-projection-bf16-roundtrip","authority":"production","stage":"compute","source_language":"sdslv","source":"internal/prometheus/shaders/sdslv/production/gemma4e2b/bf16_roundtrip.sdslv","header":"../shaders/sdslv/production/gemma4e2b/bf16_roundtrip_spirv.h","external_package":true,"symbol":"k_prom_gemma4e2b_m1_bf16_roundtrip_spirv","entry_point":"Gemma4E2BM1Bf16Roundtrip_CS","workgroup":[256,1,1],"descriptor_bindings":4,"push_constant_bytes":32,"stage_role":"gemma4e2b-m1-fp32-bf16-fp32-projection-storage-boundary","row_width_envelope":[1,4294967295],"contains_inline_hlsl":false,"inline_hlsl_block_count":0,"foreign_targets":[]},
     {"id":68,"name":"gemma4e2b-m1-rope-half-split","authority":"production","stage":"compute","source_language":"sdslv","source":"internal/prometheus/shaders/sdslv/production/gemma4e2b/rope_half_split.sdslv","header":"../shaders/sdslv/production/gemma4e2b/rope_half_split_spirv.h","external_package":true,"symbol":"k_prom_gemma4e2b_m1_rope_half_split_spirv","entry_point":"Gemma4E2BM1RopeHalfSplit_CS","workgroup":[256,1,1],"descriptor_bindings":4,"push_constant_bytes":32,"stage_role":"gemma4e2b-m1-rope-half-split-bf16-storage","row_width_envelope":[1,4294967295],"contains_inline_hlsl":false,"inline_hlsl_block_count":0,"foreign_targets":[]},
-    {"id":69,"name":"gemma4e2b-m1-attention-scores","authority":"production","stage":"compute","source_language":"sdslv","source":"internal/prometheus/shaders/sdslv/production/gemma4e2b/attention_scores.sdslv","header":"../shaders/sdslv/production/gemma4e2b/attention_scores_spirv.h","external_package":true,"symbol":"k_prom_gemma4e2b_m1_attention_scores_spirv","entry_point":"Gemma4E2BM1AttentionScores_CS","workgroup":[256,1,1],"descriptor_bindings":3,"push_constant_bytes":32,"stage_role":"gemma4e2b-m1-raw-pre-mask-grouped-query-attention-scores-fp32","row_width_envelope":[1,4294967295]}
+    {"id":69,"name":"gemma4e2b-m1-attention-scores","authority":"production","stage":"compute","source_language":"sdslv","source":"internal/prometheus/shaders/sdslv/production/gemma4e2b/attention_scores.sdslv","header":"../shaders/sdslv/production/gemma4e2b/attention_scores_spirv.h","external_package":true,"symbol":"k_prom_gemma4e2b_m1_attention_scores_spirv","entry_point":"Gemma4E2BM1AttentionScores_CS","workgroup":[256,1,1],"descriptor_bindings":3,"push_constant_bytes":32,"stage_role":"gemma4e2b-m1-raw-pre-mask-grouped-query-attention-scores-fp32","row_width_envelope":[1,4294967295]},
+    {
+      "id": 70,
+      "name": "fft-radix2-fp64",
+      "authority": "production",
+      "stage": "compute",
+      "source_language": "sdslv",
+      "source": "internal/prometheus/shaders/sdslv/production/fft/radix2_fp64.sdslv",
+      "header": "reactor_vulkan_fft_fp64_spirv.h",
+      "external_package": true,
+      "symbol": "k_prom_fft_fp64_spirv",
+      "entry_point": "FftRadix2Fp64_CS",
+      "workgroup": [
+        256,
+        1,
+        1
+      ],
+      "descriptor_bindings": 3,
+      "push_constant_bytes": 16,
+      "stage_role": "production-vulkan14-complex64-radix2-forward",
+      "row_width_envelope": [
+        1,
+        1048576
+      ],
+      "production_target": "ProductionVulkan14",
+      "route_identity": "FftRadix2HostFp64TwiddleV1",
+      "twiddle_strategy": "host-binary64-sin-cos",
+      "compile_contract": {
+        "dxc_target_environment": "vulkan1.3",
+        "validator_target_environment": "vulkan1.4",
+        "spirv_version": "1.6"
+      }
+    }
   ],
   "experimental_shader_assets": [
     {
