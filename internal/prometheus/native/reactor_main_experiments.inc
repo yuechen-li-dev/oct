@@ -151,7 +151,7 @@ static int prom_main_transformer_record_experimental(prom_reduction_runtime_stat
   if (state == NULL || block == NULL || session == NULL ||
       prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
   joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
-  if (joint == NULL || joint->valid == 0u || joint->generation != requested_joint_generation ||
+  if (joint == NULL || (joint->valid == 0u && !(resident_chain_mode && prom_concept_session_joint_borrowed(session))) || joint->generation != requested_joint_generation ||
       joint->device.size != PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS) ||
       block->input_device.size != joint->device.size || block->timestep_upload.mapped == NULL) return 0;
   phase_begin_ns = prom_reduction_now_ns();

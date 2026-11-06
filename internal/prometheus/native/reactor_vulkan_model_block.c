@@ -1040,6 +1040,9 @@ static uint64_t prom_model_block_resolve_gpu_span(prom_reduction_runtime_state* 
 static int prom_model_block_reap(prom_reduction_runtime_state* state,
                                  prom_model_block_state* block) {
   if (state == NULL || block == NULL) return 0;
+  /* A session capture can still borrow the model's completed output. */
+  if (!prom_concept_session_drain(&state->compiled_session))
+    return 0;
   if (!prom_concept_block_drain(block)) return 0;
   /* A legacy fence can independently quarantine the same borrowed resources.
      Retire it too; its initial signaled state handles Concept-only work. */
@@ -1534,6 +1537,8 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
   if (state == NULL) return;
   block = &state->model_block;
   next_block_id = block->next_block_id;
+  if (!prom_concept_session_drain(&state->compiled_session))
+    abort();
   if (!prom_concept_block_drain(block)) abort();
   if (state->device != VK_NULL_HANDLE && block->fence != VK_NULL_HANDLE && block->legacy_submission_pending != 0u) {
     (void)vkWaitForFences(state->device, 1u, &block->fence, VK_TRUE, UINT64_MAX);
@@ -3758,9 +3763,12 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   if (out_detail) *out_detail=PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
   if (!state || !block || !session) return 0;
   prom_compiled_model_stream_slot* joint=prom_compiled_session_slot(session,PROM_ZIMAGE_STREAM_JOINT_WORKING);
-  if (!joint || !joint->valid || joint->generation!=requested_joint_generation ||
-      joint->device.size!=PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS) ||
-      block->input_device.size!=joint->device.size || !block->timestep_upload.mapped) return 0;
+  if (!joint ||
+      (!joint->valid && !(resident_chain_mode && prom_concept_session_joint_borrowed(session))) ||
+      joint->generation != requested_joint_generation ||
+      joint->device.size != PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS) ||
+      block->input_device.size != joint->device.size || !block->timestep_upload.mapped)
+    return 0;
   return prom_concept_block_main_run(state,block,&joint->device,resident_chain_mode,out_detail);
 #endif
 }
@@ -3808,43 +3816,18 @@ static void prom_compiled_session_fill_evidence(const prom_compiled_model_sessio
   out_evidence->main_attention_shader_id = session->main_attention_shader_id;
 }
 
-static int prom_compiled_session_submit_and_wait(prom_reduction_runtime_state* state,
-                                                 prom_compiled_model_session_state* session) {
-  VkSubmitInfo submit_info;
-  if (state == NULL || session == NULL || session->command_buffer == VK_NULL_HANDLE ||
-      session->fence == VK_NULL_HANDLE || vkResetFences(state->device, 1u, &session->fence) != VK_SUCCESS) return 0;
-  memset(&submit_info, 0, sizeof(submit_info));
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_info.commandBufferCount = 1u;
-  submit_info.pCommandBuffers = &session->command_buffer;
-  if (prom_vk_queue_submit(state->queue, 1u, &submit_info, session->fence) != VK_SUCCESS ||
-      vkWaitForFences(state->device, 1u, &session->fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
-    session->quarantined = 1u;
-    session->last_detail_code = PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN;
-    return 0;
-  }
-  return 1;
-}
-
 void prom_compiled_model_session_cleanup_state(prom_reduction_runtime_state* state) {
-  prom_compiled_model_session_state* session;
-  uint64_t next_session_id;
-  uint32_t index;
-  if (state == NULL) return;
-  session = &state->compiled_session;
-  next_session_id = session->next_session_id;
-  if (state->device != VK_NULL_HANDLE && session->fence != VK_NULL_HANDLE && session->quarantined != 0u) {
-    (void)vkWaitForFences(state->device, 1u, &session->fence, VK_TRUE, UINT64_MAX);
-  }
-  if (state->device != VK_NULL_HANDLE) {
-    for (index = 0u; index < PROM_ZIMAGE_STREAM_SLOT_COUNT; ++index)
-      prom_vk_destroy_buffer(state->device, &session->streams[index].device);
-    if (session->fence != VK_NULL_HANDLE) vkDestroyFence(state->device, session->fence, NULL);
-    if (session->command_buffer != VK_NULL_HANDLE && state->command_pool != VK_NULL_HANDLE)
-      vkFreeCommandBuffers(state->device, state->command_pool, 1u, &session->command_buffer);
-  }
+  if (!state)
+    return;
+  prom_compiled_model_session_state *session = &state->compiled_session;
+  const uint64_t next = session->next_session_id;
+  // The model may still hold a submitted borrow of JointWorking.
+  if (session->concept_owner && !prom_model_block_reap(state, &state->model_block))
+    abort();
+  if (prom_concept_session_destroy(session) != PROM_OK)
+    abort();
   memset(session, 0, sizeof(*session));
-  session->next_session_id = next_session_id == 0u ? 1u : next_session_id;
+  session->next_session_id = next == 0u ? 1u : next;
 }
 
 int prom_reactor_runtime_compiled_model_session_create_impl(
@@ -3852,15 +3835,12 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
     PrometheusCompiledModelSessionEvidence* out_evidence) {
   prom_reduction_runtime_state* state;
   prom_compiled_model_session_state* session;
-  VkCommandBufferAllocateInfo command_info;
-  VkFenceCreateInfo fence_info;
+  prom_vk_runtime_services services;
   const PrometheusCompiledModelResidentStreamDescriptor* image_descriptor;
   const PrometheusCompiledModelResidentStreamDescriptor* context_descriptor;
   const PrometheusCompiledModelResidentStreamDescriptor* joint_descriptor;
   uint64_t next_session_id;
   int32_t detail = 0;
-  const VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                                   VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   VkDeviceSize image_bytes;
   VkDeviceSize context_bytes;
   VkDeviceSize joint_bytes;
@@ -3907,23 +3887,13 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
   image_bytes = (VkDeviceSize)image_descriptor->byte_count;
   context_bytes = (VkDeviceSize)context_descriptor->byte_count;
   joint_bytes = (VkDeviceSize)joint_descriptor->byte_count;
-  if (prom_vk_create_buffer(state->physical_device, state->device, 0u, image_bytes, usage,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &session->streams[0u].device) != VK_SUCCESS ||
-      prom_vk_create_buffer(state->physical_device, state->device, 0u, context_bytes, usage,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &session->streams[1u].device) != VK_SUCCESS ||
-      prom_vk_create_buffer(state->physical_device, state->device, 0u, joint_bytes, usage,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &session->streams[2u].device) != VK_SUCCESS) goto fail;
+  const uint32_t fault = state->session_create_test_flags;
+  state->session_create_test_flags = 0u;
+  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK ||
+      !prom_concept_session_create(handle, &services, session, image_bytes, context_bytes,
+                                   joint_bytes, fault))
+    goto fail;
   session->cold_buffer_allocation_count = 3u;
-  memset(&command_info, 0, sizeof(command_info));
-  command_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  command_info.commandPool = state->command_pool;
-  command_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  command_info.commandBufferCount = 1u;
-  if (vkAllocateCommandBuffers(state->device, &command_info, &session->command_buffer) != VK_SUCCESS) goto fail;
-  memset(&fence_info, 0, sizeof(fence_info));
-  fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  if (vkCreateFence(state->device, &fence_info, NULL, &session->fence) != VK_SUCCESS) goto fail;
   session->session_id = session->next_session_id++;
   session->created = 1u;
   session->last_detail_code = 0;
@@ -3934,6 +3904,8 @@ fail:
   session->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
   prom_compiled_model_session_cleanup_state(state);
   prom_compiled_session_fill_evidence(NULL, out_evidence);
+  if (out_evidence)
+    out_evidence->detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
   return PROM_ERROR;
 }
 
@@ -3945,9 +3917,6 @@ int prom_reactor_runtime_compiled_model_session_capture_completed_impl(
   prom_compiled_model_session_state* session;
   prom_model_block_state* block;
   prom_compiled_model_stream_slot* slot;
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferMemoryBarrier barriers[2];
-  VkBufferCopy copy;
   const PrometheusCompiledModelResidentStreamDescriptor* descriptor;
   uint32_t role;
   VkDeviceSize bytes;
@@ -3956,6 +3925,8 @@ int prom_reactor_runtime_compiled_model_session_capture_completed_impl(
   if (state == NULL) goto invalid;
   session = &state->compiled_session;
   block = &state->model_block;
+  if (session->created && session->session_id == session_id && !prom_concept_session_drain(session))
+    goto stale;
   if (session->created == 0u || session->session_id != session_id || session->quarantined != 0u ||
       block->created == 0u || block->block_id != completed_block_id || block->output_valid == 0u ||
       block->output_generation != request->source_output_generation || !prom_model_block_reap(state, block)) goto stale;
@@ -3971,36 +3942,13 @@ int prom_reactor_runtime_compiled_model_session_capture_completed_impl(
   slot = prom_compiled_session_slot(session, role);
   descriptor = prom_zimage_turbo_resolve_resident_stream_descriptor(session->lock_identity, role);
   if (descriptor == NULL || descriptor->byte_count != bytes || slot == NULL ||
-      block->attention.size < bytes || slot->device.size != bytes ||
-      vkResetCommandBuffer(session->command_buffer, 0u) != VK_SUCCESS) goto invalid;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(session->command_buffer, &begin_info) != VK_SUCCESS) goto invalid;
-  memset(barriers, 0, sizeof(barriers));
-  barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].buffer = block->attention.buffer;
-  barriers[0].size = bytes;
-  barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[1].buffer = slot->device.buffer;
-  barriers[1].size = bytes;
-  vkCmdPipelineBarrier(session->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 2u, barriers, 0u, NULL);
-  memset(&copy, 0, sizeof(copy));
-  copy.size = bytes;
-  vkCmdCopyBuffer(session->command_buffer, block->attention.buffer, slot->device.buffer, 1u, &copy);
-  if (vkEndCommandBuffer(session->command_buffer) != VK_SUCCESS || !prom_compiled_session_submit_and_wait(state, session)) goto stale;
-  slot->generation += 1u;
-  slot->producer_block_id = completed_block_id;
-  slot->producer_output_generation = block->output_generation;
-  slot->valid = 1u;
+      block->attention.size < bytes || slot->device.size != bytes)
+    goto invalid;
+  if (!prom_concept_session_capture(session, role, &block->attention, completed_block_id,
+                                    block->output_generation)) {
+    prom_compiled_session_fill_evidence(session, out_evidence);
+    return PROM_ERROR;
+  }
   session->active_block_id = completed_block_id;
   session->binding_generation = block->binding_generation;
   session->replay_identity = prom_model_block_hash_u64(session->replay_identity == 0u ? session->lock_identity : session->replay_identity,
@@ -4023,91 +3971,39 @@ invalid:
 }
 
 int prom_reactor_runtime_compiled_model_session_compose_joint_impl(
-    void* handle, uint64_t session_id, const PrometheusCompiledModelSessionComposeRequest* request,
-    PrometheusCompiledModelSessionEvidence* out_evidence) {
-  prom_reduction_runtime_state* state;
-  prom_compiled_model_session_state* session;
-  prom_compiled_model_stream_slot* image;
-  prom_compiled_model_stream_slot* context;
-  prom_compiled_model_stream_slot* joint;
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferMemoryBarrier barriers[3];
-  VkBufferCopy copies[2];
-  const PrometheusCompiledModelResidentStreamDescriptor* joint_descriptor;
-  if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || request->struct_size != sizeof(*request)) goto invalid;
-  state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
-  if (state == NULL) goto invalid;
-  session = &state->compiled_session;
-  image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
-  context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
-  joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
-  if (session->created == 0u || session->session_id != session_id || session->quarantined != 0u ||
-      image == NULL || context == NULL || joint == NULL || image->valid == 0u || context->valid == 0u ||
-      request->required_image_generation != image->generation || request->required_context_generation != context->generation)
-    goto stale;
-  joint_descriptor = prom_zimage_turbo_resolve_resident_stream_descriptor(
-      session->lock_identity, PROM_ZIMAGE_STREAM_JOINT_WORKING);
-  if (joint_descriptor == NULL || joint_descriptor->byte_count != image->device.size + context->device.size ||
-      joint->device.size != joint_descriptor->byte_count || vkResetCommandBuffer(session->command_buffer, 0u) != VK_SUCCESS) goto invalid;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(session->command_buffer, &begin_info) != VK_SUCCESS) goto invalid;
-  memset(barriers, 0, sizeof(barriers));
-  barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].buffer = image->device.buffer;
-  barriers[0].size = image->device.size;
-  barriers[1] = barriers[0];
-  barriers[1].buffer = context->device.buffer;
-  barriers[1].size = context->device.size;
-  barriers[2].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[2].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[2].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[2].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[2].buffer = joint->device.buffer;
-  barriers[2].size = joint->device.size;
-  vkCmdPipelineBarrier(session->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 3u, barriers, 0u, NULL);
-  memset(copies, 0, sizeof(copies));
-  copies[0].size = image->device.size;
-  copies[1].dstOffset = image->device.size;
-  copies[1].size = context->device.size;
-  vkCmdCopyBuffer(session->command_buffer, image->device.buffer, joint->device.buffer, 1u, &copies[0]);
-  vkCmdCopyBuffer(session->command_buffer, context->device.buffer, joint->device.buffer, 1u, &copies[1]);
-  barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-  barriers[0].buffer = joint->device.buffer;
-  barriers[0].size = joint->device.size;
-  vkCmdPipelineBarrier(session->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 1u, barriers, 0u, NULL);
-  if (vkEndCommandBuffer(session->command_buffer) != VK_SUCCESS || !prom_compiled_session_submit_and_wait(state, session)) goto stale;
-  joint->generation += 1u;
-  joint->producer_block_id = 0u;
-  joint->producer_output_generation = 0u;
-  joint->valid = 1u;
-  session->joint_image_generation = image->generation;
-  session->joint_context_generation = context->generation;
-  session->composition_count += 1u;
-  session->replay_identity = prom_model_block_hash_u64(session->replay_identity, image->generation);
-  session->replay_identity = prom_model_block_hash_u64(session->replay_identity, context->generation);
-  session->replay_identity = prom_model_block_hash_u64(session->replay_identity, joint->generation);
-  session->last_detail_code = 0;
+    void *handle, uint64_t session_id, const PrometheusCompiledModelSessionComposeRequest *request,
+    PrometheusCompiledModelSessionEvidence *out_evidence) {
+  if (!prom_reactor_runtime_validate_handle(handle) || !request ||
+      request->struct_size != sizeof(*request)) {
+    prom_compiled_session_fill_evidence(NULL, out_evidence);
+    return PROM_ERROR;
+  }
+  prom_reduction_runtime_state *state = prom_reactor_runtime_reduction_state(handle);
+  if (!state || !state->compiled_session.created ||
+      state->compiled_session.session_id != session_id) {
+    prom_compiled_session_fill_evidence(NULL, out_evidence);
+    return PROM_ERROR;
+  }
+  prom_compiled_model_session_state *session = &state->compiled_session;
+  // Main's earlier submission may still borrow/write the joint.
+  if (!prom_model_block_reap(state, &state->model_block)) {
+    session->last_detail_code = PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN;
+    prom_compiled_session_fill_evidence(session, out_evidence);
+    return PROM_ERROR;
+  }
+  if (!prom_concept_session_compose(session, request->required_image_generation,
+                                    request->required_context_generation)) {
+    prom_compiled_session_fill_evidence(session, out_evidence);
+    return PROM_ERROR;
+  }
+  session->replay_identity =
+      prom_model_block_hash_u64(session->replay_identity, session->joint_image_generation);
+  session->replay_identity =
+      prom_model_block_hash_u64(session->replay_identity, session->joint_context_generation);
+  session->replay_identity =
+      prom_model_block_hash_u64(session->replay_identity, session->streams[2].generation);
   prom_compiled_session_fill_evidence(session, out_evidence);
   return PROM_OK;
-stale:
-  if (state != NULL) {
-    session = &state->compiled_session;
-    session->last_detail_code = session->quarantined != 0u ? PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_SESSION_DETAIL_STALE_STREAM;
-    prom_compiled_session_fill_evidence(session, out_evidence);
-  } else prom_compiled_session_fill_evidence(NULL, out_evidence);
-  return PROM_ERROR;
-invalid:
-  prom_compiled_session_fill_evidence(NULL, out_evidence);
-  return PROM_ERROR;
 }
 
 /* Rebinding is deliberately limited to the lock's immediate successor.  The
@@ -4254,6 +4150,11 @@ int prom_reactor_runtime_main_transformer_execute_impl(
   image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
   context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
   joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
+  if (!prom_concept_session_drain(session)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   if (!prom_model_block_is_main_transformer(block) ||
       block->parameter_set != descriptor->parameter_set ||
       block->parameter_set_aggregate_identity != descriptor->parameter_set_aggregate_identity ||
@@ -4276,6 +4177,15 @@ int prom_reactor_runtime_main_transformer_execute_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
+  if (block->output_generation == UINT32_MAX ||
+      (request->resident_chain_mode != 0u &&
+       !prom_concept_session_joint_begin(session, request->required_image_generation,
+                                         request->required_context_generation,
+                                         request->required_joint_generation))) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT);
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT, out_evidence);
+    return PROM_ERROR;
+  }
   block->last_active_target_validation_ns =
       prom_reduction_elapsed_ns(validation_begin_ns, prom_reduction_now_ns());
   block->output_valid = 0u;
@@ -4286,28 +4196,29 @@ int prom_reactor_runtime_main_transformer_execute_impl(
   begin_ns = prom_reduction_now_ns();
   if (!prom_main_transformer_record_execute(state, block, session, request->required_joint_generation,
                                             request->resident_chain_mode, &detail)) {
-    /* A submitted chain may have overwritten JointWorking before its fence
-       was observed. Old generation metadata cannot authorize those bytes. */
-    if (request->resident_chain_mode != 0u && detail == PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN)
-      joint->valid = 0u;
+    if (request->resident_chain_mode != 0u)
+      (void)prom_concept_session_joint_end(
+          session, 0, detail == PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN, 0, 0);
     prom_model_block_mark_failure(block, detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
   if (block->m1b_timestamp_supported != 0u &&
       !prom_main_transformer_resolve_timestamps(state, block)) {
-    if (request->resident_chain_mode != 0u) joint->valid = 0u;
+    if (request->resident_chain_mode != 0u)
+      (void)prom_concept_session_joint_end(session, 0, 1, 0, 0);
     prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  if (request->resident_chain_mode != 0u &&
+      !prom_concept_session_joint_end(session, 1, 0, block_id, block->output_generation + 1u)) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
   block->output_valid = 1u;
   block->output_generation += 1u;
-  if (request->resident_chain_mode != 0u) {
-    joint->generation += 1u;
-    joint->producer_block_id = block_id;
-    joint->producer_output_generation = block->output_generation;
-  }
   block->execution_count += 1u;
   block->last_execution_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
   block->replay_identity = prom_model_block_hash_u64(request->lock_identity, request->session_identity);
@@ -4368,6 +4279,8 @@ int prom_reactor_runtime_main_transformer_execute_static_audit_impl(
   image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
   context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
   joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
+  if (!prom_concept_session_drain(session))
+    goto failure;
   if (!prom_model_block_is_main_transformer(block) ||
       block->parameter_set != descriptor->parameter_set ||
       block->parameter_set_aggregate_identity != descriptor->parameter_set_aggregate_identity ||
@@ -4521,6 +4434,7 @@ int prom_reactor_runtime_compiled_model_session_get_evidence_impl(
     prom_compiled_session_fill_evidence(NULL, out_evidence);
     return PROM_ERROR;
   }
+  prom_concept_session_sync(&state->compiled_session);
   prom_compiled_session_fill_evidence(&state->compiled_session, out_evidence);
   return PROM_OK;
 }
@@ -4554,6 +4468,9 @@ int prom_reactor_runtime_compiled_model_session_destroy_impl(void* handle, uint6
   if (!prom_reactor_runtime_validate_handle(handle)) return PROM_ERROR;
   state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
   if (state == NULL || state->compiled_session.created == 0u || state->compiled_session.session_id != session_id) return PROM_ERROR;
+  if (!prom_model_block_reap(state, &state->model_block) ||
+      !prom_concept_session_drain(&state->compiled_session))
+    return PROM_ERROR;
   prom_compiled_model_session_cleanup_state(state);
   return PROM_OK;
 }
@@ -4565,6 +4482,30 @@ int prom_reactor_runtime_model_block_test_inject_impl(void* handle, uint64_t blo
   state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
   if (state == NULL || state->model_block.created == 0u || state->model_block.block_id != block_id) return PROM_ERROR;
   state->reduction_test_flags |= reduction_test_flags;
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_compiled_model_session_test_inject_impl(void *handle, uint64_t session_id,
+                                                                 uint32_t flags) {
+  if (!prom_reactor_runtime_validate_handle(handle) || flags == 0u || (flags & ~7u) != 0u)
+    return PROM_ERROR;
+  prom_reduction_runtime_state *state = prom_reactor_runtime_reduction_state(handle);
+  if (!state || !state->compiled_session.created ||
+      state->compiled_session.session_id != session_id)
+    return PROM_ERROR;
+  prom_concept_session_inject(&state->compiled_session, flags);
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_compiled_model_session_test_inject_create_fault_impl(void *handle,
+                                                                              uint32_t fault) {
+  if (!prom_reactor_runtime_validate_handle(handle) || (fault != 1u && fault != 2u && fault != 4u))
+    return PROM_ERROR;
+  int32_t detail = 0;
+  prom_reduction_runtime_state *state = prom_reduction_ensure_state(handle, &detail);
+  if (!state || state->compiled_session.created)
+    return PROM_ERROR;
+  state->session_create_test_flags = fault;
   return PROM_OK;
 }
 
@@ -4997,27 +4938,23 @@ int prom_reactor_runtime_compiled_model_evaluation_reset_impl(
   prom_reduction_runtime_state* state;
   prom_compiled_model_session_state* session;
   prom_model_block_state* block;
-  uint32_t index;
   if (!prom_reactor_runtime_validate_handle(handle)) goto invalid;
   state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
   if (state == NULL) goto invalid;
   session = &state->compiled_session;
   block = &state->model_block;
+  if (!prom_concept_session_drain(session))
+    goto invalid;
   if (session->created == 0u || session->session_id != session_id || block->created == 0u ||
       block->shared_owner == 0u || session->quarantined != 0u || !prom_model_block_reap(state, block)) goto invalid;
+  if (!prom_concept_session_reset(session))
+    goto invalid;
   session->evaluation_generation += 1u;
   session->retarget_position = 0u;
   session->evaluation_complete = 0u;
   session->active_block_id = 0u;
   session->binding_generation = 0u;
   session->replay_identity = 0u;
-  session->joint_image_generation = 0u;
-  session->joint_context_generation = 0u;
-  for (index = 0u; index < PROM_ZIMAGE_STREAM_SLOT_COUNT; ++index) {
-    session->streams[index].valid = 0u;
-    session->streams[index].producer_block_id = 0u;
-    session->streams[index].producer_output_generation = 0u;
-  }
   block->output_valid = 0u;
   block->audit_valid = 0u;
   block->replay_identity = 0u;

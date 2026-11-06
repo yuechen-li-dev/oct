@@ -59,18 +59,25 @@ Current Vulkan reactor file topology:
     and eleven logical weights. MainTransformer adds mixed image/text positioning,
     timestep preparation and joint publication to the shared stage vocabulary.
     Three separate pipeline banks retain all production portfolios in one owner.
+    Its session owner also owns PreparedImage, PreparedContext and JointWorking,
+    capture/composition recordings, pending work, stream versions and provenance.
+    Main chains borrow the joint through checked begin/commit/abort transitions.
 - `reactor_concept_model_block_abi.c` and `reactor_concept_model_block.cpp`
   - C11 packet/view transport and C++23 shader-package adaptation. All thirteen
     NoiseRefiner, eleven ContextRefiner and thirteen MainTransformer production
-    pipelines belong to Concept. Admission, generation bookkeeping, weight-window
-    policy and session transport remain migration seams. See
-    [Concept M8](../../../docs/internal/prometheus_concept_main_m8.md) for joint
-    publication, timing, route qualification and remaining research boundaries.
+    pipelines belong to Concept. Session packets project borrowed buffers and
+    Concept-owned versions; C does not independently mutate stream validity.
+    Admission, model-output bookkeeping, weight-window policy and public packet
+    transport remain migration seams. See
+    [Concept M9](../../../docs/internal/prometheus_concept_session_m9.md) for
+    stream ownership, cross-owner retirement and failure qualification, and
+    [M8](../../../docs/internal/prometheus_concept_main_m8.md) for Main numerics,
+    timing, attention routes and remaining research boundaries.
 - `reactor_vulkan_model_block.c`
   - the remaining model/session policy and execution paths. Closed-block and
     production NoiseRefiner, ContextRefiner and MainTransformer execution delegate
-    to Concept. C retains model/session policy, stream capture/composition,
-    rebinding/prefetch and explicit audit transport.
+    to Concept, including session stream capture/composition. C retains
+    model/session admission, rebinding/prefetch and explicit audit transport.
     Pipeline interfaces are checked against the selected shader-package variant,
     while the small native shader registry supplies selector metadata.
 - `reactor_main_experiments.inc`

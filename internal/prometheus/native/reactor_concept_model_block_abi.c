@@ -243,3 +243,116 @@ int prom_concept_block_context_run(prom_reduction_runtime_state* state, prom_mod
     uint32_t resident, int32_t* detail) {
     return prom_concept_block_run(state, block, CONCEPT_BLOCK_PROGRAM_CONTEXT, 0, 0, resident, detail);
 }
+
+/* Session packets are projections, not a second authority for stream validity. */
+typedef struct session_attachment {
+  concept_session_owner owner;
+} session_attachment;
+void prom_concept_session_sync(prom_compiled_model_session_state *session) {
+  session_attachment *a = session->concept_owner;
+  if (!a)
+    return;
+  for (uint32_t role = 1; role <= 3; ++role) {
+    prom_compiled_model_stream_slot *slot = &session->streams[role - 1];
+    memset(&slot->device, 0, sizeof(slot->device));
+    slot->device.buffer = PromSessionBuffer(&a->owner, role);
+    slot->device.size = PromSessionBytes(&a->owner, role);
+    slot->device.usage_flags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                               VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    slot->device.memory_type_index = UINT32_MAX;
+    slot->device.memory_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    slot->generation = PromSessionGeneration(&a->owner, role);
+    slot->producer_block_id = PromSessionProducer(&a->owner, role);
+    slot->producer_output_generation = PromSessionOutput(&a->owner, role);
+    slot->valid = PromSessionValid(&a->owner, role);
+  }
+  session->joint_image_generation = PromSessionImageGeneration(&a->owner);
+  session->joint_context_generation = PromSessionContextGeneration(&a->owner);
+  session->composition_count = PromSessionCompositions(&a->owner);
+  session->quarantined = PromSessionQuarantined(&a->owner);
+}
+int prom_concept_session_create(void *host, const prom_vk_runtime_services *s,
+                                prom_compiled_model_session_state *session, uint64_t image,
+                                uint64_t context, uint64_t joint, uint32_t fault) {
+  session_attachment *a = malloc(sizeof(*a));
+  if (!a)
+    return 0;
+  concept_device_borrow device = {s->physical_device, s->device, s->compute_queue,
+                                  s->compute_queue_family_index, s->concept_enabled_features};
+  concept_result_session_owner_vulkan_error result =
+      concept_prometheus_model_block_create_session(device, image, context, joint, fault);
+  if (result.tag != 0) {
+    free(a);
+    return 0;
+  }
+  a->owner = result.payload.ok.value;
+  if (prom_concept_block_configure(host, s->device) != 0) {
+    concept_prometheus_model_block_dispose_session(a->owner);
+    free(a);
+    return 0;
+  }
+  session->concept_owner = a;
+  prom_concept_session_sync(session);
+  return 1;
+}
+int prom_concept_session_destroy(prom_compiled_model_session_state *session) {
+  session_attachment *a = session->concept_owner;
+  if (!a)
+    return PROM_OK;
+  if (PromSessionDrain(&a->owner) != 0 && !PromSessionDeviceLost(&a->owner))
+    return PROM_ERROR;
+  concept_prometheus_model_block_dispose_session(a->owner);
+  free(a);
+  session->concept_owner = NULL;
+  return PROM_OK;
+}
+static int session_result(prom_compiled_model_session_state *session, int code) {
+  prom_concept_session_sync(session);
+  session->last_detail_code = code;
+  return code == 0;
+}
+int prom_concept_session_drain(prom_compiled_model_session_state *session) {
+  session_attachment *a = session->concept_owner;
+  if (!a)
+    return 1;
+  int ok = session_result(session, PromSessionDrain(&a->owner));
+  return ok || PromSessionDeviceLost(&a->owner);
+}
+int prom_concept_session_capture(prom_compiled_model_session_state *session, uint32_t role,
+                                 const prom_vk_buffer *source, uint64_t producer, uint64_t output) {
+  session_attachment *a = session->concept_owner;
+  return a && session_result(session, PromSessionCapture(&a->owner, role, source->buffer,
+                                                         source->size, producer, output));
+}
+int prom_concept_session_compose(prom_compiled_model_session_state *session, uint64_t image,
+                                 uint64_t context) {
+  session_attachment *a = session->concept_owner;
+  return a && session_result(session, PromSessionCompose(&a->owner, image, context));
+}
+int prom_concept_session_joint_begin(prom_compiled_model_session_state *session, uint64_t image,
+                                     uint64_t context, uint64_t joint) {
+  session_attachment *a = session->concept_owner;
+  int ok = a && PromSessionBeginJoint(&a->owner, image, context, joint);
+  prom_concept_session_sync(session);
+  return ok;
+}
+int prom_concept_session_joint_end(prom_compiled_model_session_state *session, int commit,
+                                   int uncertain, uint64_t producer, uint64_t output) {
+  session_attachment *a = session->concept_owner;
+  int ok = a && PromSessionEndJoint(&a->owner, commit != 0, uncertain != 0, producer, output);
+  prom_concept_session_sync(session);
+  return ok;
+}
+int prom_concept_session_reset(prom_compiled_model_session_state *session) {
+  session_attachment *a = session->concept_owner;
+  return a && session_result(session, PromSessionReset(&a->owner));
+}
+void prom_concept_session_inject(prom_compiled_model_session_state *session, uint32_t flags) {
+  session_attachment *a = session->concept_owner;
+  if (a)
+    PromSessionInject(&a->owner, flags);
+}
+int prom_concept_session_joint_borrowed(prom_compiled_model_session_state *session) {
+  session_attachment *a = session->concept_owner;
+  return a && PromSessionJointWriting(&a->owner);
+}

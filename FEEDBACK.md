@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 105 |
+| Resolved | 107 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,58 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-126 — Session and model destruction did not join cross-owner stream borrows
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Main chain execution borrows the session's JointWorking buffer;
+session capture borrows a completed model output. The old session cleanup waited
+only on its own fence before freeing its streams. The M9 ownership review also
+identified the reverse dependency introduced by an explicitly retained capture:
+model cleanup must retire that capture before releasing its source. Waiting on
+one owner's work alone cannot discharge the other owner's submitted borrow.
+These dependencies were identified by inspection; an actual freed-buffer GPU
+access was not deliberately reproduced.
+
+Resolution: Model retirement and cleanup drain session work before buffer reuse
+or release. Session destruction retires model work before releasing the joint.
+Native tests retain an unobserved Context capture and destroy the model first,
+and retain an unobserved Main chain submission and destroy the session first.
+Both orders return pending submissions to zero, all Concept buffers/pipelines
+return to baseline, and legacy SGEMM still works after session teardown. See
+`docs/internal/prometheus_concept_session_m9.md` for bounded GPU qualification.
+
+---
+
+### FB-125 — Session copies conflated failed submission with uncertain completion
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: `prom_compiled_session_submit_and_wait` reset a fence and treated
+both queue-submit failure and completion-observation failure as quarantine.
+Cleanup then unconditionally waited for that fence when quarantined. A rejected
+submission could therefore leave an unsignaled fence with no submitted work to
+signal it. The old copies also left a previously valid destination marked valid
+until success, even when submitted bytes might already have changed. The fence
+hang is an inspection finding, not a deliberately reproduced infinite wait.
+
+Resolution: Concept owns recording, submission and completion through the
+existing Vulkan library. Pre-submit injected failures preserve the preceding
+valid stream; a submitted unobserved overwrite invalidates its destination.
+Draining retires work without publishing an unobserved version. Only a completed
+fresh copy advances generation/provenance. Tests cover record, submit and
+completion faults for capture and composition, stale-source rejection, fresh
+retry, and Main's refusal to consume an uncertain joint after draining it.
+Partial-construction failures also retain ResourceCreateFailed rather than
+being overwritten with InvalidRequest during evidence projection. See the M9
+report for the actual-path native checks and limits.
+
+---
 
 ### FB-124 — MainTransformer static replay retained the preceding run's GPU timing
 
@@ -2083,7 +2135,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-115**. Put a new open issue at
+Use the next unused identifier, currently **FB-127**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

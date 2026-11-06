@@ -842,3 +842,240 @@ export "C" bool PromBlockMainGroups(ref BlockOwner owner, uint32 groups)
     owner.mainAttentionGroups = groups;
     return true;
 }
+// Session streams have one owner; native packets below this seam are borrows.
+enum StreamRole { Image, Context, Joint, }
+record struct StreamVersion { uint64 generation; uint64 producer; uint64 output; bool valid; };
+enum StreamTransfer {
+    Capture(StreamRole role, BufferRange source, uint64 producer, uint64 output),
+    Compose(uint64 image, uint64 context),
+}
+class SessionOwner
+{
+public:
+    owned BorrowedContext context;
+    owned Buffer<byte> image;
+    owned Buffer<byte> text;
+    owned Buffer<byte> joint;
+    StreamVersion[3] streams;
+    Option<owned Submission> pending;
+    bool deviceLost;
+    bool jointWriting;
+    uint32 flags;
+    int detail;
+    uint64 imageGeneration;
+    uint64 contextGeneration;
+    uint64 compositions;
+};
+Result<SessionOwner, VulkanError> CreateSession(DeviceBorrow device, uint64 imageBytes,
+    uint64 contextBytes, uint64 jointBytes, uint32 fault)
+{
+    if (imageBytes != 15728640 or contextBytes != 491520 or jointBytes != 16220160) {
+        return Result::Error(ErrorFromCode(-6923));
+    }
+    owned BorrowedContext context = BorrowDevice(device)?;
+    owned Buffer<byte> image = CreateBufferOn<byte>(context.view, imageBytes as usize, Placement::Device)?;
+    if (fault == 1) { return Result::Error(ErrorFromCode(-6905)); }
+    owned Buffer<byte> text = CreateBufferOn<byte>(context.view, contextBytes as usize, Placement::Device)?;
+    if (fault == 2) { return Result::Error(ErrorFromCode(-6905)); }
+    owned Buffer<byte> joint = CreateBufferOn<byte>(context.view, jointBytes as usize, Placement::Device)?;
+    if (fault == 4) { return Result::Error(ErrorFromCode(-6905)); }
+    StreamVersion[3] streams = [StreamVersion{0,0,0,false} ...];
+    Option<owned Submission> pending = Option::None;
+    owned SessionOwner owner = SessionOwner{move context, move image, move text, move joint,
+        streams, move pending, false, false, 0, 0, 0, 0, 0};
+    return Result::Ok(move owner);
+}
+int StreamIndex(StreamRole role)
+{
+    return match (role) { StreamRole::Image => 0, StreamRole::Context => 1, StreamRole::Joint => 2, };
+}
+BufferRange SessionView(ref const SessionOwner owner, StreamRole role)
+{
+    return match (role) {
+        StreamRole::Image => BufferRange{owner.image.buffer,(owner.image.count as uint64)},
+        StreamRole::Context => BufferRange{owner.text.buffer,(owner.text.count as uint64)},
+        StreamRole::Joint => BufferRange{owner.joint.buffer,(owner.joint.count as uint64)},
+    };
+}
+bool JointValid(ref const SessionOwner owner)
+{
+    return owner.streams[2].valid and not owner.jointWriting and owner.streams[0].valid and owner.streams[1].valid
+        and owner.imageGeneration == owner.streams[0].generation
+        and owner.contextGeneration == owner.streams[1].generation;
+}
+Result<void, VulkanError> DrainSession(ref SessionOwner owner)
+{
+    match (ref owner.pending) { Option::Some(work) => { Wait(ref work)?; } Option::None => { } }
+    owner.pending = Option::None;
+    return Result::Ok();
+}
+bool SessionFlag(ref SessionOwner owner, uint32 flag)
+{
+    if ((owner.flags & flag) == 0) { return false; }
+    owner.flags = owner.flags & ~flag;
+    return true;
+}
+Result<void, VulkanError> TransferStream(ref SessionOwner owner, StreamTransfer plan)
+{
+    owner.detail = -6926;
+    if (owner.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    DrainSession(ref owner)?;
+    owner.detail = -6924;
+    if (owner.jointWriting) { return Result::Error(ErrorFromCode(-6924)); }
+    StreamRole destination = StreamRole::Joint;
+    uint64 producer = 0;
+    uint64 output = 0;
+    match (plan) {
+        StreamTransfer::Capture(role, source, block, generation) => {
+            owner.detail = -6925;
+            if (role == StreamRole::Joint or block == 0 or generation == 0) { return Result::Error(ErrorFromCode(-6925)); }
+            destination = role; producer = block; output = generation;
+            if (source.bytes < SessionView(ref const owner, role).bytes) { return Result::Error(ErrorFromCode(-6925)); }
+        }
+        StreamTransfer::Compose(image, context) => {
+            if (not owner.streams[0].valid or not owner.streams[1].valid
+                or image == 0 or context == 0 or image != owner.streams[0].generation or context != owner.streams[1].generation) {
+                return Result::Error(ErrorFromCode(-6924));
+            }
+        }
+    }
+    int index = StreamIndex(destination);
+    StreamVersion previous = owner.streams[index];
+    owner.detail = -6924;
+    if (previous.generation == 0xffffffffffffffff) { return Result::Error(ErrorFromCode(-6924)); }
+    owner.detail = -6908;
+    if (SessionFlag(ref owner, 1)) { return Result::Error(ErrorFromCode(-6908)); }
+    owned Recording recording = BeginRecordingOn(owner.context.view, 0)?;
+    // Producer submissions may belong to the model owner or legacy adapters.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    match (plan) {
+        StreamTransfer::Capture(role, source, block, generation) => {
+            BufferRange target = SessionView(ref const owner, role);
+            CopyBytes(ref recording, source, 0, target, 0, target.bytes)?;
+        }
+        StreamTransfer::Compose(image, context) => {
+            BufferRange imageView = SessionView(ref const owner, StreamRole::Image);
+            BufferRange textView = SessionView(ref const owner, StreamRole::Context);
+            BufferRange jointView = SessionView(ref const owner, StreamRole::Joint);
+            CopyBytes(ref recording, imageView, 0, jointView, 0, imageView.bytes)?;
+            CopyBytes(ref recording, textView, 0, jointView, imageView.bytes, textView.bytes)?;
+        }
+    }
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    owner.detail = -6909;
+    if (SessionFlag(ref owner, 2)) { return Result::Error(ErrorFromCode(-6909)); }
+    // A real submission may overwrite bytes even if completion is unobserved.
+    // Pre-submit injected failures retain the old stream; submitted ones do not.
+    owner.streams[index] = StreamVersion{previous.generation,previous.producer,previous.output,false};
+    owned Submission submission = Submit(move recording)?;
+    Option<owned Submission> pending = Option::Some(move submission);
+    owner.pending = move pending;
+    owner.detail = -6926;
+    if (SessionFlag(ref owner, 4)) { return Result::Error(ErrorFromCode(-6926)); }
+    ref Submission work = OptionValue(ref owner.pending);
+    Wait(ref work)?;
+    owner.streams[index] = StreamVersion{previous.generation + 1,producer,output,true};
+    match (plan) {
+        StreamTransfer::Compose(image, context) => {
+            owner.imageGeneration = image; owner.contextGeneration = context;
+            owner.compositions = owner.compositions + 1;
+        }
+        StreamTransfer::Capture(role, source, block, generation) => { }
+    }
+    owner.detail = 0;
+    return Result::Ok();
+}
+int SessionCode(ref SessionOwner owner, Result<void,VulkanError> result)
+{
+    match (result) {
+        Result::Ok => { return 0; }
+        Result::Error(error) => {
+            if (CodeFromError(error) == -4) { owner.deviceLost = true; }
+            return owner.detail;
+        }
+    }
+    return -6926;
+}
+void DisposeSession(owned SessionOwner owner) { }
+// Read-only packet projection. Only the trusted adapter supplies IDs 1..3.
+int SessionPacketIndex(uint32 role)
+{
+    assert(role >= 1 and role <= 3, "closed session stream ID");
+    return (role - 1) as int;
+}
+export "C" VkBuffer PromSessionBuffer(ref const SessionOwner owner, uint32 role)
+{
+    return match (role) { 1 => owner.image.buffer, 2 => owner.text.buffer, _ => owner.joint.buffer, };
+}
+export "C" uint64 PromSessionBytes(ref const SessionOwner owner, uint32 role)
+{
+    return match (role) { 1 => (owner.image.count as uint64), 2 => (owner.text.count as uint64), _ => (owner.joint.count as uint64), };
+}
+export "C" uint64 PromSessionGeneration(ref const SessionOwner owner, uint32 role) { return owner.streams[SessionPacketIndex(role)].generation; }
+export "C" uint64 PromSessionProducer(ref const SessionOwner owner, uint32 role) { return owner.streams[SessionPacketIndex(role)].producer; }
+export "C" uint64 PromSessionOutput(ref const SessionOwner owner, uint32 role) { return owner.streams[SessionPacketIndex(role)].output; }
+export "C" bool PromSessionValid(ref const SessionOwner owner, uint32 role)
+{
+    if (owner.deviceLost) { return false; }
+    if (role == 3) { return JointValid(ref const owner); }
+    return owner.streams[SessionPacketIndex(role)].valid;
+}
+export "C" bool PromSessionQuarantined(ref const SessionOwner owner)
+{
+    return match (ref const owner.pending) { Option::Some(work) => not work.waited, Option::None => false, };
+}
+export "C" uint64 PromSessionImageGeneration(ref const SessionOwner owner) { return owner.imageGeneration; }
+export "C" uint64 PromSessionContextGeneration(ref const SessionOwner owner) { return owner.contextGeneration; }
+export "C" uint64 PromSessionCompositions(ref const SessionOwner owner) { return owner.compositions; }
+export "C" void PromSessionInject(ref SessionOwner owner, uint32 flags) { owner.flags = owner.flags | flags; }
+export "C" bool PromSessionDeviceLost(ref const SessionOwner owner) { return owner.deviceLost; }
+export "C" int PromSessionDrain(ref SessionOwner owner)
+{
+    owner.detail = -6926;
+    return SessionCode(ref owner, DrainSession(ref owner));
+}
+export "C" int PromSessionCapture(ref SessionOwner owner, uint32 role, VkBuffer buffer, uint64 bytes, uint64 producer, uint64 output)
+{
+    if (role < 1 or role > 2) { return -6925; }
+    StreamRole selected = StreamRole::Image;
+    if (role == 2) { selected = StreamRole::Context; }
+    return SessionCode(ref owner, TransferStream(ref owner, StreamTransfer::Capture(selected,BufferRange{buffer,bytes},producer,output)));
+}
+export "C" int PromSessionCompose(ref SessionOwner owner, uint64 image, uint64 context)
+{
+    return SessionCode(ref owner, TransferStream(ref owner, StreamTransfer::Compose(image,context)));
+}
+export "C" bool PromSessionBeginJoint(ref SessionOwner owner, uint64 image, uint64 context, uint64 joint)
+{
+    if (not JointValid(ref const owner) or joint == 0 or joint != owner.streams[2].generation
+        or image != owner.imageGeneration or context != owner.contextGeneration or owner.streams[2].generation == 0xffffffffffffffff) { return false; }
+    StreamVersion previous = owner.streams[2];
+    owner.streams[2] = StreamVersion{previous.generation,previous.producer,previous.output,false};
+    owner.jointWriting = true;
+    return true;
+}
+export "C" bool PromSessionEndJoint(ref SessionOwner owner, bool commit, bool uncertain, uint64 producer, uint64 output)
+{
+    if (not owner.jointWriting) { return false; }
+    StreamVersion previous = owner.streams[2];
+    owner.jointWriting = false;
+    if (commit) {
+        if (producer == 0 or output == 0) { return false; }
+        owner.streams[2] = StreamVersion{previous.generation+1,producer,output,true};
+    } else {
+        owner.streams[2] = StreamVersion{previous.generation,previous.producer,previous.output,not uncertain};
+    }
+    return true;
+}
+export "C" int PromSessionReset(ref SessionOwner owner)
+{
+    owner.detail = -6926;
+    int code = SessionCode(ref owner,DrainSession(ref owner));
+    if (code != 0 or owner.jointWriting) { return -6926; }
+    for (index in 0..3) { owner.streams[index] = StreamVersion{owner.streams[index].generation,0,0,false}; }
+    owner.imageGeneration = 0; owner.contextGeneration = 0;
+    return 0;
+}
+export "C" bool PromSessionJointWriting(ref const SessionOwner owner) { return owner.jointWriting; }

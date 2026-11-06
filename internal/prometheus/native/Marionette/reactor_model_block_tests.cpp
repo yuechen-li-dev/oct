@@ -1166,7 +1166,28 @@ FACT(PrometheusConceptContextRefinerHasIndependentNonzeroWitnessesAndSharedPortf
         ASSERT_EQUAL(allocations,evidence.cold_buffer_allocation_count,"resident Context allocates no buffers");
         ASSERT_EQUAL(uploadCount,evidence.weight_upload_count,"resident Context uploads no weights");
         ASSERT_EQUAL(pipelines,evidence.pipeline_create_count,"Context stages reuse their cold pipelines");
+        if (shared)
+        {
+            PrometheusCompiledModelSessionCaptureRequest capture{};
+            capture.struct_size = sizeof(capture);
+            capture.source_output_generation = evidence.output_generation;
+            PrometheusCompiledModelSessionEvidence sessionEvidence{};
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_compiled_model_session_test_inject_impl(
+                             raw, sessionID, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION),
+                         "leave a submitted capture borrowing Context output");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                             raw, sessionID, id, &capture, &sessionEvidence),
+                         "unobserved capture cannot publish a Context version");
+            ASSERT_EQUAL(1u, sessionEvidence.quarantined, "session retains submitted capture");
+            ASSERT_EQUAL(0ull, sessionEvidence.prepared_context_generation,
+                         "pending capture has no published generation");
+            ASSERT_TRUE(ConceptVkTestPendingSubmissions() > 0, "capture still owns its submission");
+        }
         ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_model_block_destroy(raw,id),"retire and release Context resources");
+        ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(),
+                     "model-first teardown drains the capture before freeing its borrowed source");
         if(shared) ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_compiled_model_session_destroy(raw,sessionID),"destroy retained shared streams");
         ASSERT_EQUAL(buffersBefore,ConceptVkTestLiveBuffers(),"Context buffers return to baseline");
         ASSERT_EQUAL(pipelinesBefore,ConceptVkTestLivePipelines(),"Context pipelines return to baseline");
@@ -2146,6 +2167,55 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "real M1B runtime destroys safely");
 }
 
+FACT(PrometheusConceptSessionUnwindsEveryPartialConstruction)
+{
+    void *raw{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &raw), "create session device");
+    const auto release = [](void *p) {
+        if (p)
+            (void)prom_reactor_runtime_destroy_impl(p);
+    };
+    std::unique_ptr<void, decltype(release)> runtime(raw, release);
+    if (!raw || !runtime_available(raw))
+        SKIP("Vulkan runtime unavailable");
+    const int buffers = ConceptVkTestLiveBuffers(), contexts = ConceptVkTestLiveContexts(),
+              pending = ConceptVkTestPendingSubmissions(), doubles = ConceptVkTestDoubleDestroys();
+    PrometheusCompiledModelSessionCreateRequest create{};
+    create.struct_size = sizeof(create);
+    create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    create.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
+    create.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_AUTO;
+    PrometheusCompiledModelSessionEvidence evidence{};
+    std::uint64_t id{};
+    for (const unsigned fault : {1u, 2u, 4u})
+    {
+        ASSERT_EQUAL(
+            PROM_OK,
+            prom_reactor_runtime_compiled_model_session_test_inject_create_fault_impl(raw, fault),
+            "fail after each owned buffer acquisition");
+        ASSERT_EQUAL(
+            PROM_ERROR,
+            prometheus_reactor_runtime_compiled_model_session_create(raw, &create, &id, &evidence),
+            "partial Concept construction returns an error");
+        ASSERT_EQUAL(0ull, id, "failed construction publishes no session");
+        ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, evidence.detail_code,
+                     "construction failure preserves its diagnostic phase");
+        ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "partial buffers are dropped");
+        ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "partial borrowed context is released");
+        ASSERT_EQUAL(pending, ConceptVkTestPendingSubmissions(), "construction submits no work");
+        ASSERT_EQUAL(doubles, ConceptVkTestDoubleDestroys(), "ownership is released exactly once");
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_compiled_model_session_create(raw, &create, &id, &evidence),
+            "same device admits a fresh session after failure");
+        ASSERT_EQUAL(buffers + 3, ConceptVkTestLiveBuffers(), "Concept owns exactly three streams");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_destroy(raw, id),
+                     "normal teardown releases the stream owner");
+        ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "successful retry returns to baseline");
+        ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "retry drops its borrowed context");
+    }
+}
+
 FACT(PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs)
 {
     void* runtime = nullptr;
@@ -2471,6 +2541,30 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
         PrometheusCompiledModelSessionCaptureRequest capture{};
         capture.struct_size = sizeof(capture);
         capture.source_output_generation = evidence.output_generation;
+        const auto failureDetail = [](unsigned fault) {
+            return fault == PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD
+                       ? PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED
+                   : fault == PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT
+                       ? PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED
+                       : PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN;
+        };
+        for (const unsigned fault : {1u, 2u, 4u})
+        {
+            ASSERT_EQUAL(
+                PROM_OK,
+                prom_reactor_runtime_compiled_model_session_test_inject_impl(raw, sessionID, fault),
+                "inject a session capture failure independently of model work");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                             raw, sessionID, id, &capture, &sessionEvidence),
+                         "failed capture publishes no stream");
+            ASSERT_EQUAL(failureDetail(fault), sessionEvidence.detail_code,
+                         "capture reports recording, submission, or observation failure");
+            ASSERT_EQUAL(0ull, sessionEvidence.prepared_image_generation,
+                         "failed capture never advances its generation");
+            ASSERT_EQUAL(fault == 4u ? 1u : 0u, sessionEvidence.quarantined,
+                         "only submitted unobserved work is quarantined");
+        }
         ASSERT_EQUAL(PROM_OK,
                      prometheus_reactor_runtime_compiled_model_session_capture_completed(
                          raw, sessionID, id, &capture, &sessionEvidence),
@@ -2525,6 +2619,43 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
         };
         if (!composeJoint())
             return;
+        for (const unsigned fault : {1u, 2u, 4u})
+        {
+            const auto generation = sessionEvidence.prepared_context_generation;
+            ASSERT_EQUAL(
+                PROM_OK,
+                prom_reactor_runtime_compiled_model_session_test_inject_impl(raw, sessionID, fault),
+                "inject overwrite of a valid Context stream");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                             raw, sessionID, id, &capture, &sessionEvidence),
+                         "failed overwrite is not published");
+            ASSERT_EQUAL(failureDetail(fault), sessionEvidence.detail_code,
+                         "overwrite preserves phase");
+            ASSERT_EQUAL(generation, sessionEvidence.prepared_context_generation,
+                         "failed overwrite retains the last published generation");
+            const auto composed = prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                raw, sessionID, &compose, &sessionEvidence);
+            ASSERT_EQUAL(fault == 4u ? PROM_ERROR : PROM_OK, composed,
+                         "pre-submit failures retain valid bytes; unobserved overwrites invalidate "
+                         "them even after drain");
+            if (fault == 4u)
+                ASSERT_EQUAL(PROM_MODEL_SESSION_DETAIL_STALE_STREAM, sessionEvidence.detail_code,
+                             "draining uncertain capture does not publish its bytes");
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                             raw, sessionID, id, &capture, &sessionEvidence),
+                         "fresh capture recovers on the same device");
+            ASSERT_EQUAL(generation + 1, sessionEvidence.prepared_context_generation,
+                         "only the successful retry advances the generation");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                             raw, sessionID, &compose, &sessionEvidence),
+                         "old source generations cannot compose");
+            compose.required_context_generation = sessionEvidence.prepared_context_generation;
+            if (!composeJoint())
+                return;
+        }
         constexpr std::uint16_t bias[]{0x3000, 0x3400, 0xb400, 0xb800},
             modulation[]{0x2c00, 0x3000, 0xb000, 0x3000};
         for (unsigned i = 0; i < 15360; ++i)
@@ -2626,6 +2757,42 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
             ASSERT_EQUAL(PROM_OK, code, "explicit egress reads completed Main output");
             return code == PROM_OK && checkValues(output.data(), values);
         };
+        for (const unsigned fault : {1u, 2u, 4u})
+        {
+            const auto generation = sessionEvidence.joint_generation,
+                       compositions = sessionEvidence.composition_count;
+            ASSERT_EQUAL(
+                PROM_OK,
+                prom_reactor_runtime_compiled_model_session_test_inject_impl(raw, sessionID, fault),
+                "inject joint composition lifecycle failure");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                             raw, sessionID, &compose, &sessionEvidence),
+                         "failed composition cannot publish");
+            ASSERT_EQUAL(failureDetail(fault), sessionEvidence.detail_code,
+                         "composition preserves phase");
+            ASSERT_EQUAL(generation, sessionEvidence.joint_generation,
+                         "failed compose retains generation");
+            ASSERT_EQUAL(compositions, sessionEvidence.composition_count,
+                         "failed compose is not counted");
+            const auto consumed =
+                prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence);
+            ASSERT_EQUAL(fault == 4u ? PROM_ERROR : PROM_OK, consumed,
+                         "Main consumes retained pre-submit bytes but rejects an unobserved joint "
+                         "overwrite");
+            if (fault == 4u)
+                ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT, evidence.detail_code,
+                             "Main drain cannot resurrect uncertain JointWorking");
+            if (!composeJoint())
+                return;
+            ASSERT_EQUAL(generation + 1, sessionEvidence.joint_generation,
+                         "successful retry publishes exactly one joint version");
+            ASSERT_EQUAL(compositions + 1, sessionEvidence.composition_count,
+                         "only successful composition contributes to the count");
+            ASSERT_EQUAL(0ull, sessionEvidence.warm_buffer_allocation_count,
+                         "capture, composition, failure and retry allocate no new buffers");
+            execute.required_joint_generation = sessionEvidence.joint_generation;
+        }
         auto invalid = execute;
         invalid.required_context_generation += 1000;
         ASSERT_EQUAL(
@@ -2772,11 +2939,67 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
             PROM_ERROR,
             prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
             "old joint generations cannot replay after chain publication");
+        if (standalone)
+        {
+            execute.required_joint_generation += 1;
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_model_block_test_inject_impl(
+                             raw, id, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION),
+                         "leave Main borrowing a submitted joint at session teardown");
+            ASSERT_EQUAL(
+                PROM_ERROR,
+                prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+                "submitted joint work remains uncertain");
+            ASSERT_EQUAL(1u, evidence.quarantined, "model submission is still retained");
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_destroy(raw, sessionID),
+                         "destroying the stream owner first retires the model's borrowed joint");
+            ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(),
+                         "reverse teardown leaves no pending work");
+            ASSERT_EQUAL(
+                PROM_ERROR,
+                prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+                "destroyed session cannot be consumed");
+        }
+        else
+        {
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_get_evidence(
+                             raw, sessionID, &sessionEvidence),
+                         "read published generations before reset");
+            const auto imageVersion = sessionEvidence.prepared_image_generation,
+                       contextVersion = sessionEvidence.prepared_context_generation,
+                       jointVersion = sessionEvidence.joint_generation;
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_evaluation_reset(
+                             raw, sessionID, &sessionEvidence),
+                         "reset invalidates all streams in Concept");
+            ASSERT_EQUAL(imageVersion, sessionEvidence.prepared_image_generation,
+                         "reset preserves monotonic Image generation");
+            ASSERT_EQUAL(contextVersion, sessionEvidence.prepared_context_generation,
+                         "reset preserves monotonic Context generation");
+            ASSERT_EQUAL(jointVersion, sessionEvidence.joint_generation,
+                         "reset preserves monotonic Joint generation");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                             raw, sessionID, &compose, &sessionEvidence),
+                         "reset streams cannot compose using old generations");
+            ASSERT_EQUAL(PROM_MODEL_SESSION_DETAIL_STALE_STREAM, sessionEvidence.detail_code,
+                         "reset rejects stale publication with a distinct diagnostic");
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_destroy(raw, sessionID),
+                         "release the reset stream owner before its model");
+        }
+        float a = 2, b = 3, c{};
+        unsigned stage{};
+        int sgemmDetail{};
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_sgemm(raw, &a, &b, &c, 1, 1, 1, &stage, &sgemmDetail),
+            "legacy SGEMM survives session-first teardown");
+        ASSERT_EQUAL(6.0f, c, "shared device still computes after session teardown");
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(raw, id),
                      "drain and destroy the Main owner");
-        ASSERT_EQUAL(PROM_OK,
-                     prometheus_reactor_runtime_compiled_model_session_destroy(raw, sessionID),
-                     "release the retained stream owner");
         ASSERT_EQUAL(buffersBefore, ConceptVkTestLiveBuffers(),
                      "all Concept buffers return to baseline");
         ASSERT_EQUAL(pipelinesBefore, ConceptVkTestLivePipelines(),

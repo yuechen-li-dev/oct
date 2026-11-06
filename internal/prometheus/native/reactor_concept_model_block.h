@@ -6,6 +6,20 @@ extern "C" {
 #endif
 struct prom_model_block_state;
 struct prom_reduction_runtime_state;
+struct prom_compiled_model_session_state;
+int prom_concept_session_create(void* host, const prom_vk_runtime_services* services,
+    struct prom_compiled_model_session_state* session, uint64_t image, uint64_t context, uint64_t joint, uint32_t fault);
+int prom_concept_session_destroy(struct prom_compiled_model_session_state* session);
+void prom_concept_session_sync(struct prom_compiled_model_session_state* session);
+int prom_concept_session_drain(struct prom_compiled_model_session_state* session);
+int prom_concept_session_capture(struct prom_compiled_model_session_state* session,
+    uint32_t role, const prom_vk_buffer* source, uint64_t producer, uint64_t output);
+int prom_concept_session_compose(struct prom_compiled_model_session_state* session, uint64_t image, uint64_t context);
+int prom_concept_session_joint_begin(struct prom_compiled_model_session_state* session, uint64_t image, uint64_t context, uint64_t joint);
+int prom_concept_session_joint_end(struct prom_compiled_model_session_state* session, int commit, int uncertain, uint64_t producer, uint64_t output);
+int prom_concept_session_joint_borrowed(struct prom_compiled_model_session_state* session);
+int prom_concept_session_reset(struct prom_compiled_model_session_state* session);
+void prom_concept_session_inject(struct prom_compiled_model_session_state* session, uint32_t flags);
 /* C11 transport for Concept-owned resources; every prom_vk_buffer returned is
    a borrow. Host calls on a model owner are externally serialized. */
 void* prom_concept_block_create(void* host, const prom_vk_runtime_services* services);

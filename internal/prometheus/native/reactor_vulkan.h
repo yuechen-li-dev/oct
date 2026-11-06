@@ -2115,6 +2115,11 @@ int prom_reactor_runtime_compiled_model_evaluation_reset_impl(
     void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
 /* Native-test seam only.  Production callers cannot mutate a block plan or
    resources after creation; this merely injects an existing lifecycle fault. */
+int prom_reactor_runtime_compiled_model_session_test_inject_impl(
+    void* handle, uint64_t session_id, uint32_t flags);
+/* Fail after acquisition of image (1), context (2), or joint (4). */
+int prom_reactor_runtime_compiled_model_session_test_inject_create_fault_impl(
+    void* handle, uint32_t fault);
 int prom_reactor_runtime_model_block_test_inject_impl(void* handle, uint64_t block_id,
                                                       uint32_t reduction_test_flags);
 int prom_reactor_runtime_model_block_test_inject_create_fault_impl(void* handle,

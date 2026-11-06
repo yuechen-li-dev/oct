@@ -467,6 +467,7 @@ typedef struct prom_compiled_model_stream_slot {
 /* One session, one serialized executor, and fixed lock-owned stream slots.
    This is intentionally neither a graph nor a string-keyed resource map. */
 typedef struct prom_compiled_model_session_state {
+  void* concept_owner;
   uint64_t session_id;
   uint64_t next_session_id;
   uint64_t lock_identity;
@@ -491,8 +492,7 @@ typedef struct prom_compiled_model_session_state {
   uint32_t created;
   uint32_t quarantined;
   int32_t last_detail_code;
-  VkCommandBuffer command_buffer;
-  VkFence fence;
+  /* Read-only projections of Concept-owned buffers and stream versions. */
   prom_compiled_model_stream_slot streams[PROM_ZIMAGE_STREAM_SLOT_COUNT];
 } prom_compiled_model_session_state;
 
@@ -521,6 +521,7 @@ typedef struct prom_reduction_runtime_state {
   uint32_t reduction_test_flags;
   uint32_t model_block_create_test_flags;
   uint32_t model_block_create_shared_owner;
+  uint32_t session_create_test_flags;
   uint32_t model_block_create_prefetch;
   uint32_t model_block_create_transfer_queue_family;
   prom_reduction_pipeline pipelines[PROM_REDUCTION_PIPELINE_COUNT];
