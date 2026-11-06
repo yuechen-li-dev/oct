@@ -200,6 +200,11 @@ func validateGeneratedInventory(root string, m manifest) error {
 			}
 			seenPaths[path] = set.ID
 			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
+				// Build products need not exist in a source checkout. Their
+				// producer must materialize them before the native build.
+				if os.IsNotExist(err) && !set.SourceControlledIntentionally && !set.RequiredForCleanClone {
+					continue
+				}
 				return fmt.Errorf("generated artifact path missing: %s", path)
 			}
 		}

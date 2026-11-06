@@ -2,6 +2,7 @@
 
 #include "../reactor_api.h"
 #include "../reactor_vulkan.h"
+#include "concept_vulkan.h"
 #include "../../models/zimage-turbo/resolved_audit_schedule.h"
 #include "../../models/zimage-turbo/resolved_descriptor.h"
 
@@ -16,18 +17,47 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <sstream>
+#include <string>
 #include <vector>
 
 namespace
 {
+std::string environment_value(const char* name)
+{
+#ifdef _WIN32
+    char* value = nullptr; std::size_t size{};
+    if (_dupenv_s(&value, &size, name) != 0) return {};
+    const std::unique_ptr<char, decltype(&std::free)> storage{value, &std::free};
+    return value ? std::string{value} : std::string{};
+#else
+    const char* value = std::getenv(name);
+    return value ? std::string{value} : std::string{};
+#endif
+}
 constexpr std::uint32_t kElementCount = 1024u;
 constexpr std::uint32_t kAuditElements = 64u;
 constexpr std::uint32_t kWeightBytes = 64u;
 constexpr std::array<std::uint64_t, PROM_MODEL_BLOCK_MAX_WEIGHTS> kM1BWeightBytes{
     30720u, 7864320u, 256u, 29491200u, 256u, 88473600u, 7680u,
     7680u, 78643200u, 78643200u, 78643200u, 7680u, 7680u};
+
+constexpr std::array<const char*, PROM_MODEL_BLOCK_MAX_WEIGHTS> kM1BWeightNames{
+        "noise_refiner.0.adaLN_modulation.0.bias.fp16.bin",
+        "noise_refiner.0.adaLN_modulation.0.weight.fp16.bin",
+        "noise_refiner.0.attention.k_norm.weight.fp16.bin",
+        "noise_refiner.0.attention.out.weight.fp16.bin",
+        "noise_refiner.0.attention.q_norm.weight.fp16.bin",
+        "noise_refiner.0.attention.qkv.weight.fp16.bin",
+        "noise_refiner.0.attention_norm1.weight.fp16.bin",
+        "noise_refiner.0.attention_norm2.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w1.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w2.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w3.weight.fp16.bin",
+        "noise_refiner.0.ffn_norm1.weight.fp16.bin",
+        "noise_refiner.0.ffn_norm2.weight.fp16.bin"};
 
 PrometheusModelBlockCreateRequest make_request()
 {
@@ -165,6 +195,66 @@ int upload_all(void* runtime, std::uint64_t block_id, const PrometheusModelBlock
 }
 }
 
+FACT(PrometheusConceptWeightsInitialPartialUploadsCannotExecuteAndRetryCleanly)
+{
+    for (const unsigned fault : {1u, 2u, 4u})
+    {
+        void *raw{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &raw),
+                     "create weight upload device");
+        const auto release = [](void *p) {
+            if (p)
+                (void)prom_reactor_runtime_destroy_impl(p);
+        };
+        std::unique_ptr<void, decltype(release)> runtime(raw, release);
+        if (!raw || !runtime_available(raw))
+            SKIP("Vulkan runtime unavailable");
+        const int buffers = ConceptVkTestLiveBuffers();
+        auto create = make_request();
+        std::uint64_t id{};
+        PrometheusModelBlockEvidence evidence{};
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_model_block_create(raw, &create, &id, &evidence),
+                     "create a small real closed program");
+        if (!id)
+            return;
+        const auto allocations = evidence.cold_buffer_allocation_count;
+        ASSERT_EQUAL(
+            PROM_OK,
+            prom_reactor_runtime_model_block_test_inject_weight_fault_impl(raw, id, 3, fault),
+            "fail after three completed weight transfers");
+        ASSERT_EQUAL(PROM_ERROR, upload_all(raw, id, create, &evidence),
+                     "partial bundle cannot publish");
+        ASSERT_EQUAL(0u, evidence.weights_uploaded, "incomplete initial set is not executable");
+        ASSERT_EQUAL(3ull, evidence.weight_upload_count,
+                     "only observed completed transfers are counted");
+        ASSERT_EQUAL(fault == 4u ? 1u : 0u, evidence.quarantined,
+                     "only unobserved submitted work is retained");
+        std::array<float, kElementCount> input{}, output{};
+        PrometheusModelBlockExecuteRequest execute{};
+        execute.struct_size = sizeof(execute);
+        execute.input = input.data();
+        execute.output = output.data();
+        execute.element_count = input.size();
+        execute.input_identity = 0xe001;
+        ASSERT_EQUAL(PROM_ERROR,
+                     prometheus_reactor_runtime_model_block_execute(raw, id, &execute, &evidence),
+                     "real execution rejects a partial initial set");
+        ASSERT_EQUAL(PROM_OK, upload_all(raw, id, create, &evidence),
+                     "fresh full upload retires and repairs partial work");
+        ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count,
+                     "initial retry reuses all buffers");
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_model_block_execute(raw, id, &execute, &evidence),
+                     "repaired binding executes through the real GPU path");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(raw, id),
+                     "retire weight owner");
+        ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(),
+                     "partial and successful weights release exactly once");
+        ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "teardown joins weight submissions");
+    }
+}
+
 FACT(PrometheusResidentModelBlockExecutesAClosedGpuProgramAndStaysWarm)
 {
     void* runtime = nullptr;
@@ -261,8 +351,537 @@ FACT(PrometheusResidentModelBlockExecutesAClosedGpuProgramAndStaysWarm)
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "runtime teardown reclaims model-block resources");
 }
 
+FACT(PrometheusConceptModelBlockOwnsResourcesAndRetiresQuarantineBeforeRootTeardown)
+{
+    const int buffers = ConceptVkTestLiveBuffers();
+    const int pipelines = ConceptVkTestLivePipelines();
+    const int pending = ConceptVkTestPendingSubmissions();
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "create shared device");
+    if (!runtime || !runtime_available(runtime)) {
+        if (runtime) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    const auto create = make_request();
+    std::uint64_t id{};
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &id, &evidence), "Concept block attaches");
+    ASSERT_EQUAL(buffers + static_cast<int>(evidence.cold_buffer_allocation_count), ConceptVkTestLiveBuffers(), "every closed-block buffer belongs to Concept");
+    ASSERT_EQUAL(pipelines + 1, ConceptVkTestLivePipelines(), "the block pipeline belongs to Concept");
+    ASSERT_EQUAL(PROM_OK, upload_all(runtime, id, create, &evidence), "upload immutable weights");
+    std::vector<float> input(kElementCount, 3.25f), output(kElementCount, -99.0f);
+    PrometheusModelBlockExecuteRequest execute{};
+    execute.struct_size = sizeof(execute); execute.input = input.data(); execute.output = output.data();
+    execute.element_count = input.size(); execute.input_identity = 1;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_impl(runtime, id,
+        PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD | PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT |
+        PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION), "combined injection retains unreached phases");
+    for (const int expected : {PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED, PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED,
+        PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN}) {
+        ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_model_block_execute(runtime, id, &execute, &evidence), "each pending phase fails once");
+        ASSERT_EQUAL(expected, evidence.detail_code, "faults are consumed in execution order");
+        ASSERT_EQUAL(-99.0f, output[0], "failed phases publish no host output");
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute(runtime, id, &execute, &evidence), "combined injection recovers after retiring real work");
+    ASSERT_EQUAL(3.25f, output[0], "recovery output remains correct");
+    std::fill(output.begin(), output.end(), -99.0f);
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_impl(runtime, id,
+        PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION), "inject observation failure after real submission");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_model_block_execute(runtime, id, &execute, &evidence), "retain uncertain work");
+    ASSERT_EQUAL(1u, evidence.quarantined, "the owner quarantines its dependencies");
+    ASSERT_EQUAL(-99.0f, output[0], "no partial output is published");
+    ASSERT_EQUAL(pending + 1, ConceptVkTestPendingSubmissions(), "Concept retains the actual submission");
+    float a = 2.0f, b = 3.0f, c{}; std::uint32_t stage{}; int detail{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(runtime, &a, &b, &c, 1, 1, 1, &stage, &detail), "legacy SGEMM coexists with quarantined Concept work");
+    ASSERT_EQUAL(6.0f, c, "legacy SGEMM remains correct");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "root destruction drains Concept before freeing borrowed resources");
+    ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "all buffers released exactly once");
+    ASSERT_EQUAL(pipelines, ConceptVkTestLivePipelines(), "pipeline released exactly once");
+    ASSERT_EQUAL(pending, ConceptVkTestPendingSubmissions(), "submission retired");
+}
+
+FACT(PrometheusConceptModelBlockPreAttentionHasAnIndependentWitnessAndConceptTail)
+{
+    const int buffersBefore = ConceptVkTestLiveBuffers(), pipelinesBefore = ConceptVkTestLivePipelines();
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "create shared device");
+    if (!runtime || !runtime_available(runtime)) {
+        if (runtime) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    auto create = make_m1b_request();
+    create.audit_bytes = PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES;
+    std::uint64_t id{};
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &id, &evidence), "create production portfolio");
+    if (!id) { prom_reactor_runtime_destroy_impl(runtime); return; }
+    std::array<std::vector<std::uint16_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> weights;
+    std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> uploads{};
+    for (unsigned i = 0; i < weights.size(); ++i) {
+        weights[i].resize(static_cast<std::size_t>(kM1BWeightBytes[i] / 2), 0);
+        uploads[i] = {i, weights[i].data(), kM1BWeightBytes[i], create.weights[i].content_identity, create.weights[i].layout_identity};
+    }
+    // Dyadic FP16 parameters give a closed-form independent oracle. AdaLN
+    // depends on one timestep coordinate; QKV depends on one modulated channel.
+    // Every production reduction, head normalization and RoPE dispatch still runs.
+    constexpr std::uint16_t bias[] = {0x3400, 0x3800, 0xb400, 0xb800};
+    for (unsigned i = 0; i < 15360; ++i) { weights[0][i] = bias[i / 3840]; weights[1][i] = 0x3000; }
+    std::fill(weights[2].begin(), weights[2].end(), 0x4000); // learned K scale 2
+    std::fill(weights[4].begin(), weights[4].end(), 0x3c00); // learned Q scale 1
+    std::fill(weights[6].begin(), weights[6].end(), 0x3c00); // input norm scale 1
+    constexpr std::uint16_t coefficients[] = {0x3800, 0x3c00, 0x3e00, 0x4000};
+    for (unsigned i = 0; i < 11520; ++i) weights[5][i] = coefficients[i % 4];
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_upload_weights(runtime, id, uploads.data(), static_cast<unsigned>(uploads.size()), &evidence), "upload immutable dyadic parameters");
+    std::vector<std::uint16_t> input(1024u * 3840u), timestep(256, 0x3f80);
+    for (unsigned token = 0; token < 1024; ++token) for (unsigned channel = 0; channel < 3840; ++channel) {
+        const std::uint16_t magnitude[] = {0x3f80, 0x4000, 0x4040};
+        input[token * 3840 + channel] = static_cast<std::uint16_t>(magnitude[token % 3] | ((channel % 2) ? 0x8000 : 0));
+    }
+    std::vector<float> audit(1024u * 11520u, -99.0f);
+    PrometheusModelBlockM1BExecuteRequest execute{};
+    execute.struct_size = sizeof(execute); execute.model_input_bf16 = input.data(); execute.timestep_bf16 = timestep.data();
+    execute.model_input_bytes = input.size() * 2; execute.timestep_bytes = timestep.size() * 2;
+    execute.input_identity = 0x51; execute.timestep_identity = 0x52;
+    execute.audit_enabled = 1; execute.audit_output = audit.data(); execute.audit_element_capacity = audit.size();
+    const auto allocations = evidence.cold_buffer_allocation_count;
+    const auto projection = [](unsigned lane) { constexpr float b[] = {.25f, .5f, -.25f, -.5f}; return b[lane / 3840] + .125f; };
+    const auto normalized = [](unsigned token) { const float a = static_cast<float>(token % 3 + 1); return a / std::sqrt(a * a + 1.0e-5f); };
+    const auto qkv = [&](unsigned token, unsigned channel) { return normalized(token) * 1.375f * static_cast<float>(channel % 4 + 1) * .5f; };
+    const auto head = [&](unsigned token, unsigned channel, bool key, bool rotated) {
+        float squares = 0;
+        for (unsigned c = 0; c < 128; ++c) { const float v = qkv(token, c); squares += v * v; }
+        const float inv = 1.0f / std::sqrt(squares / 128 + 1.0e-5f);
+        const float scale = key ? 2.0f : 1.0f;
+        const auto norm = [&](unsigned c) { return qkv(token, c) * inv * scale; };
+        if (!rotated) return norm(channel);
+        const unsigned axisStart = channel < 32 ? 0 : channel < 80 ? 32 : 80;
+        const unsigned width = channel < 32 ? 32 : 48;
+        const float coordinate = static_cast<float>(channel < 32 ? 33 : channel < 80 ? token / 32 : token % 32);
+        const float frequency = 1.0f / std::pow(256.0f, 2.0f * static_cast<float>((channel - axisStart) / 2) / static_cast<float>(width));
+        const float cosine = std::cos(coordinate * frequency), sine = std::sin(coordinate * frequency);
+        return (channel % 2) == 0 ? norm(channel) * cosine - norm(channel + 1) * sine : norm(channel - 1) * sine + norm(channel) * cosine;
+    };
+    const unsigned stages[] = {PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_INPUT, PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION,
+        PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_NORM, PROM_MODEL_BLOCK_M1B_AUDIT_FUSED_QKV,
+        PROM_MODEL_BLOCK_M1B_AUDIT_Q_NORM, PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_Q,
+        PROM_MODEL_BLOCK_M1B_AUDIT_K_NORM, PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_K};
+    double worst = 0;
+    for (const unsigned selected : stages) {
+        execute.audit_stage = selected;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, id, &execute, &evidence), "run production pre-attention and selected capture");
+        ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count, "audited replay allocates no buffers");
+        for (const unsigned token : {0u, 1u, 31u, 32u, 1023u}) for (const unsigned channel : {0u, 1u, 31u, 32u, 79u, 80u, 127u}) {
+            std::size_t index = token * 3840u + channel;
+            float expected{};
+            switch (selected) {
+            case PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_INPUT: expected = static_cast<float>(token % 3 + 1) * ((channel % 2) ? -1.0f : 1.0f); break;
+            case PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION: index = channel; expected = projection(channel); break;
+            case PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_NORM: expected = normalized(token) * ((channel % 2) ? -1.0f : 1.0f); break;
+            case PROM_MODEL_BLOCK_M1B_AUDIT_FUSED_QKV: index = token * 11520u + channel; expected = qkv(token, channel); break;
+            default: expected = head(token, channel, selected == PROM_MODEL_BLOCK_M1B_AUDIT_K_NORM || selected == PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_K,
+                selected == PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_Q || selected == PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_K); break;
+            }
+            const double error = std::abs(static_cast<double>(audit[index]) - expected);
+            worst = std::max(worst, error);
+            ASSERT_TRUE(std::isfinite(audit[index]) && error < 2.0e-5, "independent closed-form witness agrees at axis and token boundaries");
+        }
+    }
+    std::cout << "Concept pre-attention independent witness max_abs_error=" << worst << '\n';
+    // The Concept attention/projection/residual consumer reads Concept-owned
+    // QKV, gates and immutable weights directly on the same VkDevice.
+    std::vector<float> residual(input.size());
+    std::array<float, PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS> status{};
+    PrometheusModelBlockM1CExecuteRequest consumer{};
+    consumer.struct_size = sizeof(consumer); consumer.m1b_prefix_replay_identity = evidence.replay_identity;
+    consumer.output_identity = 0x53; consumer.output = residual.data(); consumer.output_element_capacity = residual.size();
+    consumer.audit_stage = PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL; consumer.transient_audit = status.data(); consumer.transient_audit_element_capacity = status.size();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1c(runtime, id, &consumer, &evidence), "legacy attention consumes borrowed Concept resources");
+    ASSERT_EQUAL(1u, evidence.output_valid, "legacy output publishes after completion");
+    double residualError = 0;
+    for (unsigned i = 0; i < input.size(); ++i) {
+        const float expected = static_cast<float>((i / 3840) % 3 + 1) * ((i % 2) ? -1.0f : 1.0f);
+        if (!std::isfinite(residual[i])) { residualError = std::numeric_limits<double>::infinity(); break; }
+        residualError = std::max(residualError, std::abs(static_cast<double>(residual[i]) - expected));
+    }
+    ASSERT_EQUAL(0.0, residualError, "zero output projection preserves the full independent residual exactly");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_impl(runtime, id, PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT), "inject an attention submit failure");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_model_block_execute_m1c(runtime, id, &consumer, &evidence), "an unsubmitted Concept recording carries no pending submission authority");
+    ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED, evidence.detail_code, "attention submit failure preserves its diagnostic");
+    execute.audit_enabled = 0; execute.audit_stage = 0;
+    for (const unsigned fault : {PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD, PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION}) {
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_impl(runtime, id, fault), "inject prefix lifecycle fault");
+        ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_model_block_execute_m1b(runtime, id, &execute, &evidence), "failed prefix never publishes output");
+        ASSERT_EQUAL(0u, evidence.output_valid, "failed output is invalid");
+        float a = 2, b = 3, c{}; std::uint32_t stage{}; int detail{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(runtime, &a, &b, &c, 1, 1, 1, &stage, &detail), "SGEMM coexists across prefix failures");
+        ASSERT_EQUAL(6.0f, c, "SGEMM result remains correct");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, id, &execute, &evidence), "prefix retries after retiring its submission");
+    }
+    ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count, "warm recovery retains allocations");
+    ASSERT_EQUAL(13u, evidence.weight_upload_count, "warm recovery never uploads weights again");
+    PrometheusNoiseRefiner0ExecuteRequest whole{};
+    whole.struct_size = sizeof(whole); whole.model_input_bf16 = input.data(); whole.timestep_bf16 = timestep.data();
+    whole.model_input_bytes = input.size() * 2; whole.timestep_bytes = timestep.size() * 2;
+    whole.input_identity = 0x54; whole.timestep_identity = 0x55; whole.output_identity = 0x56;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner0_execute(runtime, id, &whole, &evidence), "the full Concept block accepts its prefix");
+    const auto predecessor = evidence.output_generation;
+    const int retainedBuffers = ConceptVkTestLiveBuffers();
+    for (auto& upload : uploads) upload.content_identity += 0x1000;
+    PrometheusNoiseRefinerRebindRequest rebind{};
+    rebind.struct_size = sizeof(rebind); rebind.model_local_block_id = 1;
+    rebind.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID; rebind.upload_count = static_cast<unsigned>(uploads.size()); rebind.uploads = uploads.data();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_rebind(runtime, id, &rebind, &evidence), "candidate weights commit before releasing the previous Concept allocation");
+    ASSERT_EQUAL(retainedBuffers, ConceptVkTestLiveBuffers(), "replacement retires all thirteen previous allocations");
+    std::vector<std::uint8_t> arena(PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES);
+    PrometheusNoiseRefinerStaticAuditRequest replay{};
+    replay.struct_size = sizeof(replay); replay.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+    replay.input_generation = predecessor; replay.output_identity = 0x57;
+    replay.audit_arena = arena.data(); replay.audit_arena_capacity_bytes = arena.size();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_execute_static_audit(runtime, id, &replay, &evidence), "legacy static audit invokes the shared Concept stage implementation");
+    ASSERT_EQUAL(1u, evidence.audit_valid, "the closed static audit arena publishes after completion");
+    ASSERT_EQUAL(retainedBuffers, ConceptVkTestLiveBuffers(), "static audit allocates no Concept buffers");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "destroy mixed Concept and C execution owner");
+    ASSERT_EQUAL(buffersBefore, ConceptVkTestLiveBuffers(), "all Concept activations and weights released");
+    ASSERT_EQUAL(pipelinesBefore, ConceptVkTestLivePipelines(), "all Concept pipelines released");
+}
+
+
+FACT(PrometheusConceptModelBlockAttentionAndFfnHaveIndependentNonzeroWitnesses)
+{
+    const int buffersBefore = ConceptVkTestLiveBuffers(), pipelinesBefore = ConceptVkTestLivePipelines();
+    void* raw{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &raw), "create shared tail-witness device");
+    const auto release = [](void* value) { if (value) (void)prom_reactor_runtime_destroy_impl(value); };
+    std::unique_ptr<void, decltype(release)> runtime(raw, release);
+    if (!raw || !runtime_available(raw)) SKIP("Vulkan runtime unavailable");
+    auto create = make_m1b_request();
+    create.audit_bytes = PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES;
+    std::uint64_t id{};
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(raw, &create, &id, &evidence), "create Concept model portfolio");
+    if (!id) return;
+    ASSERT_EQUAL(pipelinesBefore + 13, ConceptVkTestLivePipelines(), "Concept owns every production model pipeline");
+    ASSERT_EQUAL(13u, evidence.descriptor_set_count, "persistent sets belong only to legacy audit projections");
+
+    using Row = std::array<double, 4>;
+    using Table = std::array<Row, 5>;
+    struct Expected { Table attention, projection, residual, norm, modulated, w1, w3, gated, w2, output; };
+    constexpr Row valueCoefficients{.25, .5, -.25, 1}, projectionCoefficients{.5, -.25, .25, 1};
+    constexpr Row w1Coefficients{.25, -.5, 1, .5}, w3Coefficients{.5, 1, -.25, .25};
+    constexpr Row w2First{.5, .25, -.5, 1}, w2Second{-.25, .5, .25, -.5};
+    const auto inverseRms = [](const Row& values) {
+        return 1.0 / std::sqrt(std::inner_product(values.begin(), values.end(), values.begin(), 0.0) / 4.0 + 1.0e-5);
+    };
+    // A four-channel periodic sparse contraction has a closed-form oracle.
+    // Five different token rows distinguish all three physical W3 fragments.
+    const auto oracleFor = [&](const Table& incoming) {
+        Expected result{};
+        double meanValue = 0;
+        for (unsigned token = 0; token < 1024; ++token)
+            meanValue += incoming[token % 5][0] * inverseRms(incoming[token % 5]) / 1024.0;
+        for (unsigned row = 0; row < 5; ++row) {
+            for (unsigned c = 0; c < 4; ++c) {
+                result.attention[row][c] = meanValue * valueCoefficients[c];
+                result.projection[row][c] = result.attention[row][0] * projectionCoefficients[c];
+            }
+            const double projectionRms = inverseRms(result.projection[row]);
+            for (unsigned c = 0; c < 4; ++c)
+                result.residual[row][c] = incoming[row][c] + std::tanh(.25) * result.projection[row][c] * projectionRms * .5;
+            const double residualRms = inverseRms(result.residual[row]);
+            for (unsigned c = 0; c < 4; ++c) {
+                result.norm[row][c] = result.residual[row][c] * residualRms * 1.5;
+                result.modulated[row][c] = result.norm[row][c] * 1.5;
+            }
+            for (unsigned c = 0; c < 4; ++c) {
+                result.w1[row][c] = result.modulated[row][0] * w1Coefficients[c];
+                result.w3[row][c] = result.modulated[row][1] * w3Coefficients[c];
+                result.gated[row][c] = result.w1[row][c] / (1.0 + std::exp(-result.w1[row][c])) * result.w3[row][c];
+            }
+            for (unsigned c = 0; c < 4; ++c)
+                result.w2[row][c] = result.gated[row][0] * w2First[c] + result.gated[row][1] * w2Second[c];
+            const double outputRms = inverseRms(result.w2[row]);
+            for (unsigned c = 0; c < 4; ++c)
+                result.output[row][c] = result.residual[row][c] + std::tanh(-.5) * result.w2[row][c] * outputRms * .75;
+        }
+        return result;
+    };
+
+    std::array<std::vector<std::uint16_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> weights;
+    std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> uploads{};
+    for (unsigned i = 0; i < weights.size(); ++i) {
+        weights[i].resize(static_cast<std::size_t>(kM1BWeightBytes[i] / 2), 0);
+        uploads[i] = {i, weights[i].data(), kM1BWeightBytes[i], create.weights[i].content_identity, create.weights[i].layout_identity};
+    }
+    constexpr std::uint16_t bias[]{0, 0x3400, 0x3800, 0xb800};
+    for (unsigned i = 0; i < 15360; ++i) weights[0][i] = bias[i / 3840];
+    for (unsigned i : {2u, 4u, 6u}) std::fill(weights[i].begin(), weights[i].end(), std::uint16_t{0x3c00});
+    std::fill(weights[7].begin(), weights[7].end(), std::uint16_t{0x3800});
+    std::fill(weights[11].begin(), weights[11].end(), std::uint16_t{0x3e00});
+    std::fill(weights[12].begin(), weights[12].end(), std::uint16_t{0x3a00});
+    constexpr std::uint16_t v[]{0x3400,0x3800,0xb400,0x3c00}, p[]{0x3800,0xb400,0x3400,0x3c00};
+    constexpr std::uint16_t h1[]{0x3400,0xb800,0x3c00,0x3800}, h3[]{0x3800,0x3c00,0xb400,0x3400};
+    constexpr std::uint16_t o0[]{0x3800,0x3400,0xb800,0x3c00}, o1[]{0xb400,0x3800,0x3400,0xb800};
+    for (unsigned c = 0; c < 3840; ++c) {
+        weights[5][7680 + c] = v[c % 4]; weights[3][c] = p[c % 4];
+        weights[9][c] = o0[c % 4]; weights[9][3840 + c] = o1[c % 4];
+    }
+    for (unsigned c = 0; c < 10240; ++c) { weights[8][c] = h1[c % 4]; weights[10][10240 + c] = h3[c % 4]; }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_upload_weights(raw, id, uploads.data(), static_cast<unsigned>(uploads.size()), &evidence), "upload sparse nonzero oracle weights");
+    const auto allocations = evidence.cold_buffer_allocation_count, pipelines = evidence.pipeline_create_count;
+    std::vector<std::uint16_t> input(1024u * 3840u), timestep(256, 0);
+    Table incoming{};
+    constexpr std::uint16_t amplitude[]{0x3f80,0x4000,0x4040,0x4080,0x40a0};
+    for (unsigned row = 0; row < 5; ++row) for (unsigned c = 0; c < 4; ++c)
+        incoming[row][c] = (c % 2 ? -1.0 : 1.0) * (row + 1);
+    for (unsigned token = 0; token < 1024; ++token) for (unsigned c = 0; c < 3840; ++c)
+        input[token * 3840 + c] = static_cast<std::uint16_t>(amplitude[token % 5] | (c % 2 ? 0x8000u : 0u));
+    const auto expected = oracleFor(incoming);
+    std::vector<float> audit(1024u * 10240u, -99.0f);
+    std::array<float, 64> status{};
+    PrometheusModelBlockM1BExecuteRequest prefix{};
+    prefix.struct_size = sizeof(prefix); prefix.model_input_bf16 = input.data(); prefix.timestep_bf16 = timestep.data();
+    prefix.model_input_bytes = input.size() * 2; prefix.timestep_bytes = timestep.size() * 2;
+    prefix.input_identity = 0xa601; prefix.timestep_identity = 0xa602;
+    PrometheusModelBlockM1CExecuteRequest attention{};
+    attention.struct_size = sizeof(attention); attention.output = audit.data(); attention.output_element_capacity = audit.size();
+    attention.output_identity = 0xa603; attention.audit_stage = PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL;
+    attention.transient_audit = status.data(); attention.transient_audit_element_capacity = status.size();
+    PrometheusModelBlockM1DExecuteRequest ffn{};
+    ffn.struct_size = sizeof(ffn); ffn.output = audit.data(); ffn.output_element_capacity = audit.size();
+    ffn.output_identity = 0xa604; ffn.audit_stage = PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT;
+    const auto preparePrefix = [&] {
+        const auto code = prometheus_reactor_runtime_model_block_execute_m1b(raw, id, &prefix, &evidence);
+        ASSERT_EQUAL(PROM_OK, code, "prepare the authoritative Concept prefix");
+        attention.m1b_prefix_replay_identity = evidence.replay_identity;
+        return code == PROM_OK;
+    };
+    const auto prepareAttention = [&] {
+        if (!preparePrefix()) return false;
+        attention.audit_stage = PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL;
+        const auto code = prometheus_reactor_runtime_model_block_execute_m1c(raw, id, &attention, &evidence);
+        ASSERT_EQUAL(PROM_OK, code, "prepare the authoritative Concept attention residual");
+        ffn.m1c_prefix_replay_identity = evidence.replay_identity;
+        return code == PROM_OK;
+    };
+    const auto check = [&](const char* name, const Table& values, unsigned width) {
+        const auto count = static_cast<std::size_t>(1024) * width;
+        double maximum{};
+        bool finite = true;
+        for (std::size_t i = 0; i < count; ++i) {
+            finite = finite && std::isfinite(audit[i]);
+            maximum = std::max(maximum, std::abs(static_cast<double>(audit[i]) - values[(i / width) % 5][(i % width) % 4]));
+        }
+        std::cout << "M6 " << name << " elements=" << count << " max_abs_error=" << maximum << '\n';
+        ASSERT_TRUE(finite && maximum < 3.0e-4, name);
+    };
+    struct AuditCase { const char* name; unsigned stage; const Table* values; unsigned width; };
+    const AuditCase attentionCases[]{
+        {"attention",1,&expected.attention,3840}, {"attention_projection",2,&expected.projection,3840},
+        {"attention_residual",3,&expected.residual,3840}};
+    for (const auto& stage : attentionCases) {
+        if (!preparePrefix()) return;
+        attention.audit_stage = stage.stage;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1c(raw, id, &attention, &evidence), stage.name);
+        check(stage.name, *stage.values, stage.width);
+        for (unsigned base : {0u, 32u}) {
+            ASSERT_EQUAL(1.0f, status[base + 30], "softmax denominator is valid");
+            ASSERT_EQUAL(1024.0f, status[base + 21], "uniform-score softmax has the independent denominator");
+            ASSERT_EQUAL(1.0f, status[base + 22], "softmax row sums exactly to one");
+        }
+    }
+    const AuditCase ffnCases[]{
+        {"ffn_norm",1,&expected.norm,3840}, {"ffn_modulated",2,&expected.modulated,3840},
+        {"w1",3,&expected.w1,10240}, {"w3_split",4,&expected.w3,10240}, {"gated_hidden",5,&expected.gated,10240},
+        {"w2",6,&expected.w2,3840}, {"final_output",7,&expected.output,3840}};
+    for (const auto& stage : ffnCases) {
+        if (!prepareAttention()) return;
+        ffn.audit_stage = stage.stage;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1d(raw, id, &ffn, &evidence), stage.name);
+        check(stage.name, *stage.values, stage.width);
+    }
+    Table observedInput{};
+    for (unsigned row = 0; row < 5; ++row) for (unsigned c = 0; c < 4; ++c) observedInput[row][c] = audit[row * 3840 + c];
+    const auto next = oracleFor(observedInput);
+
+    for (const bool ffnStage : {false, true}) {
+        for (const unsigned fault : {PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD, PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION}) {
+            if (!prepareAttention()) return;
+            attention.audit_stage = PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL;
+            ffn.audit_stage = PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT;
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_impl(raw, id, fault), "inject a tail lifecycle failure");
+            const auto run = [&] { return ffnStage ? prometheus_reactor_runtime_model_block_execute_m1d(raw, id, &ffn, &evidence)
+                : prometheus_reactor_runtime_model_block_execute_m1c(raw, id, &attention, &evidence); };
+            ASSERT_EQUAL(PROM_ERROR, run(), "failed tail cannot publish a boundary");
+            ASSERT_EQUAL(0u, evidence.output_valid, "tail failure invalidates output");
+            const int wanted = fault == PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD ? PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED
+                : fault == PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT ? PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED : PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN;
+            ASSERT_EQUAL(wanted, evidence.detail_code, "tail preserves the precise failure phase");
+            float a = 2, b = 3, product{}; unsigned stage{}; int detail{};
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(raw, &a, &b, &product, 1, 1, 1, &stage, &detail), "legacy SGEMM shares the device across tail failures");
+            ASSERT_EQUAL(6.0f, product, "shared-device SGEMM remains exact");
+            ASSERT_EQUAL(PROM_OK, run(), "tail retry retires pending work and reuses its resources");
+            check(ffnStage ? "ffn_retry" : "attention_retry", ffnStage ? expected.output : expected.residual, 3840);
+        }
+    }
+
+    PrometheusNoiseRefiner0ExecuteRequest whole{};
+    whole.struct_size = sizeof(whole); whole.model_input_bf16 = input.data(); whole.timestep_bf16 = timestep.data();
+    whole.model_input_bytes = input.size() * 2; whole.timestep_bytes = timestep.size() * 2;
+    whole.input_identity = 0xa610; whole.timestep_identity = 0xa611; whole.output_identity = 0xa612;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &whole, &evidence), "establish a complete nonzero Concept boundary");
+    ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count, "standalone tail reuses every activation allocation");
+    ASSERT_EQUAL(13u, evidence.weight_upload_count, "standalone tail performs no extra uploads");
+    for (auto& upload : uploads) upload.content_identity += 0x1000;
+    PrometheusNoiseRefinerRebindRequest rebind{};
+    rebind.struct_size = sizeof(rebind); rebind.model_local_block_id = 1;
+    rebind.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+    rebind.upload_count = static_cast<unsigned>(uploads.size()); rebind.uploads = uploads.data();
+    std::vector<std::uint16_t> replacementBias(weights[0].size(), std::uint16_t{0x4000});
+    const void *originalBias = uploads[0].bytes;
+    uploads[0].bytes = replacementBias.data();
+    const auto binding = evidence.binding_generation, descriptors = evidence.descriptor_generation;
+    for (const unsigned fault : {1u, 2u, 4u, 8u})
+    {
+        ASSERT_EQUAL(
+            PROM_OK,
+            prom_reactor_runtime_model_block_test_inject_weight_fault_impl(raw, id, 3, fault),
+            "fail a replacement after earlier candidates contain different bytes");
+        ASSERT_EQUAL(PROM_ERROR,
+                     prometheus_reactor_runtime_noise_refiner_rebind(raw, id, &rebind, &evidence),
+                     "incomplete replacement is not published");
+        ASSERT_EQUAL(binding, evidence.binding_generation,
+                     "failed replacement keeps binding generation");
+        ASSERT_EQUAL(descriptors, evidence.descriptor_generation,
+                     "failed replacement keeps descriptor generation");
+        ASSERT_EQUAL(1u, evidence.weights_uploaded, "old replacement binding remains usable");
+        ASSERT_EQUAL(fault == 1u   ? PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED
+                     : fault == 2u ? PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED
+                     : fault == 4u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN
+                                   : PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED,
+                     evidence.detail_code, "weight failure retains phase");
+        if (!prepareAttention())
+            return;
+        check("replacement_rollback", expected.residual, 3840);
+    }
+    uploads[0].bytes = originalBias;
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &whole, &evidence),
+                 "restore the complete resident predecessor after rollback witnesses");
+    const auto generation = evidence.output_generation,
+               completedUploads = evidence.weight_upload_count;
+    const auto rebound = prometheus_reactor_runtime_noise_refiner_rebind(raw, id, &rebind, &evidence);
+    ASSERT_EQUAL(PROM_OK, rebound, "commit the block-1 binding before consuming the resident block-0 boundary");
+    if (rebound != PROM_OK) return;
+    const auto residentAllocations = evidence.cold_buffer_allocation_count;
+    PrometheusNoiseRefinerResidentExecuteRequest resident{};
+    resident.struct_size = sizeof(resident);
+    resident.input_generation = generation; resident.output_identity = 0xa613;
+    resident.audit_enabled = 1; resident.audit_family = PROM_NOISE_REFINER_AUDIT_M1D;
+    resident.audit_stage = PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT; resident.audit_output = audit.data(); resident.audit_element_capacity = audit.size();
+    for (unsigned replay = 0; replay < 2; ++replay) {
+        const auto residentCode = prometheus_reactor_runtime_noise_refiner_execute_resident(raw, id, &resident, &evidence);
+        ASSERT_EQUAL(PROM_OK, residentCode, "resident replay uses the pinned GPU boundary");
+        if (residentCode != PROM_OK) return;
+        check("resident_output", next.output, 3840);
+        ASSERT_TRUE(evidence.gpu_compute_ns > 0, "resident timings come from the Concept recordings that actually ran");
+    }
+    std::vector<std::uint8_t> arena(PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES);
+    PrometheusNoiseRefinerStaticAuditRequest replay{};
+    replay.struct_size = sizeof(replay); replay.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+    replay.input_generation = generation; replay.output_identity = 0xa614; replay.audit_arena = arena.data(); replay.audit_arena_capacity_bytes = arena.size();
+    const auto replayCode = prometheus_reactor_runtime_noise_refiner_execute_static_audit(raw, id, &replay, &evidence);
+    ASSERT_EQUAL(PROM_OK, replayCode, "static audit borrows the same Concept tail stage implementations");
+    if (replayCode != PROM_OK) return;
+    const Table* stages[]{&next.attention,&next.projection,&next.residual,&next.norm,&next.modulated,&next.w1,&next.w3,&next.gated,&next.w2,&next.output};
+    const auto word = [&](std::size_t offset) { std::uint32_t value{}; std::memcpy(&value, arena.data() + offset, sizeof(value)); return value; };
+    for (unsigned index = 0; index < 10; ++index) {
+        const auto& entry = k_prom_zimage_turbo_audit_schedule[19 + index];
+        const auto offset = entry.audit_destination_offset;
+        ASSERT_EQUAL(entry.stage_id, word(offset), "static tail packet retains its stage authority");
+        ASSERT_EQUAL(entry.element_count, word(offset + 24), "static tail summary contains only finite elements");
+        const unsigned width = index >= 5 && index <= 7 ? 10240 : 3840;
+        for (unsigned key = 0; key < entry.projection_key_count; ++key) {
+            const auto element = k_prom_zimage_turbo_audit_projection_keys[entry.projection_key_offset + key];
+            ASSERT_EQUAL(element, word(offset + 64 + key * 8), "static tail packet retains the selected projection key");
+            const auto bits = word(offset + 68 + key * 8);
+            float value{}; std::memcpy(&value, &bits, sizeof(value));
+            ASSERT_NEAR((*stages[index])[(element / width) % 5][(element % width) % 4], static_cast<double>(value), 3.0e-4, "static tail projection agrees with the independent oracle");
+        }
+    }
+    ASSERT_EQUAL(residentAllocations, evidence.cold_buffer_allocation_count, "resident and static replay allocate no replacement storage");
+    ASSERT_EQUAL(pipelines, evidence.pipeline_create_count, "tail and replay retain the cold pipeline portfolio");
+    ASSERT_EQUAL(completedUploads + 13u, evidence.weight_upload_count,
+                 "replay uploads no weights beyond the explicit block-1 rebind");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(raw, id), "destroy the complete Concept model owner");
+    ASSERT_EQUAL(buffersBefore, ConceptVkTestLiveBuffers(), "all Concept buffers return to baseline");
+    ASSERT_EQUAL(pipelinesBefore, ConceptVkTestLivePipelines(), "all Concept pipelines return to baseline");
+}
+
+// AdaLN is independent of the external image activation. This targeted real
+// parameter witness needs the pinned timestep and weights, while the original
+// full O19 replay below continues to require the exact captured model input.
+FACT(PrometheusConceptModelBlockRealWeightsReachPinnedAdaLnWitness)
+{
+    const auto enabled = environment_value("OCT_PROMETHEUS_M5_ADALN_REAL");
+    const auto cache = environment_value("OCT_EVT2_CACHE");
+    const auto oracle = environment_value("OCT_EVT2_ORACLE");
+    if (enabled != "1" || cache.empty() || oracle.empty()) {
+        SKIP("set OCT_PROMETHEUS_M5_ADALN_REAL=1 and the hash-validated cache/timestep roots");
+    }
+    const auto cacheBlock = std::filesystem::path(cache) / "layers" /
+        "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6" / "noise_refiner.0";
+    const auto timestep = read_binary_file(std::filesystem::path(oracle) / "run_02" / "noise_refiner_0_timestep.bin");
+    ASSERT_EQUAL(512u, timestep.size(), "pinned BF16 timestep is complete");
+    if (timestep.size() != 512) return;
+    auto create = make_m1b_request();
+    std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> weights;
+    std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> uploads{};
+    for (unsigned i = 0; i < weights.size(); ++i) {
+        weights[i] = read_binary_file(cacheBlock / kM1BWeightNames[i]);
+        ASSERT_EQUAL(kM1BWeightBytes[i], weights[i].size(), "real tensor preserves its physical extent");
+        if (weights[i].size() != kM1BWeightBytes[i]) return;
+        uploads[i] = {i, weights[i].data(), weights[i].size(), create.weights[i].content_identity, create.weights[i].layout_identity};
+    }
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "create shared device");
+    if (!runtime || !runtime_available(runtime)) {
+        if (runtime) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    std::uint64_t id{}; PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &id, &evidence), "create real-weight production owner");
+    if (!id) { prom_reactor_runtime_destroy_impl(runtime); return; }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_upload_weights(runtime, id, uploads.data(), static_cast<unsigned>(uploads.size()), &evidence), "publish immutable real weights");
+    std::vector<std::uint16_t> input(1024u * 3840u, 0); // AdaLN does not consume this image operand.
+    std::vector<float> projection(15360, 0);
+    PrometheusModelBlockM1BExecuteRequest execute{};
+    execute.struct_size = sizeof(execute); execute.model_input_bf16 = input.data(); execute.timestep_bf16 = timestep.data();
+    execute.model_input_bytes = input.size() * 2; execute.timestep_bytes = timestep.size();
+    execute.input_identity = 1; execute.timestep_identity = 0xbc0ba90e94f5ae98ull;
+    execute.audit_enabled = 1; execute.audit_stage = PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION;
+    execute.audit_output = projection.data(); execute.audit_element_capacity = projection.size();
+    const unsigned coordinates[] = {0, 1, 5120, 10240, 15358, 15359};
+    const float expected[] = {1.3601882f, .47051555f, .03414398f, -1.0670887f, .117215075f, .20466696f};
+    const auto allocations = evidence.cold_buffer_allocation_count;
+    double worst = 0;
+    for (unsigned iteration = 0; iteration < 3; ++iteration) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, id, &execute, &evidence), "real weights reach the pinned AdaLN witness through Concept");
+        for (unsigned i = 0; i < 6; ++i) {
+            const double error = std::abs(static_cast<double>(projection[coordinates[i]]) - expected[i]);
+            worst = std::max(worst, error);
+            ASSERT_TRUE(std::isfinite(projection[coordinates[i]]) && error <= 1.0e-4, "canonical coordinates retain their existing tolerance");
+        }
+        ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count, "real-weight replay allocates no buffers");
+        ASSERT_EQUAL(13u, evidence.weight_upload_count, "real-weight replay never uploads weights again");
+    }
+    std::cout << "Concept real-weight AdaLN canonical witness max_abs_error=" << worst << '\n';
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "retire the real-weight owner");
+}
+
 FACT(PrometheusM1BPreAttentionOwnerCreatesIngressAndFiveModelPipelines)
 {
+    const int buffersBefore = ConceptVkTestLiveBuffers();
+    const int pipelinesBefore = ConceptVkTestLivePipelines();
     void* runtime = nullptr;
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "Vulkan runtime creates for M1B owner preflight");
     if (runtime == nullptr || !runtime_available(runtime)) {
@@ -279,6 +898,8 @@ FACT(PrometheusM1BPreAttentionOwnerCreatesIngressAndFiveModelPipelines)
                  "ingress pipeline creation failure cleans partial M1B ownership");
     ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_INGRESS_PIPELINE_CREATE_FAILED, evidence.detail_code,
                  "ingress pipeline creation failure has exact fault identity");
+    ASSERT_EQUAL(buffersBefore, ConceptVkTestLiveBuffers(), "partial construction releases all Concept allocations");
+    ASSERT_EQUAL(pipelinesBefore, ConceptVkTestLivePipelines(), "partial construction retains no pipeline");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &blockID, &evidence),
                  "resident owner creates the fixed M1B through M1D shader portfolio");
     if (blockID == 0u) {
@@ -288,14 +909,16 @@ FACT(PrometheusM1BPreAttentionOwnerCreatesIngressAndFiveModelPipelines)
     ASSERT_EQUAL(PROM_MODEL_BLOCK_MAX_WEIGHTS, evidence.weight_count, "M1B declares all thirteen immutable weights");
     ASSERT_EQUAL(26u, evidence.pipeline_create_count,
                  "cold creation owns 13 model pipelines plus 13 immutable audit-source views");
-    ASSERT_EQUAL(26u, evidence.descriptor_set_count,
-                 "cold creation owns every model and audit descriptor set before execution");
+    ASSERT_EQUAL(13u, evidence.descriptor_set_count,
+                 "legacy audit projections own thirteen sets; Concept pushes all model interfaces");
     ASSERT_TRUE(evidence.persistent_bytes == 361820672u, "M1B immutable arena has the accepted cache byte count");
     ASSERT_TRUE(evidence.cold_buffer_allocation_count >= 26u, "M1B preallocates all resident and bounded-audit buffers");
     ASSERT_EQUAL(0u, evidence.weight_upload_count, "creation does not permit an implicit warm upload");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID),
                  "M1B preflight resources destroy safely before upload");
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "M1B preflight runtime destroys safely");
+    ASSERT_EQUAL(buffersBefore, ConceptVkTestLiveBuffers(), "pre-attention allocations return to baseline");
+    ASSERT_EQUAL(pipelinesBefore, ConceptVkTestLivePipelines(), "pre-attention pipelines return to baseline");
 }
 
 FACT(PrometheusM1BBf16IngressWidensEveryBitPatternExactlyOnGpu)
@@ -333,6 +956,16 @@ FACT(PrometheusM1BBf16IngressWidensEveryBitPatternExactlyOnGpu)
     }
     ASSERT_EQUAL(static_cast<std::uint32_t>(input.size()), firstMismatch,
                  "all 65536 GPU results have the exact canonical FP32 bit pattern");
+    for (const std::uint32_t count : {1u, 3u, 65535u}) {
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_bf16_ingress_impl(
+            runtime, blockID, input.data(), count, output.data(), count, &evidence), "odd BF16 element counts retain byte-copy semantics");
+        std::uint32_t mismatch = count;
+        for (std::uint32_t bits = 0; bits < count; ++bits) {
+            std::uint32_t actual{}; std::memcpy(&actual, &output[bits], sizeof(actual));
+            if (actual != (bits << 16u)) { mismatch = bits; break; }
+        }
+        ASSERT_EQUAL(count, mismatch, "partial packed words widen exactly");
+    }
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_execution_fault_impl(
                               runtime, blockID, PROM_TESTCFG_FAIL_DISPATCH),
                  "ingress dispatch fault is injected into the resident block");
@@ -382,6 +1015,298 @@ FACT(PrometheusM1BIngressRejectsWrongExternalByteCounts)
                  "wrong timestep byte count has exact fault identity");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID), "ingress ABI fault block destroys safely");
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "ingress ABI fault runtime destroys safely");
+}
+
+FACT(PrometheusConceptContextRefinerHasIndependentNonzeroWitnessesAndSharedPortfolios)
+{
+    using Row = std::array<double, 4>;
+    using Rows = std::array<Row, 32>;
+    using Heads = std::array<std::array<double, 128>, 32>;
+    struct Oracle {
+        Rows input, norm, q, k, v, attention, projection, residual, ffn, w1, w3, gated, w2, output;
+        Heads positionedQ, positionedK;
+    };
+    constexpr Row qCoefficient{.25,-.5,1,.5}, kCoefficient{.5,.25,-.25,1};
+    constexpr Row vCoefficient{.25,.5,-.25,1}, projectionCoefficient{.5,-.25,.25,1};
+    constexpr Row w1Coefficient{.25,-.5,1,.5}, w3Coefficient{.5,1,-.25,.25};
+    constexpr Row w2First{.5,.25,-.5,1}, w2Second{-.25,.5,.25,-.5};
+    const auto inverseRms = [](const Row& row) { return 1.0 / std::sqrt(std::inner_product(row.begin(), row.end(), row.begin(), 0.0) / 4 + 1e-5); };
+    const auto reference = [&](const Rows& input) {
+        Oracle o{}; o.input = input;
+        for (unsigned t = 0; t < 32; ++t) {
+            const auto norm = inverseRms(input[t]);
+            Row rawQ{}, rawK{};
+            for (unsigned c = 0; c < 4; ++c) o.norm[t][c] = input[t][c] * norm * 1.25;
+            for (unsigned c = 0; c < 4; ++c) {
+                rawQ[c] = o.norm[t][0] * qCoefficient[c]; rawK[c] = o.norm[t][1] * kCoefficient[c];
+                o.v[t][c] = o.norm[t][0] * vCoefficient[c];
+            }
+            const auto qNorm = inverseRms(rawQ), kNorm = inverseRms(rawK);
+            for (unsigned c = 0; c < 4; ++c) { o.q[t][c] = rawQ[c] * qNorm; o.k[t][c] = rawK[c] * kNorm * .75; }
+            for (unsigned c = 0; c < 128; ++c) {
+                // The Context position is [token+1,0,0], with 32/48/48 axes.
+                const auto angle = c < 32 ? (t + 1.0) / std::pow(256.0, 2.0 * (c / 2) / 32.0) : 0.0;
+                const unsigned mate = c ^ 1u;
+                const auto rotate = [&](const Row& row) {
+                    return c % 2 ? row[mate % 4] * std::sin(angle) + row[c % 4] * std::cos(angle)
+                                 : row[c % 4] * std::cos(angle) - row[mate % 4] * std::sin(angle);
+                };
+                o.positionedQ[t][c] = rotate(o.q[t]); o.positionedK[t][c] = rotate(o.k[t]);
+            }
+        }
+        for (unsigned t = 0; t < 32; ++t) {
+            std::array<double, 32> scores{};
+            for (unsigned key = 0; key < 32; ++key)
+                scores[key] = std::inner_product(o.positionedQ[t].begin(), o.positionedQ[t].end(), o.positionedK[key].begin(), 0.0) / std::sqrt(128.0);
+            const auto maximum = *std::max_element(scores.begin(), scores.end());
+            double denominator = 0;
+            for (auto& score : scores) { score = std::exp(score - maximum); denominator += score; }
+            for (unsigned key = 0; key < 32; ++key) for (unsigned c = 0; c < 4; ++c)
+                o.attention[t][c] += scores[key] / denominator * o.v[key][c];
+            for (unsigned c = 0; c < 4; ++c) o.projection[t][c] = o.attention[t][0] * projectionCoefficient[c];
+            const auto projectionRms = inverseRms(o.projection[t]);
+            for (unsigned c = 0; c < 4; ++c) o.residual[t][c] = input[t][c] + o.projection[t][c] * projectionRms * .5;
+            const auto ffnRms = inverseRms(o.residual[t]);
+            for (unsigned c = 0; c < 4; ++c) o.ffn[t][c] = o.residual[t][c] * ffnRms * 1.5;
+            for (unsigned c = 0; c < 4; ++c) {
+                o.w1[t][c] = o.ffn[t][0] * w1Coefficient[c]; o.w3[t][c] = o.ffn[t][1] * w3Coefficient[c];
+                o.gated[t][c] = o.w1[t][c] / (1 + std::exp(-o.w1[t][c])) * o.w3[t][c];
+            }
+            for (unsigned c = 0; c < 4; ++c) o.w2[t][c] = o.gated[t][0] * w2First[c] + o.gated[t][1] * w2Second[c];
+            const auto outputRms = inverseRms(o.w2[t]);
+            for (unsigned c = 0; c < 4; ++c) o.output[t][c] = o.residual[t][c] + o.w2[t][c] * outputRms * .75;
+        }
+        return o;
+    };
+    constexpr std::array<std::uint64_t, 11> sizes{256,29491200,256,88473600,7680,7680,78643200,78643200,78643200,7680,7680};
+    std::array<std::vector<std::uint16_t>, 11> weights;
+    std::array<PrometheusModelBlockWeightUpload, 11> uploads{};
+    for (unsigned i = 0; i < 11; ++i) {
+        weights[i].resize(static_cast<std::size_t>(sizes[i] / 2), 0);
+        uploads[i] = {i,weights[i].data(),sizes[i],0xb700u+i,0xb800u+i};
+    }
+    constexpr std::array<unsigned,6> gammaIndex{0,2,4,5,9,10};
+    constexpr std::array<std::uint16_t,6> gammaValue{0x3a00,0x3c00,0x3d00,0x3800,0x3e00,0x3a00};
+    for (unsigned i=0;i<gammaIndex.size();++i)
+        std::fill(weights[gammaIndex[i]].begin(), weights[gammaIndex[i]].end(), gammaValue[i]);
+    constexpr std::uint16_t q[]{0x3400,0xb800,0x3c00,0x3800}, k[]{0x3800,0x3400,0xb400,0x3c00};
+    constexpr std::uint16_t v[]{0x3400,0x3800,0xb400,0x3c00}, p[]{0x3800,0xb400,0x3400,0x3c00};
+    constexpr std::uint16_t h3[]{0x3800,0x3c00,0xb400,0x3400}, o0[]{0x3800,0x3400,0xb800,0x3c00}, o1[]{0xb400,0x3800,0x3400,0xb800};
+    for (unsigned c = 0; c < 3840; ++c) {
+        weights[3][c] = q[c%4]; weights[3][11520+3840+c] = k[c%4]; weights[3][7680+c] = v[c%4];
+        weights[1][c] = p[c%4]; weights[7][c] = o0[c%4]; weights[7][3840+c] = o1[c%4];
+    }
+    for (unsigned c = 0; c < 10240; ++c) { weights[6][c] = q[c%4]; weights[8][10240+c] = h3[c%4]; }
+    Rows input{};
+    std::vector<float> ingress(32u * 3840u), output(ingress.size());
+    for (unsigned t = 0; t < 32; ++t) {
+        input[t] = Row{1.0+t%5,-1.0-.5*(t%5),.75,-1.25};
+        for (unsigned c = 0; c < 3840; ++c) ingress[t*3840+c] = static_cast<float>(input[t][c%4]);
+    }
+    const auto expected = reference(input);
+    for (const bool shared : {false, true}) {
+        const int buffersBefore = ConceptVkTestLiveBuffers(), pipelinesBefore = ConceptVkTestLivePipelines();
+        void* raw{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &raw), "create Context witness device");
+        const auto release = [](void* value) { if (value) (void)prom_reactor_runtime_destroy_impl(value); };
+        std::unique_ptr<void,decltype(release)> runtime(raw,release);
+        if (!raw || !runtime_available(raw)) SKIP("Vulkan runtime unavailable");
+        std::uint64_t id{}, sessionID{}; PrometheusModelBlockEvidence evidence{};
+        if (!shared) {
+            PrometheusContextRefinerCreateRequest create{};
+            create.struct_size=sizeof(create); create.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+            create.upload_count=11; create.uploads=uploads.data();
+            ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_context_refiner_create(raw,&create,&id,&evidence),"create standalone Concept Context portfolio");
+        } else {
+            PrometheusCompiledModelSessionCreateRequest session{};
+            session.struct_size=sizeof(session); session.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID; session.main_attention_route_policy=PROM_MAIN_ATTENTION_ROUTE_AUTO;
+            session.execution_profile=PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
+            PrometheusCompiledModelSessionEvidence sessionEvidence{};
+            ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_compiled_model_session_create(raw,&session,&sessionID,&sessionEvidence),"create shared portfolio session");
+            if(!sessionID) return;
+            std::array<std::vector<std::uint16_t>,2> adaln;
+            std::array<PrometheusModelBlockWeightUpload,13> noiseUploads{};
+            for(unsigned i=0;i<2;++i) { adaln[i].resize(static_cast<std::size_t>(kM1BWeightBytes[i]/2),0); noiseUploads[i]={i,adaln[i].data(),kM1BWeightBytes[i],0xba00u+i,0xbb00u+i}; }
+            for(unsigned i=2;i<13;++i) { noiseUploads[i]=uploads[i-2]; noiseUploads[i].binding_index=i; }
+            PrometheusNoiseRefinerRebindRequest owner{};
+            owner.struct_size=sizeof(owner); owner.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID; owner.upload_count=13; owner.uploads=noiseUploads.data();
+            ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_compiled_model_owner_create(raw,&owner,&id,&evidence),"create coexisting Noise and Context Concept pipelines");
+            if (!id) return;
+            // Executing Noise after Context's cold creation detects slot replacement.
+            std::vector<std::uint16_t> image(1024u*3840u,0x3f80), timestep(256,0);
+            PrometheusNoiseRefiner0ExecuteRequest noise{};
+            noise.struct_size=sizeof(noise); noise.model_input_bf16=image.data(); noise.model_input_bytes=image.size()*2;
+            noise.timestep_bf16=timestep.data(); noise.timestep_bytes=timestep.size()*2;
+            noise.input_identity=0xbc01; noise.timestep_identity=0xbc02; noise.output_identity=0xbc03;
+            ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_noise_refiner0_execute(raw,id,&noise,&evidence),"Noise executes after both portfolios are created");
+            PrometheusCompiledModelRetargetRequest retarget{};
+            retarget.struct_size=sizeof(retarget); retarget.session_identity=sessionID; retarget.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+            retarget.model_local_block_id=1; retarget.upload_count=13; retarget.uploads=noiseUploads.data();
+            ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_compiled_model_retarget(raw,&retarget,&evidence),"advance the closed Noise parameter transition");
+            retarget.model_local_block_id=0; retarget.upload_count=11; retarget.uploads=uploads.data();
+            ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_compiled_model_retarget(raw,&retarget,&evidence),"activate logical Context weights in shared physical slots");
+        }
+        if (!id) return;
+        int sharedPipelines=37;
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
+        sharedPipelines=24; // Main's research executor remains an explicit C build.
+#endif
+        ASSERT_EQUAL(pipelinesBefore+(shared?sharedPipelines:11),ConceptVkTestLivePipelines(),"separate Concept pipeline banks retain each portfolio");
+        std::cout<<"M7 shared="<<shared<<" pipelines="<<evidence.pipeline_create_count
+                 <<" descriptor_sets="<<evidence.descriptor_set_count<<" reusable_bytes="<<evidence.reusable_bytes
+                 <<" committed_bytes="<<evidence.total_committed_bytes<<'\n';
+        if(shared) ASSERT_TRUE(evidence.total_committed_bytes<=k_prom_zimage_turbo_noise_refiner_blocks[0].memory_plan_identity+17039360ull,
+            "compound owner stays inside its explicit predecessor and W3 reservation");
+        const auto pipelines=evidence.pipeline_create_count;
+        const auto checkOutput = [&](const Rows& rows) {
+            PrometheusContextRefinerFinalAuditRequest audit{};
+            audit.struct_size=sizeof(audit); audit.required_output_generation=evidence.output_generation; audit.output_identity=0xbd01;
+            audit.output=output.data(); audit.output_element_capacity=output.size();
+            const auto code=prometheus_reactor_runtime_context_refiner_audit_final(raw,id,&audit,&evidence);
+            ASSERT_EQUAL(PROM_OK,code,"read the completed Context boundary");
+            if(code!=PROM_OK) return false;
+            double maximum=0; bool finite=true;
+            for(std::size_t i=0;i<output.size();++i) { finite=finite&&std::isfinite(output[i]); maximum=std::max(maximum,std::abs(output[i]-rows[i/3840][i%4])); }
+            std::cout<<"M7 shared="<<shared<<" final_elements="<<output.size()<<" max_abs_error="<<maximum<<'\n';
+            ASSERT_TRUE(finite&&maximum<1e-4,"full Context output agrees with independent CPU contractions");
+            return finite&&maximum<1e-4;
+        };
+        PrometheusContextRefiner0ExecuteRequest execute{};
+        execute.struct_size=sizeof(execute); execute.context_input=ingress.data(); execute.context_input_bytes=ingress.size()*sizeof(float);
+        execute.input_identity=0xbd02; execute.output_identity=0xbd01;
+        execute.context_input_bytes-=sizeof(float);
+        ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_context_refiner0_execute(raw,id,&execute,&evidence),"reject truncated Context ingress before recording");
+        ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST,evidence.detail_code,"malformed ingress has its own diagnostic");
+        execute.context_input_bytes+=sizeof(float);
+        ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_context_refiner0_execute(raw,id,&execute,&evidence),"execute nonzero Context Q/K, attention and FFN");
+        ASSERT_TRUE(evidence.gpu_compute_ns>0,"Context timings come from the executed Concept recording");
+        if(!checkOutput(expected.output)) return;
+        std::vector<std::uint8_t> arena(PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_ARENA_BYTES);
+        const auto checkStages = [&](const Oracle& o) {
+            PrometheusContextRefinerStaticAuditRequest request{};
+            request.struct_size=sizeof(request); request.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+            request.input_generation=evidence.output_generation; request.output_identity=0xbd01;
+            request.audit_arena=arena.data(); request.audit_arena_capacity_bytes=arena.size();
+            const auto code=prometheus_reactor_runtime_context_refiner_execute_static_audit(raw,id,&request,&evidence);
+            ASSERT_EQUAL(PROM_OK,code,"audit replay borrows the same Concept stages");
+            if(code!=PROM_OK) return false;
+            const Rows* rows[]{&o.input,&o.norm,nullptr,&o.q,&o.k,nullptr,nullptr,&o.attention,&o.projection,&o.residual,&o.ffn,&o.w1,&o.w3,&o.gated,&o.w2,&o.output};
+            const auto word=[&](std::size_t offset) { std::uint32_t value{}; std::memcpy(&value,arena.data()+offset,sizeof(value)); return value; };
+            for(unsigned stage=0;stage<16;++stage) {
+                const auto& entry=k_prom_zimage_turbo_context_audit_schedule[stage]; const auto offset=entry.audit_destination_offset;
+                ASSERT_EQUAL(entry.stage_id,word(offset),"Context packet retains its stage ID");
+                ASSERT_EQUAL(entry.element_count,word(offset+24),"every Context stage element is finite");
+                double maximum=0;
+                for(unsigned key=0;key<entry.projection_key_count;++key) {
+                    const auto element=k_prom_zimage_turbo_context_audit_projection_keys[entry.projection_key_offset+key];
+                    ASSERT_EQUAL(element,word(offset+64+key*8),"Context projection retains its declared key");
+                    const auto bits=word(offset+68+key*8); float actual{}; std::memcpy(&actual,&bits,sizeof(actual));
+                    double wanted{};
+                    if(stage==2) {
+                        const auto t=element/11520, c=element%11520;
+                        wanted=c<3840?o.norm[t][0]*qCoefficient[c%4]:(c<7680?o.norm[t][1]*kCoefficient[c%4]:o.v[t][c%4]);
+                    } else if(stage==5||stage==6) {
+                        const auto& heads=stage==5?o.positionedQ:o.positionedK; wanted=heads[element/3840][element%128];
+                    } else { const unsigned width=stage>=11&&stage<=13?10240:3840; wanted=(*rows[stage])[element/width][element%4]; }
+                    maximum=std::max(maximum,std::abs(actual-wanted));
+                    ASSERT_TRUE(std::isfinite(actual)&&std::abs(actual-wanted)<1e-4,"Context stage projection matches its independent oracle");
+                }
+                std::cout<<"M7 shared="<<shared<<" stage="<<entry.stage_id<<" projection_max_abs_error="<<maximum<<'\n';
+            }
+            return true;
+        };
+        if(!checkStages(expected)) return;
+        if(!shared) {
+            for(const unsigned fault:{PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD,PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT,PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION}) {
+                ASSERT_EQUAL(PROM_OK,prom_reactor_runtime_model_block_test_inject_impl(raw,id,fault),"inject Context lifecycle failure");
+                ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_context_refiner0_execute(raw,id,&execute,&evidence),"Context failure cannot publish output");
+                const int detail=fault==PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD?PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED:
+                    fault==PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT?PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED:PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN;
+                ASSERT_EQUAL(detail,evidence.detail_code,"Context preserves the precise failure phase"); ASSERT_EQUAL(0u,evidence.output_valid,"failed Context output is invalid");
+                float a=2,b=3,c{}; unsigned stage{}; int sgemmDetail{};
+                ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_sgemm(raw,&a,&b,&c,1,1,1,&stage,&sgemmDetail),"SGEMM shares the Context failure device"); ASSERT_EQUAL(6.0f,c,"legacy SGEMM remains exact");
+                const auto retry=prometheus_reactor_runtime_context_refiner0_execute(raw,id,&execute,&evidence);
+                ASSERT_EQUAL(PROM_OK,retry,"Context retry retires uncertain completion before reuse");
+                if(retry!=PROM_OK||!checkOutput(expected.output)) return;
+            }
+        }
+        Rows nextInput{};
+        for(unsigned t=0;t<32;++t) for(unsigned c=0;c<4;++c) nextInput[t][c]=output[t*3840+c];
+        const auto next = reference(nextInput);
+        auto generation = evidence.output_generation;
+        if(shared) {
+            PrometheusCompiledModelRetargetRequest rebind{};
+            rebind.struct_size=sizeof(rebind); rebind.session_identity=sessionID; rebind.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+            rebind.model_local_block_id=1; rebind.upload_count=11; rebind.uploads=uploads.data();
+            ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_compiled_model_retarget(raw,&rebind,&evidence),"retarget shared Context block 1");
+        } else {
+            PrometheusContextRefinerRebindRequest rebind{};
+            rebind.struct_size=sizeof(rebind); rebind.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID; rebind.model_local_block_id=1;
+            rebind.upload_count=11; rebind.uploads=uploads.data();
+            const auto binding = evidence.binding_generation;
+            for (const unsigned fault : {4u, 8u})
+            {
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_model_block_test_inject_weight_fault_impl(
+                                 raw, id, 3, fault),
+                             "inject Context replacement failure");
+                ASSERT_EQUAL(
+                    PROM_ERROR,
+                    prometheus_reactor_runtime_context_refiner_rebind(raw, id, &rebind, &evidence),
+                    "Context cannot commit incomplete replacement");
+                ASSERT_EQUAL(binding, evidence.binding_generation,
+                             "Context keeps the active version");
+                ASSERT_EQUAL(PROM_OK,
+                             prometheus_reactor_runtime_context_refiner0_execute(raw, id, &execute,
+                                                                                 &evidence),
+                             "Context's old binding still executes after retirement");
+                if (!checkOutput(expected.output))
+                    return;
+            }
+            generation = evidence.output_generation;
+            ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_context_refiner_rebind(raw,id,&rebind,&evidence),"commit Context block-1 candidate weights");
+        }
+        const auto allocations=evidence.cold_buffer_allocation_count, uploadCount=evidence.weight_upload_count;
+        PrometheusContextRefinerResidentExecuteRequest resident{};
+        resident.struct_size=sizeof(resident); resident.input_generation=generation; resident.output_identity=0xbd01;
+        resident.input_generation+=1000;
+        ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_context_refiner_execute_resident(raw,id,&resident,&evidence),"reject a foreign predecessor generation");
+        ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT,evidence.detail_code,"stale Context generations remain distinct from GPU failures");
+        resident.input_generation=generation;
+        for(unsigned repeat=0;repeat<2;++repeat) {
+            const auto code=prometheus_reactor_runtime_context_refiner_execute_resident(raw,id,&resident,&evidence);
+            ASSERT_EQUAL(PROM_OK,code,"resident Context replay retains the pinned predecessor");
+            if(code!=PROM_OK||!checkOutput(next.output)) return;
+        }
+        ASSERT_EQUAL(allocations,evidence.cold_buffer_allocation_count,"resident Context allocates no buffers");
+        ASSERT_EQUAL(uploadCount,evidence.weight_upload_count,"resident Context uploads no weights");
+        ASSERT_EQUAL(pipelines,evidence.pipeline_create_count,"Context stages reuse their cold pipelines");
+        if (shared)
+        {
+            PrometheusCompiledModelSessionCaptureRequest capture{};
+            capture.struct_size = sizeof(capture);
+            capture.source_output_generation = evidence.output_generation;
+            PrometheusCompiledModelSessionEvidence sessionEvidence{};
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_compiled_model_session_test_inject_impl(
+                             raw, sessionID, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION),
+                         "leave a submitted capture borrowing Context output");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                             raw, sessionID, id, &capture, &sessionEvidence),
+                         "unobserved capture cannot publish a Context version");
+            ASSERT_EQUAL(1u, sessionEvidence.quarantined, "session retains submitted capture");
+            ASSERT_EQUAL(0ull, sessionEvidence.prepared_context_generation,
+                         "pending capture has no published generation");
+            ASSERT_TRUE(ConceptVkTestPendingSubmissions() > 0, "capture still owns its submission");
+        }
+        ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_model_block_destroy(raw,id),"retire and release Context resources");
+        ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(),
+                     "model-first teardown drains the capture before freeing its borrowed source");
+        if(shared) ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_compiled_model_session_destroy(raw,sessionID),"destroy retained shared streams");
+        ASSERT_EQUAL(buffersBefore,ConceptVkTestLiveBuffers(),"Context buffers return to baseline");
+        ASSERT_EQUAL(pipelinesBefore,ConceptVkTestLivePipelines(),"Context pipelines return to baseline");
+    }
 }
 
 FACT(PrometheusContextRefinerRealPayloadExecutesTheClosedResidentBlock)
@@ -651,24 +1576,10 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
     const std::filesystem::path cacheBlock = std::filesystem::path(cacheRootText) / "layers" /
         "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6" / "noise_refiner.0";
     const std::filesystem::path oracleRun = std::filesystem::path(oracleRootText) / "run_02";
-    constexpr std::array<const char*, PROM_MODEL_BLOCK_MAX_WEIGHTS> names{
-        "noise_refiner.0.adaLN_modulation.0.bias.fp16.bin",
-        "noise_refiner.0.adaLN_modulation.0.weight.fp16.bin",
-        "noise_refiner.0.attention.k_norm.weight.fp16.bin",
-        "noise_refiner.0.attention.out.weight.fp16.bin",
-        "noise_refiner.0.attention.q_norm.weight.fp16.bin",
-        "noise_refiner.0.attention.qkv.weight.fp16.bin",
-        "noise_refiner.0.attention_norm1.weight.fp16.bin",
-        "noise_refiner.0.attention_norm2.weight.fp16.bin",
-        "noise_refiner.0.feed_forward.w1.weight.fp16.bin",
-        "noise_refiner.0.feed_forward.w2.weight.fp16.bin",
-        "noise_refiner.0.feed_forward.w3.weight.fp16.bin",
-        "noise_refiner.0.ffn_norm1.weight.fp16.bin",
-        "noise_refiner.0.ffn_norm2.weight.fp16.bin"};
     std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> weightBytes{};
     std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> uploads{};
-    for (std::uint32_t index = 0u; index < names.size(); ++index) {
-        weightBytes[index] = read_binary_file(cacheBlock / names[index]);
+    for (std::uint32_t index = 0u; index < kM1BWeightNames.size(); ++index) {
+        weightBytes[index] = read_binary_file(cacheBlock / kM1BWeightNames[index]);
         ASSERT_EQUAL(kM1BWeightBytes[index], static_cast<std::uint64_t>(weightBytes[index].size()),
                      "validated cache tensor retains its exact physical byte count");
     }
@@ -1371,6 +2282,55 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "real M1B runtime destroys safely");
 }
 
+FACT(PrometheusConceptSessionUnwindsEveryPartialConstruction)
+{
+    void *raw{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &raw), "create session device");
+    const auto release = [](void *p) {
+        if (p)
+            (void)prom_reactor_runtime_destroy_impl(p);
+    };
+    std::unique_ptr<void, decltype(release)> runtime(raw, release);
+    if (!raw || !runtime_available(raw))
+        SKIP("Vulkan runtime unavailable");
+    const int buffers = ConceptVkTestLiveBuffers(), contexts = ConceptVkTestLiveContexts(),
+              pending = ConceptVkTestPendingSubmissions(), doubles = ConceptVkTestDoubleDestroys();
+    PrometheusCompiledModelSessionCreateRequest create{};
+    create.struct_size = sizeof(create);
+    create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    create.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
+    create.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_AUTO;
+    PrometheusCompiledModelSessionEvidence evidence{};
+    std::uint64_t id{};
+    for (const unsigned fault : {1u, 2u, 4u})
+    {
+        ASSERT_EQUAL(
+            PROM_OK,
+            prom_reactor_runtime_compiled_model_session_test_inject_create_fault_impl(raw, fault),
+            "fail after each owned buffer acquisition");
+        ASSERT_EQUAL(
+            PROM_ERROR,
+            prometheus_reactor_runtime_compiled_model_session_create(raw, &create, &id, &evidence),
+            "partial Concept construction returns an error");
+        ASSERT_EQUAL(0ull, id, "failed construction publishes no session");
+        ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, evidence.detail_code,
+                     "construction failure preserves its diagnostic phase");
+        ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "partial buffers are dropped");
+        ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "partial borrowed context is released");
+        ASSERT_EQUAL(pending, ConceptVkTestPendingSubmissions(), "construction submits no work");
+        ASSERT_EQUAL(doubles, ConceptVkTestDoubleDestroys(), "ownership is released exactly once");
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_compiled_model_session_create(raw, &create, &id, &evidence),
+            "same device admits a fresh session after failure");
+        ASSERT_EQUAL(buffers + 3, ConceptVkTestLiveBuffers(), "Concept owns exactly three streams");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_destroy(raw, id),
+                     "normal teardown releases the stream owner");
+        ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "successful retry returns to baseline");
+        ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "retry drops its borrowed context");
+    }
+}
+
 FACT(PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs)
 {
     void* runtime = nullptr;
@@ -1382,6 +2342,7 @@ FACT(PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs)
     PrometheusCompiledModelSessionCreateRequest create{};
     create.struct_size = sizeof(create);
     create.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
+    create.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_AUTO;
     create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID ^ 1u;
     PrometheusCompiledModelSessionEvidence evidence{};
     std::uint64_t sessionID = 0u;
@@ -1389,6 +2350,11 @@ FACT(PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs)
                                  runtime, &create, &sessionID, &evidence),
                  "M2C session rejects a foreign lock before allocating streams");
     create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    create.main_attention_route_policy = 0u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_compiled_model_session_create(
+        runtime, &create, &sessionID, &evidence), "M2C rejects an unspecified attention policy before allocating streams");
+    ASSERT_EQUAL(0u, sessionID, "invalid policy publishes no session");
+    create.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_AUTO;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_create(
                                 runtime, &create, &sessionID, &evidence),
                  "M2C session preallocates the lock-defined image context and joint slots");
@@ -1472,6 +2438,743 @@ FACT(PrometheusM2CMainTransformerFacadeRejectsUnresolvedOrPartialRequests)
                  "missing representative owner has an exact failure identity");
 
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "M2C main runtime destroys safely");
+}
+
+FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
+{
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT) ||                                    \
+    defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) ||                                      \
+    defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) ||                                        \
+    defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
+    SKIP("M8 qualifies the production Concept executor; this build selects an isolated research "
+         "executor");
+#endif
+    using Row = std::array<double, 4>;
+    using Rows = std::vector<Row>;
+    using Head = std::array<double, 128>;
+    constexpr Row qCoefficient{.25, -.5, 1, .5}, kCoefficient{.5, .25, -.25, 1};
+    constexpr Row vCoefficient{.25, .5, -.25, 1}, projectionCoefficient{.5, -.25, .25, 1};
+    constexpr Row w2First{.5, .25, -.5, 1}, w2Second{-.25, .5, .25, -.5};
+    constexpr Row w3Coefficient{.5, 1, -.25, .25};
+    const auto inverseRms = [](const Row &row) {
+        return 1.0 /
+               std::sqrt(std::inner_product(row.begin(), row.end(), row.begin(), 0.0) / 4 + 1e-5);
+    };
+    const auto reference = [&](const Rows &incoming) {
+        Rows normalized(1056), values(1056), output(1056);
+        std::vector<Head> query(1056), key(1056);
+        for (unsigned t = 0; t < 1056; ++t)
+        {
+            const auto scale = inverseRms(incoming[t]) * 1.25 * 1.25;
+            Row q{}, k{};
+            for (unsigned c = 0; c < 4; ++c)
+                normalized[t][c] = incoming[t][c] * scale;
+            for (unsigned c = 0; c < 4; ++c)
+            {
+                q[c] = normalized[t][0] * qCoefficient[c];
+                k[c] = normalized[t][1] * kCoefficient[c];
+                values[t][c] = normalized[t][0] * vCoefficient[c];
+            }
+            const auto qScale = inverseRms(q), kScale = inverseRms(k) * .75;
+            for (unsigned c = 0; c < 4; ++c)
+            {
+                q[c] *= qScale;
+                k[c] *= kScale;
+            }
+            for (unsigned c = 0; c < 128; ++c)
+            {
+                unsigned axis = c, width = 32;
+                double coordinate = t < 1024 ? 33.0 : t - 1024.0 + 1;
+                if (c >= 32 && c < 80)
+                {
+                    axis = c - 32;
+                    width = 48;
+                    coordinate = t < 1024 ? static_cast<double>(t / 32) : 0;
+                }
+                if (c >= 80)
+                {
+                    axis = c - 80;
+                    width = 48;
+                    coordinate = t < 1024 ? static_cast<double>(t % 32) : 0;
+                }
+                const auto angle = coordinate / std::pow(256.0, 2.0 * (axis / 2) / width);
+                const auto cosine = std::cos(angle), sine = std::sin(angle);
+                const auto rotate = [&](const Row &row) {
+                    const double value = row[c % 4], mate = row[(c ^ 1u) % 4];
+                    // Pinned Main authority writes the even slice first: odd
+                    // observes that rotated even, unlike Context's rotation.
+                    return c % 2 ? (mate * cosine - value * sine) * sine + value * cosine
+                                 : value * cosine - mate * sine;
+                };
+                query[t][c] = rotate(q);
+                key[t][c] = rotate(k);
+            }
+        }
+        std::vector<double> scores(1056);
+        for (unsigned t = 0; t < 1056; ++t)
+        {
+            for (unsigned other = 0; other < 1056; ++other)
+                scores[other] =
+                    std::inner_product(query[t].begin(), query[t].end(), key[other].begin(), 0.0) /
+                    std::sqrt(128.0);
+            const auto maximum = *std::max_element(scores.begin(), scores.end());
+            double denominator = 0;
+            for (auto &score : scores)
+            {
+                score = std::exp(score - maximum);
+                denominator += score;
+            }
+            Row attention{}, projection{}, residual{}, ffn{}, w1{}, w3{}, gated{}, w2{};
+            for (unsigned other = 0; other < 1056; ++other)
+                for (unsigned c = 0; c < 4; ++c)
+                    attention[c] += scores[other] / denominator * values[other][c];
+            for (unsigned c = 0; c < 4; ++c)
+                projection[c] = attention[0] * projectionCoefficient[c];
+            const auto projectedScale = inverseRms(projection) * std::tanh(.5) * .5;
+            for (unsigned c = 0; c < 4; ++c)
+                residual[c] = incoming[t][c] + projection[c] * projectedScale;
+            const auto ffnScale = inverseRms(residual) * 1.5 * .5;
+            for (unsigned c = 0; c < 4; ++c)
+                ffn[c] = residual[c] * ffnScale;
+            for (unsigned c = 0; c < 4; ++c)
+            {
+                w1[c] = ffn[0] * qCoefficient[c];
+                w3[c] = ffn[1] * w3Coefficient[c];
+                gated[c] = w1[c] / (1 + std::exp(-w1[c])) * w3[c];
+            }
+            for (unsigned c = 0; c < 4; ++c)
+                w2[c] = gated[0] * w2First[c] + gated[1] * w2Second[c];
+            const auto outputScale = inverseRms(w2) * std::tanh(-.25) * .75;
+            for (unsigned c = 0; c < 4; ++c)
+                output[t][c] = residual[c] + w2[c] * outputScale;
+        }
+        return output;
+    };
+    Rows incoming(1056);
+    for (unsigned t = 0; t < 1056; ++t)
+        incoming[t] = t < 1024 ? Row{1.0 + t % 5, -1.0 - .5 * (t % 5), .75, -1.25}
+                               : Row{.5 * (1 + t % 7), -.75, 1.25, -2};
+    const auto expected = reference(incoming);
+    for (const unsigned policy :
+         {PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32,
+          PROM_MAIN_ATTENTION_ROUTE_AUTO})
+    {
+        const bool standalone = policy == PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32;
+        const int buffersBefore = ConceptVkTestLiveBuffers(),
+                  pipelinesBefore = ConceptVkTestLivePipelines();
+        void *raw{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &raw),
+                     "create Main witness device");
+        const auto release = [](void *p) {
+            if (p)
+                (void)prom_reactor_runtime_destroy_impl(p);
+        };
+        std::unique_ptr<void, decltype(release)> runtime(raw, release);
+        if (!raw || !runtime_available(raw))
+            SKIP("Vulkan runtime unavailable");
+        PrometheusCompiledModelSessionCreateRequest session{};
+        session.struct_size = sizeof(session);
+        session.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+        session.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
+        session.main_attention_route_policy = policy;
+        std::uint64_t sessionID{}, id{};
+        PrometheusCompiledModelSessionEvidence sessionEvidence{};
+        PrometheusModelBlockEvidence evidence{};
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_compiled_model_session_create(
+                         raw, &session, &sessionID, &sessionEvidence),
+                     "create the explicitly selected attention session");
+        if (!sessionID)
+            return;
+        std::array<std::vector<std::uint16_t>, 13> weights;
+        std::array<PrometheusModelBlockWeightUpload, 13> uploads{};
+        for (unsigned i = 0; i < 13; ++i)
+        {
+            weights[i].resize(static_cast<std::size_t>(kM1BWeightBytes[i] / 2), 0);
+            uploads[i] = {i, weights[i].data(), kM1BWeightBytes[i], 0xc800u + i, 0xc900u + i};
+        }
+        PrometheusNoiseRefinerRebindRequest owner{};
+        owner.struct_size = sizeof(owner);
+        owner.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+        owner.upload_count = 13;
+        owner.uploads = uploads.data();
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_compiled_model_owner_create(raw, &owner, &id, &evidence),
+            "create all three disjoint Concept portfolios");
+        if (!id)
+            return;
+        ASSERT_EQUAL(pipelinesBefore + 37, ConceptVkTestLivePipelines(),
+                     "Noise, Context and Main retain their own Concept pipelines");
+        std::vector<std::uint16_t> image(1024u * 3840u), timestep(256, 0);
+        timestep[0] = 0x4000;
+        for (unsigned t = 0; t < 1024; ++t)
+            for (unsigned c = 0; c < 3840; ++c)
+            {
+                float f = static_cast<float>(incoming[t][c % 4]);
+                std::uint32_t bits{};
+                std::memcpy(&bits, &f, sizeof(bits));
+                image[t * 3840 + c] = static_cast<std::uint16_t>(bits >> 16);
+            }
+        PrometheusNoiseRefiner0ExecuteRequest noise{};
+        noise.struct_size = sizeof(noise);
+        noise.model_input_bf16 = image.data();
+        noise.model_input_bytes = image.size() * 2;
+        noise.timestep_bf16 = timestep.data();
+        noise.timestep_bytes = timestep.size() * 2;
+        noise.input_identity = 0xca01;
+        noise.timestep_identity = 0xca02;
+        noise.output_identity = 0xca03;
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &noise, &evidence),
+                     "zero preparation weights preserve exact BF16 image ingress");
+        const auto imageGeneration = evidence.output_generation;
+        bool weightFailuresExercised = false;
+        const auto retarget = [&](unsigned block, const PrometheusModelBlockWeightUpload *data,
+                                  unsigned count) {
+            PrometheusCompiledModelRetargetRequest request{};
+            request.struct_size = sizeof(request);
+            request.session_identity = sessionID;
+            request.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+            request.model_local_block_id = block;
+            request.upload_count = count;
+            request.uploads = data;
+            if (!weightFailuresExercised && policy == PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL)
+            {
+                const auto binding = evidence.binding_generation,
+                           descriptors = evidence.descriptor_generation,
+                           allocations = evidence.cold_buffer_allocation_count;
+                for (const unsigned fault : {1u, 2u, 4u, 8u})
+                {
+                    ASSERT_EQUAL(
+                        PROM_OK,
+                        prom_reactor_runtime_model_block_test_inject_weight_fault_impl(raw, id, 3,
+                                                                                       fault),
+                        "fail minimum-memory retarget after preceding weights were overwritten");
+                    ASSERT_EQUAL(PROM_ERROR,
+                                 prometheus_reactor_runtime_compiled_model_retarget(raw, &request,
+                                                                                    &evidence),
+                                 "partial in-place set is not published");
+                    ASSERT_EQUAL(0u, evidence.weights_uploaded,
+                                 "partial in-place set cannot execute");
+                    ASSERT_EQUAL(binding, evidence.binding_generation,
+                                 "failed retarget does not publish generation");
+                    ASSERT_EQUAL(descriptors, evidence.descriptor_generation,
+                                 "failed retarget does not publish descriptors");
+                    ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count,
+                                 "minimum-memory repair allocates no buffers");
+                    ASSERT_EQUAL(PROM_ERROR,
+                                 prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &noise,
+                                                                                   &evidence),
+                                 "old family cannot dispatch partially overwritten weights");
+                }
+                weightFailuresExercised = true;
+            }
+            const auto code =
+                prometheus_reactor_runtime_compiled_model_retarget(raw, &request, &evidence);
+            ASSERT_EQUAL(PROM_OK, code, "retarget only the closed immediate successor");
+            return code == PROM_OK;
+        };
+        if (!retarget(1, uploads.data(), 13))
+            return;
+        PrometheusNoiseRefinerResidentExecuteRequest noise1{};
+        noise1.struct_size = sizeof(noise1);
+        noise1.input_generation = imageGeneration;
+        noise1.output_identity = 0xca04;
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_noise_refiner_execute_resident(raw, id, &noise1, &evidence),
+            "produce the legal Noise1 predecessor");
+        PrometheusCompiledModelSessionCaptureRequest capture{};
+        capture.struct_size = sizeof(capture);
+        capture.source_output_generation = evidence.output_generation;
+        const auto failureDetail = [](unsigned fault) {
+            return fault == PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD
+                       ? PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED
+                   : fault == PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT
+                       ? PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED
+                       : PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN;
+        };
+        for (const unsigned fault : {1u, 2u, 4u})
+        {
+            ASSERT_EQUAL(
+                PROM_OK,
+                prom_reactor_runtime_compiled_model_session_test_inject_impl(raw, sessionID, fault),
+                "inject a session capture failure independently of model work");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                             raw, sessionID, id, &capture, &sessionEvidence),
+                         "failed capture publishes no stream");
+            ASSERT_EQUAL(failureDetail(fault), sessionEvidence.detail_code,
+                         "capture reports recording, submission, or observation failure");
+            ASSERT_EQUAL(0ull, sessionEvidence.prepared_image_generation,
+                         "failed capture never advances its generation");
+            ASSERT_EQUAL(fault == 4u ? 1u : 0u, sessionEvidence.quarantined,
+                         "only submitted unobserved work is quarantined");
+        }
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                         raw, sessionID, id, &capture, &sessionEvidence),
+                     "retain PreparedImage on device");
+        std::array<PrometheusModelBlockWeightUpload, 11> contextUploads{};
+        for (unsigned i = 0; i < 11; ++i)
+        {
+            contextUploads[i] = uploads[i + 2];
+            contextUploads[i].binding_index = i;
+        }
+        if (!retarget(0, contextUploads.data(), 11))
+            return;
+        std::vector<float> contextInput(32u * 3840u);
+        for (unsigned t = 0; t < 32; ++t)
+            for (unsigned c = 0; c < 3840; ++c)
+                contextInput[t * 3840 + c] = static_cast<float>(incoming[t + 1024][c % 4]);
+        PrometheusContextRefiner0ExecuteRequest context0{};
+        context0.struct_size = sizeof(context0);
+        context0.context_input = contextInput.data();
+        context0.context_input_bytes = contextInput.size() * sizeof(float);
+        context0.input_identity = 0xca05;
+        context0.output_identity = 0xca06;
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_context_refiner0_execute(raw, id, &context0, &evidence),
+            "identity preparation retains distinct context rows");
+        const auto contextGeneration = evidence.output_generation;
+        if (!retarget(1, contextUploads.data(), 11))
+            return;
+        PrometheusContextRefinerResidentExecuteRequest context1{};
+        context1.struct_size = sizeof(context1);
+        context1.input_generation = contextGeneration;
+        context1.output_identity = 0xca07;
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_context_refiner_execute_resident(raw, id, &context1,
+                                                                                 &evidence),
+                     "produce the legal Context1 predecessor");
+        capture.source_output_generation = evidence.output_generation;
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                         raw, sessionID, id, &capture, &sessionEvidence),
+                     "retain PreparedContext on device");
+        PrometheusCompiledModelSessionComposeRequest compose{};
+        compose.struct_size = sizeof(compose);
+        compose.required_image_generation = sessionEvidence.prepared_image_generation;
+        compose.required_context_generation = sessionEvidence.prepared_context_generation;
+        const auto composeJoint = [&] {
+            const auto code = prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                raw, sessionID, &compose, &sessionEvidence);
+            ASSERT_EQUAL(PROM_OK, code, "compose Image then Context from retained generations");
+            return code == PROM_OK;
+        };
+        if (!composeJoint())
+            return;
+        for (const unsigned fault : {1u, 2u, 4u})
+        {
+            const auto generation = sessionEvidence.prepared_context_generation;
+            ASSERT_EQUAL(
+                PROM_OK,
+                prom_reactor_runtime_compiled_model_session_test_inject_impl(raw, sessionID, fault),
+                "inject overwrite of a valid Context stream");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                             raw, sessionID, id, &capture, &sessionEvidence),
+                         "failed overwrite is not published");
+            ASSERT_EQUAL(failureDetail(fault), sessionEvidence.detail_code,
+                         "overwrite preserves phase");
+            ASSERT_EQUAL(generation, sessionEvidence.prepared_context_generation,
+                         "failed overwrite retains the last published generation");
+            const auto composed = prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                raw, sessionID, &compose, &sessionEvidence);
+            ASSERT_EQUAL(fault == 4u ? PROM_ERROR : PROM_OK, composed,
+                         "pre-submit failures retain valid bytes; unobserved overwrites invalidate "
+                         "them even after drain");
+            if (fault == 4u)
+                ASSERT_EQUAL(PROM_MODEL_SESSION_DETAIL_STALE_STREAM, sessionEvidence.detail_code,
+                             "draining uncertain capture does not publish its bytes");
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                             raw, sessionID, id, &capture, &sessionEvidence),
+                         "fresh capture recovers on the same device");
+            ASSERT_EQUAL(generation + 1, sessionEvidence.prepared_context_generation,
+                         "only the successful retry advances the generation");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                             raw, sessionID, &compose, &sessionEvidence),
+                         "old source generations cannot compose");
+            compose.required_context_generation = sessionEvidence.prepared_context_generation;
+            if (!composeJoint())
+                return;
+        }
+        constexpr std::uint16_t bias[]{0x3000, 0x3400, 0xb400, 0xb800},
+            modulation[]{0x2c00, 0x3000, 0xb000, 0x3000};
+        for (unsigned i = 0; i < 15360; ++i)
+        {
+            weights[0][i] = bias[i / 3840];
+            weights[1][i] = modulation[i / 3840];
+        }
+        constexpr std::array<unsigned, 6> gammaIndex{2, 4, 6, 7, 11, 12};
+        constexpr std::array<std::uint16_t, 6> gammaValue{0x3a00, 0x3c00, 0x3d00,
+                                                          0x3800, 0x3e00, 0x3a00};
+        for (unsigned i = 0; i < 6; ++i)
+            std::fill(weights[gammaIndex[i]].begin(), weights[gammaIndex[i]].end(), gammaValue[i]);
+        constexpr std::uint16_t q[]{0x3400, 0xb800, 0x3c00, 0x3800},
+            k[]{0x3800, 0x3400, 0xb400, 0x3c00}, v[]{0x3400, 0x3800, 0xb400, 0x3c00};
+        constexpr std::uint16_t p[]{0x3800, 0xb400, 0x3400, 0x3c00},
+            h3[]{0x3800, 0x3c00, 0xb400, 0x3400}, o0[]{0x3800, 0x3400, 0xb800, 0x3c00},
+            o1[]{0xb400, 0x3800, 0x3400, 0xb800};
+        for (unsigned c = 0; c < 3840; ++c)
+        {
+            weights[5][c] = q[c % 4];
+            weights[5][11520 + 3840 + c] = k[c % 4];
+            weights[5][7680 + c] = v[c % 4];
+            weights[3][c] = p[c % 4];
+            weights[9][c] = o0[c % 4];
+            weights[9][3840 + c] = o1[c % 4];
+        }
+        for (unsigned c = 0; c < 10240; ++c)
+        {
+            weights[8][c] = q[c % 4];
+            weights[10][10240 + c] = h3[c % 4];
+        }
+        if (standalone)
+        {
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(raw, id),
+                         "retain streams while replacing the compound owner");
+            id = 0;
+            PrometheusMainTransformerCreateRequest create{};
+            create.struct_size = sizeof(create);
+            create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+            create.upload_count = 13;
+            create.uploads = uploads.data();
+            ASSERT_EQUAL(
+                PROM_OK,
+                prometheus_reactor_runtime_main_transformer_create(raw, &create, &id, &evidence),
+                "standalone Main owns its Concept attachment");
+            if (!id)
+                return;
+        }
+        else if (!retarget(0, uploads.data(), 13))
+            return;
+        ASSERT_EQUAL(pipelinesBefore + (standalone ? 13 : 37), ConceptVkTestLivePipelines(),
+                     "Main pipeline ownership matches the active portfolio");
+        ASSERT_EQUAL(policy == PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL ? 41u : 49u,
+                     sessionEvidence.main_attention_shader_id,
+                     "production route retains its admitted shader identity");
+        std::cout << "M8 policy=" << policy
+                  << " shader=" << sessionEvidence.main_attention_shader_id
+                  << " standalone=" << standalone << " pipelines=" << evidence.pipeline_create_count
+                  << " descriptor_sets=" << evidence.descriptor_set_count << '\n';
+        const auto pipelines = evidence.pipeline_create_count,
+                   allocations = evidence.cold_buffer_allocation_count,
+                   uploadsBefore = evidence.weight_upload_count;
+        PrometheusMainTransformerExecuteRequest execute{};
+        execute.struct_size = sizeof(execute);
+        execute.session_identity = sessionID;
+        execute.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+        execute.required_image_generation = compose.required_image_generation;
+        execute.required_context_generation = compose.required_context_generation;
+        execute.required_joint_generation = sessionEvidence.joint_generation;
+        execute.timestep_bf16 = timestep.data();
+        execute.timestep_bytes = timestep.size() * 2;
+        execute.timestep_identity = 0xcb01;
+        execute.output_identity = 0xcb02;
+        std::vector<float> output(1056u * 3840u),
+            arena(PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES / sizeof(float));
+        const auto checkValues = [&](const float *data, const Rows &values) {
+            double maximum = 0;
+            bool finite = true;
+            for (std::size_t i = 0; i < output.size(); ++i)
+            {
+                finite = finite && std::isfinite(data[i]);
+                maximum = std::max(maximum, std::abs(data[i] - values[i / 3840][i % 4]));
+            }
+            std::cout << "M8 policy=" << policy << " standalone=" << standalone
+                      << " elements=" << output.size() << " max_abs_error=" << maximum << '\n';
+            ASSERT_TRUE(finite && maximum < 2e-4,
+                        "all image/context output elements match independent Main contractions");
+            return finite && maximum < 2e-4;
+        };
+        const auto readFinal = [&](const Rows &values) {
+            PrometheusMainTransformerFinalAuditRequest audit{};
+            audit.struct_size = sizeof(audit);
+            audit.required_output_generation = evidence.output_generation;
+            audit.output_identity = execute.output_identity;
+            audit.output = output.data();
+            audit.output_element_capacity = output.size();
+            const auto code =
+                prometheus_reactor_runtime_main_transformer_audit_final(raw, id, &audit, &evidence);
+            ASSERT_EQUAL(PROM_OK, code, "explicit egress reads completed Main output");
+            return code == PROM_OK && checkValues(output.data(), values);
+        };
+        for (const unsigned fault : {1u, 2u, 4u})
+        {
+            const auto generation = sessionEvidence.joint_generation,
+                       compositions = sessionEvidence.composition_count;
+            ASSERT_EQUAL(
+                PROM_OK,
+                prom_reactor_runtime_compiled_model_session_test_inject_impl(raw, sessionID, fault),
+                "inject joint composition lifecycle failure");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                             raw, sessionID, &compose, &sessionEvidence),
+                         "failed composition cannot publish");
+            ASSERT_EQUAL(failureDetail(fault), sessionEvidence.detail_code,
+                         "composition preserves phase");
+            ASSERT_EQUAL(generation, sessionEvidence.joint_generation,
+                         "failed compose retains generation");
+            ASSERT_EQUAL(compositions, sessionEvidence.composition_count,
+                         "failed compose is not counted");
+            const auto consumed =
+                prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence);
+            ASSERT_EQUAL(fault == 4u ? PROM_ERROR : PROM_OK, consumed,
+                         "Main consumes retained pre-submit bytes but rejects an unobserved joint "
+                         "overwrite");
+            if (fault == 4u)
+                ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT, evidence.detail_code,
+                             "Main drain cannot resurrect uncertain JointWorking");
+            if (!composeJoint())
+                return;
+            ASSERT_EQUAL(generation + 1, sessionEvidence.joint_generation,
+                         "successful retry publishes exactly one joint version");
+            ASSERT_EQUAL(compositions + 1, sessionEvidence.composition_count,
+                         "only successful composition contributes to the count");
+            ASSERT_EQUAL(0ull, sessionEvidence.warm_buffer_allocation_count,
+                         "capture, composition, failure and retry allocate no new buffers");
+            execute.required_joint_generation = sessionEvidence.joint_generation;
+        }
+        auto invalid = execute;
+        invalid.required_context_generation += 1000;
+        ASSERT_EQUAL(
+            PROM_ERROR,
+            prometheus_reactor_runtime_main_transformer_execute(raw, id, &invalid, &evidence),
+            "reject stale retained Context before recording");
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+            "execute the selected production attention route in Concept");
+        ASSERT_TRUE(evidence.gpu_total_ns > 0 && evidence.gpu_compute_ns > 0,
+                    "Main timing comes from its executed Concept queries");
+        ASSERT_TRUE(evidence.gpu_total_begin_tick <= evidence.gpu_compute_begin_tick &&
+                        evidence.gpu_compute_end_tick <= evidence.gpu_total_end_tick,
+                    "raw ticks describe the same completed recording");
+        for (unsigned stage = 0; stage < PROM_MODEL_BLOCK_MAIN_STAGE_COUNT; ++stage)
+        {
+            ASSERT_TRUE(evidence.main_stage_gpu_ns[stage] > 0,
+                        "each of thirteen Main stages has measured GPU work");
+            if (stage)
+                ASSERT_EQUAL(evidence.main_stage_gpu_end_tick[stage - 1],
+                             evidence.main_stage_gpu_begin_tick[stage],
+                             "stage boundaries share an actual timestamp");
+        }
+        ASSERT_EQUAL(0ull, evidence.last_command_reset_ns,
+                     "Concept execution does not publish stale legacy reset timings");
+        if (!readFinal(expected))
+            return;
+        for (const unsigned fault :
+             {PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD, PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT,
+              PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION})
+        {
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_impl(raw, id, fault),
+                         "inject Main lifecycle failure");
+            ASSERT_EQUAL(
+                PROM_ERROR,
+                prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+                "failed Main work cannot publish output");
+            ASSERT_EQUAL(0u, evidence.output_valid, "failed Main output is invalid");
+            const int detail = fault == PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD
+                                   ? PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED
+                               : fault == PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT
+                                   ? PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED
+                                   : PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN;
+            ASSERT_EQUAL(detail, evidence.detail_code, "Main preserves its failure phase");
+            float a = 2, b = 3, c{};
+            unsigned stage{};
+            int sgemmDetail{};
+            ASSERT_EQUAL(
+                PROM_OK,
+                prometheus_reactor_runtime_sgemm(raw, &a, &b, &c, 1, 1, 1, &stage, &sgemmDetail),
+                "legacy SGEMM coexists with failed Concept Main work");
+            ASSERT_EQUAL(6.0f, c, "shared-device SGEMM remains exact");
+            const auto retry =
+                prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence);
+            ASSERT_EQUAL(PROM_OK, retry, "Main reaps uncertain completion before retry");
+            if (retry != PROM_OK || !readFinal(expected))
+                return;
+        }
+        const auto previousTick = evidence.gpu_total_begin_tick;
+        PrometheusMainTransformerStaticAuditRequest audit{};
+        audit.struct_size = sizeof(audit);
+        audit.session_identity = sessionID;
+        audit.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+        audit.required_image_generation = execute.required_image_generation;
+        audit.required_context_generation = execute.required_context_generation;
+        audit.required_joint_generation = execute.required_joint_generation;
+        audit.output_identity = 0xcb03;
+        audit.audit_arena = arena.data();
+        audit.audit_arena_capacity_bytes = arena.size() * sizeof(float);
+        const auto auditCode = prometheus_reactor_runtime_main_transformer_execute_static_audit(
+            raw, id, &audit, &evidence);
+        ASSERT_EQUAL(PROM_OK, auditCode, "static Main replay uses the Concept program");
+        if (auditCode != PROM_OK)
+            return;
+        ASSERT_TRUE(evidence.gpu_total_begin_tick > previousTick,
+                    "static replay reports its own executed queries");
+        if (!checkValues(arena.data(), expected))
+            return;
+        execute.resident_chain_mode = 1;
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_model_block_test_inject_impl(
+                         raw, id, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION),
+                     "inject uncertain chain publication");
+        ASSERT_EQUAL(
+            PROM_ERROR,
+            prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+            "uncertain chain cannot claim publication");
+        ASSERT_EQUAL(
+            PROM_ERROR,
+            prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+            "an uncertain chain cannot reuse the predecessor generation");
+        if (!composeJoint())
+            return;
+        execute.required_joint_generation = sessionEvidence.joint_generation;
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+            "recomposed predecessors allow a fresh first layer");
+        if (!readFinal(expected))
+            return;
+        Rows nextInput(1056);
+        for (unsigned t = 0; t < 1056; ++t)
+            for (unsigned c = 0; c < 4; ++c)
+                nextInput[t][c] = output[t * 3840 + c];
+        const auto next = reference(nextInput);
+        const auto jointGeneration = execute.required_joint_generation + 1;
+        ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count,
+                     "warm Main and recovery allocate no buffers");
+        ASSERT_EQUAL(uploadsBefore, evidence.weight_upload_count,
+                     "warm Main and recovery upload no weights");
+        if (standalone)
+        {
+            PrometheusMainTransformerRebindRequest rebind{};
+            rebind.struct_size = sizeof(rebind);
+            rebind.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+            rebind.model_local_block_id = 1;
+            rebind.upload_count = 13;
+            rebind.uploads = uploads.data();
+            const auto binding = evidence.binding_generation;
+            for (const unsigned fault : {4u, 8u})
+            {
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_model_block_test_inject_weight_fault_impl(
+                                 raw, id, 3, fault),
+                             "inject Main replacement failure");
+                ASSERT_EQUAL(
+                    PROM_ERROR,
+                    prometheus_reactor_runtime_main_transformer_rebind(raw, id, &rebind, &evidence),
+                    "Main cannot publish incomplete replacement");
+                ASSERT_EQUAL(binding, evidence.binding_generation,
+                             "Main retains its old binding version");
+                execute.resident_chain_mode = 0;
+                execute.required_joint_generation = jointGeneration;
+                ASSERT_EQUAL(PROM_OK,
+                             prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute,
+                                                                                 &evidence),
+                             "old Main binding executes after failed replacement");
+                if (!readFinal(next))
+                    return;
+                execute.resident_chain_mode = 1;
+            }
+            ASSERT_EQUAL(
+                PROM_OK,
+                prometheus_reactor_runtime_main_transformer_rebind(raw, id, &rebind, &evidence),
+                "commit the standalone successor weights");
+        }
+        else if (!retarget(1, uploads.data(), 13))
+            return;
+        const auto reboundAllocations = evidence.cold_buffer_allocation_count,
+                   reboundUploads = evidence.weight_upload_count;
+        execute.model_local_block_id = 1;
+        execute.required_joint_generation = jointGeneration;
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+            "second layer consumes the completed joint publication");
+        if (!readFinal(next))
+            return;
+        ASSERT_EQUAL(pipelines, evidence.pipeline_create_count,
+                     "successor retains every cold pipeline");
+        ASSERT_EQUAL(reboundAllocations, evidence.cold_buffer_allocation_count,
+                     "successor execution allocates no buffers");
+        ASSERT_EQUAL(reboundUploads, evidence.weight_upload_count,
+                     "successor execution uploads no weights");
+        ASSERT_EQUAL(
+            PROM_ERROR,
+            prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+            "old joint generations cannot replay after chain publication");
+        if (standalone)
+        {
+            execute.required_joint_generation += 1;
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_model_block_test_inject_impl(
+                             raw, id, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION),
+                         "leave Main borrowing a submitted joint at session teardown");
+            ASSERT_EQUAL(
+                PROM_ERROR,
+                prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+                "submitted joint work remains uncertain");
+            ASSERT_EQUAL(1u, evidence.quarantined, "model submission is still retained");
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_destroy(raw, sessionID),
+                         "destroying the stream owner first retires the model's borrowed joint");
+            ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(),
+                         "reverse teardown leaves no pending work");
+            ASSERT_EQUAL(
+                PROM_ERROR,
+                prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute, &evidence),
+                "destroyed session cannot be consumed");
+        }
+        else
+        {
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_get_evidence(
+                             raw, sessionID, &sessionEvidence),
+                         "read published generations before reset");
+            const auto imageVersion = sessionEvidence.prepared_image_generation,
+                       contextVersion = sessionEvidence.prepared_context_generation,
+                       jointVersion = sessionEvidence.joint_generation;
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_evaluation_reset(
+                             raw, sessionID, &sessionEvidence),
+                         "reset invalidates all streams in Concept");
+            ASSERT_EQUAL(imageVersion, sessionEvidence.prepared_image_generation,
+                         "reset preserves monotonic Image generation");
+            ASSERT_EQUAL(contextVersion, sessionEvidence.prepared_context_generation,
+                         "reset preserves monotonic Context generation");
+            ASSERT_EQUAL(jointVersion, sessionEvidence.joint_generation,
+                         "reset preserves monotonic Joint generation");
+            ASSERT_EQUAL(PROM_ERROR,
+                         prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                             raw, sessionID, &compose, &sessionEvidence),
+                         "reset streams cannot compose using old generations");
+            ASSERT_EQUAL(PROM_MODEL_SESSION_DETAIL_STALE_STREAM, sessionEvidence.detail_code,
+                         "reset rejects stale publication with a distinct diagnostic");
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_compiled_model_session_destroy(raw, sessionID),
+                         "release the reset stream owner before its model");
+        }
+        float a = 2, b = 3, c{};
+        unsigned stage{};
+        int sgemmDetail{};
+        ASSERT_EQUAL(
+            PROM_OK,
+            prometheus_reactor_runtime_sgemm(raw, &a, &b, &c, 1, 1, 1, &stage, &sgemmDetail),
+            "legacy SGEMM survives session-first teardown");
+        ASSERT_EQUAL(6.0f, c, "shared device still computes after session teardown");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(raw, id),
+                     "drain and destroy the Main owner");
+        ASSERT_EQUAL(buffersBefore, ConceptVkTestLiveBuffers(),
+                     "all Concept buffers return to baseline");
+        ASSERT_EQUAL(pipelinesBefore, ConceptVkTestLivePipelines(),
+                     "all Concept pipelines return to baseline");
+    }
 }
 
 FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)

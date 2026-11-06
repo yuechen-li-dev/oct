@@ -35,8 +35,6 @@
 #define PROM_M42_DESCRIPTOR_SET_COUNT 15u
 #define PROM_M42_PIPELINE_COUNT 3u
 #define PROM_M42_QUERY_COUNT 26u
-#define PROM_M42_MAX_TOKENS 1024u
-#define PROM_M42_MAX_MODEL_WIDTH 4096u
 #define PROM_M42_MAX_HEAD_DIM 1024u
 #define PROM_M42_MAX_MATRIX_ELEMENTS 16777216ull
 #define PROM_M42_PACK_SHADER_HASH 0xd5c3fd6a2af8965full
@@ -78,7 +76,6 @@
 #define PROM_M45_CAPACITY_LIMIT_BYTES (1024ull * 1024ull * 1024ull)
 #define PROM_M45_RESIDUAL_SHADER_HASH 0xc6e177b9fb86f1e5ull
 #define PROM_M46_PIPELINE_COUNT 2u
-#define PROM_M46_CAPACITY_LIMIT_BYTES (1024ull * 1024ull * 1024ull)
 #define PROM_M46_REDUCE_SHADER_HASH 0xa9af5205bcd60571ull
 #define PROM_M46_APPLY_SHADER_HASH 0x78750b592ac5470eull
 #define PROM_M46_QUERY_BASE 211u
@@ -135,30 +132,6 @@
 
 
 
-typedef struct prom_m46_reduce_push_constants {
-  uint32_t row_count;
-  uint32_t elements_per_row;
-  uint32_t partials_per_row;
-  uint32_t input_row_stride;
-  uint32_t chunk_elements;
-  uint32_t total_elements;
-  uint32_t stage_role;
-  float epsilon;
-} prom_m46_reduce_push_constants;
-
-typedef struct prom_m46_apply_push_constants {
-  uint32_t tokens;
-  uint32_t model_width;
-  uint32_t z_row_stride;
-  uint32_t n_row_stride;
-  uint32_t logical_element_count;
-  uint32_t reserved0;
-  uint32_t reserved1;
-  uint32_t reserved2;
-} prom_m46_apply_push_constants;
-
-
-
 typedef struct prom_reduction_push_constants {
   uint32_t row_count;
   uint32_t elements_per_row;
@@ -202,6 +175,9 @@ typedef struct prom_model_block_weight_resource {
 } prom_model_block_weight_resource;
 
 typedef struct prom_model_block_m1b_pipeline {
+  /* Non-null only for a borrowed entry into the Concept prefix portfolio. */
+  struct prom_model_block_state* concept_block;
+  uint32_t concept_role;
   uint32_t shader_id;
   uint32_t binding_count;
   uint32_t push_constant_bytes;
@@ -217,6 +193,11 @@ typedef struct prom_model_block_m1b_pipeline {
 #define PROM_MODEL_BLOCK_AUDIT_SOURCE_COUNT 13u
 
 typedef struct prom_model_block_state {
+  /* Concept owns allocations and the closed/pre-attention submissions. The
+     legacy records below are borrowed projections for remaining model stages. */
+  void* concept_owner;
+  /* A reset fence is not evidence that a submission occurred. */
+  uint32_t legacy_submission_pending;
   uint64_t block_id;
   uint64_t next_block_id;
   uint64_t model_contract_identity;
@@ -248,6 +229,9 @@ typedef struct prom_model_block_state {
   uint32_t shader_id;
   uint32_t main_attention_shader_id;
   uint32_t test_flags;
+  uint32_t weight_test_index;
+  uint32_t weight_test_flags;
+  uint64_t binding_candidate_bytes;
   uint32_t weight_count;
   uint32_t step_count;
   uint32_t assembly_family;
@@ -261,10 +245,6 @@ typedef struct prom_model_block_state {
   uint64_t weight_upload_count;
   uint64_t execution_count;
   uint64_t last_execution_ns;
-  VkDescriptorSetLayout descriptor_set_layout;
-  VkDescriptorPool descriptor_pool;
-  VkPipelineLayout pipeline_layout;
-  VkDescriptorSet descriptor_set;
   VkCommandBuffer command_buffer;
   VkFence fence;
   VkQueryPool m1b_timestamp_query_pool;
@@ -315,7 +295,6 @@ typedef struct prom_model_block_state {
   uint64_t vk_unmap_memory_count;
   uint64_t vk_flush_count;
   uint64_t vk_invalidate_count;
-  prom_reduction_pipeline pipeline;
   prom_vk_buffer input_upload;
   prom_vk_buffer input_bf16_device;
   prom_vk_buffer input_device;
@@ -360,7 +339,6 @@ typedef struct prom_model_block_state {
   prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   /* A complete candidate bundle is uploaded here before the descriptor
      transaction.  It is never visible to a dispatch until commit. */
-  prom_model_block_weight_resource pending_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   /* M2 owns exactly one inactive, complete weight window.  It is deliberately
      separate from the active descriptors and receives only the lock-derived
      immediate successor. */
@@ -456,16 +434,6 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m44_readback;
   prom_vk_buffer m45_output;
   prom_vk_buffer m45_x_readback;
-  prom_vk_buffer m46_partials;
-  prom_vk_buffer m46_inv_rms;
-  prom_vk_buffer m46_output;
-  prom_vk_buffer m46_readback;
-  /* M1 RoPE retains a distinct device-local destination.  M46 owns
-     m46_output as the normalized source in the chained submission. */
-  prom_vk_buffer gemma4e2b_m1_rope_output;
-  prom_vk_buffer gemma4e2b_m1_rope_readback;
-  prom_vk_buffer m49a_m46_z;
-  prom_vk_buffer gemma4e2b_m1_bf16_roundtrip;
   prom_vk_buffer m47_n_packed;
   prom_vk_buffer m47_gate;
   prom_vk_buffer m47_up;
@@ -486,7 +454,6 @@ typedef struct prom_reduction_slot {
   uint64_t m43_command_reuse_count;
   uint64_t m44_command_reuse_count;
   uint64_t m45_command_reuse_count;
-  uint64_t m46_command_reuse_count;
   uint64_t m47_command_reuse_count;
   uint64_t m48_command_reuse_count;
 } prom_reduction_slot;
@@ -502,6 +469,7 @@ typedef struct prom_compiled_model_stream_slot {
 /* One session, one serialized executor, and fixed lock-owned stream slots.
    This is intentionally neither a graph nor a string-keyed resource map. */
 typedef struct prom_compiled_model_session_state {
+  void* concept_owner;
   uint64_t session_id;
   uint64_t next_session_id;
   uint64_t lock_identity;
@@ -526,8 +494,7 @@ typedef struct prom_compiled_model_session_state {
   uint32_t created;
   uint32_t quarantined;
   int32_t last_detail_code;
-  VkCommandBuffer command_buffer;
-  VkFence fence;
+  /* Read-only projections of Concept-owned buffers and stream versions. */
   prom_compiled_model_stream_slot streams[PROM_ZIMAGE_STREAM_SLOT_COUNT];
 } prom_compiled_model_session_state;
 
@@ -556,6 +523,7 @@ typedef struct prom_reduction_runtime_state {
   uint32_t reduction_test_flags;
   uint32_t model_block_create_test_flags;
   uint32_t model_block_create_shared_owner;
+  uint32_t session_create_test_flags;
   uint32_t model_block_create_prefetch;
   uint32_t model_block_create_transfer_queue_family;
   prom_reduction_pipeline pipelines[PROM_REDUCTION_PIPELINE_COUNT];
@@ -627,37 +595,6 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m45_buffer_reuse_count;
   uint64_t m45_descriptor_update_count;
   uint64_t m45_pipeline_create_count;
-  prom_reduction_pipeline m46_pipelines[PROM_M46_PIPELINE_COUNT];
-  prom_reduction_pipeline gemma4e2b_m1_bf16_roundtrip_pipeline;
-  prom_reduction_pipeline gemma4e2b_m1_rope_pipeline;
-  prom_reduction_pipeline gemma4e2b_m1_attention_scores_pipeline;
-  prom_vk_buffer gemma4e2b_m1_rope_cosine_upload;
-  prom_vk_buffer gemma4e2b_m1_rope_cosine;
-  prom_vk_buffer gemma4e2b_m1_rope_sine_upload;
-  prom_vk_buffer gemma4e2b_m1_rope_sine;
-  uint64_t gemma4e2b_m1_rope_buffer_grow_count;
-  uint64_t gemma4e2b_m1_rope_buffer_reuse_count;
-  uint64_t gemma4e2b_m1_rope_descriptor_update_count;
-  uint64_t gemma4e2b_m1_rope_pipeline_create_count;
-  uint64_t gemma4e2b_m1_attention_scores_descriptor_update_count;
-  uint64_t gemma4e2b_m1_attention_scores_pipeline_create_count;
-  /* The most recent completed kernel-68 Q and K destinations are pinned by
-     role until the model-private score consumer releases them. */
-  uint32_t gemma4e2b_m1_rope_q_slot_id;
-  uint32_t gemma4e2b_m1_rope_q_slot_generation;
-  uint32_t gemma4e2b_m1_rope_q_valid;
-  uint32_t gemma4e2b_m1_rope_k_slot_id;
-  uint32_t gemma4e2b_m1_rope_k_slot_generation;
-  uint32_t gemma4e2b_m1_rope_k_valid;
-  prom_vk_buffer m46_weight_upload;
-  prom_vk_buffer m46_weight;
-  uint64_t m46_weight_generation;
-  uint64_t m46_weight_hash;
-  uint32_t m46_weight_model_width;
-  uint64_t m46_buffer_grow_count;
-  uint64_t m46_buffer_reuse_count;
-  uint64_t m46_descriptor_update_count;
-  uint64_t m46_pipeline_create_count;
   prom_reduction_pipeline m47_pipelines[PROM_M47_PIPELINE_COUNT];
   prom_vk_buffer m47_weight_upload[PROM_M47_WEIGHT_COUNT];
   prom_vk_buffer m47_weight_f32[PROM_M47_WEIGHT_COUNT];
@@ -810,6 +747,8 @@ int prom_reactor_runtime_context_refiner_audit_final_impl(
 int prom_reactor_runtime_main_transformer_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusMainTransformerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+/* Borrow the active package's logical tensor role, including shared portfolios. */
+const prom_vk_buffer* prom_model_block_weight_view(const prom_model_block_state* block, uint32_t index);
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state);
 VkPipeline prom_reduction_pipeline_for_implementation(const prom_reduction_runtime_state* state,
                                                        uint32_t implementation_id);

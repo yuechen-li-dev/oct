@@ -767,10 +767,10 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if usedBuiltins["Ln"] {
 		b.WriteString("func __octLn(value float64) float64 { if value <= 0 { panic(fmt.Sprintf(\"runtime error: Ln expects positive input, got %g\", value)) }; return math.Log(value) }\n\n")
 	}
+	b.WriteString("func __octFloatLiteral(value float64) float64 { return value }\n\n")
 	if !options.includeMain {
 		return pruneGeneratedImports(appendOptionDeclarations(b.String())), nil
 	}
-	b.WriteString("func __octFloatLiteral(value float64) float64 { return value }\n\n")
 	b.WriteString("func __octRunMain(run func()) (diagnostic string) {\n")
 	b.WriteString("\tdefer func() {\n")
 	b.WriteString("\t\tif recovered := recover(); recovered != nil {\n")

@@ -18,15 +18,19 @@ This is the repository ownership guide. Language truth remains in
 | `internal/prometheus/shaders/sdslv/experimental/` | bounded candidates, including the M40a/M40b cooperative SGEMM | bounded experimental runtime only |
 | `internal/prometheus/shaders/sdslv/historical/` | policy pointer to audit evidence | no |
 | `internal/prometheus/native/` | registry, headers, runtime, tests, generator | yes |
+| `internal/prometheus/reactors/` | Concept-owned reduction, normalization, positional encoding and score execution | yes |
+| `internal/prometheus/shaderpackage/` | inert package catalog, provenance and object validation | build/staging |
 | `internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE/` | M34/M35 audit-only evidence | no |
 | `pkg/octxiliary/kaijuvulkan/` | Kaiju protocol/cross-runtime integration | sidecar only |
 | `tools/sdslv_benchmark_host/` | benchmark host and explicit host experiments | benchmark tooling only |
 | `internal/prometheus/DevelopmentReport/` | development reports | no |
 | `out/`, `dist/`, `.oct/`, `internal/sdslv/test/out/` | transient local/test output | never |
 
-Production means registry-consumed and stable. Experimental sources may be
-compiled, tested, and benchmarked but must not occur in production registry
-tables or production native build inputs. The manifest's
+Production means package-consumed with production authority and stable identity.
+The native registry is a selector projection; the package owns complete source,
+provenance and object relationships, including package-only kernels. Experimental
+sources may be compiled, tested, and benchmarked but must not gain production
+authority or selector eligibility. The manifest's
 `experimental_shader_assets` inventory records provenance and capability
 contracts without assigning a production numeric shader/implementation ID.
 Historical evidence is audit-only.
@@ -143,8 +147,11 @@ deterministic replay identity. It does not create or own runtime pipeline state.
 Use `template shader Name<C: ConfigConcept>` for new shader templates. Shared
 scientific math and numeric conversions use typed intrinsics instead of inline
 HLSL. The [frontend modernization report](../internal/sdslv/DevelopmentReport/SDSL_V_FRONTEND_MODERNIZATION.md)
-records the shared parser boundary, production equivalence evidence, remaining
-language gaps, and the existing workspace-checker defect.
+records the shared parser boundary, production equivalence evidence, and remaining
+language gaps. FB-104's former workspace-checker defect is resolved: the checker
+uses the package authority and checks native selector metadata independently,
+without requiring source strings in the projection. Run it from the repository
+root, as with the canonical benchmark artifact commands.
 
 Add a candidate at `experimental/<family>/`; use the existing language corpus
 and examples for contracts and only add a permanent benchmark when the identity
@@ -165,6 +172,6 @@ internal/prometheus/shaders/sdslv/experimental/reduction/
 
 Approved M39b production source is `production/reduction/`; metadata belongs in
 the native manifest, generated headers in `internal/prometheus/native/`, runtime
-in `reactor_vulkan_fused_reduction.c`, benchmarks/tests in the existing
+in the Concept reactors (with native ABI/package adapters), benchmarks/tests in the existing
 permanent homes, and history in `DevelopmentReport/`. Experimental sources may
 not be selected or imported by production registry tables.

@@ -4,7 +4,15 @@ SDSL-V production-source, generated-artifact, benchmark, and audit ownership
 is documented in `docs/SDSL_V_WORKSPACE.md`. The native shader manifest remains
 the production registry's declarative asset inventory.
 
-Current Vulkan reactor file topology (P12 M5 baseline):
+The Concept migration is a maintenance decision. Handwritten Vulkan C became
+difficult to extend and keep correct even with the tooling around it. Concept
+owns typed GPU operations and resource lifetimes; Concept-shaped C++23 remains
+useful for host integration, package adaptation, and boundaries that benefit
+from its existing ecosystem. Each slice replaces an implementation when the
+replacement is simpler and demonstrably works. Language purity and source-line
+ratios are not acceptance criteria.
+
+Current Vulkan reactor file topology:
 
 - `reactor_vulkan.h`
   - shared internal Vulkan reactor declarations and stable `prom_reactor_runtime_*_impl` declarations used by `reactor_api.c`.
@@ -29,14 +37,74 @@ Current Vulkan reactor file topology (P12 M5 baseline):
 - `reactor_concept_reduction_abi.c` and `reactor_concept_reduction.cpp`
   - an opaque C11 facade and C++23 public/package adapters. Generated private
     class layouts and C11 atomics do not cross into C++.
+- `../reactors/PrometheusRmsNorm.concept`
+  - RMSNorm weights, reusable buffers, FP32/BF16 normalization, and the resident
+    head-normalization → RoPE → attention scores chain. Three producer slots
+    retain ordinary output, Q, and K; a lazy score slot owns its output and
+    pending submission. Independent standalone RoPE storage preserves resident
+    Q/K. Reuse and destruction drain submitted work before releasing buffers.
+- `reactor_concept_rmsnorm_abi.c` and `reactor_concept_rmsnorm.cpp`
+  - C11 packet projection and C++23 boundary/package adaptation. The existing
+    pure RMSNorm planner supplies strategy and admission policy. The whole
+    score chain uses the same Concept attachment without a host detour or
+    legacy model-state allocation.
+- `../reactors/PrometheusModelBlock.concept`
+  - owns the resident block's buffers, replacement candidates, package pipelines,
+    and pending work. Its named pre-attention stages implement BF16 ingress,
+    AdaLN, normalization/modulation, QKV projection, and Q/K normalization/RoPE;
+    its attention and FFN stages complete standalone NoiseRefiner execution.
+    Typed capture plans include the split W3 intermediate. Static C audit replay
+    borrows the same Concept stage implementations and resources. ContextRefiner
+    reuses those stages with its own text-position head contract, unit modulation
+    and eleven logical weights. MainTransformer adds mixed image/text positioning,
+    timestep preparation and joint publication to the shared stage vocabulary.
+    Three separate pipeline banks retain all production portfolios in one owner.
+    Its session owner also owns PreparedImage, PreparedContext and JointWorking,
+    capture/composition recordings, pending work, stream versions and provenance.
+    Main chains borrow the joint through checked begin/commit/abort transitions.
+    One typed weight binding implements synchronous initial upload, replacement
+    and minimum-memory retarget. It owns candidate allocation, GPU copy work,
+    validity, commit generations and failed-candidate retirement.
+- `reactor_concept_model_block_abi.c` and `reactor_concept_model_block.cpp`
+  - C11 packet/view transport and C++23 shader-package adaptation. All thirteen
+    NoiseRefiner, eleven ContextRefiner and thirteen MainTransformer production
+    pipelines belong to Concept. Session packets project borrowed buffers and
+    Concept-owned versions; C does not independently mutate stream validity.
+    C stages caller bytes and projects binding packets; Concept authorizes
+    publication. Admission, model-output bookkeeping, asynchronous prefetch and
+    public packet transport remain migration seams. See
+    [Concept M10](../../../docs/internal/prometheus_concept_weights_m10.md) for
+    synchronous weight binding and recovery, and
+    [M9](../../../docs/internal/prometheus_concept_session_m9.md) for
+    stream ownership, cross-owner retirement and failure qualification, and
+    [M8](../../../docs/internal/prometheus_concept_main_m8.md) for Main numerics,
+    timing, attention routes and remaining research boundaries.
+- `reactor_vulkan_model_block.c`
+  - the remaining model/session policy and execution paths. Closed-block and
+    production NoiseRefiner, ContextRefiner and MainTransformer execution delegate
+    to Concept, including session stream capture/composition. C retains
+    model/session admission, descriptor packet adaptation, asynchronous prefetch
+    and explicit audit transport. The three standalone rebind entry points and
+    the closed retarget sequence share the Concept synchronous binding protocol;
+    the old C synchronous upload recorder and candidate owner have been removed.
+    Pipeline interfaces are checked against the selected shader-package variant,
+    while the small native shader registry supplies selector metadata.
+- `reactor_main_experiments.inc`
+  - the former Main C factory/recorder, isolated behind explicit M5b/M6a research
+    build flags. It is not compiled into the default production path and cannot
+    act as a runtime fallback. These experiments retain separate qualification.
 - `reactor_vulkan_queue.cpp`
   - the common host queue API synchronization boundary for all native families.
 - `reactor_vulkan_fused_reduction.c`
   - public plan serialization, ABI validation, CPU oracles, and still-live model
     resource support. Its standalone C reduction executor has been removed.
 - `reactor_vulkan_gemma4e2b.c`
-  - the Gemma 4 E2B M1 operations (input/head RMSNorm, RoPE, attention
-    scores) and the M46 RMSNorm executor they run on. The M42-M49b
+  - pure RMSNorm planning/oracles; no GPU execution or resource ownership. The C RMSNorm
+    executor and weight ownership were removed in
+    [Concept M2](../../../docs/internal/prometheus_concept_rmsnorm_m2.md); the C
+    score executor was removed in
+    [Concept M3](../../../docs/internal/prometheus_concept_attention_m3.md), and standalone
+    RoPE in [Concept M4](../../../docs/internal/prometheus_concept_rope_m4.md). The M42-M49b
     transformer executors, the numerical-research shadow, and the
     transformer control module were removed in Phase 0, and the file was
     renamed from `reactor_vulkan_transformer.c` (see
@@ -102,9 +170,16 @@ Concept distribution's `libraries`; the development default is the sibling
 PATH, or keep the sibling Concept compiler checkout for the Go bootstrap.
 The foundational Vulkan implementation is compiled from that dependency.
 
-Regenerate deployment with `go run ./tools/prometheus_concept -concept-root
-../Concept`; verify with `-check`. Checked provenance identifies actual compiler
-and library input bytes as well as the checkout revision. See
+The native helpers regenerate Concept C, headers, and provenance into ignored
+`internal/prometheus/.native-build/generated/` before compiling any consumer.
+For a clean package build, run `go run ./tools/prometheus_concept -build-package`;
+this emits source, validates source/output hashes, then invokes the manifest
+builder. Direct `concept package build internal/prometheus` consumes those
+materialized inputs and therefore follows emission. Standalone emission is
+`go run ./tools/prometheus_concept -concept-root ../Concept`; `-check` compares
+fresh generation. These generated C/JSON files are build products and do not
+belong in Git. Provenance records the actual compiler binary and, when built
+from a checkout, its revision and source/library hashes. See
 [shared-device migration evidence](../../../docs/internal/prometheus_concept_shared_device_m1.md).
 
 Expected Windows outputs:

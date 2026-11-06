@@ -14,9 +14,9 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 9 |
+| Open | 7 |
 | Deferred | 11 |
-| Resolved | 91 |
+| Resolved | 109 |
 | Superseded | 1 |
 
 ## Open issues
@@ -24,23 +24,27 @@ report is historical evidence, not the current issue count.
 Newest first. These entries remain open; their presence is not an instruction
 to change the implementation during unrelated work.
 
-### FB-112 — Concept call arguments do not supply context for Result constructors
+### FB-117 — Parallel native qualification can exhaust the mixed-call host deadline
 
 Date: 2026-11-05
 
 Status: Open
 
-Observation: With `enum SampleError { Failed, }` and
-`int Consume(Result<void, SampleError> result) { return 0; }`, the call
-`Consume(Result::Error(SampleError::Failed))` rejects with
-`CV4540: Result constructor requires an Option/Result expected type`.
-The callee's declared parameter does not provide the constructor context.
-The production reduction API observes an already available `VulkanError`
-directly, so it does not need to construct and immediately unwrap a carrier.
-This language typing gap remains independently reproducible.
+Observation: During M5, Concept `go test -timeout 75m ./...` failed
+`TestEVT2f5NativeMixedCalls/Normal` with `NATIVE_TIMEOUT: killed after 2m0s`.
+The subsequent Verify case completed, then reported an artifact parity mismatch
+because the failed Normal case never published comparison observations. The
+same unchanged test passed alone with `-parallel=1`: Normal 121.91 s, Verify
+123.44 s, total 245.41 s including native build/setup. Its independent Win64
+ABI probes and malformed-artifact checks passed. The full run had concurrent
+native builds; load sensitivity is an inference, not a compiler parity diagnosis.
 
-Suggestion: Supply the selected parameter type to ordinary call argument
-validation. Preserve overload ambiguity diagnostics and error type checking.
+Suggestion: Qualify a fresh-input budget and scheduling policy for this parent
+host, while retaining bounded trap children and all ABI/parity assertions. Avoid
+comparing Verify against an unavailable Normal result after a preceding failure.
+The broad run remains failed; an isolated pass is not a full-suite green claim.
+Evidence: `.tmp/m5-concept-full.log`, `.tmp/m5-concept-mixed-rerun.log`, and
+`docs/internal/prometheus_concept_model_block_m5.md`.
 
 ---
 
@@ -159,32 +163,6 @@ subgroup-collective legality or qualify a replacement attention kernel.
 
 ---
 
-### FB-104 — Workspace ownership check still assumes a source-bearing native registry
-
-Date: 2026-11-04
-
-Status: Open
-
-Observation: `go run ./tools/sdslv_workspace_check` fails with
-`registry does not own manifest source internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv`.
-The checker searches `reactor_shader_registry.c` for every manifest source
-string. The current native registry explicitly describes itself as a small
-selector projection; its `META` rows omit source paths and the complete catalog
-belongs to `prometheus.core`. The same first failure was reproduced using
-HEAD `b30d64bb`'s manifest, registry, and conformance inputs with the unchanged
-checker, before assigning any modernization-specific failure to this pass.
-
-Suggestion: Reconcile the checker with package-owned provenance and the native
-projection's actual contract. Preserve source ownership and digest checks at
-their owning boundary; do not add obsolete source strings to the registry just
-to satisfy a textual scan.
-
-Scope: All 26 shaders changed by the modernization independently pass DXC and
-SPIR-V validation and emit byte-identical modules relative to their baseline.
-This does not make the complete workspace check pass.
-
----
-
 ### FB-103 — Entry function spelling differs between run and build
 
 Date: 2026-11-04
@@ -203,23 +181,6 @@ intended spelling rules with executable Language contracts.
 Scope: Entry selection is not changed by the README pass.
 
 ---
-
-### FB-102 — Source-only Go emission omits the floating-literal helper
-
-Date: 2026-11-04
-
-Status: Open
-
-Observation: Emitting `testdata/performance/scalar_loop_recon/main.oct` with
-`internal/build.EmitGoSource` succeeds, but type-checking the generated Go fails
-with `undefined: __octFloatLiteral`. The helper is emitted only after the
-`includeMain` early return in `emitGoWithOptions`. This predates the direct-branch
-loop change; ordinary `build.Compile` emits the helper and works.
-
-Suggestion: Include the floating-literal runtime helper in source-only output
-and add an embeddable floating-point specimen to that seam's boundary tests.
-
-Scope: The ordinary executable compiler works; this concerns source-only host emission.
 
 ## Deferred issues
 
@@ -397,7 +358,418 @@ Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. 
 
 ## Resolved issues
 
-Recorded fixes and their narrow evidence. These are prior dispositions, not a claim that this organization pass reran every qualification.
+### FB-128 — Partial synchronous uploads could not be repaired through the binding API
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Minimum-memory retarget copied each tensor into the active window,
+then published binding/descriptor generations only after the loop. On upload or
+descriptor failure it left the binding in FailedBeforeCommit, but its admission
+required Bound, so a full retry could not repair that same position. Initial
+upload also rejected quarantine before retirement. The old in-place path retained
+weights_uploaded after partial overwrite; individual entry-point guards then had
+to infer whether those bytes were executable. These old-path defects were found
+by inspection; the original C executor was not given a new mid-tensor fault hook.
+
+Resolution: Concept owns Initial, Replacement and InPlace binding transitions.
+The first submitted in-place overwrite invalidates the active set; a failed
+attempt advances neither binding nor descriptor generation. Draining retires work
+without publishing it. A fresh full upload repairs the same closed transition
+without allocating another weight window. The native tests fail initial upload
+and minimum-memory retarget after three completed transfers, reject execution of
+the incomplete set, exercise record/submit/completion and descriptor failures,
+and complete the real Noise → Context → Main chain after repair. See
+`docs/internal/prometheus_concept_weights_m10.md`.
+
+---
+
+### FB-127 — Failed replacement blocked execution of an intact old binding
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Standalone rebind allocated/uploaded candidates independently, but
+native FailedBeforeCommit/quarantine checks could make the intact active set
+unusable. The first M10 fault matrix failed four assertions: Context and Main
+checked cached quarantine state before retiring the failed candidate transfer,
+so old-binding execution and its audit were rejected. Failed log:
+`.tmp/m10-fault-native.log`.
+
+Resolution: Concept retains the active binding while replacement candidates are
+incomplete. The existing public binding state projects the usable active set;
+the failed operation's detail code preserves its failure phase. Wrappers retire
+submitted work before testing that projection. Known-complete failed candidates
+are dropped immediately; uncertain candidates remain owned until retirement,
+with their bytes included in memory evidence. Tests use different candidate bias
+bytes, verify unchanged generations, and execute the independent Noise, Context
+and Main numerical witnesses using the old binding after failure. Complete
+replacement then publishes once and retires the previous buffers. See the M10
+report for qualification and remaining prefetch boundaries.
+
+---
+
+### FB-126 — Session and model destruction did not join cross-owner stream borrows
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Main chain execution borrows the session's JointWorking buffer;
+session capture borrows a completed model output. The old session cleanup waited
+only on its own fence before freeing its streams. The M9 ownership review also
+identified the reverse dependency introduced by an explicitly retained capture:
+model cleanup must retire that capture before releasing its source. Waiting on
+one owner's work alone cannot discharge the other owner's submitted borrow.
+These dependencies were identified by inspection; an actual freed-buffer GPU
+access was not deliberately reproduced.
+
+Resolution: Model retirement and cleanup drain session work before buffer reuse
+or release. Session destruction retires model work before releasing the joint.
+Native tests retain an unobserved Context capture and destroy the model first,
+and retain an unobserved Main chain submission and destroy the session first.
+Both orders return pending submissions to zero, all Concept buffers/pipelines
+return to baseline, and legacy SGEMM still works after session teardown. See
+`docs/internal/prometheus_concept_session_m9.md` for bounded GPU qualification.
+
+---
+
+### FB-125 — Session copies conflated failed submission with uncertain completion
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: `prom_compiled_session_submit_and_wait` reset a fence and treated
+both queue-submit failure and completion-observation failure as quarantine.
+Cleanup then unconditionally waited for that fence when quarantined. A rejected
+submission could therefore leave an unsignaled fence with no submitted work to
+signal it. The old copies also left a previously valid destination marked valid
+until success, even when submitted bytes might already have changed. The fence
+hang is an inspection finding, not a deliberately reproduced infinite wait.
+
+Resolution: Concept owns recording, submission and completion through the
+existing Vulkan library. Pre-submit injected failures preserve the preceding
+valid stream; a submitted unobserved overwrite invalidates its destination.
+Draining retires work without publishing an unobserved version. Only a completed
+fresh copy advances generation/provenance. Tests cover record, submit and
+completion faults for capture and composition, stale-source rejection, fresh
+retry, and Main's refusal to consume an uncertain joint after draining it.
+Partial-construction failures also retain ResourceCreateFailed rather than
+being overwritten with InvalidRequest during evidence projection. See the M9
+report for the actual-path native checks and limits.
+
+---
+
+### FB-124 — MainTransformer static replay retained the preceding run's GPU timing
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Static Main replay recorded a fresh computation but did not resolve
+its timestamp queries. M8's independent witness found an unchanged
+`gpu_total_begin_tick` after replay on serial, forced subgroup and Auto routes.
+The output was numerically correct; the reported measurement belonged to an
+earlier execution. All three timestamp assertions failed in
+`.tmp/m8-main-recovery.log`.
+
+Resolution: Read the actual completed recording's query pool before static
+readback. The production pool is borrowed from the Concept submission through
+an opaque export; experimental builds retain their own pool. The test requires
+a new start tick, thirteen measured stage intervals and numerical output.
+Unmeasured legacy CPU command phases are cleared on ordinary Concept execution.
+See `docs/internal/prometheus_concept_main_m8.md`.
+
+---
+
+### FB-123 — Uncertain Main chain publication left an old joint generation valid
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: A chain submission can copy its result into JointWorking before
+the host observes its fence. On uncertain completion, the API returned an error
+without advancing the generation, yet left the joint valid. After retirement,
+a retry could apply the layer again to changed bytes under the old generation.
+M8 reproduced an accepted retry where stale input should have been rejected on
+all three route policies (`.tmp/m8-main-recovery.log`).
+
+Resolution: Invalidate JointWorking when a chain's completion is uncertain, or
+when post-compute timestamp observation fails before host publication commits.
+The old generation cannot authorize reuse. Explicit recomposition from retained
+streams creates a fresh generation; the test then proves a fresh first layer
+and a second chained layer against independent CPU contractions. This does not
+pretend to roll back submitted GPU writes or automatically recover an arbitrary
+later layer. See `docs/internal/prometheus_concept_main_m8.md`.
+
+---
+
+### FB-122 — MainTransformer admission blocked retirement after uncertain completion
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Main execution and static replay rejected a quarantined block
+before reaching the existing reap operation, the same ordering problem found
+for Context in FB-120. M8's failure matrix passed command/submit retries, then
+failed its completion retry (`.tmp/m8-main-first.log`).
+
+Resolution: Let the existing owner observe and retire pending work before reuse.
+Keep session, generation, binding and output-validity checks. The independent
+Main witness checks phase-specific errors, legacy SGEMM on the shared device,
+non-chain recovery and the stricter chain-publication rule in FB-123. See
+`docs/internal/prometheus_concept_main_m8.md`.
+
+---
+
+### FB-121 — Shared model aliases overwrote audit packets and pinned predecessors
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The compound model owner aliased Context W3 with the static-audit
+arena, and the resident predecessor with the attention residual. Their GPU
+lifetimes overlap. M7's nonzero shared witness produced corrupted stage IDs and
+projection keys, 133 assertion failures, and a second resident replay maximum
+output error of 0.852277. Synchronization validation reported no hazard: ordering
+cannot preserve bytes overwritten through a logically invalid alias.
+
+Resolution: Give both resources distinct Concept-owned device-local storage,
+account for them and release them exactly once. The compound reservation grows
+by 17,039,360 bytes (16.25 MiB); no host activation bounce replaces device-local
+residency. The new witness exercises coexisting Noise/Context portfolios, shared
+weight-role mapping, all sixteen audit packets, two identical-input resident
+replays and complete teardown. See
+`docs/internal/prometheus_concept_context_m7.md`; the failed reproduction is
+`.tmp/m7-context-shared.log`.
+
+---
+
+### FB-120 — ContextRefiner quarantine admission prevented completion recovery
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Context execution and static audit rejected a quarantined owner
+before reaching the existing reap operation. M7's command/submit/completion
+failure matrix passed the first two retries, then failed the uncertain-completion
+retry even though the submitted work could be safely observed and retired.
+
+Resolution: Reap through the existing Concept/native completion owner before
+reusing the resources. Do not discard the pending submission or restore output
+validity on failure. The independent Context witness checks precise phase
+diagnostics, output invalidation, shared-device SGEMM, successful retry and
+numerical output. Evidence: `.tmp/m7-context-owned.log` and
+`docs/internal/prometheus_concept_context_m7.md`.
+
+---
+
+### FB-119 — Resident NoiseRefiner read timestamps from an unused legacy query pool
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: After M5 delegated the pre-attention recording to Concept, resident
+NoiseRefiner still called `prom_model_block_resolve_gpu_span` on its old C query
+pool. Concept had recorded its timestamps in a different, owned pool. Waiting
+for the unissued legacy queries could block and could not report the work that
+actually ran. M6's attention/FFN migration would extend the same mismatch.
+
+Resolution: Sum the measured Concept phase spans through the existing evidence
+seam. The independent nonzero M6 witness performs the required block-1 rebind,
+executes two resident replays of the pinned boundary, checks every output element
+against its CPU oracle, and requires nonzero GPU timing. It passes with Normal
+and Verify model-block C output and Vulkan synchronization validation. The
+unmeasured per-submit/per-fence CPU fields are cleared to prevent stale upload
+timings from appearing as execution measurements. See
+`docs/internal/prometheus_concept_model_tail_m6.md`.
+
+---
+
+### FB-118 — Concept OptionValue field access emitted an ungrouped pointer expression
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The model-block opaque buffer accessor used
+`OptionValue(ref const owner.buffers[index]).buffer`. Concept accepted it, then
+emitted `&slot->payload.some.value->buffer`; the native C compiler rejected the
+incorrect pointer precedence. A local binding would mask this compiler defect.
+
+Resolution: Group the payload pointer in Concept's C lowering before projecting
+a field. `OptionValueFieldProjectionKeepsReferencePrecedence` in Concept's
+`tests/runtime/contextual_carriers.concept_test` executes const field reads and
+observes mutation of the same payload. The direct accessor remains in the
+production model-block source, so its real native build exercises the fix.
+
+---
+
+### FB-112 — Concept call arguments do not supply context for Result constructors
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: `Consume(Result::Error(SampleError::Failed))` rejected with
+`CV4540` despite a declared `Result<void, SampleError>` parameter. The callee did
+not supply the constructor's expected type.
+
+Resolution: The explicitly authorized EVT1 ergonomics thaw supplies parameter
+context after narrowing ordinary overload candidates. It preserves ambiguity
+(`CV4182`), exact error types in every arm, integer bounds and explicit payload moves. Nested
+carriers, parentheses, conditional/match arms and ordinary callees in templates
+share the path. The Concept runtime contract is
+`tests/runtime/contextual_carriers.concept_test`; `TestErgonomics*` also checks
+negative cases and strict C11 execution. Prometheus now calls
+`BlockCode(ref owner, DrainBlock(ref owner))` through a Concept-authored C export.
+
+---
+
+Recorded fixes and their evidence. Each entry states its qualification scope.
+
+### FB-116 — M2C session fixture omitted the current attention-route policy
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: `PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs`
+zero-initialized `main_attention_route_policy`. Current admission accepts the
+explicit route enum, whose `AUTO` value is 1; zero fails before stream allocation.
+The fixture therefore failed its intended three-slot lifecycle assertions.
+
+Resolution: Specify `PROM_MAIN_ATTENTION_ROUTE_AUTO` and retain a separate
+zero-policy rejection before successful creation. No production admission rule
+was relaxed. Validation: the repaired native case and adjacent facade rejection
+case run in the M5 selected regression lane.
+
+---
+
+### FB-115 — Model pipelines treated omitted selector interfaces as authoritative
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Several Z-Image `META` selector rows carry zero binding/push sizes;
+the full interface belongs to the shader package. The retained model pipeline
+factory compared its required interface against those omitted values and rejected
+creation. The new Concept ingress adapter initially exposed the same mismatch
+as `PROM_MODEL_BLOCK_DETAIL_INGRESS_PIPELINE_CREATE_FAILED`.
+
+Resolution: `prom_shader_package_validate_interface` checks the exact immutable
+selected variant. The Concept adapter and retained model factory use that owner
+instead of requiring duplicate selector facts. Validation rejects wrong binding
+counts, push sizes and missing variants/owners without opening module bytes;
+real-weight AdaLN and the independent six-stage prefix witness execute on GPU.
+See `docs/internal/prometheus_concept_model_block_m5.md`.
+
+---
+
+### FB-104 — Workspace ownership check still assumes a source-bearing native registry
+
+Date: 2026-11-04
+
+Status: Resolved 2026-11-05
+
+Observation: The workspace command rejected the native registry's binary-free
+selector projection because its `META` rows no longer carry every shader source
+path. The package catalog owns the source/provenance/object relationship.
+
+Resolution: The checker builds and validates `prometheus.core` through the
+existing shader-package authority, then checks selector IDs, names, entry points,
+languages, and production/experimental authority against it. Generated-header
+source/regeneration checks, source hashes when declared, module digests, and
+imported dependency-graph validation remain enforced at their owning boundaries.
+No obsolete source strings were added to the C projection. Historical evidence,
+benchmark identities, and production/experimental root checks remain active.
+
+Evidence: `go run ./tools/sdslv_workspace_check` passes. The CLI regression and
+negative selector tests cover missing/duplicate/malformed rows and drift in
+entry, name, language, and authority. Shader-package stale-import tests and
+SDSL-V conformance pass. The original failure is retained in
+`.tmp/rope-m4-workspace-baseline.log`.
+
+---
+
+### FB-102 — Source-only Go emission omits the floating-literal helper
+
+Date: 2026-11-04
+
+Status: Resolved 2026-11-05
+
+Observation: `EmitGoSource` accepted the scalar-loop recon specimen, but Go
+reported `undefined: __octFloatLiteral` because the source-only return preceded
+that helper's declaration.
+
+Resolution: Emit the shared floating-literal helper before the source-only
+return. Process entry and its diagnostic wrapper remain executable-only. The
+host boundary test reads the exact existing specimen, type-checks its emitted
+Go, and rejects an accidental process entrypoint. It does not duplicate Oct's
+float semantics in Go or embed a new Oct program.
+
+Evidence: The regression fails before the fix and passes after it; the full
+`internal/build` Go test package and compiled FloatClamp01 facts pass, with no
+interpreted fallback. The failed baseline is retained in
+`.tmp/rope-m4-fb102-baseline.log`. Entry spelling (FB-103) remains separate.
+
+---
+
+### FB-114 — Concept cleanup conflates owners with the same source name
+
+Date: 2026-11-05
+
+Status: Resolved in the Concept working tree; attention consumer qualification here.
+
+Observation: Lazy attention initialization uses an owning `entry` in each of two
+independent branches. Valid Concept source rejected with
+`CV4516: MIR cleanup for PrepareScores is not a unique ordered drop obligation`.
+The cleanup collector keyed types and move states by bare source name. A smaller
+nested-shadow witness also showed the C lowerer omitting the outer owner's drop:
+its live-owner table used a shadowable C variable name as storage identity.
+
+Resolution: Concept tracks lexical declaration identities in cleanup collection
+and gives shadowed C storage a distinct name. Repeated MIR names gain stable
+identities and an optional source-name link; unique-name artifacts keep their
+existing form. The planner retains replacement lookup through that link. The
+MIR uniqueness check remains enforced. The runtime contract is Concept's
+`tests/runtime/scoped_cleanup.concept_test`, with Normal/Verify, strict C11,
+native execution, and three fresh deterministic emissions. See
+[the M3 report](docs/internal/prometheus_concept_attention_m3.md) for the consumer
+and broader validation results.
+
+---
+
+### FB-113 — Shared Concept attachments expose callback and destruction-order defects
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The RMSNorm intent port passed numerical checks but left 17 Concept
+buffers and one borrowed context alive after runtime destruction. The runtime
+removed its handle from the registry before attachment cleanup, so validated
+attachment getters could no longer find their state. A reduction on the same
+device also failed because independently defined submit callbacks conflicted
+with Concept Vulkan's single submit authority per device.
+
+Resolution: Retire attachments while the owner remains registered, then remove
+the handle. Both adapters now register the same shared queue-submit callback.
+The new native GPU tests cover automatic owner destruction, two Concept
+attachments alongside legacy SGEMM, resident Q/K consumers, uncertain completion,
+and detach/reattach. Resource counters return to their starting values. See
+[the M2 report](docs/internal/prometheus_concept_rmsnorm_m2.md).
+
+---
 
 ### FB-111 — Concept reduction port exposes incomplete generated ownership cleanup
 
@@ -417,8 +789,10 @@ and existing cleanup lowerer. Runtime contracts are
 `tests/runtime/borrowed_owned_match.concept_test`, and the Vulkan library's
 borrowed-buffer replacement fact in that repository. Production reductions now
 pass real Vulkan numerical, failure, shared-device, detach, and leak checks.
-Deployment provenance for both generated modules is explicitly allowed through
-this repository's JSON ignore rule so clean checkouts retain the evidence.
+The subsequent build-output cleanup materializes both generated modules and
+provenance under ignored `.native-build/generated/`, checks their input/output
+hashes, and regenerates them during clean builds. The earlier JSON ignore
+exception for checked provenance was removed.
 See [the milestone report](docs/internal/prometheus_concept_shared_device_m1.md).
 
 ---
@@ -1814,13 +2188,13 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-113**. Put a new open issue at
+Use the next unused identifier, currently **FB-129**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.
 
 ```markdown
-### FB-110 — Short, specific title
+### FB-NNN — Short, specific title
 
 Date: YYYY-MM-DD
 

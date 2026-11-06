@@ -1,0 +1,1319 @@
+module PrometheusModelBlock;
+profile Vulkan;
+import Vulkan;
+import Standard.Math;
+
+extern "C" handle PromBlockHost;
+extern "C" PipelineCreation PromBlockLoadPipeline(PromBlockHost host, VkDevice device,
+    VkPipelineCache cache, uint32 kernel, uint32 bindings, uint32 pushBytes);
+foreign concept PackagePipelineAllocation on PromBlockLoadPipeline
+{
+    requires compiler.Allocates(PromBlockLoadPipeline);
+}
+
+// One bounded resource owner. The C migration seam holds borrowed views only.
+// Replacement candidates occupy separate slots until the existing admission
+// policy commits them. Releasing a view always retires this owner's work first.
+class BlockOwner
+{
+public:
+    owned BorrowedContext context;
+    Option<owned Buffer<byte>>[128] buffers;
+    Option<owned Pipeline>[42] pipelines;
+    Option<owned Submission> pending;
+    bool deviceLost;
+    int detail;
+    uint32 flags;
+    bool timed;
+    uint64[9] timings;
+    uint64 recordings;
+    uint64 submissions;
+    uint64 waits;
+    uint64 descriptorPushes;
+    uint32 mainAttentionGroups;
+    owned WeightBinding binding;
+};
+
+[[repr(C)]]
+record struct BlockFrame
+{
+    BufferRange[26] buffers;
+    BufferRange[13] weights;
+};
+
+enum BlockBuffer
+{
+    InputUpload, InputBf16, Input, TimestepUpload, TimestepBf16, Timestep,
+    ResidentBoundary, AdaLnProjection, AttentionScale, AttentionGate, MlpScale,
+    MlpGate, Modulated, NormAudit, Qkv, Attention, AuditReadback, Output,
+    OutputReadback, Audit, WeightUpload, AttentionProjection, AttentionResidual,
+    ContextW3, ContextUnit, Joint,
+}
+enum BlockProgram { Closed, PreAttention, Ingress, Attention, Ffn, Context, Main, }
+enum BlockDomain { Noise, Context, Main, }
+enum CaptureStage
+{
+    IngressInput, IngressTimestep, AdaLnProjection, AttentionScaleRaw,
+    AttentionScaleAdjusted, AttentionGateRaw, AttentionGateTanh, MlpScaleRaw,
+    MlpScaleAdjusted, MlpGateRaw, MlpGateTanh, AttentionNorm, AttentionModulated,
+    FusedQkv, Q, K, V, QNorm, KNorm, PositionedQ, PositionedK,
+}
+record struct CapturePlan
+{
+    uint32 boundary;
+    BlockBuffer source;
+    uint64 offset;
+    uint64 bytes;
+    bool segmented;
+};
+
+[[repr(C)]]
+record struct RowPush { float epsilon; uint32 tokens; uint32 width; uint32 reserved; };
+[[repr(C)]]
+record struct HeadPush { float epsilon; uint32 tokens; uint32 heads; uint32 width; };
+[[repr(C)]]
+record struct FfnOutputPush { float epsilon; uint32 tokens; uint32 width; uint32 hidden; };
+[[repr(C)]]
+record struct ContextHeadPush { float epsilon; uint32 tokens; uint32 heads; uint32 width; uint32 offset; };
+[[repr(C)]]
+record struct MainHeadPush { float epsilon; uint32 tokens; uint32 heads; uint32 width; uint32 offset; uint32 imageTokens; };
+
+BufferRange View(BlockFrame frame, BlockBuffer role)
+{
+    return match (role) {
+        BlockBuffer::InputUpload => frame.buffers[0],
+        BlockBuffer::InputBf16 => frame.buffers[1],
+        BlockBuffer::Input => frame.buffers[2],
+        BlockBuffer::TimestepUpload => frame.buffers[3],
+        BlockBuffer::TimestepBf16 => frame.buffers[4],
+        BlockBuffer::Timestep => frame.buffers[5],
+        BlockBuffer::ResidentBoundary => frame.buffers[6],
+        BlockBuffer::AdaLnProjection => frame.buffers[7],
+        BlockBuffer::AttentionScale => frame.buffers[8],
+        BlockBuffer::AttentionGate => frame.buffers[9],
+        BlockBuffer::MlpScale => frame.buffers[10],
+        BlockBuffer::MlpGate => frame.buffers[11],
+        BlockBuffer::Modulated => frame.buffers[12],
+        BlockBuffer::NormAudit => frame.buffers[13],
+        BlockBuffer::Qkv => frame.buffers[14],
+        BlockBuffer::Attention => frame.buffers[15],
+        BlockBuffer::AuditReadback => frame.buffers[16],
+        BlockBuffer::Output => frame.buffers[17],
+        BlockBuffer::OutputReadback => frame.buffers[18],
+        BlockBuffer::Audit => frame.buffers[19],
+        BlockBuffer::WeightUpload => frame.buffers[20],
+        BlockBuffer::AttentionProjection => frame.buffers[21],
+        BlockBuffer::AttentionResidual => frame.buffers[22],
+        BlockBuffer::ContextW3 => frame.buffers[23],
+        BlockBuffer::ContextUnit => frame.buffers[24],
+        BlockBuffer::Joint => frame.buffers[25],
+    };
+}
+
+// One closed projection per public audit stage. There is no ordering heuristic:
+// the stage identifies both its producer boundary and the selected byte layout.
+CapturePlan PlanCapture(CaptureStage stage)
+{
+    return match (stage) {
+        CaptureStage::IngressInput => CapturePlan{0, BlockBuffer::Input, 0, 15728640, false},
+        CaptureStage::IngressTimestep => CapturePlan{0, BlockBuffer::Timestep, 0, 1024, false},
+        CaptureStage::AdaLnProjection => CapturePlan{1, BlockBuffer::AdaLnProjection, 0, 61440, false},
+        CaptureStage::AttentionScaleRaw => CapturePlan{1, BlockBuffer::AdaLnProjection, 0, 15360, false},
+        CaptureStage::AttentionScaleAdjusted => CapturePlan{1, BlockBuffer::AttentionScale, 0, 15360, false},
+        CaptureStage::AttentionGateRaw => CapturePlan{1, BlockBuffer::AdaLnProjection, 15360, 15360, false},
+        CaptureStage::AttentionGateTanh => CapturePlan{1, BlockBuffer::AttentionGate, 0, 15360, false},
+        CaptureStage::MlpScaleRaw => CapturePlan{1, BlockBuffer::AdaLnProjection, 30720, 15360, false},
+        CaptureStage::MlpScaleAdjusted => CapturePlan{1, BlockBuffer::MlpScale, 0, 15360, false},
+        CaptureStage::MlpGateRaw => CapturePlan{1, BlockBuffer::AdaLnProjection, 46080, 15360, false},
+        CaptureStage::MlpGateTanh => CapturePlan{1, BlockBuffer::MlpGate, 0, 15360, false},
+        CaptureStage::AttentionNorm => CapturePlan{2, BlockBuffer::NormAudit, 0, 15728640, false},
+        CaptureStage::AttentionModulated => CapturePlan{2, BlockBuffer::Modulated, 0, 15728640, false},
+        CaptureStage::FusedQkv => CapturePlan{3, BlockBuffer::Qkv, 0, 47185920, false},
+        CaptureStage::Q => CapturePlan{3, BlockBuffer::Qkv, 0, 15728640, true},
+        CaptureStage::K => CapturePlan{3, BlockBuffer::Qkv, 15360, 15728640, true},
+        CaptureStage::V => CapturePlan{3, BlockBuffer::Qkv, 30720, 15728640, true},
+        CaptureStage::QNorm => CapturePlan{4, BlockBuffer::NormAudit, 0, 15728640, false},
+        CaptureStage::KNorm => CapturePlan{5, BlockBuffer::NormAudit, 0, 15728640, false},
+        CaptureStage::PositionedQ => CapturePlan{4, BlockBuffer::Qkv, 0, 15728640, true},
+        CaptureStage::PositionedK => CapturePlan{5, BlockBuffer::Qkv, 15360, 15728640, true},
+    };
+}
+
+Result<BlockOwner, VulkanError> CreateBlock(DeviceBorrow device, bool timed)
+{
+    owned BorrowedContext context = BorrowDevice(device)?;
+    Option<owned Buffer<byte>>[128] buffers = [Option::None ...];
+    Option<owned Pipeline>[42] pipelines = [Option::None ...];
+    Option<owned Submission> pending = Option::None;
+    owned WeightBinding binding = CreateWeightBinding();
+    owned BlockOwner owner = BlockOwner{move context, move buffers, move pipelines,
+        move pending, false, 0, 0, timed, [0 ...], 0, 0, 0, 0, 31680, move binding};
+    return Result::Ok(move owner);
+}
+
+Result<void, VulkanError> DrainBlock(ref BlockOwner owner)
+{
+    match (ref owner.pending) {
+        Option::Some(work) => {
+            if (not work.waited) { owner.waits = owner.waits + 1; }
+            Wait(ref work)?;
+        }
+        Option::None => { }
+    }
+    owner.pending = Option::None;
+    return Result::Ok();
+}
+
+bool HasBuffer(ref const Option<owned Buffer<byte>> entry)
+{
+    return match (ref const entry) { Option::Some(buffer) => true, Option::None => false, };
+}
+
+Result<int, VulkanError> AllocateBlockBuffer(ref BlockOwner owner, usize bytes, Placement placement)
+{
+    for (index in 0..128) {
+        if (not HasBuffer(ref const owner.buffers[index])) {
+            owned Buffer<byte> buffer = CreateBufferOn<byte>(owner.context.view, bytes, placement)?;
+            Option<owned Buffer<byte>> entry = Option::Some(move buffer);
+            owner.buffers[index] = move entry;
+            return Result::Ok(index);
+        }
+    }
+    return Result::Error(ErrorFromCode(-10));
+}
+
+Result<void, VulkanError> ReleaseBlockBuffer(ref BlockOwner owner, int index)
+{
+    DrainBlock(ref owner)?;
+    owner.buffers[index] = Option::None;
+    return Result::Ok();
+}
+
+Result<void, VulkanError> LoadBlockPipeline(ref BlockOwner owner, PromBlockHost host,
+    int slot, uint32 kernel, uint32 bindings, uint32 pushBytes)
+{
+    PipelineCreation created = PromBlockLoadPipeline(host, owner.context.view.device,
+        owner.context.view.cache, kernel, bindings, pushBytes);
+    Check(created.code)?;
+    owned Pipeline pipeline = Pipeline{owner.context.view.device, created.shader,
+        created.setLayout, created.layout, created.pipeline, created.pushBytes};
+    Option<owned Pipeline> entry = Option::Some(move pipeline);
+    owner.pipelines[slot] = move entry;
+    return Result::Ok();
+}
+
+Binding ReadBuffer(uint32 slot, BufferRange buffer)
+{
+    return Binding{slot, buffer.buffer, buffer.bytes, DescriptorKind::StorageBuffer, Access::Read};
+}
+Binding WriteBuffer(uint32 slot, BufferRange buffer)
+{
+    return Binding{slot, buffer.buffer, buffer.bytes, DescriptorKind::StorageBuffer, Access::Write};
+}
+
+// Decode the numeric public ABI once; internal policy uses the closed enum.
+Result<CaptureStage, VulkanError> DecodeCaptureStage(uint32 stage)
+{
+    return match (stage) {
+        1u => Result::Ok(CaptureStage::IngressInput),
+        2u => Result::Ok(CaptureStage::IngressTimestep),
+        3u => Result::Ok(CaptureStage::AdaLnProjection),
+        4u => Result::Ok(CaptureStage::AttentionScaleRaw),
+        5u => Result::Ok(CaptureStage::AttentionScaleAdjusted),
+        6u => Result::Ok(CaptureStage::AttentionGateRaw),
+        7u => Result::Ok(CaptureStage::AttentionGateTanh),
+        8u => Result::Ok(CaptureStage::MlpScaleRaw),
+        9u => Result::Ok(CaptureStage::MlpScaleAdjusted),
+        10u => Result::Ok(CaptureStage::MlpGateRaw),
+        11u => Result::Ok(CaptureStage::MlpGateTanh),
+        12u => Result::Ok(CaptureStage::AttentionNorm),
+        13u => Result::Ok(CaptureStage::AttentionModulated),
+        14u => Result::Ok(CaptureStage::FusedQkv),
+        15u => Result::Ok(CaptureStage::Q),
+        16u => Result::Ok(CaptureStage::K),
+        17u => Result::Ok(CaptureStage::V),
+        18u => Result::Ok(CaptureStage::QNorm),
+        19u => Result::Ok(CaptureStage::KNorm),
+        20u => Result::Ok(CaptureStage::PositionedQ),
+        21u => Result::Ok(CaptureStage::PositionedK),
+        _ => Result::Error(ErrorFromCode(-6911)),
+    };
+}
+
+Result<void, VulkanError> Capture(ref Recording recording, BlockFrame frame, uint32 stage, uint32 boundary)
+{
+    if (stage == 0) { return Result::Ok(); }
+    if (stage > 21) { return Result::Error(ErrorFromCode(-6911)); }
+    CaptureStage selected = DecodeCaptureStage(stage)?;
+    CapturePlan plan = PlanCapture(selected);
+    if (plan.boundary != boundary) { return Result::Ok(); }
+    BufferRange source = View(frame, plan.source);
+    BufferRange destination = View(frame, BlockBuffer::AuditReadback);
+    if (plan.segmented) {
+        for (token in 0..1024) {
+            CopyBytes(ref recording, source, (token as uint64) * 46080 + plan.offset,
+                destination, (token as uint64) * 15360, 15360)?;
+        }
+    } else {
+        CopyBytes(ref recording, source, plan.offset, destination, 0, plan.bytes)?;
+    }
+    return Result::Ok();
+}
+
+void DispatchBlock(ref Recording recording, ref BlockOwner owner, int role,
+    ReadOnlySpan<Binding> bindings, ReadOnlySpan<byte> push, uint32 x, uint32 y)
+{
+    ref const Pipeline pipeline = OptionValue(ref const owner.pipelines[role]);
+    DispatchWith(ref recording, ref const pipeline, bindings, push, x, y, 1);
+    owner.descriptorPushes = owner.descriptorPushes + 1;
+}
+
+Result<void, VulkanError> RecordIngress(ref Recording recording, ref BlockOwner owner,
+    BlockFrame frame, uint32 elements, uint32 timestep, bool measure)
+{
+    CopyBytes(ref recording, View(frame, BlockBuffer::InputUpload), 0, View(frame, BlockBuffer::InputBf16), 0, (elements as uint64) * 2)?;
+    if (timestep != 0) { CopyBytes(ref recording, View(frame, BlockBuffer::TimestepUpload), 0, View(frame, BlockBuffer::TimestepBf16), 0, 512)?; }
+    if (measure) { discard Timestamp(ref recording); }
+    Binding[4] bindings = [ReadBuffer(0, View(frame, BlockBuffer::InputBf16)), ReadBuffer(1, View(frame, BlockBuffer::TimestepBf16)),
+        WriteBuffer(2, View(frame, BlockBuffer::Input)), WriteBuffer(3, View(frame, BlockBuffer::Timestep))];
+    uint32[2] push = [elements, timestep];
+    DispatchBlock(ref recording, ref owner, 0, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), (elements + 255u) / 256u, 1);
+    return Result::Ok();
+}
+
+enum BlockStage
+{
+    Modulate, Normalize, Project, PositionQuery, PositionKey,
+    Attend, ProjectAttention, Residual, NormalizeFfn, ProjectHidden, GateHidden, ProjectOutput,
+    PositionContextQuery, PositionContextKey,
+    WidenTimestep, PositionMainQuery, PositionMainKey,
+}
+
+// These role numbers are the small legacy recording transport, not enum tags.
+Result<BlockStage, VulkanError> DecodeBlockStage(uint32 role)
+{
+    return match (role) {
+        1 => Result::Ok(BlockStage::Modulate),
+        2 => Result::Ok(BlockStage::Normalize),
+        3 => Result::Ok(BlockStage::Project),
+        4 => Result::Ok(BlockStage::PositionQuery),
+        5 => Result::Ok(BlockStage::PositionKey),
+        7 => Result::Ok(BlockStage::Attend),
+        8 => Result::Ok(BlockStage::ProjectAttention),
+        9 => Result::Ok(BlockStage::Residual),
+        10 => Result::Ok(BlockStage::NormalizeFfn),
+        11 => Result::Ok(BlockStage::ProjectHidden),
+        12 => Result::Ok(BlockStage::GateHidden),
+        13 => Result::Ok(BlockStage::ProjectOutput),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+
+void RecordStage(ref Recording recording, ref BlockOwner owner, BlockFrame frame, BlockStage stage, BlockDomain domain)
+{
+    uint32 tokens = 1024;
+    int bank = 0;
+    BlockBuffer hidden = BlockBuffer::Attention;
+    BlockBuffer projected = BlockBuffer::Input;
+    if (domain == BlockDomain::Context) {
+        tokens = 32;
+        bank = 14; // A shared model owner retains both pipeline portfolios.
+        hidden = BlockBuffer::ContextW3;
+        projected = BlockBuffer::AttentionProjection;
+    }
+    if (domain == BlockDomain::Main) { tokens = 1056; bank = 28; }
+    match (stage) {
+        BlockStage::Modulate => {
+            Binding[8] adaln = [ReadBuffer(0, View(frame, BlockBuffer::Timestep)), ReadBuffer(1, frame.weights[1]), ReadBuffer(2, frame.weights[0]),
+                WriteBuffer(3, View(frame, BlockBuffer::AdaLnProjection)), WriteBuffer(4, View(frame, BlockBuffer::AttentionScale)), WriteBuffer(5, View(frame, BlockBuffer::AttentionGate)),
+                WriteBuffer(6, View(frame, BlockBuffer::MlpScale)), WriteBuffer(7, View(frame, BlockBuffer::MlpGate))];
+            uint32[2] adalnPush = [15360, 256];
+            DispatchBlock(ref recording, ref owner, bank + 1, ReadOnlySpan(adaln), AsBytes(ReadOnlySpan(adalnPush)), 60, 1);
+        }
+        BlockStage::Normalize => {
+            Binding[5] norm = [ReadBuffer(0, View(frame, BlockBuffer::Input)), ReadBuffer(1, frame.weights[6]),
+                ReadBuffer(2, View(frame, BlockBuffer::AttentionScale)), WriteBuffer(3, View(frame, BlockBuffer::Modulated)), WriteBuffer(4, View(frame, BlockBuffer::NormAudit))];
+            RowPush[1] normPush = [RowPush{1.0e-5, tokens, 3840, 0}];
+            DispatchBlock(ref recording, ref owner, bank + 2, ReadOnlySpan(norm), AsBytes(ReadOnlySpan(normPush)), tokens, 1);
+        }
+        BlockStage::Project => {
+            Binding[3] qkv = [ReadBuffer(0, View(frame, BlockBuffer::Modulated)), ReadBuffer(1, frame.weights[5]), WriteBuffer(2, View(frame, BlockBuffer::Qkv))];
+            uint32[4] qkvPush = [tokens, 3840, 11520, 0];
+            DispatchBlock(ref recording, ref owner, bank + 3, ReadOnlySpan(qkv), AsBytes(ReadOnlySpan(qkvPush)), (tokens + 15u) / 16u, 720);
+        }
+        BlockStage::PositionQuery => {
+            HeadPush[1] headPush = [HeadPush{1.0e-5, tokens, 30, 128}];
+            Binding[3] q = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[4]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            DispatchBlock(ref recording, ref owner, bank + 4, ReadOnlySpan(q), AsBytes(ReadOnlySpan(headPush)), tokens * 30u, 1);
+        }
+        BlockStage::PositionKey => {
+            HeadPush[1] headPush = [HeadPush{1.0e-5, tokens, 30, 128}];
+            Binding[3] k = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[2]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            DispatchBlock(ref recording, ref owner, bank + 5, ReadOnlySpan(k), AsBytes(ReadOnlySpan(headPush)), tokens * 30u, 1);
+        }
+        BlockStage::PositionContextQuery => {
+            ContextHeadPush[1] push = [ContextHeadPush{1.0e-5, tokens, 30, 128, 0}];
+            Binding[3] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[4]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            DispatchBlock(ref recording, ref owner, bank + 4, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 30u, 1);
+        }
+        BlockStage::PositionContextKey => {
+            ContextHeadPush[1] push = [ContextHeadPush{1.0e-5, tokens, 30, 128, 3840}];
+            Binding[3] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[2]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            DispatchBlock(ref recording, ref owner, bank + 5, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 30u, 1);
+        }
+        BlockStage::WidenTimestep => {
+            Binding[4] bindings = [ReadBuffer(0, View(frame, BlockBuffer::InputBf16)), ReadBuffer(1, View(frame, BlockBuffer::TimestepBf16)),
+                WriteBuffer(2, View(frame, BlockBuffer::Input)), WriteBuffer(3, View(frame, BlockBuffer::Timestep))];
+            uint32[2] push = [0, 256];
+            DispatchBlock(ref recording, ref owner, bank, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 1, 1);
+        }
+        BlockStage::PositionMainQuery => {
+            MainHeadPush[1] push = [MainHeadPush{1.0e-5, tokens, 30, 128, 0, 1024}];
+            Binding[3] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[4]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            DispatchBlock(ref recording, ref owner, bank + 4, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 30u, 1);
+        }
+        BlockStage::PositionMainKey => {
+            MainHeadPush[1] push = [MainHeadPush{1.0e-5, tokens, 30, 128, 3840, 1024}];
+            Binding[3] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[2]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            DispatchBlock(ref recording, ref owner, bank + 5, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 30u, 1);
+        }
+        BlockStage::Attend => {
+            Binding[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Qkv)),
+                WriteBuffer(1, View(frame, BlockBuffer::Attention)), WriteBuffer(2, View(frame, BlockBuffer::Audit))];
+            uint32[4] push = [tokens, 30, 128, 11520];
+            uint32 groups = tokens * 30u;
+            if (domain == BlockDomain::Main) { groups = owner.mainAttentionGroups; }
+            DispatchBlock(ref recording, ref owner, bank + 7, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), groups, 1);
+        }
+        BlockStage::ProjectAttention => {
+            Binding[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Attention)), ReadBuffer(1, frame.weights[3]),
+                WriteBuffer(2, View(frame, BlockBuffer::AttentionProjection))];
+            uint32[4] push = [tokens, 3840, 3840, 0];
+            DispatchBlock(ref recording, ref owner, bank + 8, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), (tokens + 15u) / 16u, 240);
+        }
+        BlockStage::Residual => {
+            Binding[5] bindings = [ReadBuffer(0, View(frame, BlockBuffer::AttentionProjection)), ReadBuffer(1, frame.weights[7]),
+                ReadBuffer(2, View(frame, BlockBuffer::AttentionGate)), ReadBuffer(3, View(frame, BlockBuffer::Input)),
+                WriteBuffer(4, View(frame, BlockBuffer::AttentionResidual))];
+            RowPush[1] push = [RowPush{1.0e-5, tokens, 3840, 0}];
+            DispatchBlock(ref recording, ref owner, bank + 9, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens, 1);
+        }
+        BlockStage::NormalizeFfn => {
+            Binding[5] bindings = [ReadBuffer(0, View(frame, BlockBuffer::AttentionResidual)), ReadBuffer(1, frame.weights[11]),
+                ReadBuffer(2, View(frame, BlockBuffer::MlpScale)), WriteBuffer(3, View(frame, BlockBuffer::NormAudit)),
+                WriteBuffer(4, View(frame, BlockBuffer::Modulated))];
+            RowPush[1] push = [RowPush{1.0e-5, tokens, 3840, 0}];
+            DispatchBlock(ref recording, ref owner, bank + 10, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens, 1);
+        }
+        BlockStage::ProjectHidden => {
+            Binding[7] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Modulated)), ReadBuffer(1, frame.weights[8]),
+                ReadBuffer(2, frame.weights[10]), WriteBuffer(3, View(frame, hidden)),
+                WriteBuffer(4, View(frame, BlockBuffer::AttentionProjection)), WriteBuffer(5, View(frame, BlockBuffer::NormAudit)),
+                WriteBuffer(6, View(frame, BlockBuffer::Qkv))];
+            uint32[4] push = [tokens, 3840, 10240, 0];
+            DispatchBlock(ref recording, ref owner, bank + 11, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), (tokens + 15u) / 16u, 640);
+        }
+        BlockStage::GateHidden => {
+            Binding[4] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, View(frame, hidden)),
+                ReadBuffer(2, View(frame, BlockBuffer::AttentionProjection)), ReadBuffer(3, View(frame, BlockBuffer::NormAudit))];
+            uint32[4] push = [tokens * 10240u, 0, 0, 0];
+            DispatchBlock(ref recording, ref owner, bank + 12, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 40u, 1);
+        }
+        BlockStage::ProjectOutput => {
+            Binding[7] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[9]),
+                ReadBuffer(2, frame.weights[12]), ReadBuffer(3, View(frame, BlockBuffer::MlpGate)),
+                ReadBuffer(4, View(frame, BlockBuffer::AttentionResidual)), WriteBuffer(5, View(frame, projected)),
+                WriteBuffer(6, View(frame, BlockBuffer::Attention))];
+            FfnOutputPush[1] push = [FfnOutputPush{1.0e-5, tokens, 3840, 10240}];
+            DispatchBlock(ref recording, ref owner, bank + 13, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens, 1);
+        }
+    }
+}
+
+// The Context package's eleven logical tensor roles project onto the same
+// stage vocabulary as NoiseRefiner, with identity modulation and its own W3.
+BlockFrame ContextFrame(BlockFrame source)
+{
+    BufferRange[26] buffers = source.buffers;
+    BufferRange[13] weights = source.weights;
+    int[13] roles = [0, 1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    for (index in 0..13) { weights[index] = source.weights[roles[index]]; }
+    for (index in 8..12) { buffers[index] = View(source, BlockBuffer::ContextUnit); }
+    return BlockFrame{buffers, weights};
+}
+
+Result<BlockStage, VulkanError> DecodeContextStage(uint32 role)
+{
+    return match (role) {
+        20 => Result::Ok(BlockStage::Normalize),
+        21 => Result::Ok(BlockStage::Project),
+        22 => Result::Ok(BlockStage::PositionContextQuery),
+        23 => Result::Ok(BlockStage::PositionContextKey),
+        24 => Result::Ok(BlockStage::Attend),
+        25 => Result::Ok(BlockStage::ProjectAttention),
+        26 => Result::Ok(BlockStage::Residual),
+        27 => Result::Ok(BlockStage::NormalizeFfn),
+        28 => Result::Ok(BlockStage::ProjectHidden),
+        29 => Result::Ok(BlockStage::GateHidden),
+        30 => Result::Ok(BlockStage::ProjectOutput),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+
+Result<void, VulkanError> RecordContext(ref Recording recording, ref BlockOwner owner,
+    BlockFrame source, uint32 resident)
+{
+    BlockFrame frame = ContextFrame(source);
+    uint64 bytes = 491520; // 32 tokens x 3840 FP32 channels.
+    if (resident == 1) {
+        CopyBytes(ref recording, View(frame, BlockBuffer::Attention), 0, View(frame, BlockBuffer::ResidentBoundary), 0, bytes)?;
+    }
+    BlockBuffer input = BlockBuffer::InputUpload;
+    if (resident != 0) { input = BlockBuffer::ResidentBoundary; }
+    CopyBytes(ref recording, View(frame, input), 0, View(frame, BlockBuffer::Input), 0, bytes)?;
+    BlockStage[11] schedule = [BlockStage::Normalize, BlockStage::Project,
+        BlockStage::PositionContextQuery, BlockStage::PositionContextKey,
+        BlockStage::Attend, BlockStage::ProjectAttention, BlockStage::Residual,
+        BlockStage::NormalizeFfn, BlockStage::ProjectHidden, BlockStage::GateHidden,
+        BlockStage::ProjectOutput];
+    for (index in 0..11) { RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Context); }
+    return Result::Ok();
+}
+
+Result<BlockStage, VulkanError> DecodeMainStage(uint32 role)
+{
+    return match (role) {
+        40 => Result::Ok(BlockStage::WidenTimestep),
+        41 => Result::Ok(BlockStage::Modulate),
+        42 => Result::Ok(BlockStage::Normalize),
+        43 => Result::Ok(BlockStage::Project),
+        44 => Result::Ok(BlockStage::PositionMainQuery),
+        45 => Result::Ok(BlockStage::PositionMainKey),
+        46 => Result::Ok(BlockStage::Attend),
+        47 => Result::Ok(BlockStage::ProjectAttention),
+        48 => Result::Ok(BlockStage::Residual),
+        49 => Result::Ok(BlockStage::NormalizeFfn),
+        50 => Result::Ok(BlockStage::ProjectHidden),
+        51 => Result::Ok(BlockStage::GateHidden),
+        52 => Result::Ok(BlockStage::ProjectOutput),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+
+Result<void, VulkanError> RecordMain(ref Recording recording, ref BlockOwner owner,
+    BlockFrame frame, uint32 chain)
+{
+    // A retained joint is immutable during compute. Chain mode publishes the
+    // completed candidate into the same joint only at the final boundary.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    if (owner.timed) { discard Timestamp(ref recording); }
+    CopyBytes(ref recording, View(frame, BlockBuffer::Joint), 0, View(frame, BlockBuffer::Input), 0, 16220160)?;
+    CopyBytes(ref recording, View(frame, BlockBuffer::TimestepUpload), 0, View(frame, BlockBuffer::TimestepBf16), 0, 512)?;
+    if (owner.timed) { discard Timestamp(ref recording); }
+    BlockStage[13] schedule = [BlockStage::WidenTimestep, BlockStage::Modulate,
+        BlockStage::Normalize, BlockStage::Project, BlockStage::PositionMainQuery,
+        BlockStage::PositionMainKey, BlockStage::Attend, BlockStage::ProjectAttention,
+        BlockStage::Residual, BlockStage::NormalizeFfn, BlockStage::ProjectHidden,
+        BlockStage::GateHidden, BlockStage::ProjectOutput];
+    for (index in 0..13) {
+        RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Main);
+        if (owner.timed) { discard Timestamp(ref recording); }
+    }
+    if (chain != 0) {
+        CopyBytes(ref recording, View(frame, BlockBuffer::Attention), 0, View(frame, BlockBuffer::Joint), 0, 16220160)?;
+    }
+    if (owner.timed) { discard Timestamp(ref recording); }
+    // Later legacy/session consumers start their own access ledger.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    return Result::Ok();
+}
+
+Result<void, VulkanError> RecordPrefix(ref Recording recording, ref BlockOwner owner,
+    BlockFrame frame, uint32 stage, uint32 resident)
+{
+    // Explicit visibility across recordings, including legacy consumers/producers.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    if (resident == 1) {
+        CopyBytes(ref recording, View(frame, BlockBuffer::Attention), 0, View(frame, BlockBuffer::ResidentBoundary), 0, 15728640)?;
+    }
+    if (resident != 0) {
+        CopyBytes(ref recording, View(frame, BlockBuffer::ResidentBoundary), 0, View(frame, BlockBuffer::Input), 0, 15728640)?;
+    }
+    if (resident == 0) {
+        RecordIngress(ref recording, ref owner, frame, 3932160, 256, owner.timed)?;
+    } else {
+        if (owner.timed) { discard Timestamp(ref recording); }
+    }
+    if (owner.timed) { discard Timestamp(ref recording); }
+    if (resident == 0) { Capture(ref recording, frame, stage, 0)?; }
+    BlockStage[5] schedule = [BlockStage::Modulate, BlockStage::Normalize,
+        BlockStage::Project, BlockStage::PositionQuery, BlockStage::PositionKey];
+    for (index in 0..5) {
+        RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Noise);
+        if (owner.timed) { discard Timestamp(ref recording); }
+        Capture(ref recording, frame, stage, (index + 1) as uint32)?;
+    }
+    // Publish writes for later C/Concept compute and transfer consumers.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    return Result::Ok();
+}
+
+enum TailSource { Contiguous(BlockBuffer buffer), HiddenW3, }
+record struct TailCapture { uint32 boundary; TailSource source; uint64 bytes; };
+
+Result<Option<TailCapture>, VulkanError> PlanAttentionCapture(uint32 stage)
+{
+    return match (stage) {
+        0 => Result::Ok(Option::None),
+        1 => Result::Ok(Option::Some(TailCapture{2, TailSource::Contiguous(BlockBuffer::Attention), 15728640})),
+        2 => Result::Ok(Option::Some(TailCapture{2, TailSource::Contiguous(BlockBuffer::AttentionProjection), 15728640})),
+        3 => Result::Ok(Option::Some(TailCapture{2, TailSource::Contiguous(BlockBuffer::AttentionResidual), 15728640})),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+Result<Option<TailCapture>, VulkanError> PlanFfnCapture(uint32 stage)
+{
+    return match (stage) {
+        0 => Result::Ok(Option::None),
+        1 => Result::Ok(Option::Some(TailCapture{0, TailSource::Contiguous(BlockBuffer::NormAudit), 15728640})),
+        2 => Result::Ok(Option::Some(TailCapture{0, TailSource::Contiguous(BlockBuffer::Modulated), 15728640})),
+        3 => Result::Ok(Option::Some(TailCapture{1, TailSource::Contiguous(BlockBuffer::Qkv), 41943040})),
+        4 => Result::Ok(Option::Some(TailCapture{1, TailSource::HiddenW3, 41943040})),
+        5 => Result::Ok(Option::Some(TailCapture{2, TailSource::Contiguous(BlockBuffer::Qkv), 41943040})),
+        6 => Result::Ok(Option::Some(TailCapture{3, TailSource::Contiguous(BlockBuffer::Input), 15728640})),
+        7 => Result::Ok(Option::Some(TailCapture{3, TailSource::Contiguous(BlockBuffer::Attention), 15728640})),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+Result<void, VulkanError> CaptureTail(ref Recording recording, BlockFrame frame,
+    Option<TailCapture> plan, uint32 boundary)
+{
+    match (plan) {
+        Option::Some(capture) => {
+            if (capture.boundary != boundary) { return Result::Ok(); }
+            match (capture.source) {
+                TailSource::Contiguous(buffer) => {
+                    CopyBytes(ref recording, View(frame, buffer), 0, View(frame, BlockBuffer::AuditReadback), 0, capture.bytes)?;
+                }
+                TailSource::HiddenW3 => {
+                    CopyBytes(ref recording, View(frame, BlockBuffer::Attention), 0, View(frame, BlockBuffer::AuditReadback), 0, 15728640)?;
+                    CopyBytes(ref recording, View(frame, BlockBuffer::AttentionProjection), 0, View(frame, BlockBuffer::AuditReadback), 15728640, 15728640)?;
+                    CopyBytes(ref recording, View(frame, BlockBuffer::NormAudit), 0, View(frame, BlockBuffer::AuditReadback), 31457280, 10485760)?;
+                }
+            }
+        }
+        Option::None => { }
+    }
+    return Result::Ok();
+}
+Result<void, VulkanError> RecordAttention(ref Recording recording, ref BlockOwner owner,
+    BlockFrame frame, Option<TailCapture> capture)
+{
+    BlockStage[3] schedule = [BlockStage::Attend, BlockStage::ProjectAttention, BlockStage::Residual];
+    for (index in 0..3) { RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Noise); }
+    CaptureTail(ref recording, frame, capture, 2)?;
+    match (capture) {
+        Option::Some(plan) => {
+            CopyBytes(ref recording, View(frame, BlockBuffer::Audit), 0, View(frame, BlockBuffer::AuditReadback), 15728640, 256)?;
+        }
+        Option::None => { }
+    }
+    return Result::Ok();
+}
+Result<void, VulkanError> RecordFfn(ref Recording recording, ref BlockOwner owner,
+    BlockFrame frame, Option<TailCapture> capture)
+{
+    BlockStage[4] schedule = [BlockStage::NormalizeFfn, BlockStage::ProjectHidden, BlockStage::GateHidden, BlockStage::ProjectOutput];
+    for (index in 0..4) {
+        RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Noise);
+        CaptureTail(ref recording, frame, capture, index as uint32)?;
+    }
+    return Result::Ok();
+}
+
+bool TakeFlag(ref BlockOwner owner, uint32 flag)
+{
+    if ((owner.flags & flag) == 0) { return false; }
+    owner.flags = owner.flags & ~flag;
+    return true;
+}
+
+Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, BlockProgram program,
+    uint32 elements, uint32 stage, uint32 resident)
+{
+    owner.detail = -6912;
+    if (program != BlockProgram::Ingress and not owner.binding.valid) { return Result::Error(ErrorFromCode(-6912)); }
+    owner.detail = -6914;
+    Option<TailCapture> capture = Option::None;
+    if (program == BlockProgram::Attention) { capture = PlanAttentionCapture(stage)?; }
+    if (program == BlockProgram::Ffn) { capture = PlanFfnCapture(stage)?; }
+    owner.detail = -6910;
+    if (owner.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    DrainBlock(ref owner)?;
+    owner.detail = -6908;
+    if (TakeFlag(ref owner, 1)) { return Result::Error(ErrorFromCode(-6908)); }
+    uint32 queries = 0;
+    if (program == BlockProgram::PreAttention and owner.timed) { queries = 7; }
+    bool wholeSpan = program == BlockProgram::Attention or program == BlockProgram::Ffn or program == BlockProgram::Context;
+    if (wholeSpan and owner.timed) { queries = 2; }
+    if (program == BlockProgram::Main and owner.timed) { queries = 16; }
+    owned Recording recording = BeginRecordingOn(owner.context.view, queries)?;
+    owner.recordings = owner.recordings + 1;
+    if (TakeFlag(ref owner, 8)) {
+        if (program != BlockProgram::Closed) { owner.detail = -6914; }
+        return Result::Error(ErrorFromCode(owner.detail));
+    }
+    if (wholeSpan) {
+        // A previous recording may have been produced by another owner or a
+        // legacy audit submission; this recording starts a fresh access ledger.
+        ConceptVkCmdBarrier(recording.device, recording.commands,
+            ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+        if (owner.timed) { discard Timestamp(ref recording); }
+    }
+    match (program) {
+    BlockProgram::Closed => {
+        CopyBytes(ref recording, View(frame, BlockBuffer::InputUpload), 0, View(frame, BlockBuffer::Input), 0, (elements as uint64) * 4)?;
+        Binding[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Input)), WriteBuffer(1, View(frame, BlockBuffer::Output)), WriteBuffer(2, View(frame, BlockBuffer::Audit))];
+        uint32[2] push = [elements, stage];
+        DispatchBlock(ref recording, ref owner, 6, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), (elements + 255u) / 256u, 1);
+        CopyBytes(ref recording, View(frame, BlockBuffer::Output), 0, View(frame, BlockBuffer::OutputReadback), 0, (elements as uint64) * 4)?;
+        if (stage != 0) { CopyBytes(ref recording, View(frame, BlockBuffer::Audit), 0, View(frame, BlockBuffer::AuditReadback), 0, (stage as uint64) * 4)?; }
+    }
+    BlockProgram::PreAttention => { RecordPrefix(ref recording, ref owner, frame, stage, resident)?; }
+    BlockProgram::Ingress => {
+        RecordIngress(ref recording, ref owner, frame, elements, 0, false)?;
+        CopyBytes(ref recording, View(frame, BlockBuffer::Input), 0, View(frame, BlockBuffer::AuditReadback), 0, (elements as uint64) * 4)?;
+    }
+    BlockProgram::Attention => { RecordAttention(ref recording, ref owner, frame, capture)?; }
+    BlockProgram::Ffn => { RecordFfn(ref recording, ref owner, frame, capture)?; }
+    BlockProgram::Context => { RecordContext(ref recording, ref owner, frame, resident)?; }
+    BlockProgram::Main => { RecordMain(ref recording, ref owner, frame, resident)?; }
+    }
+    if (wholeSpan and owner.timed) { discard Timestamp(ref recording); }
+    if (TakeFlag(ref owner, 16)) { return Result::Error(ErrorFromCode(-6908)); }
+    owner.detail = -6909;
+    if (TakeFlag(ref owner, 2)) { return Result::Error(ErrorFromCode(-6909)); }
+    owned Submission submission = Submit(move recording)?;
+    owner.submissions = owner.submissions + 1;
+    Option<owned Submission> pending = Option::Some(move submission);
+    owner.pending = move pending;
+    owner.detail = -6910;
+    if (TakeFlag(ref owner, 4)) { return Result::Error(ErrorFromCode(-6910)); }
+    ref Submission work = OptionValue(ref owner.pending);
+    owner.waits = owner.waits + 1;
+    Wait(ref work)?;
+    if (program == BlockProgram::PreAttention and owner.timed) {
+        for (index in 0..6) {
+            double elapsed = ElapsedNanoseconds(ref const work, index as uint32, (index + 1) as uint32)?;
+            owner.timings[index] = TruncTo<uint64>(elapsed)!;
+        }
+    }
+    if (wholeSpan and owner.timed) {
+        double elapsed = ElapsedNanoseconds(ref const work, 0, 1)?;
+        int timing = 6;
+        if (program == BlockProgram::Ffn) { timing = 7; }
+        if (program == BlockProgram::Context) { timing = 8; }
+        owner.timings[timing] = TruncTo<uint64>(elapsed)!;
+    }
+    owner.detail = 0;
+    return Result::Ok();
+}
+
+int BlockCode(ref BlockOwner owner, Result<void, VulkanError> result)
+{
+    match (result) {
+        Result::Ok => { return 0; }
+        Result::Error(error) => {
+            int code = CodeFromError(error);
+            if (code == -4) { owner.deviceLost = true; }
+            return owner.detail;
+        }
+    }
+    return -6908;
+}
+void DisposeBlock(owned BlockOwner owner) { }
+
+// C observes the owner through explicit operations, never Option/Result tags.
+// Storage construction/destruction remains in the small C11 allocation seam.
+export "C" uint64 PromBlockRecordings(ref const BlockOwner owner) { return owner.recordings; }
+export "C" uint64 PromBlockSubmissions(ref const BlockOwner owner) { return owner.submissions; }
+export "C" uint64 PromBlockWaits(ref const BlockOwner owner) { return owner.waits; }
+export "C" uint64 PromBlockTiming(ref const BlockOwner owner, int index) { return owner.timings[index]; }
+export "C" bool PromBlockDeviceLost(ref const BlockOwner owner) { return owner.deviceLost; }
+export "C" VkDevice PromBlockDevice(ref const BlockOwner owner) { return owner.context.view.device; }
+export "C" void PromBlockSetFlags(ref BlockOwner owner, uint32 flags) { owner.flags = flags; }
+export "C" uint32 PromBlockFlags(ref const BlockOwner owner) { return owner.flags; }
+export "C" bool PromBlockQuarantined(ref const BlockOwner owner)
+{
+    return match (ref const owner.pending) {
+        Option::Some(work) => not work.waited,
+        Option::None => false,
+    };
+}
+export "C" int PromBlockDrain(ref BlockOwner owner)
+{
+    owner.detail = -6910;
+    int code = BlockCode(ref owner, DrainBlock(ref owner));
+    if (code == 0 and (owner.binding.phase == WeightPhase::Failed or owner.binding.phase == WeightPhase::Uncertain)) {
+        DropWeightCandidates(ref owner);
+    }
+    return code;
+}
+export "C" int PromBlockAllocate(ref BlockOwner owner, usize bytes, uint32 placement)
+{
+    Placement where = Placement::Device;
+    if (placement == 1) { where = Placement::Upload; }
+    if (placement == 2) { where = Placement::Readback; }
+    if (placement == 3) { where = Placement::Shared; }
+    return match (AllocateBlockBuffer(ref owner, bytes, where)) {
+        Result::Ok(index) => index,
+        Result::Error(error) => -1,
+    };
+}
+export "C" VkBuffer PromBlockBuffer(ref const BlockOwner owner, int index)
+{
+    return OptionValue(ref const owner.buffers[index]).buffer;
+}
+export "C" VkDeviceMemory PromBlockMemory(ref const BlockOwner owner, int index)
+{
+    return OptionValue(ref const owner.buffers[index]).memory;
+}
+export "C" int PromBlockFindBuffer(ref const BlockOwner owner, VkBuffer buffer)
+{
+    for (index in 0..128) {
+        match (ref const owner.buffers[index]) {
+            Option::Some(entry) => { if (entry.buffer == buffer) { return index; } }
+            Option::None => { }
+        }
+    }
+    return -1;
+}
+export "C" bool PromBlockRelease(ref BlockOwner owner, int index)
+{
+    return match (ReleaseBlockBuffer(ref owner, index)) { Result::Ok => true, Result::Error(error) => false, };
+}
+export "C" bool PromBlockLoad(ref BlockOwner owner, PromBlockHost host,
+    int slot, uint32 kernel, uint32 bindings, uint32 pushBytes)
+{
+    return match (LoadBlockPipeline(ref owner, host, slot, kernel, bindings, pushBytes)) {
+        Result::Ok => true, Result::Error(error) => false,
+    };
+}
+export "C" int PromBlockRun(ref BlockOwner owner, ref const BlockFrame frame, uint32 mode,
+    uint32 elements, uint32 stage, uint32 resident)
+{
+    if (mode > 6 or resident > 2) { return -6914; }
+    BlockProgram program = BlockProgram::Closed;
+    if (mode == 1) { program = BlockProgram::PreAttention; }
+    if (mode == 2) { program = BlockProgram::Ingress; }
+    if (mode == 3) { program = BlockProgram::Attention; }
+    if (mode == 4) { program = BlockProgram::Ffn; }
+    if (mode == 5) { program = BlockProgram::Context; }
+    if (mode == 6) { program = BlockProgram::Main; }
+    return BlockCode(ref owner, RunBlock(ref owner, frame, program, elements, stage, resident));
+}
+
+export "C" bool PromBlockRecordStage(ref Recording recording, ref BlockOwner owner,
+    ref const BlockFrame frame, uint32 role)
+{
+    if (role >= 40) {
+        match (DecodeMainStage(role)) {
+            Result::Ok(stage) => { RecordStage(ref recording, ref owner, frame, stage, BlockDomain::Main); return true; }
+            Result::Error(error) => { return false; }
+        }
+    }
+    if (role >= 20) {
+        match (DecodeContextStage(role)) {
+            Result::Ok(stage) => { RecordStage(ref recording, ref owner, ContextFrame(frame), stage, BlockDomain::Context); return true; }
+            Result::Error(error) => { return false; }
+        }
+    }
+    match (DecodeBlockStage(role)) {
+        Result::Ok(stage) => { RecordStage(ref recording, ref owner, frame, stage, BlockDomain::Noise); return true; }
+        Result::Error(error) => { return false; }
+    }
+    return false;
+}
+
+// Borrowed only after a successful timed run, until the next drain/run.
+export "C" VkQueryPool PromBlockQueries(ref const BlockOwner owner)
+{
+    return OptionValue(ref const owner.pending).queries;
+}
+export "C" bool PromBlockMainGroups(ref BlockOwner owner, uint32 groups)
+{
+    if (groups != 31680 and groups != 3960) { return false; }
+    owner.mainAttentionGroups = groups;
+    return true;
+}
+// Session streams have one owner; native packets below this seam are borrows.
+enum StreamRole { Image, Context, Joint, }
+record struct StreamVersion { uint64 generation; uint64 producer; uint64 output; bool valid; };
+enum StreamTransfer {
+    Capture(StreamRole role, BufferRange source, uint64 producer, uint64 output),
+    Compose(uint64 image, uint64 context),
+}
+class SessionOwner
+{
+public:
+    owned BorrowedContext context;
+    owned Buffer<byte> image;
+    owned Buffer<byte> text;
+    owned Buffer<byte> joint;
+    StreamVersion[3] streams;
+    Option<owned Submission> pending;
+    bool deviceLost;
+    bool jointWriting;
+    uint32 flags;
+    int detail;
+    uint64 imageGeneration;
+    uint64 contextGeneration;
+    uint64 compositions;
+};
+Result<SessionOwner, VulkanError> CreateSession(DeviceBorrow device, uint64 imageBytes,
+    uint64 contextBytes, uint64 jointBytes, uint32 fault)
+{
+    if (imageBytes != 15728640 or contextBytes != 491520 or jointBytes != 16220160) {
+        return Result::Error(ErrorFromCode(-6923));
+    }
+    owned BorrowedContext context = BorrowDevice(device)?;
+    owned Buffer<byte> image = CreateBufferOn<byte>(context.view, imageBytes as usize, Placement::Device)?;
+    if (fault == 1) { return Result::Error(ErrorFromCode(-6905)); }
+    owned Buffer<byte> text = CreateBufferOn<byte>(context.view, contextBytes as usize, Placement::Device)?;
+    if (fault == 2) { return Result::Error(ErrorFromCode(-6905)); }
+    owned Buffer<byte> joint = CreateBufferOn<byte>(context.view, jointBytes as usize, Placement::Device)?;
+    if (fault == 4) { return Result::Error(ErrorFromCode(-6905)); }
+    StreamVersion[3] streams = [StreamVersion{0,0,0,false} ...];
+    Option<owned Submission> pending = Option::None;
+    owned SessionOwner owner = SessionOwner{move context, move image, move text, move joint,
+        streams, move pending, false, false, 0, 0, 0, 0, 0};
+    return Result::Ok(move owner);
+}
+int StreamIndex(StreamRole role)
+{
+    return match (role) { StreamRole::Image => 0, StreamRole::Context => 1, StreamRole::Joint => 2, };
+}
+BufferRange SessionView(ref const SessionOwner owner, StreamRole role)
+{
+    return match (role) {
+        StreamRole::Image => BufferRange{owner.image.buffer,(owner.image.count as uint64)},
+        StreamRole::Context => BufferRange{owner.text.buffer,(owner.text.count as uint64)},
+        StreamRole::Joint => BufferRange{owner.joint.buffer,(owner.joint.count as uint64)},
+    };
+}
+bool JointValid(ref const SessionOwner owner)
+{
+    return owner.streams[2].valid and not owner.jointWriting and owner.streams[0].valid and owner.streams[1].valid
+        and owner.imageGeneration == owner.streams[0].generation
+        and owner.contextGeneration == owner.streams[1].generation;
+}
+Result<void, VulkanError> DrainSession(ref SessionOwner owner)
+{
+    match (ref owner.pending) { Option::Some(work) => { Wait(ref work)?; } Option::None => { } }
+    owner.pending = Option::None;
+    return Result::Ok();
+}
+bool SessionFlag(ref SessionOwner owner, uint32 flag)
+{
+    if ((owner.flags & flag) == 0) { return false; }
+    owner.flags = owner.flags & ~flag;
+    return true;
+}
+Result<void, VulkanError> TransferStream(ref SessionOwner owner, StreamTransfer plan)
+{
+    owner.detail = -6926;
+    if (owner.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    DrainSession(ref owner)?;
+    owner.detail = -6924;
+    if (owner.jointWriting) { return Result::Error(ErrorFromCode(-6924)); }
+    StreamRole destination = StreamRole::Joint;
+    uint64 producer = 0;
+    uint64 output = 0;
+    match (plan) {
+        StreamTransfer::Capture(role, source, block, generation) => {
+            owner.detail = -6925;
+            if (role == StreamRole::Joint or block == 0 or generation == 0) { return Result::Error(ErrorFromCode(-6925)); }
+            destination = role; producer = block; output = generation;
+            if (source.bytes < SessionView(ref const owner, role).bytes) { return Result::Error(ErrorFromCode(-6925)); }
+        }
+        StreamTransfer::Compose(image, context) => {
+            if (not owner.streams[0].valid or not owner.streams[1].valid
+                or image == 0 or context == 0 or image != owner.streams[0].generation or context != owner.streams[1].generation) {
+                return Result::Error(ErrorFromCode(-6924));
+            }
+        }
+    }
+    int index = StreamIndex(destination);
+    StreamVersion previous = owner.streams[index];
+    owner.detail = -6924;
+    if (previous.generation == 0xffffffffffffffff) { return Result::Error(ErrorFromCode(-6924)); }
+    owner.detail = -6908;
+    if (SessionFlag(ref owner, 1)) { return Result::Error(ErrorFromCode(-6908)); }
+    owned Recording recording = BeginRecordingOn(owner.context.view, 0)?;
+    // Producer submissions may belong to the model owner or legacy adapters.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    match (plan) {
+        StreamTransfer::Capture(role, source, block, generation) => {
+            BufferRange target = SessionView(ref const owner, role);
+            CopyBytes(ref recording, source, 0, target, 0, target.bytes)?;
+        }
+        StreamTransfer::Compose(image, context) => {
+            BufferRange imageView = SessionView(ref const owner, StreamRole::Image);
+            BufferRange textView = SessionView(ref const owner, StreamRole::Context);
+            BufferRange jointView = SessionView(ref const owner, StreamRole::Joint);
+            CopyBytes(ref recording, imageView, 0, jointView, 0, imageView.bytes)?;
+            CopyBytes(ref recording, textView, 0, jointView, imageView.bytes, textView.bytes)?;
+        }
+    }
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    owner.detail = -6909;
+    if (SessionFlag(ref owner, 2)) { return Result::Error(ErrorFromCode(-6909)); }
+    // A real submission may overwrite bytes even if completion is unobserved.
+    // Pre-submit injected failures retain the old stream; submitted ones do not.
+    owner.streams[index] = StreamVersion{previous.generation,previous.producer,previous.output,false};
+    owned Submission submission = Submit(move recording)?;
+    Option<owned Submission> pending = Option::Some(move submission);
+    owner.pending = move pending;
+    owner.detail = -6926;
+    if (SessionFlag(ref owner, 4)) { return Result::Error(ErrorFromCode(-6926)); }
+    ref Submission work = OptionValue(ref owner.pending);
+    Wait(ref work)?;
+    owner.streams[index] = StreamVersion{previous.generation + 1,producer,output,true};
+    match (plan) {
+        StreamTransfer::Compose(image, context) => {
+            owner.imageGeneration = image; owner.contextGeneration = context;
+            owner.compositions = owner.compositions + 1;
+        }
+        StreamTransfer::Capture(role, source, block, generation) => { }
+    }
+    owner.detail = 0;
+    return Result::Ok();
+}
+int SessionCode(ref SessionOwner owner, Result<void,VulkanError> result)
+{
+    match (result) {
+        Result::Ok => { return 0; }
+        Result::Error(error) => {
+            if (CodeFromError(error) == -4) { owner.deviceLost = true; }
+            return owner.detail;
+        }
+    }
+    return -6926;
+}
+void DisposeSession(owned SessionOwner owner) { }
+// Read-only packet projection. Only the trusted adapter supplies IDs 1..3.
+int SessionPacketIndex(uint32 role)
+{
+    assert(role >= 1 and role <= 3, "closed session stream ID");
+    return (role - 1) as int;
+}
+export "C" VkBuffer PromSessionBuffer(ref const SessionOwner owner, uint32 role)
+{
+    return match (role) { 1 => owner.image.buffer, 2 => owner.text.buffer, _ => owner.joint.buffer, };
+}
+export "C" uint64 PromSessionBytes(ref const SessionOwner owner, uint32 role)
+{
+    return match (role) { 1 => (owner.image.count as uint64), 2 => (owner.text.count as uint64), _ => (owner.joint.count as uint64), };
+}
+export "C" uint64 PromSessionGeneration(ref const SessionOwner owner, uint32 role) { return owner.streams[SessionPacketIndex(role)].generation; }
+export "C" uint64 PromSessionProducer(ref const SessionOwner owner, uint32 role) { return owner.streams[SessionPacketIndex(role)].producer; }
+export "C" uint64 PromSessionOutput(ref const SessionOwner owner, uint32 role) { return owner.streams[SessionPacketIndex(role)].output; }
+export "C" bool PromSessionValid(ref const SessionOwner owner, uint32 role)
+{
+    if (owner.deviceLost) { return false; }
+    if (role == 3) { return JointValid(ref const owner); }
+    return owner.streams[SessionPacketIndex(role)].valid;
+}
+export "C" bool PromSessionQuarantined(ref const SessionOwner owner)
+{
+    return match (ref const owner.pending) { Option::Some(work) => not work.waited, Option::None => false, };
+}
+export "C" uint64 PromSessionImageGeneration(ref const SessionOwner owner) { return owner.imageGeneration; }
+export "C" uint64 PromSessionContextGeneration(ref const SessionOwner owner) { return owner.contextGeneration; }
+export "C" uint64 PromSessionCompositions(ref const SessionOwner owner) { return owner.compositions; }
+export "C" void PromSessionInject(ref SessionOwner owner, uint32 flags) { owner.flags = owner.flags | flags; }
+export "C" bool PromSessionDeviceLost(ref const SessionOwner owner) { return owner.deviceLost; }
+export "C" int PromSessionDrain(ref SessionOwner owner)
+{
+    owner.detail = -6926;
+    return SessionCode(ref owner, DrainSession(ref owner));
+}
+export "C" int PromSessionCapture(ref SessionOwner owner, uint32 role, VkBuffer buffer, uint64 bytes, uint64 producer, uint64 output)
+{
+    if (role < 1 or role > 2) { return -6925; }
+    StreamRole selected = StreamRole::Image;
+    if (role == 2) { selected = StreamRole::Context; }
+    return SessionCode(ref owner, TransferStream(ref owner, StreamTransfer::Capture(selected,BufferRange{buffer,bytes},producer,output)));
+}
+export "C" int PromSessionCompose(ref SessionOwner owner, uint64 image, uint64 context)
+{
+    return SessionCode(ref owner, TransferStream(ref owner, StreamTransfer::Compose(image,context)));
+}
+export "C" bool PromSessionBeginJoint(ref SessionOwner owner, uint64 image, uint64 context, uint64 joint)
+{
+    if (not JointValid(ref const owner) or joint == 0 or joint != owner.streams[2].generation
+        or image != owner.imageGeneration or context != owner.contextGeneration or owner.streams[2].generation == 0xffffffffffffffff) { return false; }
+    StreamVersion previous = owner.streams[2];
+    owner.streams[2] = StreamVersion{previous.generation,previous.producer,previous.output,false};
+    owner.jointWriting = true;
+    return true;
+}
+export "C" bool PromSessionEndJoint(ref SessionOwner owner, bool commit, bool uncertain, uint64 producer, uint64 output)
+{
+    if (not owner.jointWriting) { return false; }
+    StreamVersion previous = owner.streams[2];
+    owner.jointWriting = false;
+    if (commit) {
+        if (producer == 0 or output == 0) { return false; }
+        owner.streams[2] = StreamVersion{previous.generation+1,producer,output,true};
+    } else {
+        owner.streams[2] = StreamVersion{previous.generation,previous.producer,previous.output,not uncertain};
+    }
+    return true;
+}
+export "C" int PromSessionReset(ref SessionOwner owner)
+{
+    owner.detail = -6926;
+    int code = SessionCode(ref owner,DrainSession(ref owner));
+    if (code != 0 or owner.jointWriting) { return -6926; }
+    for (index in 0..3) { owner.streams[index] = StreamVersion{owner.streams[index].generation,0,0,false}; }
+    owner.imageGeneration = 0; owner.contextGeneration = 0;
+    return 0;
+}
+export "C" bool PromSessionJointWriting(ref const SessionOwner owner) { return owner.jointWriting; }
+
+// One synchronous binding protocol. Replacement keeps a valid old set; an
+// in-place transfer invalidates that set as soon as any overwrite is submitted.
+enum WeightChange { Initial, Replacement, InPlace, }
+enum WeightPhase { Empty, Bound, Uploading, Ready, Failed, Uncertain, }
+[[repr(C)]]
+record struct WeightSpec {
+    uint32 slot; VkBuffer buffer; uint64 capacity; uint64 bytes;
+    uint64 content; uint64 layout;
+};
+[[repr(C)]]
+record struct WeightPlan { WeightSpec[13] items; uint32 count; };
+record struct WeightVersion {
+    VkBuffer buffer; uint64 capacity; int index; uint64 bytes;
+    uint64 content; uint64 layout;
+};
+class WeightBinding {
+public:
+    WeightPhase phase;
+    WeightChange change;
+    bool valid;
+    bool touched;
+    uint32 count;
+    uint32 completed;
+    uint64 generation;
+    uint64 descriptors;
+    uint64 allocations;
+    Option<WeightSpec>[13] plan;
+    Option<WeightVersion>[13] active;
+    Option<WeightVersion>[13] candidate;
+};
+owned WeightBinding CreateWeightBinding()
+{
+    Option<WeightSpec>[13] plan = [Option::None ...];
+    Option<WeightVersion>[13] active = [Option::None ...];
+    Option<WeightVersion>[13] candidate = [Option::None ...];
+    return WeightBinding{WeightPhase::Empty, WeightChange::Initial, false, false,
+        0, 0, 0, 0, 0, plan, active, candidate};
+}
+void DropWeightCandidates(ref BlockOwner owner)
+{
+    if (owner.binding.change == WeightChange::Replacement) {
+        for (index in 0..(owner.binding.count as int)) {
+            int buffer = OptionValue(ref const owner.binding.candidate[index]).index;
+            if (buffer >= 0) { owner.buffers[buffer] = Option::None; }
+        }
+    }
+    for (index in 0..13) { owner.binding.candidate[index] = Option::None; }
+    owner.binding.count = 0;
+}
+Result<void,VulkanError> BeginWeights(ref BlockOwner owner, WeightChange change, ref const WeightPlan plan)
+{
+    owner.detail = -6910;
+    DrainBlock(ref owner)?;
+    if (owner.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    DropWeightCandidates(ref owner);
+    owner.binding.change = change;
+    owner.binding.touched = false;
+    owner.binding.completed = 0;
+    owner.detail = -6904;
+    if (plan.count == 0 or plan.count > 13 or owner.binding.generation == 0xffffffffffffffff) {
+        return Result::Error(ErrorFromCode(-6904));
+    }
+    uint32 used = 0;
+    for (index in 0..(plan.count as int)) {
+        WeightSpec spec = plan.items[index];
+        if (spec.slot >= 13 or spec.bytes == 0 or spec.bytes > spec.capacity
+            or spec.content == 0 or spec.layout == 0) { return Result::Error(ErrorFromCode(-6904)); }
+        uint32 bit = 1u << spec.slot;
+        if ((used & bit) != 0) { return Result::Error(ErrorFromCode(-6904)); }
+        used = used | bit;
+        if (change == WeightChange::Initial) {
+            if (owner.binding.valid or PromBlockFindBuffer(ref const owner,spec.buffer) < 0) { return Result::Error(ErrorFromCode(-6904)); }
+        } else {
+            bool same = match (ref const owner.binding.active[spec.slot as int]) {
+                Option::Some(active) => active.buffer == spec.buffer, Option::None => false,
+            };
+            if (not same) { return Result::Error(ErrorFromCode(-6904)); }
+            if (change == WeightChange::Replacement and not owner.binding.valid) { return Result::Error(ErrorFromCode(-6904)); }
+        }
+    }
+    owner.binding.change = change;
+    owner.binding.touched = false;
+    owner.binding.completed = 0;
+    owner.binding.phase = WeightPhase::Uploading;
+    for (index in 0..(plan.count as int)) {
+        WeightSpec spec = plan.items[index];
+        owner.binding.plan[index] = Option::Some(spec);
+        int buffer = PromBlockFindBuffer(ref const owner,spec.buffer);
+        VkBuffer handle = spec.buffer;
+        uint64 capacity = spec.capacity;
+        if (change == WeightChange::Replacement) {
+            owner.detail = -6905;
+            buffer = AllocateBlockBuffer(ref owner, spec.bytes as usize, Placement::Device)?;
+            handle = OptionValue(ref const owner.buffers[buffer]).buffer;
+            capacity = spec.bytes;
+            owner.binding.allocations = owner.binding.allocations + 1;
+        }
+        owner.binding.candidate[index] = Option::Some(WeightVersion{handle,capacity,buffer,spec.bytes,spec.content,spec.layout});
+        owner.binding.count = owner.binding.count + 1;
+    }
+    return Result::Ok();
+}
+Result<void,VulkanError> UploadWeight(ref BlockOwner owner, uint32 index, BufferRange staging, uint32 flags)
+{
+    owner.detail = -6904;
+    if (owner.binding.phase != WeightPhase::Uploading or index != owner.binding.completed
+        or index >= owner.binding.count) { return Result::Error(ErrorFromCode(-6904)); }
+    ref const WeightVersion target = OptionValue(ref const owner.binding.candidate[index as int]);
+    if (staging.bytes < target.bytes) { return Result::Error(ErrorFromCode(-6904)); }
+    owner.detail = -6910;
+    DrainBlock(ref owner)?;
+    owner.detail = -6908;
+    if ((flags & 1u) != 0) { return Result::Error(ErrorFromCode(-6908)); }
+    owned Recording recording = BeginRecordingOn(owner.context.view,0)?;
+    owner.recordings = owner.recordings + 1;
+    ConceptVkCmdBarrier(recording.device,recording.commands,
+        HostStage().raw | ComputeStage().raw | TransferStage().raw,1,TransferStage().raw);
+    CopyBytes(ref recording,staging,0,BufferRange{target.buffer,target.capacity},0,target.bytes)?;
+    ConceptVkCmdBarrier(recording.device,recording.commands,TransferStage().raw,1,ComputeStage().raw);
+    owner.detail = -6909;
+    if ((flags & 2u) != 0) { return Result::Error(ErrorFromCode(-6909)); }
+    owner.binding.touched = true;
+    if (owner.binding.change != WeightChange::Replacement) { owner.binding.valid = false; }
+    owned Submission submitted = Submit(move recording)?;
+    owner.submissions = owner.submissions + 1;
+    Option<owned Submission> pending = Option::Some(move submitted);
+    owner.pending = move pending;
+    owner.detail = -6910;
+    if ((flags & 4u) != 0) { return Result::Error(ErrorFromCode(-6910)); }
+    ref Submission work = OptionValue(ref owner.pending);
+    owner.waits = owner.waits + 1;
+    Wait(ref work)?;
+    owner.binding.completed = owner.binding.completed + 1;
+    if (owner.binding.completed == owner.binding.count) { owner.binding.phase = WeightPhase::Ready; }
+    return Result::Ok();
+}
+void AbortWeights(ref BlockOwner owner)
+{
+    if (owner.binding.change != WeightChange::Replacement and owner.binding.touched) { owner.binding.valid = false; }
+    owner.binding.phase = WeightPhase::Failed;
+    if (PromBlockQuarantined(ref const owner)) { owner.binding.phase = WeightPhase::Uncertain; }
+    else { DropWeightCandidates(ref owner); }
+}
+bool CommitWeights(ref BlockOwner owner)
+{
+    if (owner.binding.phase != WeightPhase::Ready or PromBlockQuarantined(ref const owner)) { return false; }
+    for (index in 0..(owner.binding.count as int)) {
+        int slot = OptionValue(ref const owner.binding.plan[index]).slot as int;
+        if (owner.binding.change == WeightChange::Replacement) {
+            ref const WeightVersion previous = OptionValue(ref const owner.binding.active[slot]);
+            if (previous.index >= 0) { owner.buffers[previous.index] = Option::None; }
+        }
+        owner.binding.active[slot] = owner.binding.candidate[index];
+        owner.binding.candidate[index] = Option::None;
+    }
+    owner.binding.count = 0;
+    owner.binding.generation = owner.binding.generation + 1;
+    owner.binding.descriptors = owner.binding.descriptors + 1;
+    owner.binding.phase = WeightPhase::Bound;
+    owner.binding.valid = true;
+    return true;
+}
+export "C" int PromWeightsBegin(ref BlockOwner owner, uint32 mode, ref const WeightPlan plan)
+{
+    WeightChange change = WeightChange::Initial;
+    if (mode == 1) { change = WeightChange::Replacement; }
+    if (mode == 2) { change = WeightChange::InPlace; }
+    int code = BlockCode(ref owner,BeginWeights(ref owner,change,ref const plan));
+    if (code != 0) { AbortWeights(ref owner); }
+    return code;
+}
+export "C" int PromWeightsUpload(ref BlockOwner owner, uint32 index, VkBuffer staging, uint64 bytes, uint32 flags)
+{
+    int code = BlockCode(ref owner,UploadWeight(ref owner,index,BufferRange{staging,bytes},flags));
+    if (code != 0) { AbortWeights(ref owner); }
+    return code;
+}
+export "C" void PromWeightsAbort(ref BlockOwner owner) { AbortWeights(ref owner); }
+export "C" bool PromWeightsCommit(ref BlockOwner owner) { return CommitWeights(ref owner); }
+export "C" bool PromWeightsValid(ref const BlockOwner owner) { return owner.binding.valid and not owner.deviceLost; }
+export "C" uint64 PromWeightsGeneration(ref const BlockOwner owner) { return owner.binding.generation; }
+export "C" uint64 PromWeightsDescriptors(ref const BlockOwner owner) { return owner.binding.descriptors; }
+export "C" uint64 PromWeightsAllocations(ref const BlockOwner owner) { return owner.binding.allocations; }
+export "C" uint32 PromWeightsState(ref const BlockOwner owner)
+{
+    if (PromBlockQuarantined(ref const owner)) { return 9; }
+    if (owner.binding.valid) { return 1; }
+    return match (owner.binding.phase) {
+        WeightPhase::Empty => 0, WeightPhase::Bound => 1, WeightPhase::Uploading => 3,
+        WeightPhase::Ready => 5, WeightPhase::Failed => 7, WeightPhase::Uncertain => 8,
+    };
+}
+export "C" bool PromWeightsView(ref const BlockOwner owner,uint32 slot,bool candidate,ref WeightSpec output)
+{
+    Option<WeightVersion> selected = owner.binding.active[slot as int];
+    if (candidate) {
+        for (index in 0..(owner.binding.count as int)) {
+            if (OptionValue(ref const owner.binding.plan[index]).slot == slot) { selected = owner.binding.candidate[index]; }
+        }
+    }
+    match (selected) {
+        Option::Some(view) => { output = WeightSpec{slot,view.buffer,view.capacity,view.bytes,view.content,view.layout}; return true; }
+        Option::None => { return false; }
+    }
+    return false;
+}
+// M11's legacy prefetch window retains its external allocation owner. This
+// imports only its completed binding view; it does not adopt foreign buffers.
+export "C" void PromWeightsExternal(ref BlockOwner owner,ref const WeightPlan plan,uint64 generation,uint64 descriptors)
+{
+    for (index in 0..(plan.count as int)) {
+        WeightSpec spec = plan.items[index];
+        int ownedIndex = PromBlockFindBuffer(ref const owner,spec.buffer);
+        owner.binding.active[spec.slot as int] = Option::Some(WeightVersion{spec.buffer,spec.capacity,ownedIndex,spec.bytes,spec.content,spec.layout});
+    }
+    owner.binding.generation = generation; owner.binding.descriptors = descriptors;
+    owner.binding.valid = true; owner.binding.phase = WeightPhase::Bound;
+}
+
+export "C" uint64 PromWeightsCandidateBytes(ref const BlockOwner owner)
+{
+    uint64 bytes = 0;
+    if (owner.binding.change == WeightChange::Replacement) {
+        for (index in 0..(owner.binding.count as int)) {
+            bytes = bytes + OptionValue(ref const owner.binding.candidate[index]).capacity;
+        }
+    }
+    return bytes;
+}

@@ -134,6 +134,7 @@ work/
 # Local verification logs
 tools/prometheus_phase0/out/
 
-# Concept package build products and checked deployment provenance.
+# Concept package build products (generated C, headers, provenance, objects).
 .native-build/
-!internal/prometheus/native/generated/*.provenance.json
+# Retired location: prevent accidental reintroduction of emitted compiler output.
+/internal/prometheus/native/generated/

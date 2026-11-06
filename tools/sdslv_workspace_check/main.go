@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/yuechen-li-dev/oct/internal/prometheus/shaderpackage"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/bench"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/conformance"
 )
@@ -27,13 +29,14 @@ type workspace struct {
 }
 
 type shaderAsset struct {
-	ID             uint32 `json:"id"`
-	Name           string `json:"name"`
-	Authority      string `json:"authority"`
-	SourceLanguage string `json:"source_language"`
-	Source         string `json:"source"`
-	Header         string `json:"header"`
+	ID              uint32 `json:"id"`
+	Name            string `json:"name"`
+	Authority       string `json:"authority"`
+	SourceLanguage  string `json:"source_language"`
+	Source          string `json:"source"`
+	Header          string `json:"header"`
 	ExternalPackage bool   `json:"external_package"`
+	EntryPoint      string `json:"entry_point"`
 }
 
 type computeImplementation struct {
@@ -425,6 +428,31 @@ func check(root string, inventory bool) error {
 	if err != nil {
 		return err
 	}
+	// The native registry is only a selector projection. Build/check the inert
+	// catalog through its owner, preserving object and imported-source digests.
+	packageRoot, err := os.MkdirTemp("", "sdslv-workspace-package-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(packageRoot)
+	if _, err := shaderpackage.Build(shaderpackage.BuildOptions{RepositoryRoot: root, SourceManifest: manifestPath, OutputRoot: packageRoot}); err != nil {
+		return fmt.Errorf("shader package: %w", err)
+	}
+	catalog, err := shaderpackage.Check(packageRoot)
+	if err != nil {
+		return fmt.Errorf("shader package: %w", err)
+	}
+	if err := checkNativeProjection(registry, m, catalog); err != nil {
+		return err
+	}
+	variants := map[uint32]shaderpackage.Variant{}
+	provenance := map[string]shaderpackage.Provenance{}
+	for _, variant := range catalog.Tables.Variants {
+		variants[variant.KernelID] = variant
+	}
+	for _, source := range catalog.Tables.Provenance {
+		provenance[source.VariantID] = source
+	}
 	seenIDs := map[uint32]string{}
 	seenSources := map[string]string{}
 	assetsByID := map[uint32]shaderAsset{}
@@ -467,9 +495,6 @@ func check(root string, inventory bool) error {
 		if err := mustExist(root, asset.Source); err != nil {
 			return err
 		}
-		if !asset.ExternalPackage && !strings.Contains(string(registry), `"`+asset.Source+`"`) {
-			return fmt.Errorf("registry does not own manifest source %s", asset.Source)
-		}
 		headerPath := filepath.Join(root, "internal", "prometheus", "native", filepath.FromSlash(asset.Header))
 		header, err := os.ReadFile(headerPath)
 		if err != nil {
@@ -484,6 +509,14 @@ func check(root string, inventory bool) error {
 		moduleHash, err := headerModuleHash(header)
 		if err != nil {
 			return fmt.Errorf("generated header %s: %w", asset.Header, err)
+		}
+		variant := variants[asset.ID]
+		source := provenance[variant.ID]
+		if variant.ID != fmt.Sprintf("kernel-%d-default", asset.ID) || variant.ArtifactSHA256 != moduleHash || source.Source != asset.Source {
+			return fmt.Errorf("shader %d package/header/source ownership drift", asset.ID)
+		}
+		if source.SourceSHA256 != "" && source.SourceSHA256 != fileHash(filepath.Join(root, filepath.FromSlash(asset.Source))) {
+			return fmt.Errorf("shader %d source digest drift: %s", asset.ID, asset.Source)
 		}
 		if inventory {
 			lines = append(lines, fmt.Sprintf("id=%d name=%s authority=%s source_sha256=%s module_sha256=%s source=%s header=%s", asset.ID, asset.Name, authority, fileHash(filepath.Join(root, filepath.FromSlash(asset.Source))), moduleHash, asset.Source, asset.Header))
@@ -586,6 +619,77 @@ func check(root string, inventory bool) error {
 		sort.Strings(lines)
 		for _, line := range lines {
 			fmt.Println(line)
+		}
+	}
+	return nil
+}
+
+// Read only the existing declarative selector macros, not C control flow or
+// shader source. Unknown/malformed rows fail rather than silently losing checks.
+func checkNativeProjection(registry []byte, manifest shaderManifest, catalog shaderpackage.Manifest) error {
+	row := regexp.MustCompile(`^\s*(META|META_DETAIL|REDUCTION_ASSET)\(([0-9]+),\s*"([^"]+)",\s*(.*)\),\s*$`)
+	meta := regexp.MustCompile(`^(PROM_SHADER_SOURCE_[A-Z]+),\s*"([^"]+)",\s*(.*)$`)
+	entry := regexp.MustCompile(`^"([^"]+)",`)
+	authority := regexp.MustCompile(`PROM_SHADER_AUTHORITY_(PRODUCTION|EXPERIMENTAL)`)
+	assets := map[uint32]shaderAsset{}
+	kernels := map[uint32]shaderpackage.Kernel{}
+	seen := map[uint32]bool{}
+	for _, asset := range manifest.ShaderAssets {
+		assets[asset.ID] = asset
+	}
+	for _, kernel := range catalog.Tables.Kernels {
+		kernels[kernel.ID] = kernel
+	}
+	for _, line := range strings.Split(string(registry), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "META(") && !strings.HasPrefix(trimmed, "META_DETAIL(") && !strings.HasPrefix(trimmed, "REDUCTION_ASSET(") {
+			continue
+		}
+		match := row.FindStringSubmatch(line)
+		if match == nil {
+			return fmt.Errorf("malformed native selector row: %s", trimmed)
+		}
+		value, err := strconv.ParseUint(match[2], 10, 32)
+		if err != nil {
+			return err
+		}
+		id := uint32(value)
+		if seen[id] {
+			return fmt.Errorf("duplicate native shader projection %d", id)
+		}
+		seen[id] = true
+		language, function, auth := "sdslv", "", "production"
+		if match[1] == "REDUCTION_ASSET" {
+			if parsed := entry.FindStringSubmatch(match[4]); parsed != nil {
+				function = parsed[1]
+			}
+		} else {
+			parsed := meta.FindStringSubmatch(match[4])
+			if parsed == nil {
+				return fmt.Errorf("malformed native shader metadata %d", id)
+			}
+			language = strings.ToLower(strings.TrimPrefix(parsed[1], "PROM_SHADER_SOURCE_"))
+			function = parsed[2]
+			claims := authority.FindAllStringSubmatch(parsed[3], -1)
+			if len(claims) != 1 {
+				return fmt.Errorf("native shader %d lacks one authority", id)
+			}
+			auth = strings.ToLower(claims[0][1])
+		}
+		asset, exists := assets[id]
+		kernel, packaged := kernels[id]
+		want := asset.Authority
+		if want == "" {
+			want = "production"
+		}
+		if !exists || !packaged || function == "" || asset.Name != match[3] || kernel.Name != asset.Name ||
+			asset.EntryPoint != function || asset.SourceLanguage != language || auth != want || kernel.Authority != want {
+			return fmt.Errorf("native shader projection %d disagrees with package-owned identity, entry, language, or authority", id)
+		}
+	}
+	for _, asset := range manifest.ShaderAssets {
+		if !asset.ExternalPackage && !seen[asset.ID] {
+			return fmt.Errorf("native selector lacks shader %d (%s)", asset.ID, asset.Name)
 		}
 	}
 	return nil

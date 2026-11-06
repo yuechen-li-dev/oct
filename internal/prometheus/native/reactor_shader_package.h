@@ -36,6 +36,11 @@ int prom_shader_package_open(const char* root, prom_shader_package** out_package
                              prom_shader_package_diagnostic* out_diagnostic);
 void prom_shader_package_destroy(prom_shader_package* package);
 
+/* Validate the host interface against the immutable selected package variant.
+   The small native selector intentionally need not duplicate interface data. */
+int prom_shader_package_validate_interface(const prom_shader_package* package, const char* variant_id,
+    uint32_t bindings, uint32_t push_bytes, prom_shader_package_diagnostic* diagnostic);
+
 /* Creates one exact selected module. The temporary object contents are released
    before this function returns. out_entry_point is package-owned and remains
    valid until prom_shader_package_destroy. */

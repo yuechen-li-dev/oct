@@ -8,6 +8,33 @@ The accepted intent-port capability works through the production Vulkan path,
 and the scoped regressions pass. The scope is standalone row-wise FP32 sum, max, and stable softmax, their public
 ABI, shared-device lifetime, and a working native consumer package.
 
+## Build-output cleanup follow-up
+
+The M1 evidence below originally used checked generated deployment files.
+The subsequent cleanup removes those six C/header/provenance snapshots from
+Git (5,790 lines, 242,520 bytes) and generates them under ignored
+`internal/prometheus/.native-build/generated/`. Native helpers emit and verify
+them before any C consumer compiles. Source manifests, integrity checks, shader
+build inputs, and historical numerical witnesses remain authoritative.
+
+The clean package entrypoint is now
+`go run ./tools/prometheus_concept -build-package`: it emits Concept source,
+checks source/output digests, and invokes the native manifest build. Direct
+`concept package build` consumes those emitted inputs. A clean-checkout source
+inventory check does not require disposable outputs to exist; the real build
+still requires and validates them.
+
+Cleanup verification: the Windows native build succeeds with the old package
+cache moved aside. All four freshly emitted C/header files are byte-identical
+to the prior checked deployment. The 26 reduction/softmax/SGEMM Vulkan tests,
+three SDSL-V module GPU cases, tooling tests, and tooling vet pass. The rebuilt
+C and provenance are ignored, including the retired output location. Historical
+numerical evidence and required shader fixtures are retained.
+
+The subsequent [RMSNorm M2 port](prometheus_concept_rmsnorm_m2.md) removes that
+operation's dependence on the legacy model state and includes its resident RoPE
+tail. Standalone legacy RoPE and the score consumer remain future port slices.
+
 ## Ownership after the port
 
 | Responsibility | Owner |
@@ -103,8 +130,7 @@ pushed by this milestone.
 ```powershell
 $env:CONCEPT_LIBRARY_ROOT = 'C:\Users\yuech\source\repos\Concept\libraries'
 $env:VULKAN_SDK = 'C:\VulkanSDK\1.4.350.0'
-concept package build internal/prometheus
-# Or bootstrap its driver from the sibling Concept checkout:
+# Emit source and build the manifest-owned archives from a clean checkout:
 go run ./tools/prometheus_concept -build-package
 ```
 

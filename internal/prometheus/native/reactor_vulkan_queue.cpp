@@ -3,6 +3,14 @@
 // teardown uses the same boundary and requires callers to stop admitting work.
 #include "reactor_vulkan.h"
 #include <mutex>
+
+// One callback identity per foreign device owner, shared by all Concept
+// attachments. The Vulkan library rejects conflicting submit authorities.
+extern "C" int32_t prom_vk_concept_queue_submit(void*, VkQueue queue, VkCommandBuffer commands, VkFence fence) {
+    VkSubmitInfo info{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    info.commandBufferCount = 1u; info.pCommandBuffers = &commands;
+    return prom_vk_queue_submit(queue, 1u, &info, fence);
+}
 #include <system_error>
 
 namespace { std::mutex queue_api; }

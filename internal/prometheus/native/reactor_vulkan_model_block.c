@@ -1,9 +1,17 @@
 #include "reactor_vulkan_runtime_internal.h"
+#include "reactor_concept_model_block.h"
 
 #if (defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) + \
      defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) + \
      defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)) > 1
 #error "DVT2 M5b experimental attention routes are mutually exclusive"
+#endif
+
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT) || \
+    defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || \
+    defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || \
+    defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
+#define PROM_MAIN_EXPERIMENTAL_EXECUTOR 1
 #endif
 
 #include <stdio.h>
@@ -36,8 +44,6 @@
 #define PROM_MODEL_BLOCK_M1D_GATE_SHADER_ID 35u
 #define PROM_MODEL_BLOCK_M1D_W2_RESIDUAL_SHADER_ID 36u
 #define PROM_MODEL_BLOCK_AUDIT_SUMMARY_SHADER_ID 37u
-#define PROM_MODEL_BLOCK_CONTEXT_QK_ROPE_SHADER_ID 38u
-#define PROM_MODEL_BLOCK_CONTEXT_ATTENTION_SHADER_ID 39u
 #define PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID 40u
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID 41u
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID 47u
@@ -112,22 +118,7 @@ typedef struct prom_model_block_m1b_head_constants {
   uint32_t head_width;
 } prom_model_block_m1b_head_constants;
 
-typedef struct prom_model_block_main_qk_constants {
-  float epsilon;
-  uint32_t token_count;
-  uint32_t head_count;
-  uint32_t head_width;
-  uint32_t segment_offset;
-  uint32_t image_tokens;
-} prom_model_block_main_qk_constants;
 
-typedef struct prom_model_block_context_qk_constants {
-  float epsilon;
-  uint32_t token_count;
-  uint32_t head_count;
-  uint32_t head_width;
-  uint32_t segment_offset;
-} prom_model_block_context_qk_constants;
 
 typedef struct prom_model_block_m1c_attention_constants {
   uint32_t token_count;
@@ -163,12 +154,6 @@ typedef struct prom_model_block_m1d_gate_constants {
   uint32_t reserved2;
 } prom_model_block_m1d_gate_constants;
 
-static const uint32_t k_prom_model_block_m1b_shader_ids[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT] = {
-    PROM_MODEL_BLOCK_M1B_INGRESS_SHADER_ID, PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID,
-    PROM_MODEL_BLOCK_M1B_NORM_SHADER_ID,
-    PROM_MODEL_BLOCK_M1B_QKV_SHADER_ID, PROM_MODEL_BLOCK_M1B_Q_ROPE_SHADER_ID,
-    PROM_MODEL_BLOCK_M1B_K_ROPE_SHADER_ID};
-
 /* Cache-manifest lexical order.  The native owner never guesses tensor
    layouts: the adapter presents this fixed declaration order after validating
    the names, shapes, individual SHA-256 values, and aggregate identity. */
@@ -181,11 +166,6 @@ static const uint64_t k_prom_model_block_m1b_weight_bytes[PROM_MODEL_BLOCK_MAX_W
    with the NoiseRefiner/MainTransformer portfolio. */
 static const uint32_t k_prom_context_shared_weight_slots[11] = {
     2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 10u, 11u, 12u};
-
-typedef struct prom_model_block_push_constants {
-  uint32_t element_count;
-  uint32_t audit_element_count;
-} prom_model_block_push_constants;
 
 static const uint32_t k_prom_model_block_steps[PROM_MODEL_BLOCK_MAX_STEPS] = {
     PROM_MODEL_BLOCK_STEP_BIND_PIPELINE,
@@ -213,9 +193,6 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
                                                 uint64_t requested_joint_generation,
                                                 uint32_t resident_chain_mode,
                                                 int32_t* out_detail);
-static int prom_context_refiner_record_execute(prom_reduction_runtime_state* state,
-                                               prom_model_block_state* block, int resident_input,
-                                               int32_t* out_detail);
 static int prom_context_refiner_record_static_audit(
     prom_reduction_runtime_state* state, prom_model_block_state* block, uint32_t execution_generation,
     int resident_input, int32_t* out_detail);
@@ -224,6 +201,9 @@ static int prom_context_refiner_record_static_audit(
 static const uint64_t k_prom_model_block_context_weight_bytes[11u] = {
     256ull, 29491200ull, 256ull, 88473600ull, 7680ull, 7680ull,
     78643200ull, 78643200ull, 78643200ull, 7680ull, 7680ull};
+
+static void prom_model_block_copy_active_portfolio(prom_model_block_state *block, uint32_t family,
+                                                   int save);
 
 static uint64_t prom_model_block_hash_u64(uint64_t hash, uint64_t value) {
   return prom_m40b_hash_u64(hash, value);
@@ -271,6 +251,8 @@ static uint64_t prom_model_block_weight_bytes(const prom_model_block_state* bloc
       if (!prom_model_block_add_bytes(&total, (uint64_t)block->prefetch_weights[index].device.size)) return 0u;
     }
   }
+  if (!prom_model_block_add_bytes(&total, block->binding_candidate_bytes))
+    return 0u;
   return total;
 }
 
@@ -307,15 +289,13 @@ static void prom_model_block_fill_evidence(const prom_model_block_state* block,
                     (uint64_t)block->context_w3.size;
   audit_bytes = (uint64_t)block->audit_device.size + (uint64_t)block->audit_readback.size;
   if (block->shared_owner != 0u) {
-    /* The shared target exposes bounded views, not additional allocations.
-       Exclude host staging and the four alias views from the device ceiling;
-       retain the original four-byte Main ingress reservation as a conservative
-       accounting floor so the established one-window ceiling is unchanged. */
+    /* Exclude host staging and the BF16 alias from the device ceiling.
+       The pinned predecessor and Context W3 own independent device storage.
+       Retain the original four-byte Main ingress reservation as a conservative
+       accounting floor. */
     reusable_bytes -= (uint64_t)block->input_upload.size +
                       (uint64_t)block->input_bf16_device.size +
-                      (uint64_t)block->resident_boundary_device.size +
-                      (uint64_t)block->context_unit.size +
-                      (uint64_t)block->context_w3.size;
+                      (uint64_t)block->context_unit.size;
     reusable_bytes += sizeof(uint32_t);
   }
   external_bytes = block->external_input_bytes + block->external_output_bytes;
@@ -567,6 +547,15 @@ static uint64_t prom_model_block_plan_identity(const prom_model_block_state* blo
   return hash;
 }
 
+static void prom_model_block_destroy_buffer(prom_reduction_runtime_state* state,
+    prom_model_block_state* block, prom_vk_buffer* buffer) {
+  if (block->concept_owner != NULL && prom_concept_block_release(block->concept_owner, buffer->buffer)) {
+    memset(buffer, 0, sizeof(*buffer));
+  } else {
+    prom_vk_destroy_buffer(state->device, buffer);
+  }
+}
+
 static int prom_model_block_create_buffer(prom_reduction_runtime_state* state,
                                           prom_model_block_state* block,
                                           prom_vk_buffer* buffer,
@@ -576,8 +565,22 @@ static int prom_model_block_create_buffer(prom_reduction_runtime_state* state,
                                           int map_memory) {
   VkResult result;
   if (state == NULL || block == NULL || buffer == NULL || size == 0u) return 0;
-  result = prom_vk_create_buffer(state->physical_device, state->device, block->test_flags, size,
-                                 usage, properties, map_memory, buffer);
+  if (block->concept_owner != NULL) {
+    uint32_t placement = 0u;
+    if (map_memory != 0) {
+      placement = (usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) != 0u ? 1u :
+          ((usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) != 0u ? 2u : 3u);
+    }
+    if (!prom_concept_block_allocate(block->concept_owner, (uint64_t)size, placement, buffer)) return 0;
+    buffer->usage_flags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    buffer->memory_type_index = UINT32_MAX; /* Not exposed by this borrowed view. */
+    buffer->memory_property_flags = properties;
+    result = VK_SUCCESS;
+  } else {
+    result = prom_vk_create_buffer(state->physical_device, state->device, block->test_flags, size,
+                                   usage, properties, map_memory, buffer);
+  }
   if (result != VK_SUCCESS) return 0;
   block->cold_buffer_allocation_count += 1u;
   block->vk_create_buffer_count += 1u;
@@ -586,117 +589,10 @@ static int prom_model_block_create_buffer(prom_reduction_runtime_state* state,
   return 1;
 }
 
-static int prom_model_block_create_descriptor_resources(prom_reduction_runtime_state* state,
-                                                        prom_model_block_state* block) {
-  VkDescriptorSetLayoutBinding bindings[3];
-  VkDescriptorSetLayoutCreateInfo layout_info;
-  VkDescriptorPoolSize pool_size;
-  VkDescriptorPoolCreateInfo pool_info;
-  VkDescriptorSetAllocateInfo set_info;
-  VkPushConstantRange push_range;
-  VkPipelineLayoutCreateInfo pipeline_layout_info;
-  VkDescriptorBufferInfo buffer_infos[3];
-  VkWriteDescriptorSet writes[3];
-  uint32_t index;
-  if (state == NULL || block == NULL) return 0;
-  memset(bindings, 0, sizeof(bindings));
-  for (index = 0u; index < 3u; ++index) {
-    bindings[index].binding = index;
-    bindings[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[index].descriptorCount = 1u;
-    bindings[index].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-  }
-  memset(&layout_info, 0, sizeof(layout_info));
-  layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  layout_info.bindingCount = 3u;
-  layout_info.pBindings = bindings;
-  if (vkCreateDescriptorSetLayout(state->device, &layout_info, NULL, &block->descriptor_set_layout) != VK_SUCCESS) return 0;
-  memset(&pool_size, 0, sizeof(pool_size));
-  pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  pool_size.descriptorCount = 3u;
-  memset(&pool_info, 0, sizeof(pool_info));
-  pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  pool_info.maxSets = 1u;
-  pool_info.poolSizeCount = 1u;
-  pool_info.pPoolSizes = &pool_size;
-  if (vkCreateDescriptorPool(state->device, &pool_info, NULL, &block->descriptor_pool) != VK_SUCCESS) return 0;
-  memset(&set_info, 0, sizeof(set_info));
-  set_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  set_info.descriptorPool = block->descriptor_pool;
-  set_info.descriptorSetCount = 1u;
-  set_info.pSetLayouts = &block->descriptor_set_layout;
-  if (vkAllocateDescriptorSets(state->device, &set_info, &block->descriptor_set) != VK_SUCCESS) return 0;
-  block->descriptor_set_count = 1u;
-  block->vk_allocate_descriptor_sets_count += 1u;
-  memset(&push_range, 0, sizeof(push_range));
-  push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-  push_range.size = sizeof(prom_model_block_push_constants);
-  memset(&pipeline_layout_info, 0, sizeof(pipeline_layout_info));
-  pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  pipeline_layout_info.setLayoutCount = 1u;
-  pipeline_layout_info.pSetLayouts = &block->descriptor_set_layout;
-  pipeline_layout_info.pushConstantRangeCount = 1u;
-  pipeline_layout_info.pPushConstantRanges = &push_range;
-  if (vkCreatePipelineLayout(state->device, &pipeline_layout_info, NULL, &block->pipeline_layout) != VK_SUCCESS) return 0;
-  memset(buffer_infos, 0, sizeof(buffer_infos));
-  buffer_infos[0].buffer = block->input_device.buffer;
-  buffer_infos[0].range = block->input_device.size;
-  buffer_infos[1].buffer = block->output_device.buffer;
-  buffer_infos[1].range = block->output_device.size;
-  buffer_infos[2].buffer = block->audit_device.buffer;
-  buffer_infos[2].range = block->audit_device.size;
-  memset(writes, 0, sizeof(writes));
-  for (index = 0u; index < 3u; ++index) {
-    writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[index].dstSet = block->descriptor_set;
-    writes[index].dstBinding = index;
-    writes[index].descriptorCount = 1u;
-    writes[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    writes[index].pBufferInfo = &buffer_infos[index];
-  }
-  vkUpdateDescriptorSets(state->device, 3u, writes, 0u, NULL);
-  block->vk_update_descriptor_sets_count += 1u;
-  return 1;
-}
-
-static int prom_model_block_create_pipeline(prom_reduction_runtime_state* state,
-                                            prom_model_block_state* block) {
-  const prom_shader_asset* asset;
-  char variant_id[32];
-  const char* entry_point = NULL;
-  prom_shader_package_diagnostic package_diagnostic;
-  VkPipelineShaderStageCreateInfo stage_info;
-  VkComputePipelineCreateInfo pipeline_info;
-  if (state == NULL || block == NULL) return 0;
-  asset = prom_shader_registry_find_shader(block->shader_id);
-  if (asset == NULL || asset->stage != PROM_SHADER_STAGE_COMPUTE ||
-      asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION || asset->source_language != PROM_SHADER_SOURCE_SDSLV ||
-      asset->descriptor_binding_count != 3u || asset->push_constant_bytes != sizeof(prom_model_block_push_constants) ||
-      state->shader_package == NULL || asset->entry_point == NULL ||
-      (block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) return 0;
-  if (snprintf(variant_id, sizeof(variant_id), "kernel-%u-default", asset->shader_id) < 0 ||
-      !prom_shader_package_create_module(state->shader_package, state->device, variant_id,
-                                         &block->pipeline.shader_module, &entry_point,
-                                         &package_diagnostic)) return 0;
-  block->vk_create_shader_module_count += 1u;
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = block->pipeline.shader_module;
-  stage_info.pName = entry_point;
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = block->pipeline_layout;
-  if (vkCreateComputePipelines(state->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
-                               &block->pipeline.pipeline) != VK_SUCCESS) return 0;
-  block->vk_create_compute_pipelines_count += 1u;
-  block->pipeline.shader_id = asset->shader_id;
-  block->pipeline_create_count = 1u;
-  return 1;
-}
+// The closed resident pipeline and descriptors are owned/recorded by Concept.
 
 static int prom_model_block_m1b_shader_asset_is_admitted(const prom_shader_asset* asset, uint32_t shader_id) {
+  (void)shader_id; /* Used only by optional experimental routes. */
   if (asset == NULL || asset->stage != PROM_SHADER_STAGE_COMPUTE) return 0;
   if (asset->authority == PROM_SHADER_AUTHORITY_PRODUCTION && asset->source_language == PROM_SHADER_SOURCE_SDSLV) {
     return 1;
@@ -748,20 +644,16 @@ static int prom_model_block_m1b_create_pipeline(
       buffer_count == 0u || buffer_count > 8u) return 0;
   diagnostics_enabled = getenv("OCT_EVT2_M1C_PIPELINE_DIAGNOSTICS") != NULL;
   asset = prom_shader_registry_find_shader(shader_id);
-  if (diagnostics_enabled && (!prom_model_block_m1b_shader_asset_is_admitted(asset, shader_id) ||
-      asset->descriptor_binding_count != buffer_count || asset->push_constant_bytes != expected_push_constant_bytes ||
-      state->shader_package == NULL || asset->entry_point == NULL)) {
-    fprintf(stderr, "EVT2_M1C_CREATE_PRECHECK shader=%u asset=%p bindings=%u expected_bindings=%u push=%u expected_push=%u stage=%u authority=%u source=%u package=%u entry=%p\n",
-            shader_id, (const void*)asset, asset == NULL ? 0u : asset->descriptor_binding_count, buffer_count,
-            asset == NULL ? 0u : asset->push_constant_bytes, expected_push_constant_bytes,
-            asset == NULL ? 0u : (uint32_t)asset->stage, asset == NULL ? 0u : (uint32_t)asset->authority,
-            asset == NULL ? 0u : (uint32_t)asset->source_language, 0u,
-            asset == NULL ? NULL : (const void*)asset->entry_point);
-  }
   if (!prom_model_block_m1b_shader_asset_is_admitted(asset, shader_id) ||
-      asset->descriptor_binding_count != buffer_count || asset->push_constant_bytes != expected_push_constant_bytes ||
       state->shader_package == NULL || asset->entry_point == NULL ||
       (block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) return 0;
+  if (snprintf(variant_id, sizeof(variant_id), "kernel-%u-default", shader_id) < 0 ||
+      !prom_shader_package_validate_interface(state->shader_package, variant_id,
+          buffer_count, expected_push_constant_bytes, &package_diagnostic)) {
+    if (diagnostics_enabled) fprintf(stderr, "EVT2_MODEL_INTERFACE shader=%u bindings=%u push=%u: %s\n",
+        shader_id, buffer_count, expected_push_constant_bytes, package_diagnostic.message);
+    return 0;
+  }
   memset(bindings, 0, sizeof(bindings));
   for (index = 0u; index < buffer_count; ++index) {
     if (buffers[index] == NULL || buffers[index]->buffer == VK_NULL_HANDLE || buffers[index]->size == 0u) return 0;
@@ -853,242 +745,32 @@ static int prom_model_block_m1b_create_pipeline(
 }
 
 static int prom_model_block_m1b_create_pipelines(prom_reduction_runtime_state* state,
-                                                  prom_model_block_state* block) {
-  const prom_vk_buffer* ingress_buffers[] = {&block->input_bf16_device,
-                                              &block->timestep_bf16_device,
-                                              &block->input_device,
-                                              &block->timestep_device};
-  const prom_vk_buffer* adaln_buffers[] = {&block->timestep_device, &block->weights[1u].device,
-                                           &block->weights[0u].device, &block->adaln_projection,
-                                           &block->attention_scale, &block->attention_gate,
-                                           &block->mlp_scale, &block->mlp_gate};
-  const prom_vk_buffer* norm_buffers[] = {&block->input_device, &block->weights[6u].device,
-                                          &block->attention_scale, &block->modulated,
-                                          &block->norm_audit};
-  const prom_vk_buffer* qkv_buffers[] = {&block->modulated, &block->weights[5u].device, &block->qkv};
-  const prom_vk_buffer* q_buffers[] = {&block->qkv, &block->weights[4u].device,
-                                       &block->norm_audit};
-  const prom_vk_buffer* k_buffers[] = {&block->qkv, &block->weights[2u].device,
-                                       &block->norm_audit};
-  return prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[0u], k_prom_model_block_m1b_shader_ids[0u], ingress_buffers, 4u,
-                                               sizeof(prom_model_block_m1b_ingress_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[1u], k_prom_model_block_m1b_shader_ids[1u], adaln_buffers, 8u,
-                                               sizeof(prom_model_block_m1b_adaln_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[2u], k_prom_model_block_m1b_shader_ids[2u], norm_buffers, 5u,
-                                               sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[3u], k_prom_model_block_m1b_shader_ids[3u], qkv_buffers, 3u,
-                                               sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[4u], k_prom_model_block_m1b_shader_ids[4u], q_buffers, 3u,
-                                               sizeof(prom_model_block_m1b_head_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[5u], k_prom_model_block_m1b_shader_ids[5u], k_buffers, 3u,
-                                               sizeof(prom_model_block_m1b_head_constants));
+    prom_model_block_state* block) {
+  (void)state;
+  return prom_concept_block_pipelines(block);
 }
 
-static int prom_model_block_m1c_create_pipelines(prom_reduction_runtime_state* state,
-                                                  prom_model_block_state* block) {
-  const prom_vk_buffer* attention_buffers[] = {&block->qkv, &block->attention, &block->audit_device};
-  const prom_vk_buffer* projection_buffers[] = {&block->attention, &block->weights[3u].device,
-                                                 &block->attention_projection};
-  const prom_vk_buffer* residual_buffers[] = {&block->attention_projection, &block->weights[7u].device,
-                                               &block->attention_gate, &block->input_device,
-                                               &block->attention_residual};
-  return prom_model_block_m1b_create_pipeline(
-             state, block, &block->m1c_pipelines[0u], PROM_MODEL_BLOCK_M1C_ATTENTION_SHADER_ID,
-             attention_buffers, 3u, sizeof(prom_model_block_m1c_attention_constants)) &&
-         prom_model_block_m1b_create_pipeline(
-             state, block, &block->m1c_pipelines[1u], PROM_MODEL_BLOCK_M1C_PROJECTION_SHADER_ID,
-             projection_buffers, 3u, sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(
-             state, block, &block->m1c_pipelines[2u], PROM_MODEL_BLOCK_M1C_RESIDUAL_SHADER_ID,
-             residual_buffers, 5u, sizeof(prom_model_block_m1b_norm_constants));
-}
 
-static int prom_model_block_m1d_create_pipelines(prom_reduction_runtime_state* state,
-                                                  prom_model_block_state* block) {
-  const prom_vk_buffer* norm_buffers[] = {&block->attention_residual, &block->weights[11u].device,
-                                          &block->mlp_scale, &block->norm_audit, &block->modulated};
-  const prom_vk_buffer* projection_buffers[] = {&block->modulated, &block->weights[8u].device,
-                                                &block->weights[10u].device, &block->attention,
-                                                &block->attention_projection, &block->norm_audit, &block->qkv};
-  const prom_vk_buffer* gate_buffers[] = {&block->qkv, &block->attention,
-                                          &block->attention_projection, &block->norm_audit};
-  const prom_vk_buffer* w2_buffers[] = {&block->qkv, &block->weights[9u].device,
-                                        &block->weights[12u].device, &block->mlp_gate,
-                                        &block->attention_residual, &block->input_device, &block->attention};
-  return prom_model_block_m1b_create_pipeline(
-             state, block, &block->m1d_pipelines[0u], PROM_MODEL_BLOCK_M1D_NORM_SHADER_ID,
-             norm_buffers, 5u, sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(
-             state, block, &block->m1d_pipelines[1u], PROM_MODEL_BLOCK_M1D_W1_W3_SHADER_ID,
-             projection_buffers, 7u, sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(
-             state, block, &block->m1d_pipelines[2u], PROM_MODEL_BLOCK_M1D_GATE_SHADER_ID,
-             gate_buffers, 4u, sizeof(prom_model_block_m1d_gate_constants)) &&
-         prom_model_block_m1b_create_pipeline(
-             state, block, &block->m1d_pipelines[3u], PROM_MODEL_BLOCK_M1D_W2_RESIDUAL_SHADER_ID,
-             w2_buffers, 7u, sizeof(prom_model_block_m1d_w2_constants));
-}
+
+
 
 /* ContextRefiner shares the physical FP32 norm/projection/residual kernels,
    but owns the text-coordinate Q/K RoPE and fixed 32-token attention program.
    Its unit scale buffer makes the unmodulated residual contract explicit. */
-static int prom_context_refiner_create_pipelines(prom_reduction_runtime_state* state,
-                                                 prom_model_block_state* block) {
-  const prom_vk_buffer* norm_buffers[] = {&block->input_device, &block->weights[4u].device,
-                                          &block->context_unit, &block->modulated, &block->norm_audit};
-  const prom_vk_buffer* qkv_buffers[] = {&block->modulated, &block->weights[3u].device, &block->qkv};
-  const prom_vk_buffer* q_buffers[] = {&block->qkv, &block->weights[2u].device, &block->norm_audit};
-  const prom_vk_buffer* k_buffers[] = {&block->qkv, &block->weights[0u].device, &block->norm_audit};
-  const prom_vk_buffer* attention_buffers[] = {&block->qkv, &block->attention, &block->audit_device};
-  const prom_vk_buffer* projection_buffers[] = {&block->attention, &block->weights[1u].device,
-                                                 &block->attention_projection};
-  const prom_vk_buffer* residual_buffers[] = {&block->attention_projection, &block->weights[5u].device,
-                                               &block->context_unit, &block->input_device,
-                                               &block->attention_residual};
-  const prom_vk_buffer* ffn_norm_buffers[] = {&block->attention_residual, &block->weights[9u].device,
-                                              &block->context_unit, &block->norm_audit, &block->modulated};
-  const prom_vk_buffer* ffn_projection_buffers[] = {&block->modulated, &block->weights[6u].device,
-                                                     &block->weights[8u].device, &block->context_w3,
-                                                     &block->attention_projection, &block->norm_audit,
-                                                     &block->qkv};
-  const prom_vk_buffer* gate_buffers[] = {&block->qkv, &block->context_w3,
-                                          &block->attention_projection, &block->norm_audit};
-  const prom_vk_buffer* w2_buffers[] = {&block->qkv, &block->weights[7u].device,
-                                        &block->weights[10u].device, &block->context_unit,
-                                        &block->attention_residual, &block->attention_projection,
-                                        &block->attention};
-  return prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[0u],
-                                               PROM_MODEL_BLOCK_M1B_NORM_SHADER_ID, norm_buffers, 5u,
-                                               sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[1u],
-                                               PROM_MODEL_BLOCK_M1B_QKV_SHADER_ID, qkv_buffers, 3u,
-                                               sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[2u],
-                                               PROM_MODEL_BLOCK_CONTEXT_QK_ROPE_SHADER_ID, q_buffers, 3u,
-                                               sizeof(prom_model_block_context_qk_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[3u],
-                                               PROM_MODEL_BLOCK_CONTEXT_QK_ROPE_SHADER_ID, k_buffers, 3u,
-                                               sizeof(prom_model_block_context_qk_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1c_pipelines[0u],
-                                               PROM_MODEL_BLOCK_CONTEXT_ATTENTION_SHADER_ID, attention_buffers, 3u,
-                                               sizeof(prom_model_block_m1c_attention_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1c_pipelines[1u],
-                                               PROM_MODEL_BLOCK_M1C_PROJECTION_SHADER_ID, projection_buffers, 3u,
-                                               sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1c_pipelines[2u],
-                                               PROM_MODEL_BLOCK_M1C_RESIDUAL_SHADER_ID, residual_buffers, 5u,
-                                               sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[0u],
-                                               PROM_MODEL_BLOCK_M1D_NORM_SHADER_ID, ffn_norm_buffers, 5u,
-                                               sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[1u],
-                                               PROM_MODEL_BLOCK_M1D_W1_W3_SHADER_ID, ffn_projection_buffers, 7u,
-                                               sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[2u],
-                                               PROM_MODEL_BLOCK_M1D_GATE_SHADER_ID, gate_buffers, 4u,
-                                               sizeof(prom_model_block_m1d_gate_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[3u],
-                                               PROM_MODEL_BLOCK_M1D_W2_RESIDUAL_SHADER_ID, w2_buffers, 7u,
-                                               sizeof(prom_model_block_m1d_w2_constants));
-}
-
+#if defined(PROM_MAIN_EXPERIMENTAL_EXECUTOR)
+static int prom_main_transformer_create_experimental_pipelines(
+    prom_reduction_runtime_state* state, prom_model_block_state* block);
+#endif
 static int prom_main_transformer_create_pipelines(prom_reduction_runtime_state* state,
                                                   prom_model_block_state* block) {
-  const prom_vk_buffer* ingress_buffers[] = {&block->input_bf16_device,
-                                              &block->timestep_bf16_device,
-                                              &block->input_device,
-                                              &block->timestep_device};
-  const prom_vk_buffer* adaln_buffers[] = {&block->timestep_device, &block->weights[1u].device,
-                                           &block->weights[0u].device, &block->adaln_projection,
-                                           &block->attention_scale, &block->attention_gate,
-                                           &block->mlp_scale, &block->mlp_gate};
-  const prom_vk_buffer* norm_buffers[] = {&block->input_device, &block->weights[6u].device,
-                                          &block->attention_scale, &block->modulated,
-                                          &block->norm_audit};
-  const prom_vk_buffer* qkv_buffers[] = {&block->modulated, &block->weights[5u].device, &block->qkv};
-  const prom_vk_buffer* q_buffers[] = {&block->qkv, &block->weights[4u].device,
-                                       &block->norm_audit};
-  const prom_vk_buffer* k_buffers[] = {&block->qkv, &block->weights[2u].device,
-                                       &block->norm_audit};
-  const prom_vk_buffer* attention_buffers[] = {&block->qkv, &block->attention, &block->audit_device};
-  const prom_vk_buffer* projection_buffers[] = {&block->attention, &block->weights[3u].device,
-                                                 &block->attention_projection};
-  const prom_vk_buffer* residual_buffers[] = {&block->attention_projection, &block->weights[7u].device,
-                                               &block->attention_gate, &block->input_device,
-                                               &block->attention_residual};
-  const prom_vk_buffer* ffn_norm_buffers[] = {&block->attention_residual, &block->weights[11u].device,
-                                              &block->mlp_scale, &block->norm_audit, &block->modulated};
-  const prom_vk_buffer* ffn_projection_buffers[] = {&block->modulated, &block->weights[8u].device,
-                                                     &block->weights[10u].device, &block->attention,
-                                                     &block->attention_projection, &block->norm_audit,
-                                                     &block->qkv};
-  const prom_vk_buffer* gate_buffers[] = {&block->qkv, &block->attention,
-                                          &block->attention_projection, &block->norm_audit};
-  const prom_vk_buffer* w2_buffers[] = {&block->qkv, &block->weights[9u].device,
-                                        &block->weights[12u].device, &block->mlp_gate,
-                                        &block->attention_residual, &block->input_device,
-                                        &block->attention};
-#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
-  const prom_vk_buffer* m6a_pack_buffers[] = {&block->modulated, &block->m6a_modulated_fp16};
-  const prom_vk_buffer* m6a_w1_buffers[] = {&block->m6a_modulated_fp16, &block->weights[8u].device,
-                                            &block->qkv};
-  const prom_vk_buffer* m6a_w3_buffers[] = {&block->m6a_modulated_fp16, &block->weights[10u].device,
-                                            &block->m6a_w3_fp32};
+#if defined(PROM_MAIN_EXPERIMENTAL_EXECUTOR)
+  return prom_main_transformer_create_experimental_pipelines(state, block);
+#else
+  const uint32_t attention=state->compiled_session.main_attention_shader_id;
+  const uint32_t groups=attention==PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID
+      ? PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_GROUPS : PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS;
+  return prom_concept_block_main_pipelines(block, attention, groups);
 #endif
-  const uint32_t attention_shader_id = state->compiled_session.main_attention_shader_id;
-  if (attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID &&
-      attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID &&
-      attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_BUILTIN_TOPOLOGY_SHADER_ID) return 0;
-  block->main_attention_shader_id = attention_shader_id;
-  int created = prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[0u],
-                                               PROM_MODEL_BLOCK_M1B_INGRESS_SHADER_ID, ingress_buffers, 4u,
-                                               sizeof(prom_model_block_m1b_ingress_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[1u],
-                                               PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID, adaln_buffers, 8u,
-                                               sizeof(prom_model_block_m1b_adaln_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[2u],
-                                               PROM_MODEL_BLOCK_M1B_NORM_SHADER_ID, norm_buffers, 5u,
-                                               sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[3u],
-                                               PROM_MODEL_BLOCK_M1B_QKV_SHADER_ID, qkv_buffers, 3u,
-                                               sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[4u],
-                                               PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID, q_buffers, 3u,
-                                               sizeof(prom_model_block_main_qk_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[5u],
-                                               PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID, k_buffers, 3u,
-                                               sizeof(prom_model_block_main_qk_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1c_pipelines[0u],
-                                               attention_shader_id, attention_buffers, 3u,
-                                               sizeof(prom_model_block_m1c_attention_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1c_pipelines[1u],
-                                               PROM_MODEL_BLOCK_M1C_PROJECTION_SHADER_ID, projection_buffers, 3u,
-                                               sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1c_pipelines[2u],
-                                               PROM_MODEL_BLOCK_M1C_RESIDUAL_SHADER_ID, residual_buffers, 5u,
-                                               sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[0u],
-                                               PROM_MODEL_BLOCK_M1D_NORM_SHADER_ID, ffn_norm_buffers, 5u,
-                                               sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[1u],
-                                               PROM_MODEL_BLOCK_MAIN_W1_W3_SHADER_ID, ffn_projection_buffers, 7u,
-                                               sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[2u],
-                                               PROM_MODEL_BLOCK_MAIN_GATE_SHADER_ID, gate_buffers, 4u,
-                                               sizeof(prom_model_block_m1d_gate_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[3u],
-                                               PROM_MODEL_BLOCK_M1D_W2_RESIDUAL_SHADER_ID, w2_buffers, 7u,
-                                               sizeof(prom_model_block_m1d_w2_constants));
-#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
-  if (created) created =
-      prom_model_block_m1b_create_pipeline(state, block, &block->m6a_pack_pipeline,
-                                            PROM_MODEL_BLOCK_M6A_PACK_SHADER_ID, m6a_pack_buffers, 2u, 8u) &&
-      prom_model_block_m1b_create_pipeline(state, block, &block->m6a_w1_pipeline,
-                                            PROM_MODEL_BLOCK_M6A_COOPERATIVE_SHADER_ID, m6a_w1_buffers, 3u, 12u) &&
-      prom_model_block_m1b_create_pipeline(state, block, &block->m6a_w3_pipeline,
-                                            PROM_MODEL_BLOCK_M6A_COOPERATIVE_SHADER_ID, m6a_w3_buffers, 3u, 12u);
-#endif
-  return created;
 }
 
 static uint64_t prom_context_refiner_expected_aggregate(uint32_t parameter_set) {
@@ -1111,6 +793,13 @@ static uint64_t prom_main_transformer_expected_aggregate(uint32_t parameter_set)
 
 static int prom_model_block_is_context_refiner(const prom_model_block_state* block) {
   return block != NULL && block->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO;
+}
+
+const prom_vk_buffer* prom_model_block_weight_view(const prom_model_block_state* block, uint32_t index) {
+  /* Frame transport may include unused padded roles; their views remain empty. */
+  if (block->shared_owner != 0u && prom_model_block_is_context_refiner(block) && index < 11u)
+    index = k_prom_context_shared_weight_slots[index];
+  return &block->weights[index].device;
 }
 
 static int prom_model_block_is_main_transformer(const prom_model_block_state* block) {
@@ -1197,11 +886,12 @@ static int prom_model_block_update_weight_descriptors(
   uint64_t update_begin_ns;
   prom_model_block_weight_resource logical[PROM_MODEL_BLOCK_MAX_WEIGHTS];
 #define PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(pipe, binding, source) do { \
+  if ((pipe)->descriptor_set != VK_NULL_HANDLE) { \
   infos[count].buffer = (source)->buffer; infos[count].offset = 0u; infos[count].range = (source)->size; \
   memset(&writes[count], 0, sizeof(writes[count])); writes[count].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; \
   writes[count].dstSet = (pipe)->descriptor_set; writes[count].dstBinding = (binding); \
   writes[count].descriptorCount = 1u; writes[count].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; \
-  writes[count].pBufferInfo = &infos[count]; ++count; \
+  writes[count].pBufferInfo = &infos[count]; ++count; } \
 } while (0)
   if (state == NULL || block == NULL || weights == NULL ||
       (block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) return 0;
@@ -1316,6 +1006,7 @@ static int prom_model_block_submit_and_wait(prom_reduction_runtime_state* state,
   block->last_queue_submit_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
   block->vk_queue_submit_count += 1u;
   if (result != VK_SUCCESS) return 0;
+  block->legacy_submission_pending = 1u;
   if ((block->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) != 0u ||
       prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION)) {
     block->quarantined = 1u;
@@ -1331,6 +1022,7 @@ static int prom_model_block_submit_and_wait(prom_reduction_runtime_state* state,
     if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN;
     return 0;
   }
+  block->legacy_submission_pending = 0u;
   return 1;
 }
 
@@ -1353,39 +1045,77 @@ static uint64_t prom_model_block_resolve_gpu_span(prom_reduction_runtime_state* 
 static int prom_model_block_reap(prom_reduction_runtime_state* state,
                                  prom_model_block_state* block) {
   if (state == NULL || block == NULL) return 0;
+  /* A session capture can still borrow the model's completed output. */
+  if (!prom_concept_session_drain(&state->compiled_session))
+    return 0;
+  if (!prom_concept_block_drain(block)) return 0;
+  /* A legacy fence can independently quarantine the same borrowed resources.
+     Retire it too; its initial signaled state handles Concept-only work. */
   if (block->quarantined == 0u) return 1;
-  if (block->fence == VK_NULL_HANDLE ||
-      vkWaitForFences(state->device, 1u, &block->fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return 0;
+  if (block->legacy_submission_pending != 0u &&
+      (block->fence == VK_NULL_HANDLE ||
+       vkWaitForFences(state->device, 1u, &block->fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS)) return 0;
+  block->legacy_submission_pending = 0u;
   block->quarantined = 0u;
   block->output_valid = 0u;
   block->audit_valid = 0u;
   return 1;
 }
 
-static int prom_model_block_record_upload(prom_reduction_runtime_state* state,
-                                          prom_model_block_state* block,
-                                          prom_model_block_weight_resource* destination,
-                                          uint32_t weight_index) {
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy copy;
-  VkResult result;
-  int32_t detail = PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED;
-  if (state == NULL || block == NULL || destination == NULL || weight_index >= PROM_MODEL_BLOCK_MAX_WEIGHTS) return 0;
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  block->vk_reset_command_buffer_count += 1u;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  memset(&copy, 0, sizeof(copy));
-  copy.size = (VkDeviceSize)destination[weight_index].byte_count;
-  vkCmdCopyBuffer(block->command_buffer, block->weight_upload.buffer,
-                  destination[weight_index].device.buffer, 1u, &copy);
-  result = (block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u
-               ? VK_ERROR_INITIALIZATION_FAILED
-               : vkEndCommandBuffer(block->command_buffer);
-  if (result != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, &detail);
+static int prom_model_block_change_weights(prom_reduction_runtime_state *state,
+                                           prom_model_block_state *block,
+                                           const PrometheusModelBlockWeightUpload *uploads,
+                                           uint32_t count, uint32_t mode, uint32_t family) {
+  if (!prom_model_block_reap(state, block)) {
+    block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN;
+    return 0;
+  }
+  const uint32_t *physical_slots =
+      block->shared_owner && family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
+          ? k_prom_context_shared_weight_slots
+          : NULL;
+  if (!prom_concept_weights_begin(block, mode, physical_slots, uploads, count))
+    return 0;
+  uint64_t memcpy_ns = 0;
+  for (uint32_t i = 0; i < count; ++i) {
+    const uint64_t begin = prom_reduction_now_ns();
+    memcpy(block->weight_upload.mapped, uploads[i].bytes, (size_t)uploads[i].byte_count);
+    memcpy_ns += prom_reduction_elapsed_ns(begin, prom_reduction_now_ns());
+    if (!prom_concept_weights_upload(state, block, i))
+      return 0;
+    ++block->weight_upload_count;
+  }
+  if (mode != 0u) {
+    const uint32_t old_family = block->assembly_family, old_count = block->weight_count;
+    prom_model_block_weight_resource candidate[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+    prom_concept_weights_views(block, 1, candidate);
+    block->assembly_family = family;
+    block->weight_count = count;
+    if (block->shared_owner)
+      prom_model_block_copy_active_portfolio(block, family, 0);
+    const int injected_descriptor_failure = (block->weight_test_flags & 8u) != 0u;
+    if (injected_descriptor_failure)
+      block->weight_test_flags = 0u;
+    if (injected_descriptor_failure ||
+        !prom_model_block_update_weight_descriptors(state, block, candidate)) {
+      block->assembly_family = old_family;
+      block->weight_count = old_count;
+      if (block->shared_owner)
+        prom_model_block_copy_active_portfolio(block, old_family, 0);
+      prom_concept_weights_abort(block);
+      block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
+      return 0;
+    }
+  }
+  prom_concept_weights_commit(block);
+  block->last_staging_memcpy_ns = memcpy_ns;
+  block->output_valid = 0;
+  block->audit_valid = 0;
+  block->resident_input_generation = 0;
+  block->replay_identity = 0;
+  block->m1b_prefix_replay_identity = 0;
+  block->last_detail_code = 0;
+  return 1;
 }
 
 /* One bounded staging slot is reused only after its transfer fence signals.
@@ -1471,72 +1201,9 @@ static int prom_model_block_acquire_prefetched_weights(prom_reduction_runtime_st
 }
 
 static int prom_model_block_record_execute(prom_reduction_runtime_state* state,
-                                           prom_model_block_state* block,
-                                           uint32_t element_count,
-                                           uint32_t audit_element_count,
-                                           uint32_t audit_enabled,
-                                           int32_t* out_detail) {
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy input_copy;
-  VkBufferCopy output_copy;
-  VkBufferMemoryBarrier barrier;
-  prom_model_block_push_constants constants;
-  VkResult result;
-  if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
-  if (state == NULL || block == NULL || element_count == 0u) return 0;
-  if (prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  memset(&input_copy, 0, sizeof(input_copy));
-  input_copy.size = block->external_input_bytes;
-  vkCmdCopyBuffer(block->command_buffer, block->input_upload.buffer, block->input_device.buffer, 1u, &input_copy);
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = block->input_device.buffer;
-  barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-  vkCmdBindPipeline(block->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, block->pipeline.pipeline);
-  vkCmdBindDescriptorSets(block->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, block->pipeline_layout,
-                          0u, 1u, &block->descriptor_set, 0u, NULL);
-  constants.element_count = element_count;
-  constants.audit_element_count = audit_enabled != 0u ? audit_element_count : 0u;
-  vkCmdPushConstants(block->command_buffer, block->pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT,
-                     0u, sizeof(constants), &constants);
-  if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) return 0;
-  vkCmdDispatch(block->command_buffer, prom_reduction_ceil_div_u32(element_count, PROM_MODEL_BLOCK_WORKGROUP_SIZE), 1u, 1u);
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = block->output_device.buffer;
-  barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-  memset(&output_copy, 0, sizeof(output_copy));
-  output_copy.size = block->external_output_bytes;
-  vkCmdCopyBuffer(block->command_buffer, block->output_device.buffer, block->output_readback.buffer, 1u, &output_copy);
-  if (audit_enabled != 0u) {
-    barrier.buffer = block->audit_device.buffer;
-    vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-    output_copy.size = block->declared_audit_bytes;
-    vkCmdCopyBuffer(block->command_buffer, block->audit_device.buffer, block->audit_readback.buffer, 1u, &output_copy);
-  }
-  result = (block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u
-               ? VK_ERROR_INITIALIZATION_FAILED
-               : vkEndCommandBuffer(block->command_buffer);
-  if (result != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, out_detail);
+    prom_model_block_state* block, uint32_t elements, uint32_t audit_elements,
+    uint32_t audit_enabled, int32_t* detail) {
+  return prom_concept_block_run(state, block, 0, elements, audit_enabled ? audit_elements : 0, 0, detail);
 }
 
 static int prom_model_block_m1b_create_buffers(prom_reduction_runtime_state* state,
@@ -1661,13 +1328,18 @@ static int prom_model_block_create_shared_buffers(prom_reduction_runtime_state* 
                                       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host_visible, 1)) return 0;
   for (uint32_t index = 0u; index < PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS; ++index)
     ((float*)block->context_unit.mapped)[index] = 1.0f;
-  prom_vk_destroy_buffer(state->device, &block->input_bf16_device);
+  prom_model_block_destroy_buffer(state, block, &block->input_bf16_device);
   block->input_bf16_device = block->attention_residual;
-  block->resident_boundary_device = block->attention_residual;
-  /* Context W3 and QKV are both consumed by the gated FFN stage, so they
-     cannot alias. The closed audit arena is storage-capable and otherwise
-     inactive in production Context execution. */
-  block->context_w3 = block->audit_readback;
+  /* These lifetimes overlap their former aliases: a predecessor must survive
+     every resident replay, and W3 must coexist with earlier audit packets. */
+  const VkBufferUsageFlags storage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+      VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  if (!prom_model_block_create_buffer(state, block, &block->resident_boundary_device,
+      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS),
+      storage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      !prom_model_block_create_buffer(state, block, &block->context_w3,
+      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_CONTEXT_HIDDEN_ELEMENTS),
+      storage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) return 0;
   return 1;
 }
 
@@ -1690,8 +1362,8 @@ static int prom_model_block_create_shared_portfolios(prom_reduction_runtime_stat
   uint32_t saved_family = block->assembly_family;
   uint32_t saved_shader = block->shader_id;
   if (!prom_model_block_m1b_create_pipelines(state, block) ||
-      !prom_model_block_m1c_create_pipelines(state, block) ||
-      !prom_model_block_m1d_create_pipelines(state, block) ||
+      !prom_concept_block_attention_pipelines(block) ||
+      !prom_concept_block_ffn_pipelines(block) ||
       !prom_model_block_audit_create_pipelines(state, block)) return 0;
   prom_model_block_copy_active_portfolio(block, PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO, 1);
   memset(block->m1b_pipelines, 0, sizeof(block->m1b_pipelines));
@@ -1699,7 +1371,7 @@ static int prom_model_block_create_shared_portfolios(prom_reduction_runtime_stat
   memset(block->m1d_pipelines, 0, sizeof(block->m1d_pipelines));
   memset(block->audit_pipelines, 0, sizeof(block->audit_pipelines));
   block->assembly_family = PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO;
-  if (!prom_context_refiner_create_pipelines(state, block) ||
+  if (!prom_concept_block_context_pipelines(block) ||
       !prom_model_block_audit_create_pipelines(state, block)) return 0;
   prom_model_block_copy_active_portfolio(block, PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO, 1);
   memset(block->m1b_pipelines, 0, sizeof(block->m1b_pipelines));
@@ -1814,6 +1486,10 @@ static void prom_model_block_m1b_bind_and_dispatch(VkCommandBuffer command_buffe
                                                    const prom_model_block_m1b_pipeline* pipeline,
                                                    const void* constants, uint32_t constant_bytes,
                                                    uint32_t x, uint32_t y, uint32_t z) {
+  if (pipeline->concept_block != NULL) {
+    prom_concept_block_record_stage(pipeline->concept_block, command_buffer, pipeline->concept_role);
+    return;
+  }
   vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline.pipeline);
   vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline_layout,
                           0u, 1u, &pipeline->descriptor_set, 0u, NULL);
@@ -1884,206 +1560,9 @@ static void prom_model_block_record_small_audit_capture(
   vkCmdCopyBuffer(command_buffer, source->buffer, audit_readback->buffer, 1u, &copy);
 }
 
-static void prom_model_block_m1b_capture_stage(prom_model_block_state* block,
-                                                uint32_t audit_stage,
-                                                uint32_t boundary) {
-  const prom_vk_buffer* source = NULL;
-  VkDeviceSize offset = 0u;
-  VkDeviceSize bytes = 0u;
-  int segmented = 0;
-  if (block == NULL || audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_NONE) return;
-  if (boundary == 0u) {
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_INPUT) {
-      source = &block->input_device;
-      bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS);
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_TIMESTEP) {
-      source = &block->timestep_device;
-      bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_TIMESTEP_ELEMENTS);
-    }
-  } else if (boundary == 1u) {
-    bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS);
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION) {
-      source = &block->adaln_projection;
-      bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(15360u);
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_RAW) {
-      source = &block->adaln_projection;
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_ADJUSTED) {
-      source = &block->attention_scale;
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_RAW) {
-      source = &block->adaln_projection;
-      offset = PROM_MODEL_BLOCK_M1B_FP32_BYTES(3840u);
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_TANH) {
-      source = &block->attention_gate;
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_RAW) {
-      source = &block->adaln_projection;
-      offset = PROM_MODEL_BLOCK_M1B_FP32_BYTES(7680u);
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_ADJUSTED) {
-      source = &block->mlp_scale;
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_RAW) {
-      source = &block->adaln_projection;
-      offset = PROM_MODEL_BLOCK_M1B_FP32_BYTES(11520u);
-    } else if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_TANH) {
-      source = &block->mlp_gate;
-    }
-  } else if (boundary == 2u) {
-    bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS);
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_NORM) source = &block->norm_audit;
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_MODULATED) source = &block->modulated;
-  } else if (boundary == 3u) {
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_FUSED_QKV) {
-      source = &block->qkv;
-      bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_QKV_ELEMENTS);
-    } else if (audit_stage >= PROM_MODEL_BLOCK_M1B_AUDIT_Q &&
-               audit_stage <= PROM_MODEL_BLOCK_M1B_AUDIT_V) {
-      source = &block->qkv;
-      offset = PROM_MODEL_BLOCK_M1B_FP32_BYTES(
-          (audit_stage - PROM_MODEL_BLOCK_M1B_AUDIT_Q) * PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS);
-      bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS);
-      segmented = 1;
-    }
-  } else if (boundary == 4u) {
-    bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS);
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_Q_NORM) source = &block->norm_audit;
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_Q) {
-      source = &block->qkv;
-      segmented = 1;
-    }
-  } else if (boundary == 5u) {
-    bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS);
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_K_NORM) source = &block->norm_audit;
-    if (audit_stage == PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_K) {
-      source = &block->qkv;
-      offset = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS);
-      segmented = 1;
-    }
-  }
-  if (source != NULL) {
-    prom_model_block_m1b_record_audit_capture(block->command_buffer, source, offset, bytes,
-                                               segmented, &block->audit_readback);
-  }
-}
-
 static int prom_model_block_m1b_record_execute(prom_reduction_runtime_state* state,
-                                                prom_model_block_state* block,
-                                                uint32_t audit_stage,
-                                                int resident_input,
-                                                int32_t* out_detail) {
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy copy;
-  VkBufferMemoryBarrier transfer_barriers[2];
-  VkBufferMemoryBarrier resident_copy_barrier;
-  prom_model_block_m1b_ingress_constants ingress_constants = {
-      PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS, PROM_MODEL_BLOCK_M1B_TIMESTEP_ELEMENTS};
-  prom_model_block_m1b_adaln_constants adaln_constants = {15360u, 256u};
-  prom_model_block_m1b_norm_constants norm_constants = {1.0e-5f, 1024u, 3840u, 0u};
-  prom_model_block_m1b_qkv_constants qkv_constants = {1024u, 3840u, 11520u, 0u};
-  prom_model_block_m1b_head_constants head_constants = {1.0e-5f, 1024u, 30u, 128u};
-  VkResult result;
-  if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
-  if (state == NULL || block == NULL || prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  memset(&copy, 0, sizeof(copy));
-  if (resident_input == 1) {
-    copy.size = block->attention.size;
-    vkCmdCopyBuffer(block->command_buffer, block->attention.buffer, block->resident_boundary_device.buffer, 1u, &copy);
-    memset(&resident_copy_barrier, 0, sizeof(resident_copy_barrier));
-    resident_copy_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    resident_copy_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    resident_copy_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    resident_copy_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    resident_copy_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    resident_copy_barrier.buffer = block->resident_boundary_device.buffer;
-    resident_copy_barrier.size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, &resident_copy_barrier, 0u, NULL);
-    vkCmdCopyBuffer(block->command_buffer, block->resident_boundary_device.buffer, block->input_device.buffer, 1u, &copy);
-  } else if (resident_input == 2) {
-    copy.size = block->resident_boundary_device.size;
-    vkCmdCopyBuffer(block->command_buffer, block->resident_boundary_device.buffer, block->input_device.buffer, 1u, &copy);
-  } else if (resident_input == 0) {
-    copy.size = block->input_upload.size;
-    vkCmdCopyBuffer(block->command_buffer, block->input_upload.buffer, block->input_bf16_device.buffer, 1u, &copy);
-    copy.size = block->timestep_upload.size;
-    vkCmdCopyBuffer(block->command_buffer, block->timestep_upload.buffer, block->timestep_bf16_device.buffer, 1u, &copy);
-  }
-  memset(transfer_barriers, 0, sizeof(transfer_barriers));
-  for (uint32_t index = 0u; index < (resident_input == 1 ? 2u : (resident_input == 0 ? 2u : 1u)); ++index) {
-    transfer_barriers[index].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    transfer_barriers[index].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    transfer_barriers[index].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    transfer_barriers[index].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    transfer_barriers[index].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    transfer_barriers[index].buffer = resident_input == 1 ?
-        (index == 0u ? block->resident_boundary_device.buffer : block->input_device.buffer) :
-        (resident_input == 2 ? block->input_device.buffer :
-         (index == 0u ? block->input_bf16_device.buffer : block->timestep_bf16_device.buffer));
-    transfer_barriers[index].size = VK_WHOLE_SIZE;
-  }
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL,
-                       resident_input == 0 ? 2u : (resident_input == 1 ? 2u : 1u), transfer_barriers, 0u, NULL);
-  if (block->m1b_timestamp_supported != 0u &&
-      block->m1b_timestamp_query_pool != VK_NULL_HANDLE) {
-    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u,
-                        PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT + 1u);
-    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        block->m1b_timestamp_query_pool, 0u);
-  }
-  if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
-    if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
-    return 0;
-  }
-  if (resident_input == 0) {
-    prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[0u],
-                                           &ingress_constants, sizeof(ingress_constants), 15360u, 1u, 1u);
-  }
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  if (resident_input == 0) prom_model_block_m1b_capture_stage(block, audit_stage, 0u);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u],
-                                         &adaln_constants, sizeof(adaln_constants), 60u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 2u);
-  prom_model_block_m1b_capture_stage(block, audit_stage, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[2u],
-                                         &norm_constants, sizeof(norm_constants), 1024u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 3u);
-  prom_model_block_m1b_capture_stage(block, audit_stage, 2u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[3u],
-                                         &qkv_constants, sizeof(qkv_constants), 64u, 720u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 4u);
-  prom_model_block_m1b_capture_stage(block, audit_stage, 3u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[4u],
-                                         &head_constants, sizeof(head_constants), 30720u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 5u);
-  prom_model_block_m1b_capture_stage(block, audit_stage, 4u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[5u],
-                                         &head_constants, sizeof(head_constants), 30720u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 6u);
-  prom_model_block_m1b_capture_stage(block, audit_stage, 5u);
-  result = (block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u
-               ? VK_ERROR_INITIALIZATION_FAILED : vkEndCommandBuffer(block->command_buffer);
-  if (result != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, out_detail);
+    prom_model_block_state* block, uint32_t stage, int resident, int32_t* detail) {
+  return prom_concept_block_run(state, block, 1, 0, stage, (uint32_t)resident, detail);
 }
 
 void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
@@ -2093,7 +1572,10 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
   if (state == NULL) return;
   block = &state->model_block;
   next_block_id = block->next_block_id;
-  if (state->device != VK_NULL_HANDLE && block->fence != VK_NULL_HANDLE && block->quarantined != 0u) {
+  if (!prom_concept_session_drain(&state->compiled_session))
+    abort();
+  if (!prom_concept_block_drain(block)) abort();
+  if (state->device != VK_NULL_HANDLE && block->fence != VK_NULL_HANDLE && block->legacy_submission_pending != 0u) {
     (void)vkWaitForFences(state->device, 1u, &block->fence, VK_TRUE, UINT64_MAX);
   }
   if (state->device != VK_NULL_HANDLE) {
@@ -2117,8 +1599,6 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
       memset(block->m1d_pipelines, 0, sizeof(block->m1d_pipelines));
       memset(block->audit_pipelines, 0, sizeof(block->audit_pipelines));
       memset(&block->input_bf16_device, 0, sizeof(block->input_bf16_device));
-      memset(&block->resident_boundary_device, 0, sizeof(block->resident_boundary_device));
-      memset(&block->context_w3, 0, sizeof(block->context_w3));
       block->owner_destruction_count += 1u;
     }
     for (index = 0u; index < PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT; ++index) {
@@ -2153,40 +1633,38 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
       if (pipeline->descriptor_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(state->device, pipeline->descriptor_set_layout, NULL);
     }
     for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-      prom_vk_destroy_buffer(state->device, &block->weights[index].device);
-      prom_vk_destroy_buffer(state->device, &block->pending_weights[index].device);
-      prom_vk_destroy_buffer(state->device, &block->prefetch_weights[index].device);
+      prom_model_block_destroy_buffer(state, block, &block->weights[index].device);
+      prom_model_block_destroy_buffer(state, block, &block->prefetch_weights[index].device);
     }
-    prom_vk_destroy_buffer(state->device, &block->weight_upload);
-    prom_vk_destroy_buffer(state->device, &block->prefetch_weight_upload);
-    prom_vk_destroy_buffer(state->device, &block->audit_readback);
-    prom_vk_destroy_buffer(state->device, &block->audit_device);
-    prom_vk_destroy_buffer(state->device, &block->qkv);
-    prom_vk_destroy_buffer(state->device, &block->attention_residual);
-    prom_vk_destroy_buffer(state->device, &block->attention_projection);
-    prom_vk_destroy_buffer(state->device, &block->attention);
-    prom_vk_destroy_buffer(state->device, &block->norm_audit);
-    prom_vk_destroy_buffer(state->device, &block->modulated);
-    prom_vk_destroy_buffer(state->device, &block->m6a_modulated_fp16);
-    prom_vk_destroy_buffer(state->device, &block->m6a_w3_fp32);
-    prom_vk_destroy_buffer(state->device, &block->m6a_raw_audit);
-    prom_vk_destroy_buffer(state->device, &block->mlp_gate);
-    prom_vk_destroy_buffer(state->device, &block->mlp_scale);
-    prom_vk_destroy_buffer(state->device, &block->attention_gate);
-    prom_vk_destroy_buffer(state->device, &block->attention_scale);
-    prom_vk_destroy_buffer(state->device, &block->adaln_projection);
-    prom_vk_destroy_buffer(state->device, &block->timestep_device);
-    prom_vk_destroy_buffer(state->device, &block->timestep_bf16_device);
-    prom_vk_destroy_buffer(state->device, &block->timestep_upload);
-    prom_vk_destroy_buffer(state->device, &block->output_readback);
-    prom_vk_destroy_buffer(state->device, &block->output_device);
-    prom_vk_destroy_buffer(state->device, &block->resident_boundary_device);
-    prom_vk_destroy_buffer(state->device, &block->input_device);
-    prom_vk_destroy_buffer(state->device, &block->input_bf16_device);
-    prom_vk_destroy_buffer(state->device, &block->input_upload);
-    prom_vk_destroy_buffer(state->device, &block->context_unit);
-    prom_vk_destroy_buffer(state->device, &block->context_w3);
-    prom_reduction_destroy_pipeline(state->device, &block->pipeline);
+    prom_model_block_destroy_buffer(state, block, &block->weight_upload);
+    prom_model_block_destroy_buffer(state, block, &block->prefetch_weight_upload);
+    prom_model_block_destroy_buffer(state, block, &block->audit_readback);
+    prom_model_block_destroy_buffer(state, block, &block->audit_device);
+    prom_model_block_destroy_buffer(state, block, &block->qkv);
+    prom_model_block_destroy_buffer(state, block, &block->attention_residual);
+    prom_model_block_destroy_buffer(state, block, &block->attention_projection);
+    prom_model_block_destroy_buffer(state, block, &block->attention);
+    prom_model_block_destroy_buffer(state, block, &block->norm_audit);
+    prom_model_block_destroy_buffer(state, block, &block->modulated);
+    prom_model_block_destroy_buffer(state, block, &block->m6a_modulated_fp16);
+    prom_model_block_destroy_buffer(state, block, &block->m6a_w3_fp32);
+    prom_model_block_destroy_buffer(state, block, &block->m6a_raw_audit);
+    prom_model_block_destroy_buffer(state, block, &block->mlp_gate);
+    prom_model_block_destroy_buffer(state, block, &block->mlp_scale);
+    prom_model_block_destroy_buffer(state, block, &block->attention_gate);
+    prom_model_block_destroy_buffer(state, block, &block->attention_scale);
+    prom_model_block_destroy_buffer(state, block, &block->adaln_projection);
+    prom_model_block_destroy_buffer(state, block, &block->timestep_device);
+    prom_model_block_destroy_buffer(state, block, &block->timestep_bf16_device);
+    prom_model_block_destroy_buffer(state, block, &block->timestep_upload);
+    prom_model_block_destroy_buffer(state, block, &block->output_readback);
+    prom_model_block_destroy_buffer(state, block, &block->output_device);
+    prom_model_block_destroy_buffer(state, block, &block->resident_boundary_device);
+    prom_model_block_destroy_buffer(state, block, &block->input_device);
+    prom_model_block_destroy_buffer(state, block, &block->input_bf16_device);
+    prom_model_block_destroy_buffer(state, block, &block->input_upload);
+    prom_model_block_destroy_buffer(state, block, &block->context_unit);
+    prom_model_block_destroy_buffer(state, block, &block->context_w3);
     if (block->m1b_timestamp_query_pool != VK_NULL_HANDLE) {
       vkDestroyQueryPool(state->device, block->m1b_timestamp_query_pool, NULL);
     }
@@ -2198,10 +1676,8 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
     if (block->prefetch_command_buffer != VK_NULL_HANDLE && block->prefetch_command_pool != VK_NULL_HANDLE) {
       vkFreeCommandBuffers(state->device, block->prefetch_command_pool, 1u, &block->prefetch_command_buffer);
     }
-    if (block->pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(state->device, block->pipeline_layout, NULL);
-    if (block->descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(state->device, block->descriptor_pool, NULL);
-    if (block->descriptor_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(state->device, block->descriptor_set_layout, NULL);
   }
+  if (prom_concept_block_destroy(block->concept_owner) != PROM_OK) abort();
   memset(block, 0, sizeof(*block));
   block->next_block_id = next_block_id == 0u ? 1u : next_block_id;
 }
@@ -2260,13 +1736,8 @@ int prom_reactor_runtime_model_block_create_impl(
   block->assembly_family = request->assembly_family;
   block->parameter_set = request->parameter_set;
   block->parameter_set_aggregate_identity = request->parameter_set_aggregate_identity;
-  block->binding_generation = (request->assembly_family == PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO ||
-                               request->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO ||
-                               request->assembly_family == PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO) ? 1u : 0u;
-  block->binding_state = (request->assembly_family == PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO ||
-                          request->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO ||
-                          request->assembly_family == PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO)
-                             ? PROM_NOISE_REFINER_BINDING_BOUND : 0u;
+  /* A buffer/layout reservation is not a published weight binding. Concept
+     publishes the first generation only after the initial upload completes. */
   block->weight_identity = request->weight_identity;
   block->shader_portfolio_identity = request->shader_portfolio_identity;
   block->precision_policy_identity = request->precision_policy_identity;
@@ -2284,6 +1755,18 @@ int prom_reactor_runtime_model_block_create_impl(
     block->weights[index].layout_identity = request->weights[index].layout_identity;
     block->weights[index].byte_count = request->weights[index].byte_count;
     if (block->weights[index].byte_count > max_weight_bytes) max_weight_bytes = block->weights[index].byte_count;
+  }
+  detail = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
+#if defined(PROM_MAIN_EXPERIMENTAL_EXECUTOR)
+  const int concept_main = 0; // Preserve the standalone research allocation path.
+#else
+  const int concept_main = prom_model_block_is_main_transformer(block);
+#endif
+  if (block->shader_id == PROM_MODEL_BLOCK_RESIDENT_SHADER_ID ||
+      block->shader_id == PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID ||
+      prom_model_block_is_context_refiner(block) || concept_main || shared_owner != 0u) {
+    block->concept_owner = prom_concept_block_create(handle, &services);
+    if (block->concept_owner == NULL) goto fail;
   }
   if (shared_owner != 0u) {
     if (!prom_model_block_create_shared_buffers(state, block, (VkDeviceSize)max_weight_bytes)) goto fail;
@@ -2356,17 +1839,16 @@ int prom_reactor_runtime_model_block_create_impl(
     if (!prom_model_block_create_shared_portfolios(state, block)) goto pipeline_fail;
   } else if (block->shader_id == PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID) {
     if (!prom_model_block_m1b_create_pipelines(state, block) ||
-        !prom_model_block_m1c_create_pipelines(state, block) ||
-        !prom_model_block_m1d_create_pipelines(state, block) ||
+        !prom_concept_block_attention_pipelines(block) ||
+        !prom_concept_block_ffn_pipelines(block) ||
         !prom_model_block_audit_create_pipelines(state, block)) goto pipeline_fail;
   } else if (prom_model_block_is_main_transformer(block)) {
     if (!prom_main_transformer_create_pipelines(state, block)) goto pipeline_fail;
   } else if (prom_model_block_is_context_refiner(block)) {
-    if (!prom_context_refiner_create_pipelines(state, block) ||
+    if (!prom_concept_block_context_pipelines(block) ||
         !prom_model_block_audit_create_pipelines(state, block)) goto pipeline_fail;
   } else {
-    if (!prom_model_block_create_descriptor_resources(state, block)) goto pipeline_fail;
-    if (!prom_model_block_create_pipeline(state, block)) goto pipeline_fail;
+    if (!prom_concept_block_identity_pipeline(block)) goto pipeline_fail;
   }
   if (!prom_model_block_create_command_resources(state, block)) goto fail;
   block->block_id = block->next_block_id++;
@@ -2381,7 +1863,7 @@ int prom_reactor_runtime_model_block_create_impl(
 
 pipeline_fail:
   detail = block->shader_id == PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID &&
-                   block->m1b_pipelines[0u].pipeline.pipeline == VK_NULL_HANDLE
+                   block->pipeline_create_count == 0u
                ? PROM_MODEL_BLOCK_DETAIL_INGRESS_PIPELINE_CREATE_FAILED
                : PROM_MODEL_BLOCK_DETAIL_PIPELINE_CREATE_FAILED;
   goto fail;
@@ -2407,6 +1889,11 @@ int prom_reactor_runtime_model_block_upload_weights_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   if (block->weights_uploaded != 0u || block->quarantined != 0u || upload_count != block->weight_count ||
       (block->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
     prom_model_block_mark_failure(block, (block->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u
@@ -2427,32 +1914,13 @@ int prom_reactor_runtime_model_block_upload_weights_impl(
       return PROM_ERROR;
     }
   }
-  for (index = 0u; index < upload_count; ++index) {
-    memcpy(block->weight_upload.mapped, uploads[index].bytes, (size_t)uploads[index].byte_count);
-    if (!prom_model_block_record_upload(state, block, block->weights, index)) {
-      prom_model_block_mark_failure(block, block->quarantined != 0u
-                                               ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN
-                                               : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED);
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-      return PROM_ERROR;
-    }
-    block->weights[index].uploaded = 1u;
-    block->weight_upload_count += 1u;
+  if (!prom_model_block_change_weights(state, block, uploads, upload_count, 0u,
+                                       block->assembly_family)) {
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
   }
-  block->weights_uploaded = 1u;
-  block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
-}
-
-static void prom_model_block_destroy_pending_weights(prom_reduction_runtime_state* state,
-                                                     prom_model_block_state* block) {
-  uint32_t index;
-  if (state == NULL || block == NULL || state->device == VK_NULL_HANDLE) return;
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    prom_vk_destroy_buffer(state->device, &block->pending_weights[index].device);
-  }
-  memset(block->pending_weights, 0, sizeof(block->pending_weights));
 }
 
 int prom_reactor_runtime_noise_refiner_rebind_impl(
@@ -2460,9 +1928,7 @@ int prom_reactor_runtime_noise_refiner_rebind_impl(
     PrometheusModelBlockEvidence* out_evidence) {
   prom_reduction_runtime_state* state;
   prom_model_block_state* block;
-  prom_model_block_weight_resource old_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   const PrometheusNoiseRefinerResolvedDescriptor* descriptor;
-  uint32_t index;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL ||
       request->upload_count != PROM_MODEL_BLOCK_MAX_WEIGHTS) {
@@ -2483,88 +1949,29 @@ int prom_reactor_runtime_noise_refiner_rebind_impl(
   }
   block = &state->model_block;
   if (block->assembly_family != PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO ||
-      block->parameter_set != PROM_NOISE_REFINER_PARAMETER_SET_0 || block->weights_uploaded == 0u ||
-      block->quarantined != 0u ||
-      (block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND &&
-       block->binding_state != PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT) ||
-      !prom_model_block_reap(state, block)) {
-    block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED
-                                                     : PROM_NOISE_REFINER_BINDING_COMPLETION_UNCERTAIN;
-    prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN
-                                                                   : PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED);
-    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+      block->parameter_set != PROM_NOISE_REFINER_PARAMETER_SET_0 || block->weights_uploaded == 0u) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
     return PROM_ERROR;
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_VALIDATING;
-  for (index = 0u; index < request->upload_count; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    if (upload->binding_index != index || upload->bytes == NULL || upload->content_identity == 0u ||
-        upload->layout_identity == 0u || upload->byte_count != k_prom_model_block_m1b_weight_bytes[index] ||
-        upload->byte_count > (uint64_t)block->weight_upload.size) {
-      block->binding_state = PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-      block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH;
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+  const uint64_t *sizes = descriptor->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
+                              ? k_prom_model_block_context_weight_bytes
+                              : k_prom_model_block_m1b_weight_bytes;
+  for (uint32_t i = 0; i < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++i) {
+    const PrometheusModelBlockWeightUpload *upload = &request->uploads[i];
+    if (upload->binding_index != i || !upload->bytes || !upload->content_identity ||
+        !upload->layout_identity || upload->byte_count != sizes[i] ||
+        upload->byte_count > block->weight_upload.size) {
+      prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH, out_evidence);
       return PROM_ERROR;
     }
   }
-  prom_model_block_destroy_pending_weights(state, block);
-  for (index = 0u; index < request->upload_count; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    block->pending_weights[index].content_identity = upload->content_identity;
-    block->pending_weights[index].layout_identity = upload->layout_identity;
-    block->pending_weights[index].byte_count = upload->byte_count;
-    if (!prom_model_block_create_buffer(state, block, &block->pending_weights[index].device,
-                                        (VkDeviceSize)upload->byte_count,
-                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) {
-      prom_model_block_destroy_pending_weights(state, block);
-      block->binding_state = PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-      block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-      return PROM_ERROR;
-    }
-  }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
-  for (index = 0u; index < request->upload_count; ++index) {
-    memcpy(block->weight_upload.mapped, request->uploads[index].bytes, (size_t)request->uploads[index].byte_count);
-    if (!prom_model_block_record_upload(state, block, block->pending_weights, index)) {
-      prom_model_block_destroy_pending_weights(state, block);
-      block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED
-                                                       : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-      prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN
-                                                                     : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED);
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-      return PROM_ERROR;
-    }
-    block->pending_weights[index].uploaded = 1u;
-  }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
-  if (!prom_model_block_update_weight_descriptors(state, block, block->pending_weights)) {
-    prom_model_block_destroy_pending_weights(state, block);
-    block->binding_state = PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-    block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
+  if (!prom_model_block_change_weights(state, block, request->uploads, PROM_MODEL_BLOCK_MAX_WEIGHTS,
+                                       1u, descriptor->assembly_family)) {
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
-  }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_READY_TO_COMMIT;
-  memcpy(old_weights, block->weights, sizeof(old_weights));
-  memcpy(block->weights, block->pending_weights, sizeof(block->weights));
-  memset(block->pending_weights, 0, sizeof(block->pending_weights));
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    prom_vk_destroy_buffer(state->device, &old_weights[index].device);
   }
   block->parameter_set = descriptor->parameter_set;
   block->parameter_set_aggregate_identity = descriptor->parameter_set_aggregate_identity;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
-  block->output_valid = 0u;
-  block->audit_valid = 0u;
-  block->resident_input_generation = 0u;
-  block->replay_identity = 0u;
-  block->m1b_prefix_replay_identity = 0u;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
-  block->weight_upload_count += request->upload_count;
-  block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
 }
@@ -2719,26 +2126,6 @@ int prom_reactor_runtime_model_block_execute_m1b_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
-  if (block->m1b_timestamp_supported != 0u &&
-      block->m1b_timestamp_query_pool != VK_NULL_HANDLE) {
-    uint64_t timestamps[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT + 1u];
-    uint32_t boundary;
-    block->gpu_compute_ns = 0u;
-    if (vkGetQueryPoolResults(state->device, block->m1b_timestamp_query_pool, 0u,
-                              PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT + 1u,
-                              sizeof(timestamps), timestamps, sizeof(uint64_t),
-                              VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS) {
-      prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED);
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-      return PROM_ERROR;
-    }
-    for (boundary = 0u; boundary < PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT; ++boundary) {
-      block->m1b_boundary_gpu_ns[boundary] = (uint64_t)(
-          (double)(timestamps[boundary + 1u] - timestamps[boundary]) *
-              (double)block->m1b_timestamp_period_ns + 0.5);
-      block->gpu_compute_ns += block->m1b_boundary_gpu_ns[boundary];
-    }
-  }
   if ((block->test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) {
     prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
@@ -2763,56 +2150,6 @@ int prom_reactor_runtime_model_block_execute_m1b_impl(
   return PROM_OK;
 }
 
-static int prom_model_block_m1c_record_execute(prom_reduction_runtime_state* state,
-                                                prom_model_block_state* block,
-                                                uint32_t audit_stage,
-                                                int capture_audit,
-                                                int32_t* out_detail) {
-  VkCommandBufferBeginInfo begin_info;
-  prom_model_block_m1c_attention_constants attention_constants = {1024u, 30u, 128u, 11520u};
-  prom_model_block_m1b_qkv_constants projection_constants = {1024u, 3840u, 3840u, 0u};
-  prom_model_block_m1b_norm_constants residual_constants = {1.0e-5f, 1024u, 3840u, 0u};
-  if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
-  if (state == NULL || block == NULL ||
-      prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  if (block->m1b_timestamp_supported != 0u) {
-    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u, 2u);
-    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        block->m1b_timestamp_query_pool, 0u);
-  }
-  if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
-    if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
-    return 0;
-  }
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u],
-                                         &attention_constants, sizeof(attention_constants), 30720u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],
-                                         &projection_constants, sizeof(projection_constants), 64u, 240u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u],
-                                         &residual_constants, sizeof(residual_constants), 1024u, 1u, 1u);
-  if (capture_audit != 0) {
-    const prom_vk_buffer* audit_source = &block->attention_residual;
-    if (audit_stage == PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION) audit_source = &block->attention;
-    if (audit_stage == PROM_MODEL_BLOCK_M1C_AUDIT_PROJECTION) audit_source = &block->attention_projection;
-    prom_model_block_m1b_record_audit_capture(block->command_buffer, audit_source, 0u,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
-    prom_model_block_record_small_audit_capture(block->command_buffer, &block->audit_device,
-        PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS * sizeof(float), &block->audit_readback,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
-  }
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 1u);
-  if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, out_detail);
-}
 
 int prom_reactor_runtime_model_block_execute_m1c_impl(
     void* handle, uint64_t block_id, const PrometheusModelBlockM1CExecuteRequest* request,
@@ -2852,7 +2189,7 @@ int prom_reactor_runtime_model_block_execute_m1c_impl(
   block->audit_valid = 0u;
   block->resident_input_generation = 0u;
   begin_ns = prom_reduction_now_ns();
-  if (!prom_model_block_m1c_record_execute(state, block, request->audit_stage, 1, &execution_detail)) {
+  if (!prom_concept_block_attention_run(state, block, request->audit_stage, 1, &execution_detail)) {
     prom_model_block_mark_failure(block, execution_detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
@@ -2886,84 +2223,6 @@ int prom_reactor_runtime_model_block_execute_m1c_impl(
   return PROM_OK;
 }
 
-static int prom_model_block_m1d_record_execute(prom_reduction_runtime_state* state,
-                                                prom_model_block_state* block,
-                                                uint32_t audit_stage,
-                                                int capture_audit,
-                                                int32_t* out_detail) {
-  VkCommandBufferBeginInfo begin_info;
-  prom_model_block_m1b_norm_constants norm_constants = {1.0e-5f, 1024u, 3840u, 0u};
-  prom_model_block_m1b_qkv_constants projection_constants = {1024u, 3840u, 10240u, 0u};
-  prom_model_block_m1d_gate_constants gate_constants = {PROM_MODEL_BLOCK_M1D_HIDDEN_ELEMENTS, 0u, 0u, 0u};
-  prom_model_block_m1d_w2_constants w2_constants = {1.0e-5f, 1024u, 3840u, 10240u};
-  if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
-  if (state == NULL || block == NULL ||
-      prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  if (block->m1b_timestamp_supported != 0u) {
-    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u, 2u);
-    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        block->m1b_timestamp_query_pool, 0u);
-  }
-  if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
-    if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
-    return 0;
-  }
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[0u],
-                                         &norm_constants, sizeof(norm_constants), 1024u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM) {
-    prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->norm_audit, 0u,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
-  }
-  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED) {
-    prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->modulated, 0u,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
-  }
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
-                                         &projection_constants, sizeof(projection_constants), 64u, 640u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W1) {
-    prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->qkv, 0u,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1D_HIDDEN_ELEMENTS), 0, &block->audit_readback);
-  }
-  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W3) {
-    prom_model_block_record_small_audit_capture(block->command_buffer, &block->attention,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), &block->audit_readback, 0u);
-    prom_model_block_record_small_audit_capture(block->command_buffer, &block->attention_projection,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), &block->audit_readback,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
-    prom_model_block_record_small_audit_capture(block->command_buffer, &block->norm_audit,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1D_HIDDEN_ELEMENTS - 2u * PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS),
-        &block->audit_readback, 2u * PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
-  }
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u],
-                                         &gate_constants, sizeof(gate_constants), 40960u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_GATED_HIDDEN) {
-    prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->qkv, 0u,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1D_HIDDEN_ELEMENTS), 0, &block->audit_readback);
-  }
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u],
-                                         &w2_constants, sizeof(w2_constants), 1024u, 1u, 1u);
-  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W2) {
-    prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->input_device, 0u,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
-  }
-  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT) {
-    prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->attention, 0u,
-        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
-  }
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 1u);
-  if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, out_detail);
-}
 
 int prom_reactor_runtime_model_block_execute_m1d_impl(
     void* handle, uint64_t block_id, const PrometheusModelBlockM1DExecuteRequest* request,
@@ -3011,7 +2270,7 @@ int prom_reactor_runtime_model_block_execute_m1d_impl(
   block->output_valid = 0u;
   block->audit_valid = 0u;
   begin_ns = prom_reduction_now_ns();
-  if (!prom_model_block_m1d_record_execute(state, block, request->audit_stage, 1, &execution_detail)) {
+  if (!prom_concept_block_ffn_run(state, block, request->audit_stage, 1, &execution_detail)) {
     prom_model_block_mark_failure(block, execution_detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
@@ -3093,7 +2352,7 @@ static int prom_reactor_runtime_noise_refiner_execute_external_impl(
   block->output_valid = 0u;
   block->audit_valid = 0u;
   begin_ns = prom_reduction_now_ns();
-  if (!prom_model_block_m1c_record_execute(state, block, PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL, 0,
+  if (!prom_concept_block_attention_run(state, block, PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL, 0,
                                             &execution_detail)) {
     prom_model_block_mark_failure(block, execution_detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
@@ -3106,7 +2365,7 @@ static int prom_reactor_runtime_noise_refiner_execute_external_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
-  if (!prom_model_block_m1d_record_execute(state, block, PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT, 0,
+  if (!prom_concept_block_ffn_run(state, block, PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT, 0,
                                             &execution_detail)) {
     prom_model_block_mark_failure(block, execution_detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
@@ -3302,9 +2561,7 @@ int prom_reactor_runtime_context_refiner_rebind_impl(
     PrometheusModelBlockEvidence* out_evidence) {
   prom_reduction_runtime_state* state;
   prom_model_block_state* block;
-  prom_model_block_weight_resource old_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   const PrometheusContextRefinerResolvedDescriptor* descriptor;
-  uint32_t index;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || request->uploads == NULL ||
       request->struct_size != sizeof(*request) || request->upload_count != 11u) goto invalid;
   descriptor = prom_zimage_turbo_resolve_context_refiner_descriptor(request->lock_identity, request->model_local_block_id);
@@ -3317,74 +2574,33 @@ int prom_reactor_runtime_context_refiner_rebind_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
-  if (!prom_model_block_is_context_refiner(block) || block->parameter_set != PROM_CONTEXT_REFINER_PARAMETER_SET_0 ||
-      block->weights_uploaded == 0u || block->quarantined != 0u ||
-      (block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND &&
-       block->binding_state != PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT) || !prom_model_block_reap(state, block)) goto failed;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_VALIDATING;
-  for (index = 0u; index < 11u; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    if (upload->binding_index != index || upload->bytes == NULL || upload->content_identity == 0u ||
-        upload->layout_identity == 0u || upload->byte_count != k_prom_model_block_context_weight_bytes[index] ||
-        upload->byte_count > (uint64_t)block->weight_upload.size) goto mismatch;
+  if (!prom_model_block_is_context_refiner(block) ||
+      block->parameter_set != PROM_CONTEXT_REFINER_PARAMETER_SET_0 ||
+      block->weights_uploaded == 0u) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
+    return PROM_ERROR;
   }
-  prom_model_block_destroy_pending_weights(state, block);
-  for (index = 0u; index < 11u; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    block->pending_weights[index].content_identity = upload->content_identity;
-    block->pending_weights[index].layout_identity = upload->layout_identity;
-    block->pending_weights[index].byte_count = upload->byte_count;
-    if (!prom_model_block_create_buffer(state, block, &block->pending_weights[index].device,
-                                        (VkDeviceSize)upload->byte_count,
-                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) goto resource_fail;
+  const uint64_t *sizes = descriptor->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
+                              ? k_prom_model_block_context_weight_bytes
+                              : k_prom_model_block_m1b_weight_bytes;
+  for (uint32_t i = 0; i < 11u; ++i) {
+    const PrometheusModelBlockWeightUpload *upload = &request->uploads[i];
+    if (upload->binding_index != i || !upload->bytes || !upload->content_identity ||
+        !upload->layout_identity || upload->byte_count != sizes[i] ||
+        upload->byte_count > block->weight_upload.size) {
+      prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH, out_evidence);
+      return PROM_ERROR;
+    }
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
-  for (index = 0u; index < 11u; ++index) {
-    memcpy(block->weight_upload.mapped, request->uploads[index].bytes, (size_t)request->uploads[index].byte_count);
-    if (!prom_model_block_record_upload(state, block, block->pending_weights, index)) goto upload_fail;
-    block->pending_weights[index].uploaded = 1u;
+  if (!prom_model_block_change_weights(state, block, request->uploads, 11u, 1u,
+                                       descriptor->assembly_family)) {
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
-  if (!prom_model_block_update_weight_descriptors(state, block, block->pending_weights)) goto descriptor_fail;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_READY_TO_COMMIT;
-  memcpy(old_weights, block->weights, sizeof(old_weights));
-  memcpy(block->weights, block->pending_weights, sizeof(block->weights));
-  memset(block->pending_weights, 0, sizeof(block->pending_weights));
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) prom_vk_destroy_buffer(state->device, &old_weights[index].device);
   block->parameter_set = descriptor->parameter_set;
   block->parameter_set_aggregate_identity = descriptor->parameter_set_aggregate_identity;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
-  block->output_valid = 0u;
-  block->audit_valid = 0u;
-  block->resident_input_generation = 0u;
-  block->replay_identity = 0u;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
-  block->weight_upload_count += 11u;
-  block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
-mismatch:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH;
-  goto rebind_fail;
-resource_fail:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
-  goto rebind_fail;
-upload_fail:
-  block->last_detail_code = block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED;
-  goto rebind_fail;
-descriptor_fail:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
-rebind_fail:
-  prom_model_block_destroy_pending_weights(state, block);
-  block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
-failed:
-  prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED);
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
 invalid:
   prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
   return PROM_ERROR;
@@ -3414,10 +2630,15 @@ static int prom_context_refiner_execute_closed(
     return PROM_ERROR;
   }
   block = &state->model_block;
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   first_resident_execution = resident_input && block->resident_input_generation == 0u;
   resident_input_mode = resident_input ? (first_resident_execution ? 1 : 2) : 0;
   if (!prom_model_block_is_context_refiner(block) || block->parameter_set != required_parameter_set ||
-      block->weights_uploaded == 0u || block->quarantined != 0u ||
+      block->weights_uploaded == 0u ||
       block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND || !prom_model_block_reap(state, block) ||
       (resident_input && (input_generation == 0u ||
                           (first_resident_execution ? input_generation != block->output_generation
@@ -3435,12 +2656,12 @@ static int prom_context_refiner_execute_closed(
   block->audit_valid = 0u;
   if (!resident_input) memcpy(block->input_upload.mapped, input, (size_t)input_bytes);
   begin_ns = prom_reduction_now_ns();
-  if (!prom_context_refiner_record_execute(state, block, resident_input_mode, &detail)) {
+  if (!prom_concept_block_context_run(state, block, (uint32_t)resident_input_mode, &detail)) {
     prom_model_block_mark_failure(block, detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
-  block->gpu_compute_ns = prom_model_block_resolve_gpu_span(state, block, 1u);
+  /* The execution span was measured by the Concept submission. */
   block->gpu_total_ns = block->gpu_compute_ns;
   block->output_valid = 1u;
   block->output_generation = output_generation;
@@ -3567,7 +2788,7 @@ int prom_reactor_runtime_context_refiner_execute_static_audit_impl(
   resident_input_mode = block->parameter_set == PROM_CONTEXT_REFINER_PARAMETER_SET_1 ?
       (first_resident_execution ? 1 : 2) : 0;
   if (!prom_model_block_is_context_refiner(block) || block->weights_uploaded == 0u ||
-      block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND || block->quarantined != 0u ||
+      block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND ||
       ((block->parameter_set == PROM_CONTEXT_REFINER_PARAMETER_SET_0 &&
         request->input_generation != block->output_generation) ||
        (block->parameter_set == PROM_CONTEXT_REFINER_PARAMETER_SET_1 &&
@@ -3606,96 +2827,6 @@ failure:
 invalid:
   prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
   return PROM_ERROR;
-}
-
-static int prom_context_refiner_record_execute(prom_reduction_runtime_state* state,
-                                               prom_model_block_state* block, int resident_input,
-                                               int32_t* out_detail) {
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy copy;
-  VkBufferMemoryBarrier barrier;
-  prom_model_block_m1b_norm_constants norm = {1.0e-5f, PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 0u};
-  prom_model_block_m1b_qkv_constants qkv = {PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 11520u, 0u};
-  prom_model_block_context_qk_constants q_head = {1.0e-5f, PROM_MODEL_BLOCK_CONTEXT_TOKENS, 30u, 128u, 0u};
-  prom_model_block_context_qk_constants k_head = {1.0e-5f, PROM_MODEL_BLOCK_CONTEXT_TOKENS, 30u, 128u, 3840u};
-  prom_model_block_m1c_attention_constants attention = {PROM_MODEL_BLOCK_CONTEXT_TOKENS, 30u, 128u, 11520u};
-  prom_model_block_m1b_qkv_constants projection = {PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 3840u, 0u};
-  prom_model_block_m1b_qkv_constants hidden = {PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 10240u, 0u};
-  prom_model_block_m1d_gate_constants gate = {PROM_MODEL_BLOCK_CONTEXT_HIDDEN_ELEMENTS, 0u, 0u, 0u};
-  prom_model_block_m1d_w2_constants w2 = {1.0e-5f, PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 10240u};
-  if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
-  if (state == NULL || block == NULL || !prom_model_block_is_context_refiner(block) ||
-      prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD) ||
-      vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  if (block->m1b_timestamp_supported != 0u) {
-    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u, 2u);
-    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        block->m1b_timestamp_query_pool, 0u);
-  }
-  memset(&copy, 0, sizeof(copy));
-  copy.size = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_CONTEXT_MODEL_ELEMENTS);
-  if (resident_input == 1) {
-    vkCmdCopyBuffer(block->command_buffer, block->attention.buffer, block->resident_boundary_device.buffer, 1u, &copy);
-    memset(&barrier, 0, sizeof(barrier));
-    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.buffer = block->resident_boundary_device.buffer;
-    barrier.size = VK_WHOLE_SIZE;
-    vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-  }
-  if (resident_input != 0) {
-    vkCmdCopyBuffer(block->command_buffer, block->resident_boundary_device.buffer, block->input_device.buffer, 1u, &copy);
-  } else {
-    vkCmdCopyBuffer(block->command_buffer, block->input_upload.buffer, block->input_device.buffer, 1u, &copy);
-  }
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = block->input_device.buffer;
-  barrier.size = VK_WHOLE_SIZE;
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-  if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
-    if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
-    return 0;
-  }
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[0u], &norm, sizeof(norm), 32u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u], &qkv, sizeof(qkv), 2u, 720u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[2u], &q_head, sizeof(q_head), 960u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[3u], &k_head, sizeof(k_head), 960u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u], &attention, sizeof(attention), 960u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u], &projection, sizeof(projection), 2u, 240u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u], &norm, sizeof(norm), 32u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[0u], &norm, sizeof(norm), 32u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u], &hidden, sizeof(hidden), 2u, 640u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u], &gate, sizeof(gate), 1280u, 1u, 1u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u], &w2, sizeof(w2), 32u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 1u);
-  if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, out_detail);
 }
 
 static int prom_context_refiner_record_static_audit_entry(
@@ -3753,15 +2884,6 @@ static int prom_context_refiner_record_static_audit(
   VkCommandBufferBeginInfo begin_info;
   VkBufferCopy copy;
   VkBufferMemoryBarrier barrier;
-  prom_model_block_m1b_norm_constants norm = {1.0e-5f, PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 0u};
-  prom_model_block_m1b_qkv_constants qkv = {PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 11520u, 0u};
-  prom_model_block_context_qk_constants q_head = {1.0e-5f, PROM_MODEL_BLOCK_CONTEXT_TOKENS, 30u, 128u, 0u};
-  prom_model_block_context_qk_constants k_head = {1.0e-5f, PROM_MODEL_BLOCK_CONTEXT_TOKENS, 30u, 128u, 3840u};
-  prom_model_block_m1c_attention_constants attention = {PROM_MODEL_BLOCK_CONTEXT_TOKENS, 30u, 128u, 11520u};
-  prom_model_block_m1b_qkv_constants projection = {PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 3840u, 0u};
-  prom_model_block_m1b_qkv_constants hidden = {PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 10240u, 0u};
-  prom_model_block_m1d_gate_constants gate = {PROM_MODEL_BLOCK_CONTEXT_HIDDEN_ELEMENTS, 0u, 0u, 0u};
-  prom_model_block_m1d_w2_constants w2 = {1.0e-5f, PROM_MODEL_BLOCK_CONTEXT_TOKENS, 3840u, 10240u};
   if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
   if (state == NULL || block == NULL || !prom_model_block_is_context_refiner(block) ||
       prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD) ||
@@ -3801,44 +2923,44 @@ static int prom_context_refiner_record_static_audit(
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
   }
   if (!prom_context_refiner_record_static_audit_entry(block, 0u, execution_generation, 1u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[0u], &norm, sizeof(norm), 32u, 1u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 20u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 1u, execution_generation, 2u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u], &qkv, sizeof(qkv), 2u, 720u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 21u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 2u, execution_generation, 3u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[2u], &q_head, sizeof(q_head), 960u, 1u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 22u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 3u, execution_generation, 4u) ||
       !prom_context_refiner_record_static_audit_entry(block, 5u, execution_generation, 4u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[3u], &k_head, sizeof(k_head), 960u, 1u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 23u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 4u, execution_generation, 5u) ||
       !prom_context_refiner_record_static_audit_entry(block, 6u, execution_generation, 5u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u], &attention, sizeof(attention), 960u, 1u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 24u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 7u, execution_generation, 6u)) return 0;
   prom_model_block_record_small_audit_capture(block->command_buffer, &block->audit_device,
                                                PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_TRANSIENT_ATTENTION_BYTES,
                                                &block->audit_readback,
                                                PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_TRANSIENT_ATTENTION_OFFSET);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u], &projection, sizeof(projection), 2u, 240u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 25u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 8u, execution_generation, 7u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u], &norm, sizeof(norm), 32u, 1u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 26u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 9u, execution_generation, 8u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[0u], &norm, sizeof(norm), 32u, 1u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 27u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 10u, execution_generation, 9u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u], &hidden, sizeof(hidden), 2u, 640u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 28u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 11u, execution_generation, 10u) ||
       !prom_context_refiner_record_static_audit_entry(block, 12u, execution_generation, 10u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u], &gate, sizeof(gate), 1280u, 1u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 29u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 13u, execution_generation, 11u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u], &w2, sizeof(w2), 32u, 1u, 1u);
+  prom_concept_block_record_stage(block, block->command_buffer, 30u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 14u, execution_generation, 12u) ||
       !prom_context_refiner_record_static_audit_entry(block, 15u, execution_generation, 13u)) return 0;
@@ -4314,8 +3436,7 @@ int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
-  gpu_compute_ns += prom_model_block_resolve_gpu_span(
-      state, block, PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT);
+  gpu_compute_ns += block->gpu_compute_ns;
   if (capture_m1b) {
     memcpy(request->audit_output, block->audit_readback.mapped, (size_t)(audit_elements * sizeof(float)));
     block->audit_valid = 1u;
@@ -4326,13 +3447,13 @@ int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     prom_model_block_fill_evidence(block, 0, out_evidence);
     return PROM_OK;
   }
-  if (!prom_model_block_m1c_record_execute(state, block, capture_m1c ? request->audit_stage : PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL, capture_m1c,
+  if (!prom_concept_block_attention_run(state, block, capture_m1c ? request->audit_stage : PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL, capture_m1c,
                                             &execution_detail)) {
     prom_model_block_mark_failure(block, execution_detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
-  gpu_compute_ns += prom_model_block_resolve_gpu_span(state, block, 1u);
+  gpu_compute_ns += block->gpu_compute_ns;
   if (capture_m1c) {
     memcpy(request->audit_output, block->audit_readback.mapped, (size_t)(audit_elements * sizeof(float)));
     block->audit_valid = 1u;
@@ -4343,13 +3464,13 @@ int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     prom_model_block_fill_evidence(block, 0, out_evidence);
     return PROM_OK;
   }
-  if (!prom_model_block_m1d_record_execute(state, block, capture_m1d ? request->audit_stage : PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT, capture_m1d,
+  if (!prom_concept_block_ffn_run(state, block, capture_m1d ? request->audit_stage : PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT, capture_m1d,
                                             &execution_detail)) {
     prom_model_block_mark_failure(block, execution_detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
-  gpu_compute_ns += prom_model_block_resolve_gpu_span(state, block, 1u);
+  gpu_compute_ns += block->gpu_compute_ns;
   block->gpu_compute_ns = gpu_compute_ns;
   block->gpu_total_ns = gpu_compute_ns;
   block->output_valid = 1u;
@@ -4438,13 +3559,8 @@ int prom_reactor_runtime_model_block_test_bf16_ingress_impl(
     float* output_fp32, uint32_t output_capacity, PrometheusModelBlockEvidence* out_evidence) {
   prom_reduction_runtime_state* state;
   prom_model_block_state* block;
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy copy;
-  VkBufferMemoryBarrier barrier;
-  prom_model_block_m1b_ingress_constants constants;
   VkDeviceSize input_bytes;
   VkDeviceSize output_bytes;
-  VkResult result;
   int32_t detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
   if (!prom_reactor_runtime_validate_handle(handle) || input_bf16 == NULL || output_fp32 == NULL ||
       element_count == 0u || output_capacity < element_count) {
@@ -4465,51 +3581,9 @@ int prom_reactor_runtime_model_block_test_bf16_ingress_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
+  if (!prom_model_block_reap(state, block)) { detail = PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN; goto fail; }
   memcpy(block->input_upload.mapped, input_bf16, (size_t)input_bytes);
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) goto fail;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) goto fail;
-  memset(&copy, 0, sizeof(copy));
-  copy.size = input_bytes;
-  vkCmdCopyBuffer(block->command_buffer, block->input_upload.buffer,
-                  block->input_bf16_device.buffer, 1u, &copy);
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = block->input_bf16_device.buffer;
-  barrier.size = input_bytes;
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-  if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
-    detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
-    (void)vkEndCommandBuffer(block->command_buffer);
-    goto fail;
-  }
-  constants.input_elements = element_count;
-  constants.timestep_elements = 0u;
-  prom_model_block_m1b_bind_and_dispatch(
-      block->command_buffer, &block->m1b_pipelines[0u], &constants, sizeof(constants),
-      prom_reduction_ceil_div_u32(element_count, PROM_MODEL_BLOCK_WORKGROUP_SIZE), 1u, 1u);
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = block->input_device.buffer;
-  barrier.size = output_bytes;
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-  copy.size = output_bytes;
-  vkCmdCopyBuffer(block->command_buffer, block->input_device.buffer,
-                  block->audit_readback.buffer, 1u, &copy);
-  result = vkEndCommandBuffer(block->command_buffer);
-  if (result != VK_SUCCESS || !prom_model_block_submit_and_wait(state, block, &detail)) goto fail;
+  if (!prom_concept_block_run(state, block, 2, element_count, 0, 0, &detail)) goto fail;
   memcpy(output_fp32, block->audit_readback.mapped, (size_t)output_bytes);
   block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
@@ -4553,9 +3627,14 @@ static int prom_main_transformer_resolve_timestamps(prom_reduction_runtime_state
                                                      prom_model_block_state* block) {
   uint64_t timestamps[PROM_MODEL_BLOCK_MAIN_QUERY_COUNT];
   uint32_t stage;
+#if defined(PROM_MAIN_EXPERIMENTAL_EXECUTOR)
+  VkQueryPool queries = block ? block->m1b_timestamp_query_pool : VK_NULL_HANDLE;
+#else
+  VkQueryPool queries = block ? prom_concept_block_queries(block) : VK_NULL_HANDLE;
+#endif
   if (state == NULL || block == NULL || block->m1b_timestamp_supported == 0u ||
-      block->m1b_timestamp_query_pool == VK_NULL_HANDLE) return 0;
-  if (vkGetQueryPoolResults(state->device, block->m1b_timestamp_query_pool, 0u,
+      queries == VK_NULL_HANDLE) return 0;
+  if (vkGetQueryPoolResults(state->device, queries, 0u,
                             PROM_MODEL_BLOCK_MAIN_QUERY_COUNT, sizeof(timestamps), timestamps,
                             sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS) return 0;
   block->gpu_total_begin_tick = timestamps[0u];
@@ -4588,310 +3667,26 @@ static int prom_main_transformer_resolve_timestamps(prom_reduction_runtime_state
   return 1;
 }
 
+#if defined(PROM_MAIN_EXPERIMENTAL_EXECUTOR)
+#include "reactor_main_experiments.inc"
+#endif
 static int prom_main_transformer_record_execute(prom_reduction_runtime_state* state,
-                                                prom_model_block_state* block,
-                                                prom_compiled_model_session_state* session,
-                                                uint64_t requested_joint_generation,
-                                                uint32_t resident_chain_mode,
-                                                int32_t* out_detail) {
-  prom_compiled_model_stream_slot* joint;
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy copies[3];
-  VkBufferMemoryBarrier barriers[2];
-  prom_model_block_m1b_ingress_constants ingress = {0u, PROM_MODEL_BLOCK_M1B_TIMESTEP_ELEMENTS};
-  prom_model_block_m1b_adaln_constants adaln = {15360u, 256u};
-  prom_model_block_m1b_norm_constants norm = {1.0e-5f, PROM_MODEL_BLOCK_MAIN_TOKENS,
-                                               PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS, 0u};
-  prom_model_block_m1b_qkv_constants qkv = {PROM_MODEL_BLOCK_MAIN_TOKENS,
-                                             PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS, 11520u, 0u};
-  prom_model_block_main_qk_constants q_head = {1.0e-5f, PROM_MODEL_BLOCK_MAIN_TOKENS,
-                                                30u, 128u, 0u,
-                                                PROM_MODEL_BLOCK_MAIN_IMAGE_TOKENS};
-  prom_model_block_main_qk_constants k_head = {1.0e-5f, PROM_MODEL_BLOCK_MAIN_TOKENS,
-                                                30u, 128u, 3840u,
-                                                PROM_MODEL_BLOCK_MAIN_IMAGE_TOKENS};
-  prom_model_block_m1c_attention_constants attention = {PROM_MODEL_BLOCK_MAIN_TOKENS, 30u, 128u, 11520u};
-  prom_model_block_m1b_qkv_constants projection = {PROM_MODEL_BLOCK_MAIN_TOKENS,
-                                                    PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS, 3840u, 0u};
-  prom_model_block_m1b_qkv_constants hidden = {PROM_MODEL_BLOCK_MAIN_TOKENS,
-                                                PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS, 10240u, 0u};
-  prom_model_block_m1d_gate_constants gate = {PROM_MODEL_BLOCK_MAIN_HIDDEN_ELEMENTS, 0u, 0u, 0u};
-  prom_model_block_m1d_w2_constants w2 = {1.0e-5f, PROM_MODEL_BLOCK_MAIN_TOKENS,
-                                           PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS, 10240u};
-  VkResult result;
-  uint64_t phase_begin_ns;
-  uint64_t record_begin_ns;
-  if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
-  if (state == NULL || block == NULL || session == NULL ||
-      prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
-  joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
-  if (joint == NULL || joint->valid == 0u || joint->generation != requested_joint_generation ||
-      joint->device.size != PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS) ||
-      block->input_device.size != joint->device.size || block->timestep_upload.mapped == NULL) return 0;
-  phase_begin_ns = prom_reduction_now_ns();
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  block->last_command_reset_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
-  block->vk_reset_command_buffer_count += 1u;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  phase_begin_ns = prom_reduction_now_ns();
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  block->last_command_begin_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
-  record_begin_ns = prom_reduction_now_ns();
-  if (block->m1b_timestamp_supported != 0u) {
-    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u,
-                        PROM_MODEL_BLOCK_MAIN_QUERY_COUNT);
-    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                        block->m1b_timestamp_query_pool, 0u);
-  }
-  memset(copies, 0, sizeof(copies));
-  copies[0].size = joint->device.size;
-  copies[1].size = block->timestep_upload.size;
-  vkCmdCopyBuffer(block->command_buffer, joint->device.buffer, block->input_device.buffer, 1u, &copies[0]);
-  vkCmdCopyBuffer(block->command_buffer, block->timestep_upload.buffer,
-                  block->timestep_bf16_device.buffer, 1u, &copies[1]);
-  memset(barriers, 0, sizeof(barriers));
-  barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-  barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].buffer = block->input_device.buffer;
-  barriers[0].size = block->input_device.size;
-  barriers[1] = barriers[0];
-  barriers[1].buffer = block->timestep_bf16_device.buffer;
-  barriers[1].size = block->timestep_bf16_device.size;
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 2u, barriers, 0u, NULL);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 1u);
-  if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
-    if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
-    return 0;
-  }
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[0u],
-                                         &ingress, sizeof(ingress), 1u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 2u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u],
-                                         &adaln, sizeof(adaln), 60u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 3u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[2u],
-                                         &norm, sizeof(norm), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 4u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[3u],
-                                         &qkv, sizeof(qkv), 66u, 720u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 5u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[4u],
-                                         &q_head, sizeof(q_head), 31680u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 6u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[5u],
-                                         &k_head, sizeof(k_head), 31680u, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 7u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u],
-                                         &attention, sizeof(attention),
-                                         (block->main_attention_shader_id == PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID ||
-                                          block->main_attention_shader_id == PROM_MODEL_BLOCK_MAIN_ATTENTION_BUILTIN_TOPOLOGY_SHADER_ID
-                                             ? PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS
-                                             : PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_GROUPS), 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 8u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],
-                                         &projection, sizeof(projection), 66u, 240u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 9u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u],
-                                         &norm, sizeof(norm), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 10u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[0u],
-                                         &norm, sizeof(norm), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 11u);
-  prom_reduction_record_barrier(block->command_buffer);
-#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
-  {
-    const char* m6a_route = getenv("OCT_DVT2_M6A_W1W3_ROUTE");
-    const int use_cooperative = m6a_route != NULL && strcmp(m6a_route, "cooperative") == 0;
-    if (use_cooperative) {
-      const prom_model_block_m6a_pack_constants pack = {
-          PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS,
-          PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS / 2u};
-      const prom_model_block_m6a_cooperative_constants cooperative = {
-          PROM_MODEL_BLOCK_MAIN_TOKENS, 10240u, 3840u};
-      prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m6a_pack_pipeline,
-                                             &pack, sizeof(pack), 7920u, 1u, 1u);
-      if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-          block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-          block->m1b_timestamp_query_pool, 16u);
-      prom_reduction_record_barrier(block->command_buffer);
-      prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m6a_w1_pipeline,
-                                             &cooperative, sizeof(cooperative), 66u, 640u, 1u);
-      prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m6a_w3_pipeline,
-                                             &cooperative, sizeof(cooperative), 66u, 640u, 1u);
-      if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-          block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-          block->m1b_timestamp_query_pool, 17u);
-      {
-        VkBufferMemoryBarrier to_transfer[2];
-        VkBufferMemoryBarrier to_compute[3];
-        VkBufferCopy segments[3];
-        const VkDeviceSize segment_bytes =
-            PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS);
-        memset(to_transfer, 0, sizeof(to_transfer));
-        for (uint32_t source = 0u; source < 2u; ++source) {
-          to_transfer[source].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-          to_transfer[source].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-          to_transfer[source].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-          to_transfer[source].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-          to_transfer[source].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        }
-        to_transfer[0].buffer = block->m6a_w3_fp32.buffer;
-        to_transfer[0].size = block->m6a_w3_fp32.size;
-        to_transfer[1].buffer = block->qkv.buffer;
-        to_transfer[1].size = block->qkv.size;
-        vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 2u,
-                             to_transfer, 0u, NULL);
-        memset(segments, 0, sizeof(segments));
-        segments[0].size = segment_bytes;
-        segments[1].srcOffset = segment_bytes;
-        segments[1].size = segment_bytes;
-        segments[2].srcOffset = segment_bytes * 2u;
-        segments[2].size = block->m6a_w3_fp32.size - segment_bytes * 2u;
-        vkCmdCopyBuffer(block->command_buffer, block->m6a_w3_fp32.buffer,
-                        block->attention.buffer, 1u, &segments[0]);
-        vkCmdCopyBuffer(block->command_buffer, block->m6a_w3_fp32.buffer,
-                        block->attention_projection.buffer, 1u, &segments[1]);
-        vkCmdCopyBuffer(block->command_buffer, block->m6a_w3_fp32.buffer,
-                        block->norm_audit.buffer, 1u, &segments[2]);
-        if (block->m6a_raw_audit.buffer != VK_NULL_HANDLE) {
-          VkBufferCopy audit_copy;
-          memset(&audit_copy, 0, sizeof(audit_copy));
-          audit_copy.size = block->m6a_w3_fp32.size;
-          vkCmdCopyBuffer(block->command_buffer, block->qkv.buffer,
-                          block->m6a_raw_audit.buffer, 1u, &audit_copy);
-          audit_copy.dstOffset = block->m6a_w3_fp32.size;
-          vkCmdCopyBuffer(block->command_buffer, block->m6a_w3_fp32.buffer,
-                          block->m6a_raw_audit.buffer, 1u, &audit_copy);
-        }
-        memset(to_compute, 0, sizeof(to_compute));
-        for (uint32_t segment = 0u; segment < 3u; ++segment) {
-          to_compute[segment].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-          to_compute[segment].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-          to_compute[segment].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-          to_compute[segment].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-          to_compute[segment].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        }
-        to_compute[0].buffer = block->attention.buffer;
-        to_compute[0].size = block->attention.size;
-        to_compute[1].buffer = block->attention_projection.buffer;
-        to_compute[1].size = block->attention_projection.size;
-        to_compute[2].buffer = block->norm_audit.buffer;
-        to_compute[2].size = block->norm_audit.size;
-        vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 3u,
-                             to_compute, 0u, NULL);
-        if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-            block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            block->m1b_timestamp_query_pool, 18u);
-      }
-    } else {
-      prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
-                                             &hidden, sizeof(hidden), 66u, 640u, 1u);
-      if (block->m1b_timestamp_supported != 0u) {
-        vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                            block->m1b_timestamp_query_pool, 16u);
-        vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                            block->m1b_timestamp_query_pool, 17u);
-        vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                            block->m1b_timestamp_query_pool, 18u);
-      }
-    }
-  }
+    prom_model_block_state* block, prom_compiled_model_session_state* session,
+    uint64_t requested_joint_generation, uint32_t resident_chain_mode, int32_t* out_detail) {
+#if defined(PROM_MAIN_EXPERIMENTAL_EXECUTOR)
+  return prom_main_transformer_record_experimental(state,block,session,requested_joint_generation,resident_chain_mode,out_detail);
 #else
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
-                                         &hidden, sizeof(hidden), 66u, 640u, 1u);
+  if (out_detail) *out_detail=PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
+  if (!state || !block || !session) return 0;
+  prom_compiled_model_stream_slot* joint=prom_compiled_session_slot(session,PROM_ZIMAGE_STREAM_JOINT_WORKING);
+  if (!joint ||
+      (!joint->valid && !(resident_chain_mode && prom_concept_session_joint_borrowed(session))) ||
+      joint->generation != requested_joint_generation ||
+      joint->device.size != PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS) ||
+      block->input_device.size != joint->device.size || !block->timestep_upload.mapped)
+    return 0;
+  return prom_concept_block_main_run(state,block,&joint->device,resident_chain_mode,out_detail);
 #endif
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 12u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u],
-                                         &gate, sizeof(gate), 42240u, 1u, 1u);
-#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
-  if (block->m6a_raw_audit.buffer != VK_NULL_HANDLE) {
-    VkBufferMemoryBarrier capture_barrier;
-    VkBufferCopy capture_copy;
-    memset(&capture_barrier, 0, sizeof(capture_barrier));
-    capture_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    capture_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    capture_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    capture_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    capture_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    capture_barrier.buffer = block->qkv.buffer;
-    capture_barrier.size = block->m6a_w3_fp32.size;
-    vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u,
-                         &capture_barrier, 0u, NULL);
-    memset(&capture_copy, 0, sizeof(capture_copy));
-    capture_copy.dstOffset = block->m6a_w3_fp32.size * 2u;
-    capture_copy.size = block->m6a_w3_fp32.size;
-    vkCmdCopyBuffer(block->command_buffer, block->qkv.buffer,
-                    block->m6a_raw_audit.buffer, 1u, &capture_copy);
-    capture_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    capture_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    capture_barrier.buffer = block->m6a_raw_audit.buffer;
-    capture_barrier.size = block->m6a_raw_audit.size;
-    vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_HOST_BIT, 0u, 0u, NULL, 1u,
-                         &capture_barrier, 0u, NULL);
-  }
-#endif
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 13u);
-  prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u],
-                                         &w2, sizeof(w2), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 14u);
-  prom_reduction_record_barrier(block->command_buffer);
-  /* W2 writes its projected intermediate to input_device and the final FP32
-     gated residual to attention. Chain mode copies that final buffer back to
-     the lock-owned JointWorking slot before completion, making attention and
-     and JointWorking the two fixed ping/pong states for the next layer. */
-  if (resident_chain_mode != 0u) {
-  barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barriers[0].buffer = block->attention.buffer;
-  barriers[0].size = block->attention.size;
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, barriers, 0u, NULL);
-  memset(&copies[2], 0, sizeof(copies[2]));
-  copies[2].size = joint->device.size;
-  vkCmdCopyBuffer(block->command_buffer, block->attention.buffer, joint->device.buffer, 1u, &copies[2]);
-  barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
-  barriers[0].buffer = joint->device.buffer;
-  barriers[0].size = joint->device.size;
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       0u, 0u, NULL, 1u, barriers, 0u, NULL);
-  }
-  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
-      block->command_buffer,
-      resident_chain_mode != 0u ? VK_PIPELINE_STAGE_TRANSFER_BIT : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-      block->m1b_timestamp_query_pool, 15u);
-  block->last_command_record_ns = prom_reduction_elapsed_ns(record_begin_ns, prom_reduction_now_ns());
-  phase_begin_ns = prom_reduction_now_ns();
-  result = (block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u
-               ? VK_ERROR_INITIALIZATION_FAILED
-               : vkEndCommandBuffer(block->command_buffer);
-  block->last_command_end_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
-  if (result != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, out_detail);
 }
 
 static void prom_compiled_session_fill_evidence(const prom_compiled_model_session_state* session,
@@ -4937,43 +3732,18 @@ static void prom_compiled_session_fill_evidence(const prom_compiled_model_sessio
   out_evidence->main_attention_shader_id = session->main_attention_shader_id;
 }
 
-static int prom_compiled_session_submit_and_wait(prom_reduction_runtime_state* state,
-                                                 prom_compiled_model_session_state* session) {
-  VkSubmitInfo submit_info;
-  if (state == NULL || session == NULL || session->command_buffer == VK_NULL_HANDLE ||
-      session->fence == VK_NULL_HANDLE || vkResetFences(state->device, 1u, &session->fence) != VK_SUCCESS) return 0;
-  memset(&submit_info, 0, sizeof(submit_info));
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_info.commandBufferCount = 1u;
-  submit_info.pCommandBuffers = &session->command_buffer;
-  if (prom_vk_queue_submit(state->queue, 1u, &submit_info, session->fence) != VK_SUCCESS ||
-      vkWaitForFences(state->device, 1u, &session->fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
-    session->quarantined = 1u;
-    session->last_detail_code = PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN;
-    return 0;
-  }
-  return 1;
-}
-
 void prom_compiled_model_session_cleanup_state(prom_reduction_runtime_state* state) {
-  prom_compiled_model_session_state* session;
-  uint64_t next_session_id;
-  uint32_t index;
-  if (state == NULL) return;
-  session = &state->compiled_session;
-  next_session_id = session->next_session_id;
-  if (state->device != VK_NULL_HANDLE && session->fence != VK_NULL_HANDLE && session->quarantined != 0u) {
-    (void)vkWaitForFences(state->device, 1u, &session->fence, VK_TRUE, UINT64_MAX);
-  }
-  if (state->device != VK_NULL_HANDLE) {
-    for (index = 0u; index < PROM_ZIMAGE_STREAM_SLOT_COUNT; ++index)
-      prom_vk_destroy_buffer(state->device, &session->streams[index].device);
-    if (session->fence != VK_NULL_HANDLE) vkDestroyFence(state->device, session->fence, NULL);
-    if (session->command_buffer != VK_NULL_HANDLE && state->command_pool != VK_NULL_HANDLE)
-      vkFreeCommandBuffers(state->device, state->command_pool, 1u, &session->command_buffer);
-  }
+  if (!state)
+    return;
+  prom_compiled_model_session_state *session = &state->compiled_session;
+  const uint64_t next = session->next_session_id;
+  // The model may still hold a submitted borrow of JointWorking.
+  if (session->concept_owner && !prom_model_block_reap(state, &state->model_block))
+    abort();
+  if (prom_concept_session_destroy(session) != PROM_OK)
+    abort();
   memset(session, 0, sizeof(*session));
-  session->next_session_id = next_session_id == 0u ? 1u : next_session_id;
+  session->next_session_id = next == 0u ? 1u : next;
 }
 
 int prom_reactor_runtime_compiled_model_session_create_impl(
@@ -4981,15 +3751,12 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
     PrometheusCompiledModelSessionEvidence* out_evidence) {
   prom_reduction_runtime_state* state;
   prom_compiled_model_session_state* session;
-  VkCommandBufferAllocateInfo command_info;
-  VkFenceCreateInfo fence_info;
+  prom_vk_runtime_services services;
   const PrometheusCompiledModelResidentStreamDescriptor* image_descriptor;
   const PrometheusCompiledModelResidentStreamDescriptor* context_descriptor;
   const PrometheusCompiledModelResidentStreamDescriptor* joint_descriptor;
   uint64_t next_session_id;
   int32_t detail = 0;
-  const VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                                   VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   VkDeviceSize image_bytes;
   VkDeviceSize context_bytes;
   VkDeviceSize joint_bytes;
@@ -5036,23 +3803,13 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
   image_bytes = (VkDeviceSize)image_descriptor->byte_count;
   context_bytes = (VkDeviceSize)context_descriptor->byte_count;
   joint_bytes = (VkDeviceSize)joint_descriptor->byte_count;
-  if (prom_vk_create_buffer(state->physical_device, state->device, 0u, image_bytes, usage,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &session->streams[0u].device) != VK_SUCCESS ||
-      prom_vk_create_buffer(state->physical_device, state->device, 0u, context_bytes, usage,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &session->streams[1u].device) != VK_SUCCESS ||
-      prom_vk_create_buffer(state->physical_device, state->device, 0u, joint_bytes, usage,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &session->streams[2u].device) != VK_SUCCESS) goto fail;
+  const uint32_t fault = state->session_create_test_flags;
+  state->session_create_test_flags = 0u;
+  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK ||
+      !prom_concept_session_create(handle, &services, session, image_bytes, context_bytes,
+                                   joint_bytes, fault))
+    goto fail;
   session->cold_buffer_allocation_count = 3u;
-  memset(&command_info, 0, sizeof(command_info));
-  command_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  command_info.commandPool = state->command_pool;
-  command_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  command_info.commandBufferCount = 1u;
-  if (vkAllocateCommandBuffers(state->device, &command_info, &session->command_buffer) != VK_SUCCESS) goto fail;
-  memset(&fence_info, 0, sizeof(fence_info));
-  fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-  if (vkCreateFence(state->device, &fence_info, NULL, &session->fence) != VK_SUCCESS) goto fail;
   session->session_id = session->next_session_id++;
   session->created = 1u;
   session->last_detail_code = 0;
@@ -5063,6 +3820,8 @@ fail:
   session->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
   prom_compiled_model_session_cleanup_state(state);
   prom_compiled_session_fill_evidence(NULL, out_evidence);
+  if (out_evidence)
+    out_evidence->detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
   return PROM_ERROR;
 }
 
@@ -5074,9 +3833,6 @@ int prom_reactor_runtime_compiled_model_session_capture_completed_impl(
   prom_compiled_model_session_state* session;
   prom_model_block_state* block;
   prom_compiled_model_stream_slot* slot;
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferMemoryBarrier barriers[2];
-  VkBufferCopy copy;
   const PrometheusCompiledModelResidentStreamDescriptor* descriptor;
   uint32_t role;
   VkDeviceSize bytes;
@@ -5085,6 +3841,8 @@ int prom_reactor_runtime_compiled_model_session_capture_completed_impl(
   if (state == NULL) goto invalid;
   session = &state->compiled_session;
   block = &state->model_block;
+  if (session->created && session->session_id == session_id && !prom_concept_session_drain(session))
+    goto stale;
   if (session->created == 0u || session->session_id != session_id || session->quarantined != 0u ||
       block->created == 0u || block->block_id != completed_block_id || block->output_valid == 0u ||
       block->output_generation != request->source_output_generation || !prom_model_block_reap(state, block)) goto stale;
@@ -5100,36 +3858,13 @@ int prom_reactor_runtime_compiled_model_session_capture_completed_impl(
   slot = prom_compiled_session_slot(session, role);
   descriptor = prom_zimage_turbo_resolve_resident_stream_descriptor(session->lock_identity, role);
   if (descriptor == NULL || descriptor->byte_count != bytes || slot == NULL ||
-      block->attention.size < bytes || slot->device.size != bytes ||
-      vkResetCommandBuffer(session->command_buffer, 0u) != VK_SUCCESS) goto invalid;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(session->command_buffer, &begin_info) != VK_SUCCESS) goto invalid;
-  memset(barriers, 0, sizeof(barriers));
-  barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].buffer = block->attention.buffer;
-  barriers[0].size = bytes;
-  barriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[1].buffer = slot->device.buffer;
-  barriers[1].size = bytes;
-  vkCmdPipelineBarrier(session->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 2u, barriers, 0u, NULL);
-  memset(&copy, 0, sizeof(copy));
-  copy.size = bytes;
-  vkCmdCopyBuffer(session->command_buffer, block->attention.buffer, slot->device.buffer, 1u, &copy);
-  if (vkEndCommandBuffer(session->command_buffer) != VK_SUCCESS || !prom_compiled_session_submit_and_wait(state, session)) goto stale;
-  slot->generation += 1u;
-  slot->producer_block_id = completed_block_id;
-  slot->producer_output_generation = block->output_generation;
-  slot->valid = 1u;
+      block->attention.size < bytes || slot->device.size != bytes)
+    goto invalid;
+  if (!prom_concept_session_capture(session, role, &block->attention, completed_block_id,
+                                    block->output_generation)) {
+    prom_compiled_session_fill_evidence(session, out_evidence);
+    return PROM_ERROR;
+  }
   session->active_block_id = completed_block_id;
   session->binding_generation = block->binding_generation;
   session->replay_identity = prom_model_block_hash_u64(session->replay_identity == 0u ? session->lock_identity : session->replay_identity,
@@ -5152,91 +3887,39 @@ invalid:
 }
 
 int prom_reactor_runtime_compiled_model_session_compose_joint_impl(
-    void* handle, uint64_t session_id, const PrometheusCompiledModelSessionComposeRequest* request,
-    PrometheusCompiledModelSessionEvidence* out_evidence) {
-  prom_reduction_runtime_state* state;
-  prom_compiled_model_session_state* session;
-  prom_compiled_model_stream_slot* image;
-  prom_compiled_model_stream_slot* context;
-  prom_compiled_model_stream_slot* joint;
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferMemoryBarrier barriers[3];
-  VkBufferCopy copies[2];
-  const PrometheusCompiledModelResidentStreamDescriptor* joint_descriptor;
-  if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || request->struct_size != sizeof(*request)) goto invalid;
-  state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
-  if (state == NULL) goto invalid;
-  session = &state->compiled_session;
-  image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
-  context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
-  joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
-  if (session->created == 0u || session->session_id != session_id || session->quarantined != 0u ||
-      image == NULL || context == NULL || joint == NULL || image->valid == 0u || context->valid == 0u ||
-      request->required_image_generation != image->generation || request->required_context_generation != context->generation)
-    goto stale;
-  joint_descriptor = prom_zimage_turbo_resolve_resident_stream_descriptor(
-      session->lock_identity, PROM_ZIMAGE_STREAM_JOINT_WORKING);
-  if (joint_descriptor == NULL || joint_descriptor->byte_count != image->device.size + context->device.size ||
-      joint->device.size != joint_descriptor->byte_count || vkResetCommandBuffer(session->command_buffer, 0u) != VK_SUCCESS) goto invalid;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(session->command_buffer, &begin_info) != VK_SUCCESS) goto invalid;
-  memset(barriers, 0, sizeof(barriers));
-  barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[0].buffer = image->device.buffer;
-  barriers[0].size = image->device.size;
-  barriers[1] = barriers[0];
-  barriers[1].buffer = context->device.buffer;
-  barriers[1].size = context->device.size;
-  barriers[2].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barriers[2].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[2].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[2].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barriers[2].buffer = joint->device.buffer;
-  barriers[2].size = joint->device.size;
-  vkCmdPipelineBarrier(session->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 3u, barriers, 0u, NULL);
-  memset(copies, 0, sizeof(copies));
-  copies[0].size = image->device.size;
-  copies[1].dstOffset = image->device.size;
-  copies[1].size = context->device.size;
-  vkCmdCopyBuffer(session->command_buffer, image->device.buffer, joint->device.buffer, 1u, &copies[0]);
-  vkCmdCopyBuffer(session->command_buffer, context->device.buffer, joint->device.buffer, 1u, &copies[1]);
-  barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-  barriers[0].buffer = joint->device.buffer;
-  barriers[0].size = joint->device.size;
-  vkCmdPipelineBarrier(session->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 1u, barriers, 0u, NULL);
-  if (vkEndCommandBuffer(session->command_buffer) != VK_SUCCESS || !prom_compiled_session_submit_and_wait(state, session)) goto stale;
-  joint->generation += 1u;
-  joint->producer_block_id = 0u;
-  joint->producer_output_generation = 0u;
-  joint->valid = 1u;
-  session->joint_image_generation = image->generation;
-  session->joint_context_generation = context->generation;
-  session->composition_count += 1u;
-  session->replay_identity = prom_model_block_hash_u64(session->replay_identity, image->generation);
-  session->replay_identity = prom_model_block_hash_u64(session->replay_identity, context->generation);
-  session->replay_identity = prom_model_block_hash_u64(session->replay_identity, joint->generation);
-  session->last_detail_code = 0;
+    void *handle, uint64_t session_id, const PrometheusCompiledModelSessionComposeRequest *request,
+    PrometheusCompiledModelSessionEvidence *out_evidence) {
+  if (!prom_reactor_runtime_validate_handle(handle) || !request ||
+      request->struct_size != sizeof(*request)) {
+    prom_compiled_session_fill_evidence(NULL, out_evidence);
+    return PROM_ERROR;
+  }
+  prom_reduction_runtime_state *state = prom_reactor_runtime_reduction_state(handle);
+  if (!state || !state->compiled_session.created ||
+      state->compiled_session.session_id != session_id) {
+    prom_compiled_session_fill_evidence(NULL, out_evidence);
+    return PROM_ERROR;
+  }
+  prom_compiled_model_session_state *session = &state->compiled_session;
+  // Main's earlier submission may still borrow/write the joint.
+  if (!prom_model_block_reap(state, &state->model_block)) {
+    session->last_detail_code = PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN;
+    prom_compiled_session_fill_evidence(session, out_evidence);
+    return PROM_ERROR;
+  }
+  if (!prom_concept_session_compose(session, request->required_image_generation,
+                                    request->required_context_generation)) {
+    prom_compiled_session_fill_evidence(session, out_evidence);
+    return PROM_ERROR;
+  }
+  session->replay_identity =
+      prom_model_block_hash_u64(session->replay_identity, session->joint_image_generation);
+  session->replay_identity =
+      prom_model_block_hash_u64(session->replay_identity, session->joint_context_generation);
+  session->replay_identity =
+      prom_model_block_hash_u64(session->replay_identity, session->streams[2].generation);
   prom_compiled_session_fill_evidence(session, out_evidence);
   return PROM_OK;
-stale:
-  if (state != NULL) {
-    session = &state->compiled_session;
-    session->last_detail_code = session->quarantined != 0u ? PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_SESSION_DETAIL_STALE_STREAM;
-    prom_compiled_session_fill_evidence(session, out_evidence);
-  } else prom_compiled_session_fill_evidence(NULL, out_evidence);
-  return PROM_ERROR;
-invalid:
-  prom_compiled_session_fill_evidence(NULL, out_evidence);
-  return PROM_ERROR;
 }
 
 /* Rebinding is deliberately limited to the lock's immediate successor.  The
@@ -5248,8 +3931,6 @@ int prom_reactor_runtime_main_transformer_rebind_impl(
   prom_reduction_runtime_state* state;
   prom_model_block_state* block;
   const PrometheusMainTransformerResolvedDescriptor* descriptor;
-  prom_model_block_weight_resource old_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
-  uint32_t index;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || request->uploads == NULL ||
       request->struct_size != sizeof(*request) || request->upload_count != PROM_MODEL_BLOCK_MAX_WEIGHTS) goto invalid;
   descriptor = prom_zimage_turbo_resolve_main_transformer_descriptor(request->lock_identity,
@@ -5263,74 +3944,32 @@ int prom_reactor_runtime_main_transformer_rebind_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
-  if (!prom_model_block_is_main_transformer(block) || block->weights_uploaded == 0u ||
-      block->quarantined != 0u || block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND ||
-      descriptor->parameter_set != block->parameter_set + 1u || !prom_model_block_reap(state, block)) goto failed;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_VALIDATING;
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    if (upload->binding_index != index || upload->bytes == NULL || upload->content_identity == 0u ||
-        upload->layout_identity == 0u || upload->byte_count != k_prom_model_block_m1b_weight_bytes[index] ||
-        upload->byte_count > (uint64_t)block->weight_upload.size) goto mismatch;
+  if (!prom_model_block_is_main_transformer(block) ||
+      descriptor->parameter_set != block->parameter_set + 1u || block->weights_uploaded == 0u) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
+    return PROM_ERROR;
   }
-  prom_model_block_destroy_pending_weights(state, block);
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    block->pending_weights[index].content_identity = upload->content_identity;
-    block->pending_weights[index].layout_identity = upload->layout_identity;
-    block->pending_weights[index].byte_count = upload->byte_count;
-    if (!prom_model_block_create_buffer(state, block, &block->pending_weights[index].device,
-                                        (VkDeviceSize)upload->byte_count,
-                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) goto resource_fail;
+  const uint64_t *sizes = descriptor->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
+                              ? k_prom_model_block_context_weight_bytes
+                              : k_prom_model_block_m1b_weight_bytes;
+  for (uint32_t i = 0; i < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++i) {
+    const PrometheusModelBlockWeightUpload *upload = &request->uploads[i];
+    if (upload->binding_index != i || !upload->bytes || !upload->content_identity ||
+        !upload->layout_identity || upload->byte_count != sizes[i] ||
+        upload->byte_count > block->weight_upload.size) {
+      prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH, out_evidence);
+      return PROM_ERROR;
+    }
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    memcpy(block->weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
-    if (!prom_model_block_record_upload(state, block, block->pending_weights, index)) goto upload_fail;
-    block->pending_weights[index].uploaded = 1u;
+  if (!prom_model_block_change_weights(state, block, request->uploads, PROM_MODEL_BLOCK_MAX_WEIGHTS,
+                                       1u, descriptor->assembly_family)) {
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
-  if (!prom_model_block_update_weight_descriptors(state, block, block->pending_weights)) goto descriptor_fail;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_READY_TO_COMMIT;
-  memcpy(old_weights, block->weights, sizeof(old_weights));
-  memcpy(block->weights, block->pending_weights, sizeof(block->weights));
-  memset(block->pending_weights, 0, sizeof(block->pending_weights));
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) prom_vk_destroy_buffer(state->device, &old_weights[index].device);
   block->parameter_set = descriptor->parameter_set;
   block->parameter_set_aggregate_identity = descriptor->parameter_set_aggregate_identity;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
-  block->output_valid = 0u;
-  block->audit_valid = 0u;
-  block->resident_input_generation = 0u;
-  block->replay_identity = 0u;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
-  block->weight_upload_count += PROM_MODEL_BLOCK_MAX_WEIGHTS;
-  block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
-mismatch:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH;
-  goto rebind_fail;
-resource_fail:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
-  goto rebind_fail;
-upload_fail:
-  block->last_detail_code = block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED;
-  goto rebind_fail;
-descriptor_fail:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
-rebind_fail:
-  prom_model_block_destroy_pending_weights(state, block);
-  block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
-failed:
-  prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED);
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
 invalid:
   prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
   return PROM_ERROR;
@@ -5379,14 +4018,24 @@ int prom_reactor_runtime_main_transformer_execute_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   session = &state->compiled_session;
   image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
   context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
   joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
+  if (!prom_concept_session_drain(session)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   if (!prom_model_block_is_main_transformer(block) ||
       block->parameter_set != descriptor->parameter_set ||
       block->parameter_set_aggregate_identity != descriptor->parameter_set_aggregate_identity ||
-      block->weights_uploaded == 0u || block->quarantined != 0u ||
+      block->weights_uploaded == 0u ||
       block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND ||
       session->created == 0u || session->session_id != request->session_identity ||
       session->lock_identity != request->lock_identity || session->quarantined != 0u ||
@@ -5405,6 +4054,15 @@ int prom_reactor_runtime_main_transformer_execute_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
+  if (block->output_generation == UINT32_MAX ||
+      (request->resident_chain_mode != 0u &&
+       !prom_concept_session_joint_begin(session, request->required_image_generation,
+                                         request->required_context_generation,
+                                         request->required_joint_generation))) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT);
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT, out_evidence);
+    return PROM_ERROR;
+  }
   block->last_active_target_validation_ns =
       prom_reduction_elapsed_ns(validation_begin_ns, prom_reduction_now_ns());
   block->output_valid = 0u;
@@ -5415,23 +4073,29 @@ int prom_reactor_runtime_main_transformer_execute_impl(
   begin_ns = prom_reduction_now_ns();
   if (!prom_main_transformer_record_execute(state, block, session, request->required_joint_generation,
                                             request->resident_chain_mode, &detail)) {
+    if (request->resident_chain_mode != 0u)
+      (void)prom_concept_session_joint_end(
+          session, 0, detail == PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN, 0, 0);
     prom_model_block_mark_failure(block, detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
   if (block->m1b_timestamp_supported != 0u &&
       !prom_main_transformer_resolve_timestamps(state, block)) {
+    if (request->resident_chain_mode != 0u)
+      (void)prom_concept_session_joint_end(session, 0, 1, 0, 0);
     prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  if (request->resident_chain_mode != 0u &&
+      !prom_concept_session_joint_end(session, 1, 0, block_id, block->output_generation + 1u)) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
   block->output_valid = 1u;
   block->output_generation += 1u;
-  if (request->resident_chain_mode != 0u) {
-    joint->generation += 1u;
-    joint->producer_block_id = block_id;
-    joint->producer_output_generation = block->output_generation;
-  }
   block->execution_count += 1u;
   block->last_execution_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
   block->replay_identity = prom_model_block_hash_u64(request->lock_identity, request->session_identity);
@@ -5488,14 +4152,21 @@ int prom_reactor_runtime_main_transformer_execute_static_audit_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   session = &state->compiled_session;
   image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
   context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
   joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
+  if (!prom_concept_session_drain(session))
+    goto failure;
   if (!prom_model_block_is_main_transformer(block) ||
       block->parameter_set != descriptor->parameter_set ||
       block->parameter_set_aggregate_identity != descriptor->parameter_set_aggregate_identity ||
-      block->weights_uploaded == 0u || block->quarantined != 0u ||
+      block->weights_uploaded == 0u ||
       block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND ||
       session->created == 0u || session->session_id != request->session_identity ||
       session->lock_identity != request->lock_identity || session->quarantined != 0u ||
@@ -5514,6 +4185,10 @@ int prom_reactor_runtime_main_transformer_execute_static_audit_impl(
   block->audit_valid = 0u;
   begin_ns = prom_reduction_now_ns();
   if (!prom_main_transformer_record_execute(state, block, session, request->required_joint_generation, 0u, &detail)) goto failure;
+  if (block->m1b_timestamp_supported != 0u && !prom_main_transformer_resolve_timestamps(state, block)) {
+    detail = PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED;
+    goto failure;
+  }
   if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) goto failure;
   memset(&begin_info, 0, sizeof(begin_info));
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -5641,6 +4316,7 @@ int prom_reactor_runtime_compiled_model_session_get_evidence_impl(
     prom_compiled_session_fill_evidence(NULL, out_evidence);
     return PROM_ERROR;
   }
+  prom_concept_session_sync(&state->compiled_session);
   prom_compiled_session_fill_evidence(&state->compiled_session, out_evidence);
   return PROM_OK;
 }
@@ -5674,7 +4350,23 @@ int prom_reactor_runtime_compiled_model_session_destroy_impl(void* handle, uint6
   if (!prom_reactor_runtime_validate_handle(handle)) return PROM_ERROR;
   state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
   if (state == NULL || state->compiled_session.created == 0u || state->compiled_session.session_id != session_id) return PROM_ERROR;
+  if (!prom_model_block_reap(state, &state->model_block) ||
+      !prom_concept_session_drain(&state->compiled_session))
+    return PROM_ERROR;
   prom_compiled_model_session_cleanup_state(state);
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_model_block_test_inject_weight_fault_impl(void *handle, uint64_t block_id,
+                                                                   uint32_t index, uint32_t fault) {
+  if (!prom_reactor_runtime_validate_handle(handle) || index >= PROM_MODEL_BLOCK_MAX_WEIGHTS ||
+      (fault != 1u && fault != 2u && fault != 4u && fault != 8u))
+    return PROM_ERROR;
+  prom_reduction_runtime_state *state = prom_reactor_runtime_reduction_state(handle);
+  if (!state || !state->model_block.created || state->model_block.block_id != block_id)
+    return PROM_ERROR;
+  state->model_block.weight_test_index = index;
+  state->model_block.weight_test_flags = fault;
   return PROM_OK;
 }
 
@@ -5685,6 +4377,30 @@ int prom_reactor_runtime_model_block_test_inject_impl(void* handle, uint64_t blo
   state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
   if (state == NULL || state->model_block.created == 0u || state->model_block.block_id != block_id) return PROM_ERROR;
   state->reduction_test_flags |= reduction_test_flags;
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_compiled_model_session_test_inject_impl(void *handle, uint64_t session_id,
+                                                                 uint32_t flags) {
+  if (!prom_reactor_runtime_validate_handle(handle) || flags == 0u || (flags & ~7u) != 0u)
+    return PROM_ERROR;
+  prom_reduction_runtime_state *state = prom_reactor_runtime_reduction_state(handle);
+  if (!state || !state->compiled_session.created ||
+      state->compiled_session.session_id != session_id)
+    return PROM_ERROR;
+  prom_concept_session_inject(&state->compiled_session, flags);
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_compiled_model_session_test_inject_create_fault_impl(void *handle,
+                                                                              uint32_t fault) {
+  if (!prom_reactor_runtime_validate_handle(handle) || (fault != 1u && fault != 2u && fault != 4u))
+    return PROM_ERROR;
+  int32_t detail = 0;
+  prom_reduction_runtime_state *state = prom_reduction_ensure_state(handle, &detail);
+  if (!state || state->compiled_session.created)
+    return PROM_ERROR;
+  state->session_create_test_flags = fault;
   return PROM_OK;
 }
 
@@ -5783,7 +4499,11 @@ int prom_reactor_runtime_compiled_model_owner_create_impl(
   closed.precision_policy_identity = descriptor->lock_identity;
   closed.capability_route_identity = descriptor->canonical_authority_identity == 0u
                                         ? descriptor->lock_identity : descriptor->canonical_authority_identity;
-  closed.memory_ceiling_bytes = descriptor->memory_plan_identity;
+  /* The compound owner retains a predecessor across replay and W3 across audit
+     capture. Reserve their independent storage beyond the Noise-only plan. */
+  closed.memory_ceiling_bytes = descriptor->memory_plan_identity +
+      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS) +
+      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_CONTEXT_HIDDEN_ELEMENTS);
   closed.external_input_bytes = PROM_MODEL_BLOCK_M1B_BF16_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS);
   closed.audit_bytes = PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES;
   closed.shader_id = PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID;
@@ -5823,7 +4543,6 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
   uint64_t aggregate;
   uint32_t expected_count;
   uint32_t index;
-  uint64_t memcpy_total_ns = 0u;
   const uint64_t* expected_bytes;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL ||
@@ -5833,9 +4552,9 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
   block = &state->model_block;
   session = &state->compiled_session;
   if (block->created == 0u || block->shared_owner == 0u || session->created == 0u ||
-      session->session_id != request->session_identity || session->lock_identity != request->lock_identity ||
-      session->quarantined != 0u || block->quarantined != 0u ||
-      block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND || !prom_model_block_reap(state, block)) goto failed;
+      session->session_id != request->session_identity ||
+      session->lock_identity != request->lock_identity || !prom_model_block_reap(state, block))
+    goto failed;
   if (session->retarget_position == 0u) {
     family = PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO; parameter_set = PROM_NOISE_REFINER_PARAMETER_SET_0;
     aggregate = prom_noise_refiner_expected_aggregate(parameter_set); expected_count = PROM_MODEL_BLOCK_MAX_WEIGHTS;
@@ -5879,55 +4598,21 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
         upload->byte_count > (uint64_t)block->weight_upload.size ||
         upload->byte_count > (uint64_t)block->weights[physical].device.size) goto invalid;
   }
-  if ((block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) goto descriptor_failed;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
-  for (index = 0u; index < expected_count; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    uint32_t physical = family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
-                            ? k_prom_context_shared_weight_slots[index] : index;
-    uint64_t memcpy_begin_ns = prom_reduction_now_ns();
-    memcpy(block->weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
-    memcpy_total_ns += prom_reduction_elapsed_ns(memcpy_begin_ns, prom_reduction_now_ns());
-    block->weights[physical].content_identity = upload->content_identity;
-    block->weights[physical].layout_identity = upload->layout_identity;
-    block->weights[physical].byte_count = upload->byte_count;
-    if (!prom_model_block_record_upload(state, block, block->weights, physical)) goto upload_failed;
-    block->weights[physical].uploaded = 1u;
-    block->weight_upload_count += 1u;
+  if (!prom_model_block_change_weights(state, block, request->uploads, expected_count, 2u,
+                                       family)) {
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
   }
   block->assembly_family = family;
   block->parameter_set = parameter_set;
   block->parameter_set_aggregate_identity = aggregate;
   block->weight_count = expected_count;
-  prom_model_block_copy_active_portfolio(block, family, 0);
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
-  if (!prom_model_block_update_weight_descriptors(state, block, block->weights)) goto descriptor_failed;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
   block->retarget_count += 1u;
-  block->weights_uploaded = 1u;
-  block->output_valid = 0u;
-  block->audit_valid = 0u;
-  block->resident_input_generation = 0u;
-  block->replay_identity = 0u;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
-  block->last_detail_code = 0;
-  block->last_staging_memcpy_ns = memcpy_total_ns;
   session->retarget_position += 1u;
   session->active_block_id = block->block_id;
   session->binding_generation = block->binding_generation;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
-upload_failed:
-  block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-  block->last_detail_code = block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED;
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
-descriptor_failed:
-  block->binding_state = PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
 failed:
   if (state != NULL && state->model_block.created != 0u) {
     prom_model_block_mark_failure(&state->model_block, state->model_block.quarantined != 0u
@@ -6073,6 +4758,7 @@ int prom_reactor_runtime_compiled_model_activate_prefetch_impl(
   if (!prom_model_block_update_weight_descriptors(state, block, block->weights)) goto descriptor_failed;
   block->binding_generation += 1u;
   block->descriptor_generation += 1u;
+  prom_concept_weights_external(block);
   block->prefetch_descriptor_generation = block->descriptor_generation;
   block->retarget_count += 1u;
   block->weights_uploaded = 1u;
@@ -6113,27 +4799,23 @@ int prom_reactor_runtime_compiled_model_evaluation_reset_impl(
   prom_reduction_runtime_state* state;
   prom_compiled_model_session_state* session;
   prom_model_block_state* block;
-  uint32_t index;
   if (!prom_reactor_runtime_validate_handle(handle)) goto invalid;
   state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
   if (state == NULL) goto invalid;
   session = &state->compiled_session;
   block = &state->model_block;
+  if (!prom_concept_session_drain(session))
+    goto invalid;
   if (session->created == 0u || session->session_id != session_id || block->created == 0u ||
       block->shared_owner == 0u || session->quarantined != 0u || !prom_model_block_reap(state, block)) goto invalid;
+  if (!prom_concept_session_reset(session))
+    goto invalid;
   session->evaluation_generation += 1u;
   session->retarget_position = 0u;
   session->evaluation_complete = 0u;
   session->active_block_id = 0u;
   session->binding_generation = 0u;
   session->replay_identity = 0u;
-  session->joint_image_generation = 0u;
-  session->joint_context_generation = 0u;
-  for (index = 0u; index < PROM_ZIMAGE_STREAM_SLOT_COUNT; ++index) {
-    session->streams[index].valid = 0u;
-    session->streams[index].producer_block_id = 0u;
-    session->streams[index].producer_output_generation = 0u;
-  }
   block->output_valid = 0u;
   block->audit_valid = 0u;
   block->replay_identity = 0u;

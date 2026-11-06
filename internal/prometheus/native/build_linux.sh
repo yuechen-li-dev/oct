@@ -32,6 +32,9 @@ else
   WARN_FLAGS=(-w)
 fi
 
+# Materialize Concept headers before any legacy source can include them.
+go run ./tools/prometheus_concept -build-package
+
 # Step 1: Compile COMMON_C once to shared .o files
 echo "[1/5] Compiling common C objects..."
 COMMON_OBJS=()
@@ -40,12 +43,11 @@ for src in "${PROMETHEUS_COMMON_C[@]}"; do
   obj="$OBJ_DIR/${base}.o"
   COMMON_OBJS+=("$obj")
   if [[ "$VERBOSE" == "1" ]]; then
-    cc -std=c11 -fPIC -O2 "${WARN_FLAGS[@]}" -c "$src" -o "$obj"
+    cc -std=c11 -fPIC -O2 "${WARN_FLAGS[@]}" -I"$ROOT_DIR/internal/prometheus/.native-build" -c "$src" -o "$obj"
   else
-    cc -std=c11 -fPIC -O2 "${WARN_FLAGS[@]}" -c "$src" -o "$obj" 2>/dev/null
+    cc -std=c11 -fPIC -O2 "${WARN_FLAGS[@]}" -I"$ROOT_DIR/internal/prometheus/.native-build" -c "$src" -o "$obj" 2>/dev/null
   fi
 done
-go run ./tools/prometheus_concept -build-package
 COMMON_OBJS+=("${PROMETHEUS_CONCEPT_ARCHIVES[@]}")
 echo "[1/5] Done."
 

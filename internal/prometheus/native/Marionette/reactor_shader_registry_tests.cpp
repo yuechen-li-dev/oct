@@ -98,6 +98,26 @@ FACT(PrometheusShaderPackageRootConfigIsStructSizeGatedAndRuntimeOwned) {
   ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(first), "first package is released once with its runtime");
 }
 
+FACT(PrometheusShaderPackageOwnsModelPipelineInterfaceAdmission) {
+  const std::string root = staged_shader_package_root();
+  ASSERT_TRUE(!root.empty(), "a built shader package is required");
+  prom_shader_package* package = nullptr;
+  prom_shader_package_diagnostic diagnostic{};
+  ASSERT_TRUE(prom_shader_package_open(root.c_str(), &package, &diagnostic), "open authoritative package");
+  if (!package) return;
+  ASSERT_TRUE(prom_shader_package_validate_interface(package, "kernel-29-default", 4, 8, &diagnostic), "BF16 ingress interface comes from its variant");
+  ASSERT_TRUE(prom_shader_package_validate_interface(package, "kernel-24-default", 8, 8, &diagnostic), "AdaLN interface comes from its variant");
+  ASSERT_TRUE(!prom_shader_package_validate_interface(package, "kernel-29-default", 3, 8, &diagnostic), "reject wrong descriptor count");
+  ASSERT_EQUAL(PROM_SHADER_PACKAGE_TABLE_INVALID, diagnostic.code, "interface mismatch is diagnostic");
+  ASSERT_TRUE(!prom_shader_package_validate_interface(package, "kernel-29-default", 4, 16, &diagnostic), "reject wrong push extent");
+  ASSERT_TRUE(!prom_shader_package_validate_interface(package, "absent", 4, 8, &diagnostic), "reject absent variant");
+  ASSERT_EQUAL(PROM_SHADER_PACKAGE_VARIANT_UNAVAILABLE, diagnostic.code, "missing variant has its own diagnostic");
+  ASSERT_TRUE(!prom_shader_package_validate_interface(nullptr, "kernel-29-default", 4, 8, &diagnostic), "reject absent owner");
+  ASSERT_TRUE(!prom_shader_package_validate_interface(package, nullptr, 4, 8, &diagnostic), "reject absent selector");
+  ASSERT_EQUAL(0u, prom_shader_package_artifact_open_count(package), "interface admission performs no SPIR-V I/O");
+  prom_shader_package_destroy(package);
+}
+
 FACT(PrometheusVulkanRuntimeOwnerPartialFailureAndIdempotentCleanup) {
   const std::string root = staged_shader_package_root();
   ASSERT_TRUE(!root.empty(), "staged package is available to runtime ownership coverage");
