@@ -59,7 +59,16 @@ void prom_concept_weights_abort(struct prom_model_block_state* block);
 void prom_concept_weights_views(struct prom_model_block_state* block, int candidate,
     struct prom_model_block_weight_resource* views);
 void prom_concept_weights_commit(struct prom_model_block_state* block);
-void prom_concept_weights_external(struct prom_model_block_state* block);
+int prom_concept_block_allocate_shared(void *, uint64_t, uint32_t, uint32_t, prom_vk_buffer *);
+int prom_concept_prefetch_create(struct prom_model_block_state *, const prom_vk_runtime_services *, uint64_t);
+void prom_concept_prefetch_destroy(struct prom_model_block_state *);
+int prom_concept_prefetch_begin(struct prom_model_block_state *, const PrometheusModelBlockWeightUpload *,
+                                uint32_t, const uint32_t *);
+int prom_concept_prefetch_upload(struct prom_model_block_state *, uint32_t);
+int prom_concept_prefetch_acquire(struct prom_model_block_state *);
+void prom_concept_prefetch_views(struct prom_model_block_state *, struct prom_model_block_weight_resource *);
+void prom_concept_prefetch_commit(struct prom_model_block_state *);
+int prom_concept_prefetch_cancel(struct prom_model_block_state *);
 int prom_concept_block_configure(void* host, VkDevice device);
 #ifdef __cplusplus
 }

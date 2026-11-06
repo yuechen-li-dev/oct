@@ -7,7 +7,9 @@
 // Package validation and Vk ABI adaptation only. Allocation and execution
 // lifetime belong to Concept. This boundary performs no throwing operations.
 extern "C" int prom_concept_block_configure(void* host, VkDevice device) {
-    return ConceptVkSetQueueSubmit(device, host, prom_vk_concept_queue_submit);
+    int code = ConceptVkSetQueueSubmit(device, host, prom_vk_concept_queue_submit);
+    return code ? code
+                : ConceptVkSetQueueSubmitSync(device, host, prom_vk_concept_queue_submit_sync);
 }
 extern "C" PipelineCreation PromBlockLoadPipeline(void* host, VkDevice device,
     VkPipelineCache cache, uint32_t kernel, uint32_t bindingCount, uint32_t pushBytes) {

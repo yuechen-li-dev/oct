@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 109 |
+| Resolved | 112 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,78 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-131 — Async prefetch shared mutable compute telemetry
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The old transfer recorder incremented the model's Vulkan submission,
+wait and command counters, and the prefetch entry point filled complete model
+evidence while active compute could update it. It also wrote the common staging
+memcpy timing. These ordinary fields were not synchronized. This is a source
+ownership finding; no race-sanitizer failure was deliberately reproduced.
+
+Resolution: A separate Concept prefetch object owns mutable transfer state,
+staging and pending work. Compute reads immutable window-capacity projections;
+window/descriptor changes occur after the scoped task is joined. Prefetch returns
+operation status rather than sampling active compute counters. The API documents
+that evidence sampling, activation, reset and destruction require the host join.
+A scoped native future executes real prefetch concurrently with active Noise
+compute on distinct queue families. This proves the exercised coexistence path,
+not general race-sanitizer or throughput qualification. See the M11 report.
+
+---
+
+### FB-130 — Prefetch failures and late validation stranded the inactive window
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The C path validated tensors inside the copy loop, after earlier
+inactive tensors might already have changed. Record, submit and wait failures
+were collapsed into an unrecoverable quarantine. Reset did not cancel retained
+transfer work. Descriptor rollback restored buffer views without restoring all
+active family/parameter metadata. These are inspection findings in the previously
+unqualified prefetch path.
+
+Resolution: Validate the whole plan before staging. Concept phases distinguish
+uploading, ready, acquired and uncertain; failed copies cannot publish binding
+generations. A fresh prefetch retires an incomplete producer before staging reuse.
+Activation retries preserve the single-consumer semaphore state, and descriptor
+failure preserves the old binding metadata. Reset cancels and joins the inactive
+handoff. Tests inject record/submit/completion failures at early and final tensors,
+acquire/descriptor faults, late malformed tensors, repeated ready-window admission,
+reset cancellation and teardown with an unobserved producer. Both windows remain
+owned and reusable; no additional warm buffers are allocated. See
+`docs/internal/prometheus_concept_prefetch_m11.md`.
+
+---
+
+### FB-129 — Transfer-to-compute handoff lacked a GPU semaphore dependency
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The old prefetch path waited for a transfer fence on the host, then
+submitted a compute-queue barrier naming transfer writes. It encoded no semaphore
+signal/wait dependency between the queues. Concurrent buffer sharing avoids
+queue-family ownership transfers; it does not itself establish memory visibility.
+The original path was inspected, not deliberately forced into a wrong GPU result.
+
+Resolution: Concept Vulkan now supplies shared-family allocation and an owned
+binary queue handoff. The producer signals after the final transfer; the consumer
+waits at all commands. Its owner joins both submissions before destroying the
+semaphore, including cancellation without a consumer. The native queue callback
+preserves Prometheus's existing host queue lock. GPU-free Normal/Verify facts
+exercise lifetime and rejection; the real RTX 3070 witness uses compute family 0
+and transfer family 1 with synchronization validation and unchanged independent
+Main numerical checks. See the M11 report and Concept's Vulkan library README.
+
+---
 
 ### FB-128 — Partial synchronous uploads could not be repaired through the binding API
 
@@ -2188,7 +2260,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-129**. Put a new open issue at
+Use the next unused identifier, currently **FB-132**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

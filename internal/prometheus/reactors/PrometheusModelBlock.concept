@@ -1294,19 +1294,6 @@ export "C" bool PromWeightsView(ref const BlockOwner owner,uint32 slot,bool cand
     }
     return false;
 }
-// M11's legacy prefetch window retains its external allocation owner. This
-// imports only its completed binding view; it does not adopt foreign buffers.
-export "C" void PromWeightsExternal(ref BlockOwner owner,ref const WeightPlan plan,uint64 generation,uint64 descriptors)
-{
-    for (index in 0..(plan.count as int)) {
-        WeightSpec spec = plan.items[index];
-        int ownedIndex = PromBlockFindBuffer(ref const owner,spec.buffer);
-        owner.binding.active[spec.slot as int] = Option::Some(WeightVersion{spec.buffer,spec.capacity,ownedIndex,spec.bytes,spec.content,spec.layout});
-    }
-    owner.binding.generation = generation; owner.binding.descriptors = descriptors;
-    owner.binding.valid = true; owner.binding.phase = WeightPhase::Bound;
-}
-
 export "C" uint64 PromWeightsCandidateBytes(ref const BlockOwner owner)
 {
     uint64 bytes = 0;
@@ -1316,4 +1303,183 @@ export "C" uint64 PromWeightsCandidateBytes(ref const BlockOwner owner)
         }
     }
     return bytes;
+}
+
+// Transfer work owns its own context, staging allocation and pending
+// work. Both fixed windows borrow the model allocation owner.
+// Compute never mutates this object until the host joins prefetch.
+enum PrefetchPhase { Empty, Uploading, Ready, Acquired, Uncertain, }
+class PrefetchOwner {
+public:
+    owned BorrowedContext context;
+    owned Buffer<byte> staging;
+    WeightSpec[13] metadata;
+    WeightPlan plan;
+    Option<owned Submission> pending;
+    Option<owned QueueHandoff> handoff;
+    PrefetchPhase phase;
+    uint32 completed;
+    bool received;
+    uint64 generation;
+    int detail;
+};
+Result<PrefetchOwner,VulkanError> CreatePrefetch(DeviceBorrow transfer,ref const WeightPlan capacities,usize stagingBytes)
+{
+    owned BorrowedContext context = BorrowDevice(transfer)?;
+    owned Buffer<byte> staging = CreateBufferOn<byte>(context.view,stagingBytes,Placement::Upload)?;
+    WeightSpec[13] metadata = capacities.items;
+    WeightPlan plan = WeightPlan{capacities.items,0};
+    Option<owned Submission> pending = Option::None;
+    Option<owned QueueHandoff> handoff = Option::None;
+    return Result::Ok(PrefetchOwner{move context,move staging,metadata,plan,
+        move pending,move handoff,PrefetchPhase::Empty,0,false,0,0});
+}
+Result<void,VulkanError> DrainPrefetch(ref PrefetchOwner owner)
+{
+    match (ref owner.pending) { Option::Some(work) => { Wait(ref work)?; } Option::None => { } }
+    match (ref owner.handoff) { Option::Some(work) => { WaitHandoff(ref work)?; } Option::None => { } }
+    return Result::Ok();
+}
+int PrefetchCode(ref PrefetchOwner owner,Result<void,VulkanError> result)
+{
+    match (result) { Result::Ok => { return 0; } Result::Error(error) => { return owner.detail; } }
+    return -6910;
+}
+Result<void,VulkanError> BeginPrefetch(ref PrefetchOwner owner,ref const WeightPlan plan)
+{
+    owner.detail = -6921;
+    if (owner.phase == PrefetchPhase::Ready or owner.phase == PrefetchPhase::Acquired or owner.received) { return Result::Error(ErrorFromCode(-6921)); }
+    owner.detail = -6910;
+    DrainPrefetch(ref owner)?;
+    owner.pending = Option::None; owner.handoff = Option::None;
+    owner.phase = PrefetchPhase::Empty;
+    owner.detail = -6904;
+    if (plan.count == 0 or plan.count > 13 or owner.generation == 0xffffffffffffffff) { return Result::Error(ErrorFromCode(-6904)); }
+    uint32 used = 0;
+    for (index in 0..(plan.count as int)) {
+        WeightSpec spec = plan.items[index];
+        if (spec.slot >= 13 or spec.bytes == 0 or spec.content == 0 or spec.layout == 0) { return Result::Error(ErrorFromCode(-6904)); }
+        uint32 bit = 1u << spec.slot;
+        if ((used & bit) != 0 or spec.bytes > owner.metadata[spec.slot as int].capacity or spec.bytes > (owner.staging.count as uint64)) { return Result::Error(ErrorFromCode(-6904)); }
+        used = used | bit;
+    }
+    owner.plan = WeightPlan{plan.items,plan.count};
+    owner.completed = 0; owner.phase = PrefetchPhase::Uploading;
+    return Result::Ok();
+}
+Result<void,VulkanError> UploadPrefetch(ref PrefetchOwner owner,uint32 index,uint32 flags)
+{
+    owner.detail = -6904;
+    if (owner.phase != PrefetchPhase::Uploading or index != owner.completed or index >= owner.plan.count) { return Result::Error(ErrorFromCode(-6904)); }
+    owner.detail = -6910;
+    DrainPrefetch(ref owner)?;
+    owner.pending = Option::None;
+    WeightSpec spec = owner.plan.items[index as int];
+    WeightSpec buffer = owner.metadata[spec.slot as int];
+    owner.detail = -6908;
+    if ((flags & 1u) != 0) { return Result::Error(ErrorFromCode(-6908)); }
+    owned Recording recording = BeginRecordingOn(owner.context.view,0)?;
+    ConceptVkCmdBarrier(recording.device,recording.commands,HostStage().raw,1,TransferStage().raw);
+    CopyBytes(ref recording,BufferRange{owner.staging.buffer,owner.staging.count as uint64},0,
+        BufferRange{buffer.buffer,buffer.capacity},0,spec.bytes)?;
+    owner.detail = -6909;
+    if ((flags & 2u) != 0) { return Result::Error(ErrorFromCode(-6909)); }
+    owner.phase = PrefetchPhase::Uncertain;
+    if (index + 1 == owner.plan.count) {
+        owned QueueHandoff work = SignalHandoff(move recording)?;
+        Option<owned QueueHandoff> handoff = Option::Some(move work);
+        owner.handoff = move handoff;
+    } else {
+        owned Submission work = Submit(move recording)?;
+        Option<owned Submission> pending = Option::Some(move work);
+        owner.pending = move pending;
+    }
+    owner.detail = -6910;
+    if ((flags & 4u) != 0) { return Result::Error(ErrorFromCode(-6910)); }
+    DrainPrefetch(ref owner)?;
+    owner.metadata[spec.slot as int] = WeightSpec{spec.slot,buffer.buffer,buffer.capacity,spec.bytes,spec.content,spec.layout};
+    owner.completed = owner.completed + 1;
+    owner.phase = PrefetchPhase::Uploading;
+    if (owner.completed == owner.plan.count) { owner.phase = PrefetchPhase::Ready; owner.generation = owner.generation + 1; }
+    return Result::Ok();
+}
+Result<void,VulkanError> AcquirePrefetch(ref PrefetchOwner owner,ref BlockOwner compute,uint32 flags)
+{
+    owner.detail = -6921;
+    if (owner.phase != PrefetchPhase::Ready and not owner.received) { return Result::Error(ErrorFromCode(-6921)); }
+    if (compute.binding.generation == 0xffffffffffffffff) { return Result::Error(ErrorFromCode(-6921)); }
+    if (not owner.received) {
+        owner.detail = -6908;
+        if ((flags & 1u) != 0) { return Result::Error(ErrorFromCode(-6908)); }
+        owned Recording recording = BeginRecordingOn(compute.context.view,0)?;
+        owner.detail = -6909;
+        if ((flags & 2u) != 0) { return Result::Error(ErrorFromCode(-6909)); }
+        ref QueueHandoff handoff = OptionValue(ref owner.handoff);
+        ReceiveHandoff(ref handoff,move recording)?;
+        owner.received = true;
+    }
+    owner.phase = PrefetchPhase::Uncertain;
+    owner.detail = -6910;
+    if ((flags & 4u) != 0) { return Result::Error(ErrorFromCode(-6910)); }
+    DrainPrefetch(ref owner)?;
+    owner.phase = PrefetchPhase::Acquired;
+    return Result::Ok();
+}
+bool CommitPrefetch(ref PrefetchOwner owner,ref BlockOwner compute)
+{
+    if (owner.phase != PrefetchPhase::Acquired) { return false; }
+    for (slot in 0..13) {
+        ref const WeightVersion active = OptionValue(ref const compute.binding.active[slot]);
+        if (active.index < 0 or PromBlockFindBuffer(ref const compute,owner.metadata[slot].buffer) < 0) { return false; }
+    }
+    for (slot in 0..13) {
+        WeightSpec spec = owner.metadata[slot];
+        ref const WeightVersion previous = OptionValue(ref const compute.binding.active[slot]);
+        WeightSpec old = WeightSpec{slot as uint32,previous.buffer,previous.capacity,previous.bytes,previous.content,previous.layout};
+        int replacement = PromBlockFindBuffer(ref const compute,spec.buffer);
+        compute.binding.active[slot] = Option::Some(WeightVersion{spec.buffer,spec.capacity,replacement,spec.bytes,spec.content,spec.layout});
+        owner.metadata[slot] = old;
+    }
+    compute.binding.generation = compute.binding.generation + 1;
+    compute.binding.descriptors = compute.binding.descriptors + 1;
+    compute.binding.valid = true; compute.binding.phase = WeightPhase::Bound;
+    owner.handoff = Option::None; owner.pending = Option::None;
+    owner.phase = PrefetchPhase::Empty; owner.received = false;
+    return true;
+}
+void DisposePrefetch(owned PrefetchOwner owner) { }
+export "C" int PromPrefetchBegin(ref PrefetchOwner owner,ref const WeightPlan plan) { return PrefetchCode(ref owner,BeginPrefetch(ref owner,ref const plan)); }
+export "C" int PromPrefetchUpload(ref PrefetchOwner owner,uint32 index,uint32 flags) { return PrefetchCode(ref owner,UploadPrefetch(ref owner,index,flags)); }
+export "C" int PromPrefetchAcquire(ref PrefetchOwner owner,ref BlockOwner compute,uint32 flags) { return PrefetchCode(ref owner,AcquirePrefetch(ref owner,ref compute,flags)); }
+export "C" bool PromPrefetchCommit(ref PrefetchOwner owner,ref BlockOwner compute) { return CommitPrefetch(ref owner,ref compute); }
+export "C" int PromPrefetchDrain(ref PrefetchOwner owner) { owner.detail = -6910; return PrefetchCode(ref owner,DrainPrefetch(ref owner)); }
+export "C" uint32 PromPrefetchState(ref const PrefetchOwner owner)
+{
+    return match (owner.phase) { PrefetchPhase::Empty => 0, PrefetchPhase::Uploading => 2, PrefetchPhase::Ready => 3, PrefetchPhase::Acquired => 3, PrefetchPhase::Uncertain => 6, };
+}
+export "C" uint64 PromPrefetchGeneration(ref const PrefetchOwner owner) { return owner.generation; }
+export "C" void PromPrefetchView(ref const PrefetchOwner owner,uint32 slot,ref WeightSpec output) { output = owner.metadata[slot as int]; }
+export "C" VkBuffer PromPrefetchStaging(ref const PrefetchOwner owner) { return owner.staging.buffer; }
+export "C" VkDeviceMemory PromPrefetchMemory(ref const PrefetchOwner owner) { return owner.staging.memory; }
+export "C" int PromBlockAllocateShared(ref BlockOwner owner,usize bytes,uint32 computeFamily,uint32 transferFamily)
+{
+    for (index in 0..128) {
+        if (not HasBuffer(ref const owner.buffers[index])) {
+            match (CreateBufferSharedOn<byte>(owner.context.view,bytes,Placement::Device,computeFamily,transferFamily)) {
+                Result::Ok(buffer) => { Option<owned Buffer<byte>> entry = Option::Some(move buffer); owner.buffers[index] = move entry; return index; }
+                Result::Error(error) => { return -1; }
+            }
+        }
+    }
+    return -1;
+}
+
+export "C" int PromPrefetchCancel(ref PrefetchOwner owner)
+{
+    owner.detail = -6910;
+    int code = PrefetchCode(ref owner,DrainPrefetch(ref owner));
+    if (code != 0) { return code; }
+    owner.handoff = Option::None; owner.pending = Option::None;
+    owner.phase = PrefetchPhase::Empty; owner.received = false; owner.completed = 0;
+    return 0;
 }

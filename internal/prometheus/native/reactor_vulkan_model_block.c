@@ -1121,84 +1121,6 @@ static int prom_model_block_change_weights(prom_reduction_runtime_state *state,
 /* One bounded staging slot is reused only after its transfer fence signals.
    The bridge invokes this routine on its one scoped prefetch goroutine while
    the compute queue owns the active window. */
-static int prom_model_block_record_prefetch_upload(prom_reduction_runtime_state* state,
-                                                   prom_model_block_state* block,
-                                                   uint32_t weight_index) {
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy copy;
-  VkBufferMemoryBarrier barrier;
-  VkSubmitInfo submit_info;
-  if (state == NULL || block == NULL || block->prefetch_queue == VK_NULL_HANDLE ||
-      block->prefetch_command_buffer == VK_NULL_HANDLE || block->prefetch_fence == VK_NULL_HANDLE ||
-      weight_index >= PROM_MODEL_BLOCK_MAX_WEIGHTS ||
-      block->prefetch_weights[weight_index].device.buffer == VK_NULL_HANDLE) return 0;
-  if (vkResetCommandBuffer(block->prefetch_command_buffer, 0u) != VK_SUCCESS ||
-      vkResetFences(state->device, 1u, &block->prefetch_fence) != VK_SUCCESS) return 0;
-  block->vk_reset_command_buffer_count += 1u;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->prefetch_command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = block->prefetch_weight_upload.buffer;
-  barrier.size = block->prefetch_weights[weight_index].byte_count;
-  vkCmdPipelineBarrier(block->prefetch_command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       0u, 0u, NULL, 1u, &barrier, 0u, NULL);
-  memset(&copy, 0, sizeof(copy));
-  copy.size = block->prefetch_weights[weight_index].byte_count;
-  vkCmdCopyBuffer(block->prefetch_command_buffer, block->prefetch_weight_upload.buffer,
-                  block->prefetch_weights[weight_index].device.buffer, 1u, &copy);
-  /* A transfer-only queue cannot name a compute stage.  Completion is made
-     visible to the compute queue by prom_model_block_acquire_prefetched_weights
-     after this fence signals and before descriptors are committed. */
-  if (vkEndCommandBuffer(block->prefetch_command_buffer) != VK_SUCCESS) return 0;
-  memset(&submit_info, 0, sizeof(submit_info));
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_info.commandBufferCount = 1u;
-  submit_info.pCommandBuffers = &block->prefetch_command_buffer;
-  block->vk_queue_submit_count += 1u;
-  if (prom_vk_queue_submit(block->prefetch_queue, 1u, &submit_info, block->prefetch_fence) != VK_SUCCESS) return 0;
-  block->vk_fence_wait_count += 1u;
-  if (vkWaitForFences(state->device, 1u, &block->prefetch_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return 0;
-  return 1;
-}
-
-static int prom_model_block_acquire_prefetched_weights(prom_reduction_runtime_state* state,
-                                                        prom_model_block_state* block) {
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferMemoryBarrier barriers[PROM_MODEL_BLOCK_MAX_WEIGHTS];
-  uint32_t index;
-  uint32_t count = 0u;
-  int32_t detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
-  if (state == NULL || block == NULL || block->prefetch_weight_count == 0u) return 0;
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  block->vk_reset_command_buffer_count += 1u;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  memset(barriers, 0, sizeof(barriers));
-  for (index = 0u; index < block->prefetch_weight_count; ++index) {
-    if (block->prefetch_weights[index].device.buffer == VK_NULL_HANDLE) return 0;
-    barriers[count].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[count].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barriers[count].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barriers[count].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[count].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[count].buffer = block->prefetch_weights[index].device.buffer;
-    barriers[count].size = block->prefetch_weights[index].byte_count;
-    count += 1u;
-  }
-  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, count, barriers, 0u, NULL);
-  if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, &detail);
-}
 
 static int prom_model_block_record_execute(prom_reduction_runtime_state* state,
     prom_model_block_state* block, uint32_t elements, uint32_t audit_elements,
@@ -1574,6 +1496,7 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
   next_block_id = block->next_block_id;
   if (!prom_concept_session_drain(&state->compiled_session))
     abort();
+  prom_concept_prefetch_destroy(block);
   if (!prom_concept_block_drain(block)) abort();
   if (state->device != VK_NULL_HANDLE && block->fence != VK_NULL_HANDLE && block->legacy_submission_pending != 0u) {
     (void)vkWaitForFences(state->device, 1u, &block->fence, VK_TRUE, UINT64_MAX);
@@ -1637,7 +1560,6 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
       prom_model_block_destroy_buffer(state, block, &block->prefetch_weights[index].device);
     }
     prom_model_block_destroy_buffer(state, block, &block->weight_upload);
-    prom_model_block_destroy_buffer(state, block, &block->prefetch_weight_upload);
     prom_model_block_destroy_buffer(state, block, &block->audit_readback);
     prom_model_block_destroy_buffer(state, block, &block->audit_device);
     prom_model_block_destroy_buffer(state, block, &block->qkv);
@@ -1669,12 +1591,8 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
       vkDestroyQueryPool(state->device, block->m1b_timestamp_query_pool, NULL);
     }
     if (block->fence != VK_NULL_HANDLE) vkDestroyFence(state->device, block->fence, NULL);
-    if (block->prefetch_fence != VK_NULL_HANDLE) vkDestroyFence(state->device, block->prefetch_fence, NULL);
     if (block->command_buffer != VK_NULL_HANDLE && state->command_pool != VK_NULL_HANDLE) {
       vkFreeCommandBuffers(state->device, state->command_pool, 1u, &block->command_buffer);
-    }
-    if (block->prefetch_command_buffer != VK_NULL_HANDLE && block->prefetch_command_pool != VK_NULL_HANDLE) {
-      vkFreeCommandBuffers(state->device, block->prefetch_command_pool, 1u, &block->prefetch_command_buffer);
     }
   }
   if (prom_concept_block_destroy(block->concept_owner) != PROM_OK) abort();
@@ -1729,7 +1647,6 @@ int prom_reactor_runtime_model_block_create_impl(
        services.compute_queue_family_index == services.transfer_queue_family_index)) goto fail;
   block->prefetch_queue = prefetch_owner != 0u ? services.transfer_queue : VK_NULL_HANDLE;
   block->prefetch_queue_family = prefetch_owner != 0u ? services.transfer_queue_family_index : UINT32_MAX;
-  block->prefetch_command_pool = prefetch_owner != 0u ? services.transfer_command_pool : VK_NULL_HANDLE;
   block->active_weight_window = 0u;
   block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_EMPTY;
   block->model_contract_identity = request->model_contract_identity;
@@ -1797,43 +1714,31 @@ int prom_reactor_runtime_model_block_create_impl(
       !prom_model_block_create_buffer(state, block, &block->weight_upload, (VkDeviceSize)max_weight_bytes,
                                       VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1)) goto fail;
-  for (index = 0u; index < block->weight_count; ++index) {
-    if ((prefetch_owner != 0u
-             ? prom_vk_create_buffer_shared_between_families(
-                   state->physical_device, state->device, block->test_flags,
-                   (VkDeviceSize)block->weights[index].byte_count,
-                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, services.compute_queue_family_index,
-                   services.transfer_queue_family_index, &block->weights[index].device)
-             : prom_model_block_create_buffer(state, block, &block->weights[index].device,
-                                              (VkDeviceSize)block->weights[index].byte_count,
-                                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) !=
-        (prefetch_owner != 0u ? VK_SUCCESS : 1)) goto fail;
+  for (index = 0; index < block->weight_count; ++index) {
+      if (prefetch_owner) {
+          if (!prom_concept_block_allocate_shared(
+                  block->concept_owner, block->weights[index].byte_count, services.compute_queue_family_index,
+                  services.transfer_queue_family_index, &block->weights[index].device))
+              goto fail;
+          ++block->cold_buffer_allocation_count;
+      } else if (!prom_model_block_create_buffer(
+                     state, block, &block->weights[index].device, block->weights[index].byte_count,
+                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0))
+          goto fail;
   }
-  if (prefetch_owner != 0u) {
-    VkCommandBufferAllocateInfo prefetch_command_info;
-    VkFenceCreateInfo prefetch_fence_info;
-    if (!prom_model_block_create_buffer(state, block, &block->prefetch_weight_upload, (VkDeviceSize)max_weight_bytes,
-                                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1)) goto fail;
-    for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-      if (prom_vk_create_buffer_shared_between_families(
-              state->physical_device, state->device, block->test_flags, block->weights[index].device.size,
-              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, services.compute_queue_family_index,
-              services.transfer_queue_family_index, &block->prefetch_weights[index].device) != VK_SUCCESS) goto fail;
-    }
-    memset(&prefetch_command_info, 0, sizeof(prefetch_command_info));
-    prefetch_command_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    prefetch_command_info.commandPool = block->prefetch_command_pool;
-    prefetch_command_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    prefetch_command_info.commandBufferCount = 1u;
-    if (vkAllocateCommandBuffers(state->device, &prefetch_command_info, &block->prefetch_command_buffer) != VK_SUCCESS) goto fail;
-    memset(&prefetch_fence_info, 0, sizeof(prefetch_fence_info));
-    prefetch_fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    prefetch_fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    if (vkCreateFence(state->device, &prefetch_fence_info, NULL, &block->prefetch_fence) != VK_SUCCESS) goto fail;
+  if (prefetch_owner) {
+      for (index = 0; index < 13; ++index) {
+          if (!prom_concept_block_allocate_shared(block->concept_owner, block->weights[index].device.size,
+                                                  services.compute_queue_family_index,
+                                                  services.transfer_queue_family_index,
+                                                  &block->prefetch_weights[index].device))
+              goto fail;
+          ++block->cold_buffer_allocation_count;
+      }
+      if (!prom_concept_prefetch_create(block, &services, max_weight_bytes))
+          goto fail;
+      ++block->cold_buffer_allocation_count;
   }
   if (shared_owner != 0u) {
     if (!prom_model_block_create_shared_portfolios(state, block)) goto pipeline_fail;
@@ -4357,6 +4262,18 @@ int prom_reactor_runtime_compiled_model_session_destroy_impl(void* handle, uint6
   return PROM_OK;
 }
 
+int prom_reactor_runtime_model_block_test_inject_prefetch_fault_impl(void *handle, uint64_t id,
+                                                                     uint32_t index, uint32_t flags) {
+    if (!prom_reactor_runtime_validate_handle(handle) || index > 13u ||
+        (flags != 1u && flags != 2u && flags != 4u && flags != 8u))
+        return PROM_ERROR;
+    prom_reduction_runtime_state *state = prom_reactor_runtime_reduction_state(handle);
+    if (!state || !state->model_block.created || state->model_block.block_id != id)
+        return PROM_ERROR;
+    state->model_block.prefetch_test_index = index;
+    state->model_block.prefetch_test_flags = flags;
+    return PROM_OK;
+}
 int prom_reactor_runtime_model_block_test_inject_weight_fault_impl(void *handle, uint64_t block_id,
                                                                    uint32_t index, uint32_t fault) {
   if (!prom_reactor_runtime_validate_handle(handle) || index >= PROM_MODEL_BLOCK_MAX_WEIGHTS ||
@@ -4633,7 +4550,6 @@ int prom_reactor_runtime_compiled_model_prefetch_impl(
   prom_compiled_model_session_state* session;
   uint32_t family, parameter_set, expected_count, index;
   uint64_t aggregate;
-  uint64_t memcpy_total_ns = 0u;
   const uint64_t* expected_bytes;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL ||
@@ -4644,8 +4560,8 @@ int prom_reactor_runtime_compiled_model_prefetch_impl(
   session = &state->compiled_session;
   if (block->created == 0u || session->created == 0u || session->session_id != request->session_identity ||
       session->selected_execution_profile != PROM_MODEL_EXECUTION_PROFILE_PREFETCH ||
-      block->prefetch_state != PROM_MODEL_WEIGHT_WINDOW_EMPTY || block->prefetch_queue == VK_NULL_HANDLE ||
-      block->prefetch_weight_upload.mapped == NULL || block->quarantined != 0u) goto failed;
+      !block->concept_prefetch_owner || block->prefetch_weight_upload.mapped == NULL)
+      goto failed;
   if (session->retarget_position == 1u) {
     family = PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO; parameter_set = PROM_NOISE_REFINER_PARAMETER_SET_1;
     aggregate = prom_noise_refiner_expected_aggregate(parameter_set); expected_count = PROM_MODEL_BLOCK_MAX_WEIGHTS;
@@ -4674,7 +4590,6 @@ int prom_reactor_runtime_compiled_model_prefetch_impl(
     expected_bytes = k_prom_model_block_m1b_weight_bytes;
   } else goto invalid;
   if (aggregate == 0u || request->upload_count != expected_count) goto invalid;
-  block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_HOST_PREPARED;
   for (index = 0u; index < expected_count; ++index) {
     const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
     uint32_t physical = family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
@@ -4682,41 +4597,44 @@ int prom_reactor_runtime_compiled_model_prefetch_impl(
     if (upload->binding_index != index || upload->bytes == NULL || upload->content_identity == 0u ||
         upload->layout_identity == 0u || upload->byte_count != expected_bytes[index] ||
         upload->byte_count > (uint64_t)block->prefetch_weight_upload.size ||
-        upload->byte_count > (uint64_t)block->prefetch_weights[physical].device.size) goto failed_before_submit;
-    {
-      uint64_t memcpy_begin_ns = prom_reduction_now_ns();
-      memcpy(block->prefetch_weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
-      memcpy_total_ns += prom_reduction_elapsed_ns(memcpy_begin_ns, prom_reduction_now_ns());
-    }
-    block->prefetch_weights[physical].content_identity = upload->content_identity;
-    block->prefetch_weights[physical].layout_identity = upload->layout_identity;
-    block->prefetch_weights[physical].byte_count = upload->byte_count;
-    block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_UPLOAD_SUBMITTED;
-    if (!prom_model_block_record_prefetch_upload(state, block, physical)) goto uncertain;
-    block->prefetch_weights[physical].uploaded = 1u;
+        upload->byte_count > (uint64_t)block->prefetch_weights[physical].device.size)
+        goto invalid;
+  }
+  int code = prom_concept_prefetch_begin(
+      block, request->uploads, expected_count,
+      family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO ? k_prom_context_shared_weight_slots : NULL);
+  if (code != 0)
+      goto transfer_failed;
+  for (index = 0; index < expected_count; ++index) {
+      memcpy(block->prefetch_weight_upload.mapped, request->uploads[index].bytes,
+             (size_t)request->uploads[index].byte_count);
+      code = prom_concept_prefetch_upload(block, index);
+      if (code != 0)
+          goto transfer_failed;
   }
   block->prefetch_weight_count = expected_count;
   block->prefetch_assembly_family = family;
   block->prefetch_parameter_set = parameter_set;
   block->prefetch_parameter_set_aggregate_identity = aggregate;
   block->prefetch_target_position = session->retarget_position;
-  block->prefetch_generation += 1u;
-  block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_DEVICE_READY;
-  block->last_staging_memcpy_ns = memcpy_total_ns;
-  prom_model_block_fill_evidence(block, 0, out_evidence);
+  /* Prefetch may overlap compute: do not read its mutable counters or
+     publish into the active weight projections from this thread. */
+  if (out_evidence) {
+      memset(out_evidence, 0, sizeof(*out_evidence));
+      out_evidence->struct_size = sizeof(*out_evidence);
+      out_evidence->created = 1;
+  }
   return PROM_OK;
-failed_before_submit:
-  block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_EMPTY;
-  prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH, out_evidence);
-  return PROM_ERROR;
-uncertain:
-  block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_QUARANTINED;
-  prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN, out_evidence);
-  return PROM_ERROR;
+transfer_failed:
+    if (out_evidence) {
+        memset(out_evidence, 0, sizeof(*out_evidence));
+        out_evidence->struct_size = sizeof(*out_evidence);
+        out_evidence->detail_code = code;
+    }
+    return PROM_ERROR;
 failed:
-  if (block != NULL) prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
-  else prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
-  return PROM_ERROR;
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
+    return PROM_ERROR;
 invalid:
   prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
   return PROM_ERROR;
@@ -4735,30 +4653,36 @@ int prom_reactor_runtime_compiled_model_activate_prefetch_impl(
   session = &state->compiled_session;
   if (block->created == 0u || session->created == 0u || session->session_id != session_id ||
       session->selected_execution_profile != PROM_MODEL_EXECUTION_PROFILE_PREFETCH ||
-      block->prefetch_state != PROM_MODEL_WEIGHT_WINDOW_DEVICE_READY ||
-      block->prefetch_target_position != session->retarget_position || block->quarantined != 0u) goto failed;
-  /* The scoped bridge waits for current compute before activation.  The fence
-     is checked again here so a stale or uncertain upload can never become the
-     active descriptor set. */
-  block->vk_fence_wait_count += 1u;
-  if (vkWaitForFences(state->device, 1u, &block->prefetch_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) goto uncertain;
-  /* The window uses concurrent sharing across the dedicated transfer and
-     compute families, so no ownership handoff is required.  A compute-queue
-     acquire barrier is still mandatory before shader reads can observe the
-     transfer writes. */
-  if (!prom_model_block_acquire_prefetched_weights(state, block)) goto uncertain;
+      block->prefetch_target_position != session->retarget_position)
+      goto failed;
+  if (!prom_model_block_reap(state, block))
+      goto uncertain;
+  const int acquire_code = prom_concept_prefetch_acquire(block);
+  if (acquire_code != 0) {
+      prom_model_block_fill_evidence(block, acquire_code, out_evidence);
+      return PROM_ERROR;
+  }
   memcpy(old_weights, block->weights, sizeof(old_weights));
-  memcpy(block->weights, block->prefetch_weights, sizeof(block->weights));
-  memcpy(block->prefetch_weights, old_weights, sizeof(block->prefetch_weights));
+  const uint32_t old_family = block->assembly_family, old_count = block->weight_count,
+                 old_parameter = block->parameter_set;
+  prom_concept_prefetch_views(block, block->weights);
   block->assembly_family = block->prefetch_assembly_family;
   block->parameter_set = block->prefetch_parameter_set;
-  block->parameter_set_aggregate_identity = block->prefetch_parameter_set_aggregate_identity;
   block->weight_count = block->prefetch_weight_count;
   prom_model_block_copy_active_portfolio(block, block->assembly_family, 0);
-  if (!prom_model_block_update_weight_descriptors(state, block, block->weights)) goto descriptor_failed;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
-  prom_concept_weights_external(block);
+  const int descriptor_fault = block->prefetch_test_flags == 8u;
+  if (descriptor_fault)
+      block->prefetch_test_flags = 0;
+  if (descriptor_fault || !prom_model_block_update_weight_descriptors(state, block, block->weights)) {
+      memcpy(block->weights, old_weights, sizeof(old_weights));
+      block->assembly_family = old_family;
+      block->weight_count = old_count;
+      block->parameter_set = old_parameter;
+      prom_model_block_copy_active_portfolio(block, old_family, 0);
+      goto descriptor_failed;
+  }
+  prom_concept_prefetch_commit(block);
+  block->parameter_set_aggregate_identity = block->prefetch_parameter_set_aggregate_identity;
   block->prefetch_descriptor_generation = block->descriptor_generation;
   block->retarget_count += 1u;
   block->weights_uploaded = 1u;
@@ -4775,13 +4699,9 @@ int prom_reactor_runtime_compiled_model_activate_prefetch_impl(
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
 uncertain:
-  block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_QUARANTINED;
   prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN, out_evidence);
   return PROM_ERROR;
 descriptor_failed:
-  memcpy(block->prefetch_weights, block->weights, sizeof(block->prefetch_weights));
-  memcpy(block->weights, old_weights, sizeof(block->weights));
-  block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_DEVICE_READY;
   prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED, out_evidence);
   return PROM_ERROR;
 failed:
@@ -4808,6 +4728,10 @@ int prom_reactor_runtime_compiled_model_evaluation_reset_impl(
     goto invalid;
   if (session->created == 0u || session->session_id != session_id || block->created == 0u ||
       block->shared_owner == 0u || session->quarantined != 0u || !prom_model_block_reap(state, block)) goto invalid;
+  if (!prom_concept_prefetch_cancel(block))
+      goto invalid;
+  block->prefetch_target_position = 0;
+  block->prefetch_weight_count = 0;
   if (!prom_concept_session_reset(session))
     goto invalid;
   session->evaluation_generation += 1u;

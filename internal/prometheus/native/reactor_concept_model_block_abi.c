@@ -480,11 +480,126 @@ void prom_concept_weights_commit(prom_model_block_state *block) {
     if (foreign[i])
       prom_vk_destroy_buffer(PromBlockDevice(&a->owner), &old[i].device);
 }
-void prom_concept_weights_external(prom_model_block_state *block) {
-  block_attachment *a = block->concept_owner;
-  concept_weight_plan plan = {0};
-  for (uint32_t i = 0; i < 13; ++i)
-    if (block->weights[i].device.buffer)
-      plan.items.data[plan.count++] = weight_spec(i, &block->weights[i]);
-  PromWeightsExternal(&a->owner, &plan, block->binding_generation, block->descriptor_generation);
+
+typedef struct prefetch_attachment {
+    concept_prefetch_owner owner;
+} prefetch_attachment;
+int prom_concept_block_allocate_shared(void *opaque, uint64_t bytes, uint32_t compute, uint32_t transfer,
+                                       prom_vk_buffer *view) {
+    block_attachment *a = opaque;
+    if (!bytes || bytes > SIZE_MAX)
+        return 0;
+    int index = PromBlockAllocateShared(&a->owner, (size_t)bytes, compute, transfer);
+    if (index < 0)
+        return 0;
+    memset(view, 0, sizeof(*view));
+    view->buffer = PromBlockBuffer(&a->owner, index);
+    view->memory = PromBlockMemory(&a->owner, index);
+    view->size = bytes;
+    view->usage_flags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    view->memory_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    return 1;
+}
+int prom_concept_prefetch_create(prom_model_block_state *block, const prom_vk_runtime_services *services,
+                                 uint64_t bytes) {
+    prefetch_attachment *a = malloc(sizeof(*a));
+    if (!a)
+        return 0;
+    concept_weight_plan plan = {0};
+    plan.count = 13;
+    for (unsigned i = 0; i < 13; ++i)
+        plan.items.data[i] = weight_spec(i, &block->prefetch_weights[i]);
+    concept_device_borrow device = {services->physical_device, services->device, services->transfer_queue,
+                                    services->transfer_queue_family_index,
+                                    services->concept_enabled_features};
+    concept_result_prefetch_owner_vulkan_error created =
+        concept_prometheus_model_block_create_prefetch(device, &plan, (size_t)bytes);
+    if (created.tag != 0) {
+        free(a);
+        return 0;
+    }
+    a->owner = created.payload.ok.value;
+    block->concept_prefetch_owner = a;
+    prom_vk_buffer *staging = &block->prefetch_weight_upload;
+    memset(staging, 0, sizeof(*staging));
+    staging->buffer = PromPrefetchStaging(&a->owner);
+    staging->memory = PromPrefetchMemory(&a->owner);
+    staging->size = bytes;
+    if (vkMapMemory(services->device, staging->memory, 0, bytes, 0, &staging->mapped) != VK_SUCCESS)
+        return 0;
+    return 1;
+}
+void prom_concept_prefetch_destroy(prom_model_block_state *block) {
+    prefetch_attachment *a = block->concept_prefetch_owner;
+    if (!a)
+        return;
+    /* Drop joins producer/consumer before staging and the borrowed windows. */
+    concept_prometheus_model_block_dispose_prefetch(a->owner);
+    free(a);
+    block->concept_prefetch_owner = NULL;
+    memset(&block->prefetch_weight_upload, 0, sizeof(block->prefetch_weight_upload));
+}
+int prom_concept_prefetch_begin(prom_model_block_state *block,
+                                const PrometheusModelBlockWeightUpload *uploads, uint32_t count,
+                                const uint32_t *physical) {
+    prefetch_attachment *a = block->concept_prefetch_owner;
+    concept_weight_plan plan = {0};
+    plan.count = count;
+    for (unsigned i = 0; i < count; ++i) {
+        unsigned slot = physical ? physical[i] : i;
+        plan.items.data[i] = weight_spec(slot, &block->prefetch_weights[slot]);
+        plan.items.data[i].bytes = uploads[i].byte_count;
+        plan.items.data[i].content = uploads[i].content_identity;
+        plan.items.data[i].layout = uploads[i].layout_identity;
+    }
+    return PromPrefetchBegin(&a->owner, &plan);
+}
+int prom_concept_prefetch_upload(prom_model_block_state *block, uint32_t index) {
+    prefetch_attachment *a = block->concept_prefetch_owner;
+    unsigned flags = 0;
+    if (block->prefetch_test_index == index) {
+        flags = block->prefetch_test_flags;
+        block->prefetch_test_flags = 0;
+    }
+    return PromPrefetchUpload(&a->owner, index, flags);
+}
+int prom_concept_prefetch_acquire(prom_model_block_state *block) {
+    prefetch_attachment *a = block->concept_prefetch_owner;
+    block_attachment *b = block->concept_owner;
+    unsigned flags = block->prefetch_test_index == 13 ? (block->prefetch_test_flags & 7u) : 0;
+    block->prefetch_test_flags &= 8u;
+    return PromPrefetchAcquire(&a->owner, &b->owner, flags);
+}
+void prom_concept_prefetch_views(prom_model_block_state *block, prom_model_block_weight_resource *views) {
+    prefetch_attachment *a = block->concept_prefetch_owner;
+    for (unsigned i = 0; i < 13; ++i) {
+        concept_weight_spec spec = {0};
+        PromPrefetchView(&a->owner, i, &spec);
+        memset(&views[i], 0, sizeof(views[i]));
+        views[i].device.buffer = spec.buffer;
+        views[i].device.size = spec.capacity;
+        views[i].byte_count = spec.bytes;
+        views[i].content_identity = spec.content;
+        views[i].layout_identity = spec.layout;
+        views[i].uploaded = spec.bytes != 0;
+    }
+}
+void prom_concept_prefetch_commit(prom_model_block_state *block) {
+    prefetch_attachment *a = block->concept_prefetch_owner;
+    block_attachment *b = block->concept_owner;
+    if (!PromPrefetchCommit(&a->owner, &b->owner))
+        abort();
+    prom_concept_weights_views(block, 0, block->weights);
+    weights_sync(block);
+    prom_concept_prefetch_views(block, block->prefetch_weights);
+    block->prefetch_generation = PromPrefetchGeneration(&a->owner);
+    block->prefetch_state = PromPrefetchState(&a->owner);
+}
+
+int prom_concept_prefetch_cancel(prom_model_block_state *block) {
+    prefetch_attachment *a = block->concept_prefetch_owner;
+    if (!a)
+        return 1;
+    return PromPrefetchCancel(&a->owner) == 0;
 }
