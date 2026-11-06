@@ -62,14 +62,20 @@ Current Vulkan reactor file topology:
     Its session owner also owns PreparedImage, PreparedContext and JointWorking,
     capture/composition recordings, pending work, stream versions and provenance.
     Main chains borrow the joint through checked begin/commit/abort transitions.
+    One typed weight binding implements synchronous initial upload, replacement
+    and minimum-memory retarget. It owns candidate allocation, GPU copy work,
+    validity, commit generations and failed-candidate retirement.
 - `reactor_concept_model_block_abi.c` and `reactor_concept_model_block.cpp`
   - C11 packet/view transport and C++23 shader-package adaptation. All thirteen
     NoiseRefiner, eleven ContextRefiner and thirteen MainTransformer production
     pipelines belong to Concept. Session packets project borrowed buffers and
     Concept-owned versions; C does not independently mutate stream validity.
-    Admission, model-output bookkeeping, weight-window policy and public packet
-    transport remain migration seams. See
-    [Concept M9](../../../docs/internal/prometheus_concept_session_m9.md) for
+    C stages caller bytes and projects binding packets; Concept authorizes
+    publication. Admission, model-output bookkeeping, asynchronous prefetch and
+    public packet transport remain migration seams. See
+    [Concept M10](../../../docs/internal/prometheus_concept_weights_m10.md) for
+    synchronous weight binding and recovery, and
+    [M9](../../../docs/internal/prometheus_concept_session_m9.md) for
     stream ownership, cross-owner retirement and failure qualification, and
     [M8](../../../docs/internal/prometheus_concept_main_m8.md) for Main numerics,
     timing, attention routes and remaining research boundaries.
@@ -77,7 +83,10 @@ Current Vulkan reactor file topology:
   - the remaining model/session policy and execution paths. Closed-block and
     production NoiseRefiner, ContextRefiner and MainTransformer execution delegate
     to Concept, including session stream capture/composition. C retains
-    model/session admission, rebinding/prefetch and explicit audit transport.
+    model/session admission, descriptor packet adaptation, asynchronous prefetch
+    and explicit audit transport. The three standalone rebind entry points and
+    the closed retarget sequence share the Concept synchronous binding protocol;
+    the old C synchronous upload recorder and candidate owner have been removed.
     Pipeline interfaces are checked against the selected shader-package variant,
     while the small native shader registry supplies selector metadata.
 - `reactor_main_experiments.inc`

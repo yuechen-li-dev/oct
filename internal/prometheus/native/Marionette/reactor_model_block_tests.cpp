@@ -195,6 +195,66 @@ int upload_all(void* runtime, std::uint64_t block_id, const PrometheusModelBlock
 }
 }
 
+FACT(PrometheusConceptWeightsInitialPartialUploadsCannotExecuteAndRetryCleanly)
+{
+    for (const unsigned fault : {1u, 2u, 4u})
+    {
+        void *raw{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &raw),
+                     "create weight upload device");
+        const auto release = [](void *p) {
+            if (p)
+                (void)prom_reactor_runtime_destroy_impl(p);
+        };
+        std::unique_ptr<void, decltype(release)> runtime(raw, release);
+        if (!raw || !runtime_available(raw))
+            SKIP("Vulkan runtime unavailable");
+        const int buffers = ConceptVkTestLiveBuffers();
+        auto create = make_request();
+        std::uint64_t id{};
+        PrometheusModelBlockEvidence evidence{};
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_model_block_create(raw, &create, &id, &evidence),
+                     "create a small real closed program");
+        if (!id)
+            return;
+        const auto allocations = evidence.cold_buffer_allocation_count;
+        ASSERT_EQUAL(
+            PROM_OK,
+            prom_reactor_runtime_model_block_test_inject_weight_fault_impl(raw, id, 3, fault),
+            "fail after three completed weight transfers");
+        ASSERT_EQUAL(PROM_ERROR, upload_all(raw, id, create, &evidence),
+                     "partial bundle cannot publish");
+        ASSERT_EQUAL(0u, evidence.weights_uploaded, "incomplete initial set is not executable");
+        ASSERT_EQUAL(3ull, evidence.weight_upload_count,
+                     "only observed completed transfers are counted");
+        ASSERT_EQUAL(fault == 4u ? 1u : 0u, evidence.quarantined,
+                     "only unobserved submitted work is retained");
+        std::array<float, kElementCount> input{}, output{};
+        PrometheusModelBlockExecuteRequest execute{};
+        execute.struct_size = sizeof(execute);
+        execute.input = input.data();
+        execute.output = output.data();
+        execute.element_count = input.size();
+        execute.input_identity = 0xe001;
+        ASSERT_EQUAL(PROM_ERROR,
+                     prometheus_reactor_runtime_model_block_execute(raw, id, &execute, &evidence),
+                     "real execution rejects a partial initial set");
+        ASSERT_EQUAL(PROM_OK, upload_all(raw, id, create, &evidence),
+                     "fresh full upload retires and repairs partial work");
+        ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count,
+                     "initial retry reuses all buffers");
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_model_block_execute(raw, id, &execute, &evidence),
+                     "repaired binding executes through the real GPU path");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(raw, id),
+                     "retire weight owner");
+        ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(),
+                     "partial and successful weights release exactly once");
+        ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "teardown joins weight submissions");
+    }
+}
+
 FACT(PrometheusResidentModelBlockExecutesAClosedGpuProgramAndStaysWarm)
 {
     void* runtime = nullptr;
@@ -669,7 +729,6 @@ FACT(PrometheusConceptModelBlockAttentionAndFfnHaveIndependentNonzeroWitnesses)
     whole.model_input_bytes = input.size() * 2; whole.timestep_bytes = timestep.size() * 2;
     whole.input_identity = 0xa610; whole.timestep_identity = 0xa611; whole.output_identity = 0xa612;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &whole, &evidence), "establish a complete nonzero Concept boundary");
-    const auto generation = evidence.output_generation;
     ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count, "standalone tail reuses every activation allocation");
     ASSERT_EQUAL(13u, evidence.weight_upload_count, "standalone tail performs no extra uploads");
     for (auto& upload : uploads) upload.content_identity += 0x1000;
@@ -677,6 +736,39 @@ FACT(PrometheusConceptModelBlockAttentionAndFfnHaveIndependentNonzeroWitnesses)
     rebind.struct_size = sizeof(rebind); rebind.model_local_block_id = 1;
     rebind.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
     rebind.upload_count = static_cast<unsigned>(uploads.size()); rebind.uploads = uploads.data();
+    std::vector<std::uint16_t> replacementBias(weights[0].size(), std::uint16_t{0x4000});
+    const void *originalBias = uploads[0].bytes;
+    uploads[0].bytes = replacementBias.data();
+    const auto binding = evidence.binding_generation, descriptors = evidence.descriptor_generation;
+    for (const unsigned fault : {1u, 2u, 4u, 8u})
+    {
+        ASSERT_EQUAL(
+            PROM_OK,
+            prom_reactor_runtime_model_block_test_inject_weight_fault_impl(raw, id, 3, fault),
+            "fail a replacement after earlier candidates contain different bytes");
+        ASSERT_EQUAL(PROM_ERROR,
+                     prometheus_reactor_runtime_noise_refiner_rebind(raw, id, &rebind, &evidence),
+                     "incomplete replacement is not published");
+        ASSERT_EQUAL(binding, evidence.binding_generation,
+                     "failed replacement keeps binding generation");
+        ASSERT_EQUAL(descriptors, evidence.descriptor_generation,
+                     "failed replacement keeps descriptor generation");
+        ASSERT_EQUAL(1u, evidence.weights_uploaded, "old replacement binding remains usable");
+        ASSERT_EQUAL(fault == 1u   ? PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED
+                     : fault == 2u ? PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED
+                     : fault == 4u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN
+                                   : PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED,
+                     evidence.detail_code, "weight failure retains phase");
+        if (!prepareAttention())
+            return;
+        check("replacement_rollback", expected.residual, 3840);
+    }
+    uploads[0].bytes = originalBias;
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &whole, &evidence),
+                 "restore the complete resident predecessor after rollback witnesses");
+    const auto generation = evidence.output_generation,
+               completedUploads = evidence.weight_upload_count;
     const auto rebound = prometheus_reactor_runtime_noise_refiner_rebind(raw, id, &rebind, &evidence);
     ASSERT_EQUAL(PROM_OK, rebound, "commit the block-1 binding before consuming the resident block-0 boundary");
     if (rebound != PROM_OK) return;
@@ -718,7 +810,8 @@ FACT(PrometheusConceptModelBlockAttentionAndFfnHaveIndependentNonzeroWitnesses)
     }
     ASSERT_EQUAL(residentAllocations, evidence.cold_buffer_allocation_count, "resident and static replay allocate no replacement storage");
     ASSERT_EQUAL(pipelines, evidence.pipeline_create_count, "tail and replay retain the cold pipeline portfolio");
-    ASSERT_EQUAL(26u, evidence.weight_upload_count, "replay uploads no weights beyond the explicit block-1 rebind");
+    ASSERT_EQUAL(completedUploads + 13u, evidence.weight_upload_count,
+                 "replay uploads no weights beyond the explicit block-1 rebind");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(raw, id), "destroy the complete Concept model owner");
     ASSERT_EQUAL(buffersBefore, ConceptVkTestLiveBuffers(), "all Concept buffers return to baseline");
     ASSERT_EQUAL(pipelinesBefore, ConceptVkTestLivePipelines(), "all Concept pipelines return to baseline");
@@ -1139,7 +1232,8 @@ FACT(PrometheusConceptContextRefinerHasIndependentNonzeroWitnessesAndSharedPortf
         }
         Rows nextInput{};
         for(unsigned t=0;t<32;++t) for(unsigned c=0;c<4;++c) nextInput[t][c]=output[t*3840+c];
-        const auto next=reference(nextInput); const auto generation=evidence.output_generation;
+        const auto next = reference(nextInput);
+        auto generation = evidence.output_generation;
         if(shared) {
             PrometheusCompiledModelRetargetRequest rebind{};
             rebind.struct_size=sizeof(rebind); rebind.session_identity=sessionID; rebind.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
@@ -1149,6 +1243,27 @@ FACT(PrometheusConceptContextRefinerHasIndependentNonzeroWitnessesAndSharedPortf
             PrometheusContextRefinerRebindRequest rebind{};
             rebind.struct_size=sizeof(rebind); rebind.lock_identity=PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID; rebind.model_local_block_id=1;
             rebind.upload_count=11; rebind.uploads=uploads.data();
+            const auto binding = evidence.binding_generation;
+            for (const unsigned fault : {4u, 8u})
+            {
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_model_block_test_inject_weight_fault_impl(
+                                 raw, id, 3, fault),
+                             "inject Context replacement failure");
+                ASSERT_EQUAL(
+                    PROM_ERROR,
+                    prometheus_reactor_runtime_context_refiner_rebind(raw, id, &rebind, &evidence),
+                    "Context cannot commit incomplete replacement");
+                ASSERT_EQUAL(binding, evidence.binding_generation,
+                             "Context keeps the active version");
+                ASSERT_EQUAL(PROM_OK,
+                             prometheus_reactor_runtime_context_refiner0_execute(raw, id, &execute,
+                                                                                 &evidence),
+                             "Context's old binding still executes after retirement");
+                if (!checkOutput(expected.output))
+                    return;
+            }
+            generation = evidence.output_generation;
             ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_context_refiner_rebind(raw,id,&rebind,&evidence),"commit Context block-1 candidate weights");
         }
         const auto allocations=evidence.cold_buffer_allocation_count, uploadCount=evidence.weight_upload_count;
@@ -2491,20 +2606,6 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
             return;
         ASSERT_EQUAL(pipelinesBefore + 37, ConceptVkTestLivePipelines(),
                      "Noise, Context and Main retain their own Concept pipelines");
-        const auto retarget = [&](unsigned block, const PrometheusModelBlockWeightUpload *data,
-                                  unsigned count) {
-            PrometheusCompiledModelRetargetRequest request{};
-            request.struct_size = sizeof(request);
-            request.session_identity = sessionID;
-            request.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
-            request.model_local_block_id = block;
-            request.upload_count = count;
-            request.uploads = data;
-            const auto code =
-                prometheus_reactor_runtime_compiled_model_retarget(raw, &request, &evidence);
-            ASSERT_EQUAL(PROM_OK, code, "retarget only the closed immediate successor");
-            return code == PROM_OK;
-        };
         std::vector<std::uint16_t> image(1024u * 3840u), timestep(256, 0);
         timestep[0] = 0x4000;
         for (unsigned t = 0; t < 1024; ++t)
@@ -2528,6 +2629,52 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
                      prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &noise, &evidence),
                      "zero preparation weights preserve exact BF16 image ingress");
         const auto imageGeneration = evidence.output_generation;
+        bool weightFailuresExercised = false;
+        const auto retarget = [&](unsigned block, const PrometheusModelBlockWeightUpload *data,
+                                  unsigned count) {
+            PrometheusCompiledModelRetargetRequest request{};
+            request.struct_size = sizeof(request);
+            request.session_identity = sessionID;
+            request.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+            request.model_local_block_id = block;
+            request.upload_count = count;
+            request.uploads = data;
+            if (!weightFailuresExercised && policy == PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL)
+            {
+                const auto binding = evidence.binding_generation,
+                           descriptors = evidence.descriptor_generation,
+                           allocations = evidence.cold_buffer_allocation_count;
+                for (const unsigned fault : {1u, 2u, 4u, 8u})
+                {
+                    ASSERT_EQUAL(
+                        PROM_OK,
+                        prom_reactor_runtime_model_block_test_inject_weight_fault_impl(raw, id, 3,
+                                                                                       fault),
+                        "fail minimum-memory retarget after preceding weights were overwritten");
+                    ASSERT_EQUAL(PROM_ERROR,
+                                 prometheus_reactor_runtime_compiled_model_retarget(raw, &request,
+                                                                                    &evidence),
+                                 "partial in-place set is not published");
+                    ASSERT_EQUAL(0u, evidence.weights_uploaded,
+                                 "partial in-place set cannot execute");
+                    ASSERT_EQUAL(binding, evidence.binding_generation,
+                                 "failed retarget does not publish generation");
+                    ASSERT_EQUAL(descriptors, evidence.descriptor_generation,
+                                 "failed retarget does not publish descriptors");
+                    ASSERT_EQUAL(allocations, evidence.cold_buffer_allocation_count,
+                                 "minimum-memory repair allocates no buffers");
+                    ASSERT_EQUAL(PROM_ERROR,
+                                 prometheus_reactor_runtime_noise_refiner0_execute(raw, id, &noise,
+                                                                                   &evidence),
+                                 "old family cannot dispatch partially overwritten weights");
+                }
+                weightFailuresExercised = true;
+            }
+            const auto code =
+                prometheus_reactor_runtime_compiled_model_retarget(raw, &request, &evidence);
+            ASSERT_EQUAL(PROM_OK, code, "retarget only the closed immediate successor");
+            return code == PROM_OK;
+        };
         if (!retarget(1, uploads.data(), 13))
             return;
         PrometheusNoiseRefinerResidentExecuteRequest noise1{};
@@ -2912,6 +3059,29 @@ FACT(PrometheusConceptMainTransformerRunsIndependentJointWitnessesAndChains)
             rebind.model_local_block_id = 1;
             rebind.upload_count = 13;
             rebind.uploads = uploads.data();
+            const auto binding = evidence.binding_generation;
+            for (const unsigned fault : {4u, 8u})
+            {
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_model_block_test_inject_weight_fault_impl(
+                                 raw, id, 3, fault),
+                             "inject Main replacement failure");
+                ASSERT_EQUAL(
+                    PROM_ERROR,
+                    prometheus_reactor_runtime_main_transformer_rebind(raw, id, &rebind, &evidence),
+                    "Main cannot publish incomplete replacement");
+                ASSERT_EQUAL(binding, evidence.binding_generation,
+                             "Main retains its old binding version");
+                execute.resident_chain_mode = 0;
+                execute.required_joint_generation = jointGeneration;
+                ASSERT_EQUAL(PROM_OK,
+                             prometheus_reactor_runtime_main_transformer_execute(raw, id, &execute,
+                                                                                 &evidence),
+                             "old Main binding executes after failed replacement");
+                if (!readFinal(next))
+                    return;
+                execute.resident_chain_mode = 1;
+            }
             ASSERT_EQUAL(
                 PROM_OK,
                 prometheus_reactor_runtime_main_transformer_rebind(raw, id, &rebind, &evidence),

@@ -229,6 +229,9 @@ typedef struct prom_model_block_state {
   uint32_t shader_id;
   uint32_t main_attention_shader_id;
   uint32_t test_flags;
+  uint32_t weight_test_index;
+  uint32_t weight_test_flags;
+  uint64_t binding_candidate_bytes;
   uint32_t weight_count;
   uint32_t step_count;
   uint32_t assembly_family;
@@ -336,7 +339,6 @@ typedef struct prom_model_block_state {
   prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   /* A complete candidate bundle is uploaded here before the descriptor
      transaction.  It is never visible to a dispatch until commit. */
-  prom_model_block_weight_resource pending_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   /* M2 owns exactly one inactive, complete weight window.  It is deliberately
      separate from the active descriptors and receives only the lock-derived
      immediate successor. */

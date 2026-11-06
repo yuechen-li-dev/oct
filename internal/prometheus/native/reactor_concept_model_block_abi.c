@@ -59,6 +59,8 @@ int prom_concept_block_drain(prom_model_block_state* block) {
     const uint64_t waits = PromBlockWaits(&a->owner);
     const int code = PromBlockDrain(&a->owner);
     block->vk_fence_wait_count += PromBlockWaits(&a->owner) - waits;
+    block->binding_candidate_bytes = PromWeightsCandidateBytes(&a->owner);
+    block->binding_state = PromWeightsState(&a->owner);
     return code == 0 || PromBlockDeviceLost(&a->owner);
 }
 static int load(prom_model_block_state* block, int slot, uint32_t kernel, uint32_t bindings, uint32_t push) {
@@ -355,4 +357,134 @@ void prom_concept_session_inject(prom_compiled_model_session_state *session, uin
 int prom_concept_session_joint_borrowed(prom_compiled_model_session_state *session) {
   session_attachment *a = session->concept_owner;
   return a && PromSessionJointWriting(&a->owner);
+}
+
+/* Binding metadata is projected after every transition, including failures. */
+static void weights_sync(prom_model_block_state *block) {
+  block_attachment *a = block->concept_owner;
+  block->binding_candidate_bytes = PromWeightsCandidateBytes(&a->owner);
+  block->weights_uploaded = PromWeightsValid(&a->owner);
+  block->binding_state = PromWeightsState(&a->owner);
+  block->binding_generation = PromWeightsGeneration(&a->owner);
+  block->descriptor_generation = PromWeightsDescriptors(&a->owner);
+  block->quarantined = PromBlockQuarantined(&a->owner);
+  if (!block->weights_uploaded) {
+    block->output_valid = 0;
+    block->audit_valid = 0;
+    block->resident_input_generation = 0;
+    block->m1b_prefix_replay_identity = 0;
+  }
+}
+static concept_weight_spec weight_spec(uint32_t slot, const prom_model_block_weight_resource *w) {
+  concept_weight_spec packet = {slot,          w->device.buffer,    w->device.size,
+                                w->byte_count, w->content_identity, w->layout_identity};
+  return packet;
+}
+int prom_concept_weights_begin(prom_model_block_state *block, uint32_t mode,
+                               const uint32_t *physical_slots,
+                               const PrometheusModelBlockWeightUpload *uploads, uint32_t count) {
+  block_attachment *a = block->concept_owner;
+  concept_weight_plan plan = {0};
+  plan.count = count;
+  static const uint32_t context_slots[11] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  for (uint32_t i = 0; i < count; ++i) {
+    const uint32_t slot = physical_slots ? physical_slots[i] : i;
+    plan.items.data[i] = weight_spec(slot, &block->weights[slot]);
+    plan.items.data[i].bytes = uploads[i].byte_count;
+    plan.items.data[i].content = uploads[i].content_identity;
+    plan.items.data[i].layout = uploads[i].layout_identity;
+  }
+  uint64_t allocated = PromWeightsAllocations(&a->owner);
+  int code = PromWeightsBegin(&a->owner, mode, &plan);
+  allocated = PromWeightsAllocations(&a->owner) - allocated;
+  block->cold_buffer_allocation_count += allocated;
+  block->vk_create_buffer_count += allocated;
+  block->vk_allocate_memory_count += allocated;
+  weights_sync(block);
+  block->last_detail_code = code;
+  return code == 0;
+}
+int prom_concept_weights_upload(prom_reduction_runtime_state *state, prom_model_block_state *block,
+                                uint32_t index) {
+  (void)state;
+  block_attachment *a = block->concept_owner;
+  uint32_t flags = 0;
+  if (block->weight_test_index == index) {
+    flags = block->weight_test_flags & 7u;
+    block->weight_test_flags &= ~7u;
+  }
+  if (block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END)
+    flags |= 1u;
+  if (block->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT)
+    flags |= 2u;
+  if (block->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT)
+    flags |= 4u;
+  const uint64_t recordings = PromBlockRecordings(&a->owner),
+                 submits = PromBlockSubmissions(&a->owner), waits = PromBlockWaits(&a->owner);
+  int code = PromWeightsUpload(&a->owner, index, block->weight_upload.buffer,
+                               block->weight_upload.size, flags);
+  block->vk_allocate_command_buffers_count += PromBlockRecordings(&a->owner) - recordings;
+  block->vk_queue_submit_count += PromBlockSubmissions(&a->owner) - submits;
+  block->vk_fence_wait_count += PromBlockWaits(&a->owner) - waits;
+  weights_sync(block);
+  block->last_detail_code = code;
+  return code == 0;
+}
+void prom_concept_weights_abort(prom_model_block_state *block) {
+  block_attachment *a = block->concept_owner;
+  PromWeightsAbort(&a->owner);
+  weights_sync(block);
+}
+void prom_concept_weights_views(prom_model_block_state *block, int candidate,
+                                prom_model_block_weight_resource *views) {
+  block_attachment *a = block->concept_owner;
+  if (views != block->weights)
+    memcpy(views, block->weights, sizeof(block->weights));
+  for (uint32_t i = 0; i < 13; ++i) {
+    concept_weight_spec spec = {0};
+    if (!PromWeightsView(&a->owner, i, candidate != 0, &spec))
+      continue;
+    prom_model_block_weight_resource *w = &views[i];
+    if (w->device.buffer != spec.buffer) {
+      memset(&w->device, 0, sizeof(w->device));
+      w->device.buffer = spec.buffer;
+      int index = PromBlockFindBuffer(&a->owner, spec.buffer);
+      if (index >= 0)
+        w->device.memory = PromBlockMemory(&a->owner, index);
+      w->device.memory_type_index = UINT32_MAX;
+      w->device.memory_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+      w->device.usage_flags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+    w->device.size = spec.capacity;
+    w->byte_count = spec.bytes;
+    w->content_identity = spec.content;
+    w->layout_identity = spec.layout;
+    w->uploaded = 1;
+  }
+}
+void prom_concept_weights_commit(prom_model_block_state *block) {
+  block_attachment *a = block->concept_owner;
+  prom_model_block_weight_resource old[13], next[13];
+  unsigned foreign[13] = {0};
+  memcpy(old, block->weights, sizeof(old));
+  prom_concept_weights_views(block, 1, next);
+  for (unsigned i = 0; i < 13; ++i)
+    foreign[i] = old[i].device.buffer && old[i].device.buffer != next[i].device.buffer &&
+                 PromBlockFindBuffer(&a->owner, old[i].device.buffer) < 0;
+  if (!PromWeightsCommit(&a->owner))
+    abort(); /* Ready + serialized descriptor commit. */
+  prom_concept_weights_views(block, 0, block->weights);
+  weights_sync(block);
+  for (unsigned i = 0; i < 13; ++i)
+    if (foreign[i])
+      prom_vk_destroy_buffer(PromBlockDevice(&a->owner), &old[i].device);
+}
+void prom_concept_weights_external(prom_model_block_state *block) {
+  block_attachment *a = block->concept_owner;
+  concept_weight_plan plan = {0};
+  for (uint32_t i = 0; i < 13; ++i)
+    if (block->weights[i].device.buffer)
+      plan.items.data[plan.count++] = weight_spec(i, &block->weights[i]);
+  PromWeightsExternal(&a->owner, &plan, block->binding_generation, block->descriptor_generation);
 }

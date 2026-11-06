@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 struct prom_model_block_state;
+struct prom_model_block_weight_resource;
 struct prom_reduction_runtime_state;
 struct prom_compiled_model_session_state;
 int prom_concept_session_create(void* host, const prom_vk_runtime_services* services,
@@ -48,6 +49,17 @@ int prom_concept_block_attention_run(struct prom_reduction_runtime_state* state,
     struct prom_model_block_state* block, uint32_t stage, int capture, int32_t* detail);
 int prom_concept_block_ffn_run(struct prom_reduction_runtime_state* state,
     struct prom_model_block_state* block, uint32_t stage, int capture, int32_t* detail);
+/* Synchronous weight lifecycle. Native packets and staging bytes borrow the
+   Concept owner; only a completed binding commit changes its generation. */
+int prom_concept_weights_begin(struct prom_model_block_state* block, uint32_t mode,
+    const uint32_t* physical_slots, const PrometheusModelBlockWeightUpload* uploads, uint32_t count);
+int prom_concept_weights_upload(struct prom_reduction_runtime_state* state,
+    struct prom_model_block_state* block, uint32_t index);
+void prom_concept_weights_abort(struct prom_model_block_state* block);
+void prom_concept_weights_views(struct prom_model_block_state* block, int candidate,
+    struct prom_model_block_weight_resource* views);
+void prom_concept_weights_commit(struct prom_model_block_state* block);
+void prom_concept_weights_external(struct prom_model_block_state* block);
 int prom_concept_block_configure(void* host, VkDevice device);
 #ifdef __cplusplus
 }

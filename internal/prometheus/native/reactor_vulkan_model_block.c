@@ -202,6 +202,9 @@ static const uint64_t k_prom_model_block_context_weight_bytes[11u] = {
     256ull, 29491200ull, 256ull, 88473600ull, 7680ull, 7680ull,
     78643200ull, 78643200ull, 78643200ull, 7680ull, 7680ull};
 
+static void prom_model_block_copy_active_portfolio(prom_model_block_state *block, uint32_t family,
+                                                   int save);
+
 static uint64_t prom_model_block_hash_u64(uint64_t hash, uint64_t value) {
   return prom_m40b_hash_u64(hash, value);
 }
@@ -248,6 +251,8 @@ static uint64_t prom_model_block_weight_bytes(const prom_model_block_state* bloc
       if (!prom_model_block_add_bytes(&total, (uint64_t)block->prefetch_weights[index].device.size)) return 0u;
     }
   }
+  if (!prom_model_block_add_bytes(&total, block->binding_candidate_bytes))
+    return 0u;
   return total;
 }
 
@@ -1057,30 +1062,60 @@ static int prom_model_block_reap(prom_reduction_runtime_state* state,
   return 1;
 }
 
-static int prom_model_block_record_upload(prom_reduction_runtime_state* state,
-                                          prom_model_block_state* block,
-                                          prom_model_block_weight_resource* destination,
-                                          uint32_t weight_index) {
-  VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy copy;
-  VkResult result;
-  int32_t detail = PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED;
-  if (state == NULL || block == NULL || destination == NULL || weight_index >= PROM_MODEL_BLOCK_MAX_WEIGHTS) return 0;
-  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
-  block->vk_reset_command_buffer_count += 1u;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  memset(&copy, 0, sizeof(copy));
-  copy.size = (VkDeviceSize)destination[weight_index].byte_count;
-  vkCmdCopyBuffer(block->command_buffer, block->weight_upload.buffer,
-                  destination[weight_index].device.buffer, 1u, &copy);
-  result = (block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u
-               ? VK_ERROR_INITIALIZATION_FAILED
-               : vkEndCommandBuffer(block->command_buffer);
-  if (result != VK_SUCCESS) return 0;
-  return prom_model_block_submit_and_wait(state, block, &detail);
+static int prom_model_block_change_weights(prom_reduction_runtime_state *state,
+                                           prom_model_block_state *block,
+                                           const PrometheusModelBlockWeightUpload *uploads,
+                                           uint32_t count, uint32_t mode, uint32_t family) {
+  if (!prom_model_block_reap(state, block)) {
+    block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN;
+    return 0;
+  }
+  const uint32_t *physical_slots =
+      block->shared_owner && family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
+          ? k_prom_context_shared_weight_slots
+          : NULL;
+  if (!prom_concept_weights_begin(block, mode, physical_slots, uploads, count))
+    return 0;
+  uint64_t memcpy_ns = 0;
+  for (uint32_t i = 0; i < count; ++i) {
+    const uint64_t begin = prom_reduction_now_ns();
+    memcpy(block->weight_upload.mapped, uploads[i].bytes, (size_t)uploads[i].byte_count);
+    memcpy_ns += prom_reduction_elapsed_ns(begin, prom_reduction_now_ns());
+    if (!prom_concept_weights_upload(state, block, i))
+      return 0;
+    ++block->weight_upload_count;
+  }
+  if (mode != 0u) {
+    const uint32_t old_family = block->assembly_family, old_count = block->weight_count;
+    prom_model_block_weight_resource candidate[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+    prom_concept_weights_views(block, 1, candidate);
+    block->assembly_family = family;
+    block->weight_count = count;
+    if (block->shared_owner)
+      prom_model_block_copy_active_portfolio(block, family, 0);
+    const int injected_descriptor_failure = (block->weight_test_flags & 8u) != 0u;
+    if (injected_descriptor_failure)
+      block->weight_test_flags = 0u;
+    if (injected_descriptor_failure ||
+        !prom_model_block_update_weight_descriptors(state, block, candidate)) {
+      block->assembly_family = old_family;
+      block->weight_count = old_count;
+      if (block->shared_owner)
+        prom_model_block_copy_active_portfolio(block, old_family, 0);
+      prom_concept_weights_abort(block);
+      block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
+      return 0;
+    }
+  }
+  prom_concept_weights_commit(block);
+  block->last_staging_memcpy_ns = memcpy_ns;
+  block->output_valid = 0;
+  block->audit_valid = 0;
+  block->resident_input_generation = 0;
+  block->replay_identity = 0;
+  block->m1b_prefix_replay_identity = 0;
+  block->last_detail_code = 0;
+  return 1;
 }
 
 /* One bounded staging slot is reused only after its transfer fence signals.
@@ -1599,7 +1634,6 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
     }
     for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
       prom_model_block_destroy_buffer(state, block, &block->weights[index].device);
-      prom_model_block_destroy_buffer(state, block, &block->pending_weights[index].device);
       prom_model_block_destroy_buffer(state, block, &block->prefetch_weights[index].device);
     }
     prom_model_block_destroy_buffer(state, block, &block->weight_upload);
@@ -1702,13 +1736,8 @@ int prom_reactor_runtime_model_block_create_impl(
   block->assembly_family = request->assembly_family;
   block->parameter_set = request->parameter_set;
   block->parameter_set_aggregate_identity = request->parameter_set_aggregate_identity;
-  block->binding_generation = (request->assembly_family == PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO ||
-                               request->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO ||
-                               request->assembly_family == PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO) ? 1u : 0u;
-  block->binding_state = (request->assembly_family == PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO ||
-                          request->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO ||
-                          request->assembly_family == PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO)
-                             ? PROM_NOISE_REFINER_BINDING_BOUND : 0u;
+  /* A buffer/layout reservation is not a published weight binding. Concept
+     publishes the first generation only after the initial upload completes. */
   block->weight_identity = request->weight_identity;
   block->shader_portfolio_identity = request->shader_portfolio_identity;
   block->precision_policy_identity = request->precision_policy_identity;
@@ -1860,6 +1889,11 @@ int prom_reactor_runtime_model_block_upload_weights_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   if (block->weights_uploaded != 0u || block->quarantined != 0u || upload_count != block->weight_count ||
       (block->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
     prom_model_block_mark_failure(block, (block->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u
@@ -1880,32 +1914,13 @@ int prom_reactor_runtime_model_block_upload_weights_impl(
       return PROM_ERROR;
     }
   }
-  for (index = 0u; index < upload_count; ++index) {
-    memcpy(block->weight_upload.mapped, uploads[index].bytes, (size_t)uploads[index].byte_count);
-    if (!prom_model_block_record_upload(state, block, block->weights, index)) {
-      prom_model_block_mark_failure(block, block->quarantined != 0u
-                                               ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN
-                                               : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED);
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-      return PROM_ERROR;
-    }
-    block->weights[index].uploaded = 1u;
-    block->weight_upload_count += 1u;
+  if (!prom_model_block_change_weights(state, block, uploads, upload_count, 0u,
+                                       block->assembly_family)) {
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
   }
-  block->weights_uploaded = 1u;
-  block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
-}
-
-static void prom_model_block_destroy_pending_weights(prom_reduction_runtime_state* state,
-                                                     prom_model_block_state* block) {
-  uint32_t index;
-  if (state == NULL || block == NULL || state->device == VK_NULL_HANDLE) return;
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    prom_model_block_destroy_buffer(state, block, &block->pending_weights[index].device);
-  }
-  memset(block->pending_weights, 0, sizeof(block->pending_weights));
 }
 
 int prom_reactor_runtime_noise_refiner_rebind_impl(
@@ -1913,9 +1928,7 @@ int prom_reactor_runtime_noise_refiner_rebind_impl(
     PrometheusModelBlockEvidence* out_evidence) {
   prom_reduction_runtime_state* state;
   prom_model_block_state* block;
-  prom_model_block_weight_resource old_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   const PrometheusNoiseRefinerResolvedDescriptor* descriptor;
-  uint32_t index;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL ||
       request->upload_count != PROM_MODEL_BLOCK_MAX_WEIGHTS) {
@@ -1936,88 +1949,29 @@ int prom_reactor_runtime_noise_refiner_rebind_impl(
   }
   block = &state->model_block;
   if (block->assembly_family != PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO ||
-      block->parameter_set != PROM_NOISE_REFINER_PARAMETER_SET_0 || block->weights_uploaded == 0u ||
-      block->quarantined != 0u ||
-      (block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND &&
-       block->binding_state != PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT) ||
-      !prom_model_block_reap(state, block)) {
-    block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED
-                                                     : PROM_NOISE_REFINER_BINDING_COMPLETION_UNCERTAIN;
-    prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN
-                                                                   : PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED);
-    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+      block->parameter_set != PROM_NOISE_REFINER_PARAMETER_SET_0 || block->weights_uploaded == 0u) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
     return PROM_ERROR;
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_VALIDATING;
-  for (index = 0u; index < request->upload_count; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    if (upload->binding_index != index || upload->bytes == NULL || upload->content_identity == 0u ||
-        upload->layout_identity == 0u || upload->byte_count != k_prom_model_block_m1b_weight_bytes[index] ||
-        upload->byte_count > (uint64_t)block->weight_upload.size) {
-      block->binding_state = PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-      block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH;
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+  const uint64_t *sizes = descriptor->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
+                              ? k_prom_model_block_context_weight_bytes
+                              : k_prom_model_block_m1b_weight_bytes;
+  for (uint32_t i = 0; i < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++i) {
+    const PrometheusModelBlockWeightUpload *upload = &request->uploads[i];
+    if (upload->binding_index != i || !upload->bytes || !upload->content_identity ||
+        !upload->layout_identity || upload->byte_count != sizes[i] ||
+        upload->byte_count > block->weight_upload.size) {
+      prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH, out_evidence);
       return PROM_ERROR;
     }
   }
-  prom_model_block_destroy_pending_weights(state, block);
-  for (index = 0u; index < request->upload_count; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    block->pending_weights[index].content_identity = upload->content_identity;
-    block->pending_weights[index].layout_identity = upload->layout_identity;
-    block->pending_weights[index].byte_count = upload->byte_count;
-    if (!prom_model_block_create_buffer(state, block, &block->pending_weights[index].device,
-                                        (VkDeviceSize)upload->byte_count,
-                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) {
-      prom_model_block_destroy_pending_weights(state, block);
-      block->binding_state = PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-      block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-      return PROM_ERROR;
-    }
-  }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
-  for (index = 0u; index < request->upload_count; ++index) {
-    memcpy(block->weight_upload.mapped, request->uploads[index].bytes, (size_t)request->uploads[index].byte_count);
-    if (!prom_model_block_record_upload(state, block, block->pending_weights, index)) {
-      prom_model_block_destroy_pending_weights(state, block);
-      block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED
-                                                       : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-      prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN
-                                                                     : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED);
-      prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-      return PROM_ERROR;
-    }
-    block->pending_weights[index].uploaded = 1u;
-  }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
-  if (!prom_model_block_update_weight_descriptors(state, block, block->pending_weights)) {
-    prom_model_block_destroy_pending_weights(state, block);
-    block->binding_state = PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-    block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
+  if (!prom_model_block_change_weights(state, block, request->uploads, PROM_MODEL_BLOCK_MAX_WEIGHTS,
+                                       1u, descriptor->assembly_family)) {
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
-  }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_READY_TO_COMMIT;
-  memcpy(old_weights, block->weights, sizeof(old_weights));
-  memcpy(block->weights, block->pending_weights, sizeof(block->weights));
-  memset(block->pending_weights, 0, sizeof(block->pending_weights));
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    prom_model_block_destroy_buffer(state, block, &old_weights[index].device);
   }
   block->parameter_set = descriptor->parameter_set;
   block->parameter_set_aggregate_identity = descriptor->parameter_set_aggregate_identity;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
-  block->output_valid = 0u;
-  block->audit_valid = 0u;
-  block->resident_input_generation = 0u;
-  block->replay_identity = 0u;
-  block->m1b_prefix_replay_identity = 0u;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
-  block->weight_upload_count += request->upload_count;
-  block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
 }
@@ -2607,9 +2561,7 @@ int prom_reactor_runtime_context_refiner_rebind_impl(
     PrometheusModelBlockEvidence* out_evidence) {
   prom_reduction_runtime_state* state;
   prom_model_block_state* block;
-  prom_model_block_weight_resource old_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   const PrometheusContextRefinerResolvedDescriptor* descriptor;
-  uint32_t index;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || request->uploads == NULL ||
       request->struct_size != sizeof(*request) || request->upload_count != 11u) goto invalid;
   descriptor = prom_zimage_turbo_resolve_context_refiner_descriptor(request->lock_identity, request->model_local_block_id);
@@ -2622,74 +2574,33 @@ int prom_reactor_runtime_context_refiner_rebind_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
-  if (!prom_model_block_is_context_refiner(block) || block->parameter_set != PROM_CONTEXT_REFINER_PARAMETER_SET_0 ||
-      block->weights_uploaded == 0u || block->quarantined != 0u ||
-      (block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND &&
-       block->binding_state != PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT) || !prom_model_block_reap(state, block)) goto failed;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_VALIDATING;
-  for (index = 0u; index < 11u; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    if (upload->binding_index != index || upload->bytes == NULL || upload->content_identity == 0u ||
-        upload->layout_identity == 0u || upload->byte_count != k_prom_model_block_context_weight_bytes[index] ||
-        upload->byte_count > (uint64_t)block->weight_upload.size) goto mismatch;
+  if (!prom_model_block_is_context_refiner(block) ||
+      block->parameter_set != PROM_CONTEXT_REFINER_PARAMETER_SET_0 ||
+      block->weights_uploaded == 0u) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
+    return PROM_ERROR;
   }
-  prom_model_block_destroy_pending_weights(state, block);
-  for (index = 0u; index < 11u; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    block->pending_weights[index].content_identity = upload->content_identity;
-    block->pending_weights[index].layout_identity = upload->layout_identity;
-    block->pending_weights[index].byte_count = upload->byte_count;
-    if (!prom_model_block_create_buffer(state, block, &block->pending_weights[index].device,
-                                        (VkDeviceSize)upload->byte_count,
-                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) goto resource_fail;
+  const uint64_t *sizes = descriptor->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
+                              ? k_prom_model_block_context_weight_bytes
+                              : k_prom_model_block_m1b_weight_bytes;
+  for (uint32_t i = 0; i < 11u; ++i) {
+    const PrometheusModelBlockWeightUpload *upload = &request->uploads[i];
+    if (upload->binding_index != i || !upload->bytes || !upload->content_identity ||
+        !upload->layout_identity || upload->byte_count != sizes[i] ||
+        upload->byte_count > block->weight_upload.size) {
+      prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH, out_evidence);
+      return PROM_ERROR;
+    }
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
-  for (index = 0u; index < 11u; ++index) {
-    memcpy(block->weight_upload.mapped, request->uploads[index].bytes, (size_t)request->uploads[index].byte_count);
-    if (!prom_model_block_record_upload(state, block, block->pending_weights, index)) goto upload_fail;
-    block->pending_weights[index].uploaded = 1u;
+  if (!prom_model_block_change_weights(state, block, request->uploads, 11u, 1u,
+                                       descriptor->assembly_family)) {
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
-  if (!prom_model_block_update_weight_descriptors(state, block, block->pending_weights)) goto descriptor_fail;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_READY_TO_COMMIT;
-  memcpy(old_weights, block->weights, sizeof(old_weights));
-  memcpy(block->weights, block->pending_weights, sizeof(block->weights));
-  memset(block->pending_weights, 0, sizeof(block->pending_weights));
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) prom_model_block_destroy_buffer(state, block, &old_weights[index].device);
   block->parameter_set = descriptor->parameter_set;
   block->parameter_set_aggregate_identity = descriptor->parameter_set_aggregate_identity;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
-  block->output_valid = 0u;
-  block->audit_valid = 0u;
-  block->resident_input_generation = 0u;
-  block->replay_identity = 0u;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
-  block->weight_upload_count += 11u;
-  block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
-mismatch:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH;
-  goto rebind_fail;
-resource_fail:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
-  goto rebind_fail;
-upload_fail:
-  block->last_detail_code = block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED;
-  goto rebind_fail;
-descriptor_fail:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
-rebind_fail:
-  prom_model_block_destroy_pending_weights(state, block);
-  block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
-failed:
-  prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED);
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
 invalid:
   prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
   return PROM_ERROR;
@@ -2719,6 +2630,11 @@ static int prom_context_refiner_execute_closed(
     return PROM_ERROR;
   }
   block = &state->model_block;
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   first_resident_execution = resident_input && block->resident_input_generation == 0u;
   resident_input_mode = resident_input ? (first_resident_execution ? 1 : 2) : 0;
   if (!prom_model_block_is_context_refiner(block) || block->parameter_set != required_parameter_set ||
@@ -4015,8 +3931,6 @@ int prom_reactor_runtime_main_transformer_rebind_impl(
   prom_reduction_runtime_state* state;
   prom_model_block_state* block;
   const PrometheusMainTransformerResolvedDescriptor* descriptor;
-  prom_model_block_weight_resource old_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
-  uint32_t index;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || request->uploads == NULL ||
       request->struct_size != sizeof(*request) || request->upload_count != PROM_MODEL_BLOCK_MAX_WEIGHTS) goto invalid;
   descriptor = prom_zimage_turbo_resolve_main_transformer_descriptor(request->lock_identity,
@@ -4030,74 +3944,32 @@ int prom_reactor_runtime_main_transformer_rebind_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
-  if (!prom_model_block_is_main_transformer(block) || block->weights_uploaded == 0u ||
-      block->quarantined != 0u || block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND ||
-      descriptor->parameter_set != block->parameter_set + 1u || !prom_model_block_reap(state, block)) goto failed;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_VALIDATING;
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    if (upload->binding_index != index || upload->bytes == NULL || upload->content_identity == 0u ||
-        upload->layout_identity == 0u || upload->byte_count != k_prom_model_block_m1b_weight_bytes[index] ||
-        upload->byte_count > (uint64_t)block->weight_upload.size) goto mismatch;
+  if (!prom_model_block_is_main_transformer(block) ||
+      descriptor->parameter_set != block->parameter_set + 1u || block->weights_uploaded == 0u) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED, out_evidence);
+    return PROM_ERROR;
   }
-  prom_model_block_destroy_pending_weights(state, block);
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    block->pending_weights[index].content_identity = upload->content_identity;
-    block->pending_weights[index].layout_identity = upload->layout_identity;
-    block->pending_weights[index].byte_count = upload->byte_count;
-    if (!prom_model_block_create_buffer(state, block, &block->pending_weights[index].device,
-                                        (VkDeviceSize)upload->byte_count,
-                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) goto resource_fail;
+  const uint64_t *sizes = descriptor->assembly_family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
+                              ? k_prom_model_block_context_weight_bytes
+                              : k_prom_model_block_m1b_weight_bytes;
+  for (uint32_t i = 0; i < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++i) {
+    const PrometheusModelBlockWeightUpload *upload = &request->uploads[i];
+    if (upload->binding_index != i || !upload->bytes || !upload->content_identity ||
+        !upload->layout_identity || upload->byte_count != sizes[i] ||
+        upload->byte_count > block->weight_upload.size) {
+      prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH, out_evidence);
+      return PROM_ERROR;
+    }
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    memcpy(block->weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
-    if (!prom_model_block_record_upload(state, block, block->pending_weights, index)) goto upload_fail;
-    block->pending_weights[index].uploaded = 1u;
+  if (!prom_model_block_change_weights(state, block, request->uploads, PROM_MODEL_BLOCK_MAX_WEIGHTS,
+                                       1u, descriptor->assembly_family)) {
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
   }
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
-  if (!prom_model_block_update_weight_descriptors(state, block, block->pending_weights)) goto descriptor_fail;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_READY_TO_COMMIT;
-  memcpy(old_weights, block->weights, sizeof(old_weights));
-  memcpy(block->weights, block->pending_weights, sizeof(block->weights));
-  memset(block->pending_weights, 0, sizeof(block->pending_weights));
-  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) prom_model_block_destroy_buffer(state, block, &old_weights[index].device);
   block->parameter_set = descriptor->parameter_set;
   block->parameter_set_aggregate_identity = descriptor->parameter_set_aggregate_identity;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
-  block->output_valid = 0u;
-  block->audit_valid = 0u;
-  block->resident_input_generation = 0u;
-  block->replay_identity = 0u;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
-  block->weight_upload_count += PROM_MODEL_BLOCK_MAX_WEIGHTS;
-  block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
-mismatch:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH;
-  goto rebind_fail;
-resource_fail:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
-  goto rebind_fail;
-upload_fail:
-  block->last_detail_code = block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED;
-  goto rebind_fail;
-descriptor_fail:
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
-rebind_fail:
-  prom_model_block_destroy_pending_weights(state, block);
-  block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
-failed:
-  prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED);
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
 invalid:
   prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
   return PROM_ERROR;
@@ -4146,6 +4018,11 @@ int prom_reactor_runtime_main_transformer_execute_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   session = &state->compiled_session;
   image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
   context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
@@ -4275,6 +4152,11 @@ int prom_reactor_runtime_main_transformer_execute_static_audit_impl(
     return PROM_ERROR;
   }
   block = &state->model_block;
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_fill_evidence(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN,
+                                   out_evidence);
+    return PROM_ERROR;
+  }
   session = &state->compiled_session;
   image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
   context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
@@ -4475,6 +4357,19 @@ int prom_reactor_runtime_compiled_model_session_destroy_impl(void* handle, uint6
   return PROM_OK;
 }
 
+int prom_reactor_runtime_model_block_test_inject_weight_fault_impl(void *handle, uint64_t block_id,
+                                                                   uint32_t index, uint32_t fault) {
+  if (!prom_reactor_runtime_validate_handle(handle) || index >= PROM_MODEL_BLOCK_MAX_WEIGHTS ||
+      (fault != 1u && fault != 2u && fault != 4u && fault != 8u))
+    return PROM_ERROR;
+  prom_reduction_runtime_state *state = prom_reactor_runtime_reduction_state(handle);
+  if (!state || !state->model_block.created || state->model_block.block_id != block_id)
+    return PROM_ERROR;
+  state->model_block.weight_test_index = index;
+  state->model_block.weight_test_flags = fault;
+  return PROM_OK;
+}
+
 int prom_reactor_runtime_model_block_test_inject_impl(void* handle, uint64_t block_id,
                                                       uint32_t reduction_test_flags) {
   prom_reduction_runtime_state* state;
@@ -4648,7 +4543,6 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
   uint64_t aggregate;
   uint32_t expected_count;
   uint32_t index;
-  uint64_t memcpy_total_ns = 0u;
   const uint64_t* expected_bytes;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL ||
@@ -4658,9 +4552,9 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
   block = &state->model_block;
   session = &state->compiled_session;
   if (block->created == 0u || block->shared_owner == 0u || session->created == 0u ||
-      session->session_id != request->session_identity || session->lock_identity != request->lock_identity ||
-      session->quarantined != 0u || block->quarantined != 0u ||
-      block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND || !prom_model_block_reap(state, block)) goto failed;
+      session->session_id != request->session_identity ||
+      session->lock_identity != request->lock_identity || !prom_model_block_reap(state, block))
+    goto failed;
   if (session->retarget_position == 0u) {
     family = PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO; parameter_set = PROM_NOISE_REFINER_PARAMETER_SET_0;
     aggregate = prom_noise_refiner_expected_aggregate(parameter_set); expected_count = PROM_MODEL_BLOCK_MAX_WEIGHTS;
@@ -4704,55 +4598,21 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
         upload->byte_count > (uint64_t)block->weight_upload.size ||
         upload->byte_count > (uint64_t)block->weights[physical].device.size) goto invalid;
   }
-  if ((block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) goto descriptor_failed;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
-  for (index = 0u; index < expected_count; ++index) {
-    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
-    uint32_t physical = family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
-                            ? k_prom_context_shared_weight_slots[index] : index;
-    uint64_t memcpy_begin_ns = prom_reduction_now_ns();
-    memcpy(block->weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
-    memcpy_total_ns += prom_reduction_elapsed_ns(memcpy_begin_ns, prom_reduction_now_ns());
-    block->weights[physical].content_identity = upload->content_identity;
-    block->weights[physical].layout_identity = upload->layout_identity;
-    block->weights[physical].byte_count = upload->byte_count;
-    if (!prom_model_block_record_upload(state, block, block->weights, physical)) goto upload_failed;
-    block->weights[physical].uploaded = 1u;
-    block->weight_upload_count += 1u;
+  if (!prom_model_block_change_weights(state, block, request->uploads, expected_count, 2u,
+                                       family)) {
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
   }
   block->assembly_family = family;
   block->parameter_set = parameter_set;
   block->parameter_set_aggregate_identity = aggregate;
   block->weight_count = expected_count;
-  prom_model_block_copy_active_portfolio(block, family, 0);
-  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
-  if (!prom_model_block_update_weight_descriptors(state, block, block->weights)) goto descriptor_failed;
-  block->binding_generation += 1u;
-  block->descriptor_generation += 1u;
   block->retarget_count += 1u;
-  block->weights_uploaded = 1u;
-  block->output_valid = 0u;
-  block->audit_valid = 0u;
-  block->resident_input_generation = 0u;
-  block->replay_identity = 0u;
-  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
-  block->last_detail_code = 0;
-  block->last_staging_memcpy_ns = memcpy_total_ns;
   session->retarget_position += 1u;
   session->active_block_id = block->block_id;
   session->binding_generation = block->binding_generation;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
-upload_failed:
-  block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-  block->last_detail_code = block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED;
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
-descriptor_failed:
-  block->binding_state = PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
-  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
-  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
-  return PROM_ERROR;
 failed:
   if (state != NULL && state->model_block.created != 0u) {
     prom_model_block_mark_failure(&state->model_block, state->model_block.quarantined != 0u
@@ -4898,6 +4758,7 @@ int prom_reactor_runtime_compiled_model_activate_prefetch_impl(
   if (!prom_model_block_update_weight_descriptors(state, block, block->weights)) goto descriptor_failed;
   block->binding_generation += 1u;
   block->descriptor_generation += 1u;
+  prom_concept_weights_external(block);
   block->prefetch_descriptor_generation = block->descriptor_generation;
   block->retarget_count += 1u;
   block->weights_uploaded = 1u;

@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 107 |
+| Resolved | 109 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,59 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-128 — Partial synchronous uploads could not be repaired through the binding API
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Minimum-memory retarget copied each tensor into the active window,
+then published binding/descriptor generations only after the loop. On upload or
+descriptor failure it left the binding in FailedBeforeCommit, but its admission
+required Bound, so a full retry could not repair that same position. Initial
+upload also rejected quarantine before retirement. The old in-place path retained
+weights_uploaded after partial overwrite; individual entry-point guards then had
+to infer whether those bytes were executable. These old-path defects were found
+by inspection; the original C executor was not given a new mid-tensor fault hook.
+
+Resolution: Concept owns Initial, Replacement and InPlace binding transitions.
+The first submitted in-place overwrite invalidates the active set; a failed
+attempt advances neither binding nor descriptor generation. Draining retires work
+without publishing it. A fresh full upload repairs the same closed transition
+without allocating another weight window. The native tests fail initial upload
+and minimum-memory retarget after three completed transfers, reject execution of
+the incomplete set, exercise record/submit/completion and descriptor failures,
+and complete the real Noise → Context → Main chain after repair. See
+`docs/internal/prometheus_concept_weights_m10.md`.
+
+---
+
+### FB-127 — Failed replacement blocked execution of an intact old binding
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Standalone rebind allocated/uploaded candidates independently, but
+native FailedBeforeCommit/quarantine checks could make the intact active set
+unusable. The first M10 fault matrix failed four assertions: Context and Main
+checked cached quarantine state before retiring the failed candidate transfer,
+so old-binding execution and its audit were rejected. Failed log:
+`.tmp/m10-fault-native.log`.
+
+Resolution: Concept retains the active binding while replacement candidates are
+incomplete. The existing public binding state projects the usable active set;
+the failed operation's detail code preserves its failure phase. Wrappers retire
+submitted work before testing that projection. Known-complete failed candidates
+are dropped immediately; uncertain candidates remain owned until retirement,
+with their bytes included in memory evidence. Tests use different candidate bias
+bytes, verify unchanged generations, and execute the independent Noise, Context
+and Main numerical witnesses using the old binding after failure. Complete
+replacement then publishes once and retires the previous buffers. See the M10
+report for qualification and remaining prefetch boundaries.
+
+---
 
 ### FB-126 — Session and model destruction did not join cross-owner stream borrows
 
@@ -2135,7 +2188,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-127**. Put a new open issue at
+Use the next unused identifier, currently **FB-129**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

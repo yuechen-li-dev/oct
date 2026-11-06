@@ -31,6 +31,7 @@ public:
     uint64 waits;
     uint64 descriptorPushes;
     uint32 mainAttentionGroups;
+    owned WeightBinding binding;
 };
 
 [[repr(C)]]
@@ -144,8 +145,9 @@ Result<BlockOwner, VulkanError> CreateBlock(DeviceBorrow device, bool timed)
     Option<owned Buffer<byte>>[128] buffers = [Option::None ...];
     Option<owned Pipeline>[42] pipelines = [Option::None ...];
     Option<owned Submission> pending = Option::None;
+    owned WeightBinding binding = CreateWeightBinding();
     owned BlockOwner owner = BlockOwner{move context, move buffers, move pipelines,
-        move pending, false, 0, 0, timed, [0 ...], 0, 0, 0, 0, 31680};
+        move pending, false, 0, 0, timed, [0 ...], 0, 0, 0, 0, 31680, move binding};
     return Result::Ok(move owner);
 }
 
@@ -643,6 +645,8 @@ bool TakeFlag(ref BlockOwner owner, uint32 flag)
 Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, BlockProgram program,
     uint32 elements, uint32 stage, uint32 resident)
 {
+    owner.detail = -6912;
+    if (program != BlockProgram::Ingress and not owner.binding.valid) { return Result::Error(ErrorFromCode(-6912)); }
     owner.detail = -6914;
     Option<TailCapture> capture = Option::None;
     if (program == BlockProgram::Attention) { capture = PlanAttentionCapture(stage)?; }
@@ -753,7 +757,11 @@ export "C" bool PromBlockQuarantined(ref const BlockOwner owner)
 export "C" int PromBlockDrain(ref BlockOwner owner)
 {
     owner.detail = -6910;
-    return BlockCode(ref owner, DrainBlock(ref owner));
+    int code = BlockCode(ref owner, DrainBlock(ref owner));
+    if (code == 0 and (owner.binding.phase == WeightPhase::Failed or owner.binding.phase == WeightPhase::Uncertain)) {
+        DropWeightCandidates(ref owner);
+    }
+    return code;
 }
 export "C" int PromBlockAllocate(ref BlockOwner owner, usize bytes, uint32 placement)
 {
@@ -1079,3 +1087,233 @@ export "C" int PromSessionReset(ref SessionOwner owner)
     return 0;
 }
 export "C" bool PromSessionJointWriting(ref const SessionOwner owner) { return owner.jointWriting; }
+
+// One synchronous binding protocol. Replacement keeps a valid old set; an
+// in-place transfer invalidates that set as soon as any overwrite is submitted.
+enum WeightChange { Initial, Replacement, InPlace, }
+enum WeightPhase { Empty, Bound, Uploading, Ready, Failed, Uncertain, }
+[[repr(C)]]
+record struct WeightSpec {
+    uint32 slot; VkBuffer buffer; uint64 capacity; uint64 bytes;
+    uint64 content; uint64 layout;
+};
+[[repr(C)]]
+record struct WeightPlan { WeightSpec[13] items; uint32 count; };
+record struct WeightVersion {
+    VkBuffer buffer; uint64 capacity; int index; uint64 bytes;
+    uint64 content; uint64 layout;
+};
+class WeightBinding {
+public:
+    WeightPhase phase;
+    WeightChange change;
+    bool valid;
+    bool touched;
+    uint32 count;
+    uint32 completed;
+    uint64 generation;
+    uint64 descriptors;
+    uint64 allocations;
+    Option<WeightSpec>[13] plan;
+    Option<WeightVersion>[13] active;
+    Option<WeightVersion>[13] candidate;
+};
+owned WeightBinding CreateWeightBinding()
+{
+    Option<WeightSpec>[13] plan = [Option::None ...];
+    Option<WeightVersion>[13] active = [Option::None ...];
+    Option<WeightVersion>[13] candidate = [Option::None ...];
+    return WeightBinding{WeightPhase::Empty, WeightChange::Initial, false, false,
+        0, 0, 0, 0, 0, plan, active, candidate};
+}
+void DropWeightCandidates(ref BlockOwner owner)
+{
+    if (owner.binding.change == WeightChange::Replacement) {
+        for (index in 0..(owner.binding.count as int)) {
+            int buffer = OptionValue(ref const owner.binding.candidate[index]).index;
+            if (buffer >= 0) { owner.buffers[buffer] = Option::None; }
+        }
+    }
+    for (index in 0..13) { owner.binding.candidate[index] = Option::None; }
+    owner.binding.count = 0;
+}
+Result<void,VulkanError> BeginWeights(ref BlockOwner owner, WeightChange change, ref const WeightPlan plan)
+{
+    owner.detail = -6910;
+    DrainBlock(ref owner)?;
+    if (owner.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    DropWeightCandidates(ref owner);
+    owner.binding.change = change;
+    owner.binding.touched = false;
+    owner.binding.completed = 0;
+    owner.detail = -6904;
+    if (plan.count == 0 or plan.count > 13 or owner.binding.generation == 0xffffffffffffffff) {
+        return Result::Error(ErrorFromCode(-6904));
+    }
+    uint32 used = 0;
+    for (index in 0..(plan.count as int)) {
+        WeightSpec spec = plan.items[index];
+        if (spec.slot >= 13 or spec.bytes == 0 or spec.bytes > spec.capacity
+            or spec.content == 0 or spec.layout == 0) { return Result::Error(ErrorFromCode(-6904)); }
+        uint32 bit = 1u << spec.slot;
+        if ((used & bit) != 0) { return Result::Error(ErrorFromCode(-6904)); }
+        used = used | bit;
+        if (change == WeightChange::Initial) {
+            if (owner.binding.valid or PromBlockFindBuffer(ref const owner,spec.buffer) < 0) { return Result::Error(ErrorFromCode(-6904)); }
+        } else {
+            bool same = match (ref const owner.binding.active[spec.slot as int]) {
+                Option::Some(active) => active.buffer == spec.buffer, Option::None => false,
+            };
+            if (not same) { return Result::Error(ErrorFromCode(-6904)); }
+            if (change == WeightChange::Replacement and not owner.binding.valid) { return Result::Error(ErrorFromCode(-6904)); }
+        }
+    }
+    owner.binding.change = change;
+    owner.binding.touched = false;
+    owner.binding.completed = 0;
+    owner.binding.phase = WeightPhase::Uploading;
+    for (index in 0..(plan.count as int)) {
+        WeightSpec spec = plan.items[index];
+        owner.binding.plan[index] = Option::Some(spec);
+        int buffer = PromBlockFindBuffer(ref const owner,spec.buffer);
+        VkBuffer handle = spec.buffer;
+        uint64 capacity = spec.capacity;
+        if (change == WeightChange::Replacement) {
+            owner.detail = -6905;
+            buffer = AllocateBlockBuffer(ref owner, spec.bytes as usize, Placement::Device)?;
+            handle = OptionValue(ref const owner.buffers[buffer]).buffer;
+            capacity = spec.bytes;
+            owner.binding.allocations = owner.binding.allocations + 1;
+        }
+        owner.binding.candidate[index] = Option::Some(WeightVersion{handle,capacity,buffer,spec.bytes,spec.content,spec.layout});
+        owner.binding.count = owner.binding.count + 1;
+    }
+    return Result::Ok();
+}
+Result<void,VulkanError> UploadWeight(ref BlockOwner owner, uint32 index, BufferRange staging, uint32 flags)
+{
+    owner.detail = -6904;
+    if (owner.binding.phase != WeightPhase::Uploading or index != owner.binding.completed
+        or index >= owner.binding.count) { return Result::Error(ErrorFromCode(-6904)); }
+    ref const WeightVersion target = OptionValue(ref const owner.binding.candidate[index as int]);
+    if (staging.bytes < target.bytes) { return Result::Error(ErrorFromCode(-6904)); }
+    owner.detail = -6910;
+    DrainBlock(ref owner)?;
+    owner.detail = -6908;
+    if ((flags & 1u) != 0) { return Result::Error(ErrorFromCode(-6908)); }
+    owned Recording recording = BeginRecordingOn(owner.context.view,0)?;
+    owner.recordings = owner.recordings + 1;
+    ConceptVkCmdBarrier(recording.device,recording.commands,
+        HostStage().raw | ComputeStage().raw | TransferStage().raw,1,TransferStage().raw);
+    CopyBytes(ref recording,staging,0,BufferRange{target.buffer,target.capacity},0,target.bytes)?;
+    ConceptVkCmdBarrier(recording.device,recording.commands,TransferStage().raw,1,ComputeStage().raw);
+    owner.detail = -6909;
+    if ((flags & 2u) != 0) { return Result::Error(ErrorFromCode(-6909)); }
+    owner.binding.touched = true;
+    if (owner.binding.change != WeightChange::Replacement) { owner.binding.valid = false; }
+    owned Submission submitted = Submit(move recording)?;
+    owner.submissions = owner.submissions + 1;
+    Option<owned Submission> pending = Option::Some(move submitted);
+    owner.pending = move pending;
+    owner.detail = -6910;
+    if ((flags & 4u) != 0) { return Result::Error(ErrorFromCode(-6910)); }
+    ref Submission work = OptionValue(ref owner.pending);
+    owner.waits = owner.waits + 1;
+    Wait(ref work)?;
+    owner.binding.completed = owner.binding.completed + 1;
+    if (owner.binding.completed == owner.binding.count) { owner.binding.phase = WeightPhase::Ready; }
+    return Result::Ok();
+}
+void AbortWeights(ref BlockOwner owner)
+{
+    if (owner.binding.change != WeightChange::Replacement and owner.binding.touched) { owner.binding.valid = false; }
+    owner.binding.phase = WeightPhase::Failed;
+    if (PromBlockQuarantined(ref const owner)) { owner.binding.phase = WeightPhase::Uncertain; }
+    else { DropWeightCandidates(ref owner); }
+}
+bool CommitWeights(ref BlockOwner owner)
+{
+    if (owner.binding.phase != WeightPhase::Ready or PromBlockQuarantined(ref const owner)) { return false; }
+    for (index in 0..(owner.binding.count as int)) {
+        int slot = OptionValue(ref const owner.binding.plan[index]).slot as int;
+        if (owner.binding.change == WeightChange::Replacement) {
+            ref const WeightVersion previous = OptionValue(ref const owner.binding.active[slot]);
+            if (previous.index >= 0) { owner.buffers[previous.index] = Option::None; }
+        }
+        owner.binding.active[slot] = owner.binding.candidate[index];
+        owner.binding.candidate[index] = Option::None;
+    }
+    owner.binding.count = 0;
+    owner.binding.generation = owner.binding.generation + 1;
+    owner.binding.descriptors = owner.binding.descriptors + 1;
+    owner.binding.phase = WeightPhase::Bound;
+    owner.binding.valid = true;
+    return true;
+}
+export "C" int PromWeightsBegin(ref BlockOwner owner, uint32 mode, ref const WeightPlan plan)
+{
+    WeightChange change = WeightChange::Initial;
+    if (mode == 1) { change = WeightChange::Replacement; }
+    if (mode == 2) { change = WeightChange::InPlace; }
+    int code = BlockCode(ref owner,BeginWeights(ref owner,change,ref const plan));
+    if (code != 0) { AbortWeights(ref owner); }
+    return code;
+}
+export "C" int PromWeightsUpload(ref BlockOwner owner, uint32 index, VkBuffer staging, uint64 bytes, uint32 flags)
+{
+    int code = BlockCode(ref owner,UploadWeight(ref owner,index,BufferRange{staging,bytes},flags));
+    if (code != 0) { AbortWeights(ref owner); }
+    return code;
+}
+export "C" void PromWeightsAbort(ref BlockOwner owner) { AbortWeights(ref owner); }
+export "C" bool PromWeightsCommit(ref BlockOwner owner) { return CommitWeights(ref owner); }
+export "C" bool PromWeightsValid(ref const BlockOwner owner) { return owner.binding.valid and not owner.deviceLost; }
+export "C" uint64 PromWeightsGeneration(ref const BlockOwner owner) { return owner.binding.generation; }
+export "C" uint64 PromWeightsDescriptors(ref const BlockOwner owner) { return owner.binding.descriptors; }
+export "C" uint64 PromWeightsAllocations(ref const BlockOwner owner) { return owner.binding.allocations; }
+export "C" uint32 PromWeightsState(ref const BlockOwner owner)
+{
+    if (PromBlockQuarantined(ref const owner)) { return 9; }
+    if (owner.binding.valid) { return 1; }
+    return match (owner.binding.phase) {
+        WeightPhase::Empty => 0, WeightPhase::Bound => 1, WeightPhase::Uploading => 3,
+        WeightPhase::Ready => 5, WeightPhase::Failed => 7, WeightPhase::Uncertain => 8,
+    };
+}
+export "C" bool PromWeightsView(ref const BlockOwner owner,uint32 slot,bool candidate,ref WeightSpec output)
+{
+    Option<WeightVersion> selected = owner.binding.active[slot as int];
+    if (candidate) {
+        for (index in 0..(owner.binding.count as int)) {
+            if (OptionValue(ref const owner.binding.plan[index]).slot == slot) { selected = owner.binding.candidate[index]; }
+        }
+    }
+    match (selected) {
+        Option::Some(view) => { output = WeightSpec{slot,view.buffer,view.capacity,view.bytes,view.content,view.layout}; return true; }
+        Option::None => { return false; }
+    }
+    return false;
+}
+// M11's legacy prefetch window retains its external allocation owner. This
+// imports only its completed binding view; it does not adopt foreign buffers.
+export "C" void PromWeightsExternal(ref BlockOwner owner,ref const WeightPlan plan,uint64 generation,uint64 descriptors)
+{
+    for (index in 0..(plan.count as int)) {
+        WeightSpec spec = plan.items[index];
+        int ownedIndex = PromBlockFindBuffer(ref const owner,spec.buffer);
+        owner.binding.active[spec.slot as int] = Option::Some(WeightVersion{spec.buffer,spec.capacity,ownedIndex,spec.bytes,spec.content,spec.layout});
+    }
+    owner.binding.generation = generation; owner.binding.descriptors = descriptors;
+    owner.binding.valid = true; owner.binding.phase = WeightPhase::Bound;
+}
+
+export "C" uint64 PromWeightsCandidateBytes(ref const BlockOwner owner)
+{
+    uint64 bytes = 0;
+    if (owner.binding.change == WeightChange::Replacement) {
+        for (index in 0..(owner.binding.count as int)) {
+            bytes = bytes + OptionValue(ref const owner.binding.candidate[index]).capacity;
+        }
+    }
+    return bytes;
+}
