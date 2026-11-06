@@ -789,7 +789,7 @@ func __octPrometheusMatMulMMStrict(left [][]float64,right [][]float64) [][]float
     out,env,err:=prometheus.RunCompiledMatMulMMStrict(left,right)
     if err!=nil { panic(err) }
     if detected:=__octPrometheusVulkanEnv(); detected!="not_applicable" { env=detected }
-    fmt.Printf("backend_requested=prometheus backend_used=prometheus status=ok vulkan_env=%s\n",env)
+    fmt.Printf("backend_requested=prometheus backend_used=prometheus status=ok detail_code=0 detail_name=gpu vulkan_env=%s\n",env)
     return out
 }
 func __octPrometheusMatMulMM(left [][]float64, right [][]float64) [][]float64 {
