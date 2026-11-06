@@ -1,5 +1,6 @@
 #include "test_harness.h"
 #include "../reactor_concept_fft.h"
+#include "../reactor_vulkan_sgemm_internal.h"
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -93,14 +94,29 @@ FACT(PrometheusReactor_ConceptSgemmRepeatedTransferHandoffIsValidationClean) {
     if (!caps.available) SKIP("Vulkan unavailable");
     auto a = Matrix(96*96, 3), b = Matrix(96*96, 7);
     std::vector<float> output(96*96);
-    uint32_t stage{}; int detail{};
     for (uint32_t iteration = 0; iteration < 3; ++iteration) {
-        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(runtime.handle, a.data(), b.data(), output.data(),
-            96, 96, 96, &stage, &detail), "reused staged buffers traverse transfer and compute");
+        a = Matrix(96*96, 3 + iteration*5);
+        // Upload-only calls intentionally leave host output untouched. Use the
+        // resident API's explicit readback to check the transferred GPU data.
+        PrometheusSgemmResidentBenchmarkRequest request{};
+        request.struct_size = sizeof request;
+        request.a = a.data(); request.b = b.data(); request.c = output.data();
+        request.m = 96; request.n = 96; request.k = 96;
+        request.iterations = 1;
+        request.flags = PROM_SGEMM_RESIDENT_FLAG_VALIDATE_READBACK;
+        PrometheusSgemmResidentBenchmarkResult result{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_resident_benchmark(runtime.handle,
+            &request, &result), "reused staged buffers traverse transfer and compute with real readback");
+        CheckProduct(context, a, b, output, 96, 96, 96);
     }
     prom_vk_runtime_services services{};
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime.handle, &services), "transfer services");
     if (const char* validation = std::getenv("PROMETHEUS_VK_VALIDATION"); validation && std::string_view(validation) == "1")
         ASSERT_EQUAL(1u, services.validation_enabled, "requested Vulkan validation is actually active");
+    if (services.transfer_queue_available && services.compute_queue_family_index != services.transfer_queue_family_index) {
+        const auto* host = static_cast<const prometheus_runtime*>(runtime.handle);
+        for (const auto* input : {&host->staged_upload_a, &host->staged_upload_b, &host->staged_device_a, &host->staged_device_b})
+            ASSERT_EQUAL(VK_SHARING_MODE_CONCURRENT, input->sharing_mode, "reused input pairs admit both real queue families");
+    }
     ASSERT_EQUAL(0u, services.validation_error_count, "repeated queue handoffs preserve buffer ownership");
 }

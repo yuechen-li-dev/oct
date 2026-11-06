@@ -52,13 +52,12 @@ static int prom_sgemm_prepare_job(prometheus_runtime* rt, uint32_t slot,
     writes[i].descriptorCount = 1; writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     writes[i].pBufferInfo = &infos[i];
   }
-  if (path != 4) vkUpdateDescriptorSets(rt->vulkan.device, 3, writes, 0, nullptr);
+  if (path != 4 && path != 5) vkUpdateDescriptorSets(rt->vulkan.device, 3, writes, 0, nullptr);
   job.shader = {pipeline, rt->pipeline_layout, descriptors, queries, queryBase,
       queries != VK_NULL_HANDLE && rt->timestamp_query_supported != 0};
   job.m = m; job.n = n; job.k = k;
   job.x = geometry.groups_x; job.y = geometry.groups_y; job.z = geometry.groups_z;
   job.path = path; job.dispatches = dispatches; job.dedicated = dedicated;
-  job.computeFamily = rt->vulkan.queue_family_index; job.transferFamily = rt->vulkan.transfer_queue_family_index;
   if (placement) {
     for (uint32_t i = 3; i < 7; ++i) job.buffers[i] = placement->buffers[i];
     job.uploadMask = placement->uploadMask; job.readback = placement->readback;
@@ -1778,6 +1777,22 @@ static void arena_finish_shrink(prometheus_runtime* rt, prom_typed_arena* arena,
   rt->slot_diag.p11_m3_total_committed_bytes = arena_total_committed_bytes(rt);
 }
 
+// Upload/device pairs used by either queue keep one concurrent-family recipe.
+// The semaphore supplies visibility; no implicit exclusive-owner roundtrip is
+// assumed when the same input buffers are uploaded again after a dispatch.
+static VkResult prom_sgemm_create_arena_buffer(prometheus_runtime* rt, bool inputAcrossQueues,
+    VkDeviceSize bytes, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
+    int map, prom_vk_buffer* buffer) {
+  if (inputAcrossQueues && rt->vulkan.transfer_queue_enabled &&
+      rt->vulkan.queue_family_index != rt->vulkan.transfer_queue_family_index) {
+    return prom_vk_create_buffer_shared_between_families(rt->vulkan.physical_device, rt->vulkan.device,
+        rt->vulkan.test_flags, bytes, usage, properties, map, rt->vulkan.queue_family_index,
+        rt->vulkan.transfer_queue_family_index, buffer);
+  }
+  return prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device,
+      rt->vulkan.test_flags, bytes, usage, properties, map, buffer);
+}
+
 static int arena_shrink_single_buffer(prometheus_runtime* rt,
                                       prom_typed_arena* arena,
                                       prom_vk_buffer* buffer,
@@ -1840,7 +1855,7 @@ static int arena_shrink_paired_buffers(prometheus_runtime* rt,
   }
   memset(&replacement_first, 0, sizeof(replacement_first));
   memset(&replacement_second, 0, sizeof(replacement_second));
-  first_result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+  first_result = prom_sgemm_create_arena_buffer(rt, arena->role == PROM_ARENA_ROLE_A || arena->role == PROM_ARENA_ROLE_B,
                                (VkDeviceSize)shrink_target,
                                first_usage,
                                first_memory_props,
@@ -1850,7 +1865,7 @@ static int arena_shrink_paired_buffers(prometheus_runtime* rt,
     arena->last_failure_reason = (int)first_result;
     return 0;
   }
-  second_result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+  second_result = prom_sgemm_create_arena_buffer(rt, arena->role == PROM_ARENA_ROLE_A || arena->role == PROM_ARENA_ROLE_B,
                                 (VkDeviceSize)shrink_target,
                                 second_usage,
                                 second_memory_props,
@@ -2312,7 +2327,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
     }
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_upload_a);
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_a);
-    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+    result = prom_sgemm_create_arena_buffer(rt, true,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2323,7 +2338,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+    result = prom_sgemm_create_arena_buffer(rt, true,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -2364,7 +2379,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
     }
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_upload_b);
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_b);
-    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+    result = prom_sgemm_create_arena_buffer(rt, true,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2375,7 +2390,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+    result = prom_sgemm_create_arena_buffer(rt, true,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -3871,6 +3886,7 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
   query_pool_info.queryCount = 4u;
   vk_result = vkCreateQueryPool(rt->vulkan.device, &query_pool_info, NULL, &timing_query_pool);
   if (vk_result != VK_SUCCESS) goto cleanup;
+  prom_sgemm_retire_borrowed_scope(rt);
   initial_begin = prom_wall_clock_now_ns();
   if (options->reuse_mode != PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
     vk_result = prom_sgemm_placement_allocate_roles(rt, a_size, b_size, c_size, options, &a_role, &b_role, &c_role);

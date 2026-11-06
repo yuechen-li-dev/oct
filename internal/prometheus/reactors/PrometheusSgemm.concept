@@ -21,11 +21,9 @@ record struct SgemmJob {
     uint32 m; uint32 n; uint32 k;
     uint32 x; uint32 y; uint32 z;
     uint32 dispatches;
-    // 0 direct, 1 upload, 2 upload/readback, 3 resident, 4 readback only.
+    // 0 direct, 1 upload, 2 upload/readback, 3 resident, 4 readback only, 5 placement audit.
     uint32 path;
     uint32 dedicated;
-    uint32 computeFamily;
-    uint32 transferFamily;
     uint32 uploadMask;
     uint32 readback;
     uint32 perturbWord;
@@ -34,7 +32,6 @@ extern "C" void PromSgemmBind(VkCommandBuffer commands, SgemmShader shader,
     uint32 m, uint32 n, uint32 k);
 extern "C" void PromSgemmDispatch(VkCommandBuffer commands, uint32 x, uint32 y, uint32 z);
 extern "C" void PromSgemmTimestamp(VkCommandBuffer commands, SgemmShader shader, uint32 end);
-extern "C" void PromSgemmOwnership(VkCommandBuffer commands, SgemmJob job, uint32 acquire);
 extern "C" uint64 PromSgemmNow();
 
 enum SgemmPhase { Prepared, Executing, }
@@ -133,10 +130,8 @@ Result<void,VulkanError> SubmitSgemm(ref SgemmExecutor executor, int slot) {
             ConceptVkCmdBarrier(upload.device, upload.commands, HostStage().raw, 1, TransferStage().raw);
             CopyBytes(ref upload, job.buffers[3], 0, job.buffers[0], 0, job.buffers[3].bytes)?;
             CopyBytes(ref upload, job.buffers[4], 0, job.buffers[1], 0, job.buffers[4].bytes)?;
-            PromSgemmOwnership(upload.commands, job, 0);
             owned QueueHandoff pending = SignalHandoff(move upload)?;
             work.handoff = Option::Some(move pending);
-            PromSgemmOwnership(recording.commands, job, 1);
         } else {
             CopyBytes(ref recording, job.buffers[3], 0, job.buffers[0], 0, job.buffers[3].bytes)?;
             CopyBytes(ref recording, job.buffers[4], 0, job.buffers[1], 0, job.buffers[4].bytes)?;
@@ -146,11 +141,12 @@ Result<void,VulkanError> SubmitSgemm(ref SgemmExecutor executor, int slot) {
         PromSgemmBind(recording.commands, job.shader, job.m, job.n, job.k);
         uint32 begin = 0;
         if (job.path == 5) { begin = 1; }
-        PromSgemmTimestamp(recording.commands, job.shader, begin);
         Use<array>[3] uses = [Use{job.buffers[0].buffer, ComputeStage(), false},
             Use{job.buffers[1].buffer, ComputeStage(), false}, Use{job.buffers[2].buffer, ComputeStage(), true}];
+        Touch(ref recording, ReadOnlySpan(uses));
+        PromSgemmTimestamp(recording.commands, job.shader, begin);
         for (dispatch in 0..(job.dispatches as int)) {
-            Touch(ref recording, ReadOnlySpan(uses));
+            if (dispatch != 0) { Touch(ref recording, ReadOnlySpan(uses)); }
             PromSgemmDispatch(recording.commands, job.x, job.y, job.z);
         }
         uint32 end = 1;

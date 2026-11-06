@@ -9,7 +9,7 @@ _Static_assert(sizeof(prom_sgemm_job) == sizeof(concept_sgemm_job), "SGEMM job A
 _Static_assert(_Alignof(prom_sgemm_job) == _Alignof(concept_sgemm_job), "SGEMM job ABI alignment");
 #define FIELD(name) _Static_assert(offsetof(prom_sgemm_job, name) == offsetof(concept_sgemm_job, name), "SGEMM " #name)
 FIELD(buffers); FIELD(shader); FIELD(m); FIELD(n); FIELD(k); FIELD(x); FIELD(y); FIELD(z);
-FIELD(dispatches); FIELD(path); FIELD(dedicated); FIELD(computeFamily); FIELD(transferFamily); FIELD(uploadMask); FIELD(readback); FIELD(perturbWord);
+FIELD(dispatches); FIELD(path); FIELD(dedicated); FIELD(uploadMask); FIELD(readback); FIELD(perturbWord);
 #undef FIELD
 _Static_assert(sizeof(prom_sgemm_shader) == sizeof(concept_sgemm_shader), "SGEMM shader ABI");
 #define FIELD(name) _Static_assert(offsetof(prom_sgemm_shader, name) == offsetof(concept_sgemm_shader, name), "SGEMM shader " #name)

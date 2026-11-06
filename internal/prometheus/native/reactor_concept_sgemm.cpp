@@ -21,20 +21,3 @@ extern "C" void PromSgemmTimestamp(VkCommandBuffer commands, prom_sgemm_shader s
         : shader.timed == 2 && end == 3 ? VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     vkCmdWriteTimestamp(commands, stage, shader.queries, shader.queryBase + end);
 }
-extern "C" void PromSgemmOwnership(VkCommandBuffer commands, prom_sgemm_job job, uint32_t acquire) {
-    VkBufferMemoryBarrier barriers[2]{};
-    for (uint32_t i = 0; i != 2; ++i) {
-        auto& barrier = barriers[i];
-        barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-        barrier.srcAccessMask = acquire ? 0 : VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = acquire ? VK_ACCESS_SHADER_READ_BIT : 0;
-        barrier.srcQueueFamilyIndex = job.transferFamily;
-        barrier.dstQueueFamilyIndex = job.computeFamily;
-        barrier.buffer = job.buffers[i].buffer;
-        barrier.size = job.buffers[i].bytes;
-    }
-    vkCmdPipelineBarrier(commands,
-        acquire ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_TRANSFER_BIT,
-        acquire ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-        0, 0, nullptr, 2, barriers, 0, nullptr);
-}

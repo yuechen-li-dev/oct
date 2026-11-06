@@ -19,6 +19,13 @@ copies, submission, semaphore handoff and waits. Its new ordinary `Poll` operati
 is supplied by [Concept PR #194](https://github.com/yuechen-li-dev/Concept/pull/194);
 merge that producer change before integrating this consumer.
 
+Inputs that cross real transfer/compute queue families use the existing shared
+buffer factory, including paired arena shrinking. A semaphore orders the
+producer and consumer; Concept owns both submissions. Repeated uploads need no
+handwritten exclusive-ownership release/acquire callbacks. Compute-only buffers
+retain exclusive sharing. The legacy handoff counter records the producer signal
+and consumer wait edges, rather than counting ownership-transfer barriers.
+
 `reactor_sgemm.cpp` retains the shared runtime/device host, mapped buffer arenas
 and their real allocation metadata, package pipeline instances, descriptor
 storage, and existing judgment/diagnostic policy. These are scoped runtime
@@ -79,12 +86,31 @@ failure. They now require real GPU completion, verify the constant-input product
 and retain dispatch-local reconciliation facts separately from later planner
 updates. All 14 feedforward facts pass without a skip.
 
+Hosted Windows CI additionally exposed a cold-build timeout in the unrelated
+MCP stdio workflow. Its test-only server now budgets 90 seconds for a fresh Go
+cache, requires compiled execution without fallback, and retains artifact checks.
+Separate blocked children prove server/request timeout caps; real command startup
+still reports the unchanged 15-second production limit. See FB-146.
+
 ## Qualification
 
 Hardware: local RTX 3070, shared Vulkan device with compute and dedicated
 transfer queues. Native checks use `PROMETHEUS_VK_VALIDATION=1` and retain
 failure, quarantine, atomic batch commit, reuse and independent CPU oracles.
 The new repeated-transfer test requires requested validation to be active.
+Its three changed-input uploads use the resident API's explicit readback and
+compare every result with independent binary64 accumulation. The two new
+integration facts pass after the final harness strengthening.
+The final Verify SGEMM consumer lane passes **85 facts**, with zero skips or
+failures, including the strengthened repeated-transfer numerical witness.
+
+The broad Normal native run passes **418 facts**, skips **8**, and fails none
+(426 total), with synchronization validation requested. Skips are four opt-in
+real-payload model cases, one unavailable useful KHR cooperative tuple, two FP16
+transition cases whose path was not selected, and the harness's demonstration
+skip. Neither the payloads nor those hardware paths are claimed as qualified.
+Native GPU execution was qualified on Windows; the Linux archive grouping was
+reviewed and its Go/build-generator checks pass, but no Linux GPU run is claimed.
 
 The module's five emitted artifacts match across three fresh emissions.
 Normal and Verify ABI headers match; both emitted implementations compile
@@ -97,9 +123,7 @@ facts pass in both modes, its quick lane passes, and four native-build boundary
 tests pass, including optimized C11/C++23 execution, malformed mode rejection,
 independent ABI measurement and legacy structured arguments.
 
-The broad Normal native run passed **416 facts**, skipped **10**, and failed
-none, with Vulkan validation enabled. Earlier failed runs remain recorded above.
-The final recording/submission timing instrumentation and Verify consumer lane
-are being checked separately before closeout. The Concept execution boundary
-measures actual recording and compute-submission CPU intervals independently;
-preparing a job packet is not reported as the entire recording cost.
+The Concept execution boundary measures recording and compute-submission CPU
+intervals independently; preparing a job packet is not reported as the entire
+recording cost. The initial resource visibility barrier precedes the GPU compute
+timestamp, and placement audits retain descriptor reuse across dispatches.
