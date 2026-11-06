@@ -56,19 +56,27 @@ Current Vulkan reactor file topology:
     Typed capture plans include the split W3 intermediate. Static C audit replay
     borrows the same Concept stage implementations and resources. ContextRefiner
     reuses those stages with its own text-position head contract, unit modulation
-    and eleven logical weights. Separate pipeline banks retain both portfolios
-    in the shared owner.
+    and eleven logical weights. MainTransformer adds mixed image/text positioning,
+    timestep preparation and joint publication to the shared stage vocabulary.
+    Three separate pipeline banks retain all production portfolios in one owner.
 - `reactor_concept_model_block_abi.c` and `reactor_concept_model_block.cpp`
   - C11 packet/view transport and C++23 shader-package adaptation. All thirteen
-    standalone NoiseRefiner and eleven ContextRefiner model pipelines belong to
-    Concept; admission, generation bookkeeping, and the larger model/session
-    executors remain migration seams. See [Concept M7](../../../docs/internal/prometheus_concept_context_m7.md)
-    for the stage reuse, recovery fixes and explicit shared memory tradeoff.
+    NoiseRefiner, eleven ContextRefiner and thirteen MainTransformer production
+    pipelines belong to Concept. Admission, generation bookkeeping, weight-window
+    policy and session transport remain migration seams. See
+    [Concept M8](../../../docs/internal/prometheus_concept_main_m8.md) for joint
+    publication, timing, route qualification and remaining research boundaries.
 - `reactor_vulkan_model_block.c`
   - the remaining model/session policy and execution paths. Closed-block and
-    standalone NoiseRefiner and ContextRefiner execution now delegate to Concept.
+    production NoiseRefiner, ContextRefiner and MainTransformer execution delegate
+    to Concept. C retains model/session policy, stream capture/composition,
+    rebinding/prefetch and explicit audit transport.
     Pipeline interfaces are checked against the selected shader-package variant,
     while the small native shader registry supplies selector metadata.
+- `reactor_main_experiments.inc`
+  - the former Main C factory/recorder, isolated behind explicit M5b/M6a research
+    build flags. It is not compiled into the default production path and cannot
+    act as a runtime fallback. These experiments retain separate qualification.
 - `reactor_vulkan_queue.cpp`
   - the common host queue API synchronization boundary for all native families.
 - `reactor_vulkan_fused_reduction.c`

@@ -127,6 +127,28 @@ int prom_concept_block_context_pipelines(prom_model_block_state* block) {
 static concept_buffer_range range(const prom_vk_buffer* view) {
     const concept_buffer_range result = {view->buffer, view->size}; return result;
 }
+int prom_concept_block_main_pipelines(prom_model_block_state* block, uint32_t attention, uint32_t groups) {
+    static const int slots[] = {0,1,2,3,4,5,7,8,9,10,11,12,13};
+    const uint32_t kernels[] = {29,24,25,26,40,40,attention,31,32,33,42,43,36};
+    static const uint32_t bindings[] = {4,8,5,3,3,3,3,3,5,5,7,4,7};
+    static const uint32_t push[] = {8,8,16,16,24,24,16,16,16,16,16,16,16};
+    prom_model_block_m1b_pipeline* views[] = {&block->m1b_pipelines[0], &block->m1b_pipelines[1],
+        &block->m1b_pipelines[2], &block->m1b_pipelines[3], &block->m1b_pipelines[4], &block->m1b_pipelines[5],
+        &block->m1c_pipelines[0], &block->m1c_pipelines[1], &block->m1c_pipelines[2],
+        &block->m1d_pipelines[0], &block->m1d_pipelines[1], &block->m1d_pipelines[2], &block->m1d_pipelines[3]};
+    block_attachment* a = block->concept_owner;
+    if (!a || (attention != 41u && attention != 47u && attention != 49u) ||
+        (attention == 41u ? groups != 31680u : groups != 3960u) ||
+        !PromBlockMainGroups(&a->owner, groups)) return 0;
+    for (int i=0;i<13;++i) {
+        if (!load(block, 28+slots[i], kernels[i], bindings[i], push[i])) return 0;
+        views[i]->shader_id=kernels[i]; views[i]->binding_count=bindings[i];
+        views[i]->push_constant_bytes=push[i]; views[i]->concept_block=block;
+        views[i]->concept_role=40u+(uint32_t)i;
+    }
+    block->main_attention_shader_id = attention;
+    return 1;
+}
 static concept_block_frame frame_of(const prom_model_block_state* block) {
     const prom_vk_buffer* views[] = {&block->input_upload, &block->input_bf16_device, &block->input_device,
         &block->timestep_upload, &block->timestep_bf16_device, &block->timestep_device,
@@ -137,6 +159,7 @@ static concept_block_frame frame_of(const prom_model_block_state* block) {
         &block->attention_projection, &block->attention_residual, &block->context_w3, &block->context_unit};
     concept_block_frame frame;
     for (int i = 0; i < 25; ++i) frame.buffers.data[i] = range(views[i]);
+    frame.buffers.data[25] = (concept_buffer_range){VK_NULL_HANDLE, 0};
     for (uint32_t i = 0; i < 13; ++i) frame.weights.data[i] = range(prom_model_block_weight_view(block, i));
     return frame;
 }
@@ -150,13 +173,12 @@ void prom_concept_block_record_stage(prom_model_block_state* block, VkCommandBuf
     borrowed.submitted = true; /* This reference can never free the caller's recording. */
     if (!PromBlockRecordStage(&borrowed, &a->owner, &frame, role)) abort();
 }
-int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
-    uint32_t mode, uint32_t elements, uint32_t stage, uint32_t resident, int32_t* detail) {
+static int run_frame(prom_reduction_runtime_state* state, prom_model_block_state* block,
+    const concept_block_frame* frame, uint32_t mode, uint32_t elements, uint32_t stage, uint32_t resident, int32_t* detail) {
     block_attachment* a = block->concept_owner;
-    const concept_block_frame frame = frame_of(block);
     uint64_t begin = prom_reduction_now_ns();
     const uint64_t recordings = PromBlockRecordings(&a->owner), submissions = PromBlockSubmissions(&a->owner), waits = PromBlockWaits(&a->owner);
-    if (mode > CONCEPT_BLOCK_PROGRAM_CONTEXT) { *detail = PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST; return 0; }
+    if (mode > CONCEPT_BLOCK_PROGRAM_MAIN) { *detail = PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST; return 0; }
     uint32_t flags = 0;
     if ((state->reduction_test_flags & PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD) != 0u) flags |= 1u;
     if ((block->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u ||
@@ -170,7 +192,7 @@ int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block
        publish CPU phase timings left over from a legacy upload submission. */
     block->last_queue_submit_ns = 0;
     block->last_fence_wait_ns = 0;
-    *detail = PromBlockRun(&a->owner, &frame, mode, elements, stage, resident);
+    *detail = PromBlockRun(&a->owner, frame, mode, elements, stage, resident);
     flags = PromBlockFlags(&a->owner);
     /* A combined injection survives until its actual phase is reached. */
     if ((flags & 1u) == 0u) (void)prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD);
@@ -190,6 +212,24 @@ int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block
         block->last_execution_ns = prom_reduction_elapsed_ns(begin, prom_reduction_now_ns());
     }
     return *detail == 0;
+}
+int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
+    uint32_t mode, uint32_t elements, uint32_t stage, uint32_t resident, int32_t* detail) {
+    const concept_block_frame frame = frame_of(block);
+    return run_frame(state,block,&frame,mode,elements,stage,resident,detail);
+}
+int prom_concept_block_main_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
+    const prom_vk_buffer* joint, uint32_t chain, int32_t* detail) {
+    concept_block_frame frame = frame_of(block);
+    frame.buffers.data[25] = range(joint);
+    /* No legacy command-pool phases run on this path; avoid stale upload data. */
+    block->last_command_reset_ns=0; block->last_command_begin_ns=0;
+    block->last_command_record_ns=0; block->last_command_end_ns=0;
+    return run_frame(state,block,&frame,CONCEPT_BLOCK_PROGRAM_MAIN,0,0,chain,detail);
+}
+VkQueryPool prom_concept_block_queries(prom_model_block_state* block) {
+    block_attachment* a=block->concept_owner;
+    return a ? PromBlockQueries(&a->owner) : VK_NULL_HANDLE;
 }
 int prom_concept_block_attention_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
     uint32_t stage, int capture, int32_t* detail) {

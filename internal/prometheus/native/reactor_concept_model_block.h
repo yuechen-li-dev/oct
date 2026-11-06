@@ -18,6 +18,11 @@ int prom_concept_block_identity_pipeline(struct prom_model_block_state* block);
 int prom_concept_block_attention_pipelines(struct prom_model_block_state* block);
 int prom_concept_block_ffn_pipelines(struct prom_model_block_state* block);
 int prom_concept_block_context_pipelines(struct prom_model_block_state* block);
+int prom_concept_block_main_pipelines(struct prom_model_block_state* block, uint32_t attention, uint32_t groups);
+int prom_concept_block_main_run(struct prom_reduction_runtime_state* state,
+    struct prom_model_block_state* block, const prom_vk_buffer* joint, uint32_t chain, int32_t* detail);
+/* Borrowed from completed Concept work until the next drain/run. */
+VkQueryPool prom_concept_block_queries(struct prom_model_block_state* block);
 int prom_concept_block_context_run(struct prom_reduction_runtime_state* state,
     struct prom_model_block_state* block, uint32_t resident, int32_t* detail);
 /* Record one stage into a legacy-owned command buffer. The caller owns the

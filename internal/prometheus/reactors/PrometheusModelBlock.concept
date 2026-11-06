@@ -19,7 +19,7 @@ class BlockOwner
 public:
     owned BorrowedContext context;
     Option<owned Buffer<byte>>[128] buffers;
-    Option<owned Pipeline>[28] pipelines;
+    Option<owned Pipeline>[42] pipelines;
     Option<owned Submission> pending;
     bool deviceLost;
     int detail;
@@ -30,12 +30,13 @@ public:
     uint64 submissions;
     uint64 waits;
     uint64 descriptorPushes;
+    uint32 mainAttentionGroups;
 };
 
 [[repr(C)]]
 record struct BlockFrame
 {
-    BufferRange[25] buffers;
+    BufferRange[26] buffers;
     BufferRange[13] weights;
 };
 
@@ -45,9 +46,10 @@ enum BlockBuffer
     ResidentBoundary, AdaLnProjection, AttentionScale, AttentionGate, MlpScale,
     MlpGate, Modulated, NormAudit, Qkv, Attention, AuditReadback, Output,
     OutputReadback, Audit, WeightUpload, AttentionProjection, AttentionResidual,
-    ContextW3, ContextUnit,
+    ContextW3, ContextUnit, Joint,
 }
-enum BlockProgram { Closed, PreAttention, Ingress, Attention, Ffn, Context, }
+enum BlockProgram { Closed, PreAttention, Ingress, Attention, Ffn, Context, Main, }
+enum BlockDomain { Noise, Context, Main, }
 enum CaptureStage
 {
     IngressInput, IngressTimestep, AdaLnProjection, AttentionScaleRaw,
@@ -72,6 +74,8 @@ record struct HeadPush { float epsilon; uint32 tokens; uint32 heads; uint32 widt
 record struct FfnOutputPush { float epsilon; uint32 tokens; uint32 width; uint32 hidden; };
 [[repr(C)]]
 record struct ContextHeadPush { float epsilon; uint32 tokens; uint32 heads; uint32 width; uint32 offset; };
+[[repr(C)]]
+record struct MainHeadPush { float epsilon; uint32 tokens; uint32 heads; uint32 width; uint32 offset; uint32 imageTokens; };
 
 BufferRange View(BlockFrame frame, BlockBuffer role)
 {
@@ -101,6 +105,7 @@ BufferRange View(BlockFrame frame, BlockBuffer role)
         BlockBuffer::AttentionResidual => frame.buffers[22],
         BlockBuffer::ContextW3 => frame.buffers[23],
         BlockBuffer::ContextUnit => frame.buffers[24],
+        BlockBuffer::Joint => frame.buffers[25],
     };
 }
 
@@ -137,10 +142,10 @@ Result<BlockOwner, VulkanError> CreateBlock(DeviceBorrow device, bool timed)
 {
     owned BorrowedContext context = BorrowDevice(device)?;
     Option<owned Buffer<byte>>[128] buffers = [Option::None ...];
-    Option<owned Pipeline>[28] pipelines = [Option::None ...];
+    Option<owned Pipeline>[42] pipelines = [Option::None ...];
     Option<owned Submission> pending = Option::None;
     owned BlockOwner owner = BlockOwner{move context, move buffers, move pipelines,
-        move pending, false, 0, 0, timed, [0 ...], 0, 0, 0, 0};
+        move pending, false, 0, 0, timed, [0 ...], 0, 0, 0, 0, 31680};
     return Result::Ok(move owner);
 }
 
@@ -279,6 +284,7 @@ enum BlockStage
     Modulate, Normalize, Project, PositionQuery, PositionKey,
     Attend, ProjectAttention, Residual, NormalizeFfn, ProjectHidden, GateHidden, ProjectOutput,
     PositionContextQuery, PositionContextKey,
+    WidenTimestep, PositionMainQuery, PositionMainKey,
 }
 
 // These role numbers are the small legacy recording transport, not enum tags.
@@ -301,18 +307,19 @@ Result<BlockStage, VulkanError> DecodeBlockStage(uint32 role)
     };
 }
 
-void RecordStage(ref Recording recording, ref BlockOwner owner, BlockFrame frame, BlockStage stage, bool context)
+void RecordStage(ref Recording recording, ref BlockOwner owner, BlockFrame frame, BlockStage stage, BlockDomain domain)
 {
     uint32 tokens = 1024;
     int bank = 0;
     BlockBuffer hidden = BlockBuffer::Attention;
     BlockBuffer projected = BlockBuffer::Input;
-    if (context) {
+    if (domain == BlockDomain::Context) {
         tokens = 32;
         bank = 14; // A shared model owner retains both pipeline portfolios.
         hidden = BlockBuffer::ContextW3;
         projected = BlockBuffer::AttentionProjection;
     }
+    if (domain == BlockDomain::Main) { tokens = 1056; bank = 28; }
     match (stage) {
         BlockStage::Modulate => {
             Binding[8] adaln = [ReadBuffer(0, View(frame, BlockBuffer::Timestep)), ReadBuffer(1, frame.weights[1]), ReadBuffer(2, frame.weights[0]),
@@ -352,11 +359,29 @@ void RecordStage(ref Recording recording, ref BlockOwner owner, BlockFrame frame
             Binding[3] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[2]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
             DispatchBlock(ref recording, ref owner, bank + 5, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 30u, 1);
         }
+        BlockStage::WidenTimestep => {
+            Binding[4] bindings = [ReadBuffer(0, View(frame, BlockBuffer::InputBf16)), ReadBuffer(1, View(frame, BlockBuffer::TimestepBf16)),
+                WriteBuffer(2, View(frame, BlockBuffer::Input)), WriteBuffer(3, View(frame, BlockBuffer::Timestep))];
+            uint32[2] push = [0, 256];
+            DispatchBlock(ref recording, ref owner, bank, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 1, 1);
+        }
+        BlockStage::PositionMainQuery => {
+            MainHeadPush[1] push = [MainHeadPush{1.0e-5, tokens, 30, 128, 0, 1024}];
+            Binding[3] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[4]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            DispatchBlock(ref recording, ref owner, bank + 4, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 30u, 1);
+        }
+        BlockStage::PositionMainKey => {
+            MainHeadPush[1] push = [MainHeadPush{1.0e-5, tokens, 30, 128, 3840, 1024}];
+            Binding[3] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[2]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            DispatchBlock(ref recording, ref owner, bank + 5, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 30u, 1);
+        }
         BlockStage::Attend => {
             Binding[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Qkv)),
                 WriteBuffer(1, View(frame, BlockBuffer::Attention)), WriteBuffer(2, View(frame, BlockBuffer::Audit))];
             uint32[4] push = [tokens, 30, 128, 11520];
-            DispatchBlock(ref recording, ref owner, bank + 7, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), tokens * 30u, 1);
+            uint32 groups = tokens * 30u;
+            if (domain == BlockDomain::Main) { groups = owner.mainAttentionGroups; }
+            DispatchBlock(ref recording, ref owner, bank + 7, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), groups, 1);
         }
         BlockStage::ProjectAttention => {
             Binding[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Attention)), ReadBuffer(1, frame.weights[3]),
@@ -407,7 +432,7 @@ void RecordStage(ref Recording recording, ref BlockOwner owner, BlockFrame frame
 // stage vocabulary as NoiseRefiner, with identity modulation and its own W3.
 BlockFrame ContextFrame(BlockFrame source)
 {
-    BufferRange[25] buffers = source.buffers;
+    BufferRange[26] buffers = source.buffers;
     BufferRange[13] weights = source.weights;
     int[13] roles = [0, 1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     for (index in 0..13) { weights[index] = source.weights[roles[index]]; }
@@ -449,7 +474,57 @@ Result<void, VulkanError> RecordContext(ref Recording recording, ref BlockOwner 
         BlockStage::Attend, BlockStage::ProjectAttention, BlockStage::Residual,
         BlockStage::NormalizeFfn, BlockStage::ProjectHidden, BlockStage::GateHidden,
         BlockStage::ProjectOutput];
-    for (index in 0..11) { RecordStage(ref recording, ref owner, frame, schedule[index], true); }
+    for (index in 0..11) { RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Context); }
+    return Result::Ok();
+}
+
+Result<BlockStage, VulkanError> DecodeMainStage(uint32 role)
+{
+    return match (role) {
+        40 => Result::Ok(BlockStage::WidenTimestep),
+        41 => Result::Ok(BlockStage::Modulate),
+        42 => Result::Ok(BlockStage::Normalize),
+        43 => Result::Ok(BlockStage::Project),
+        44 => Result::Ok(BlockStage::PositionMainQuery),
+        45 => Result::Ok(BlockStage::PositionMainKey),
+        46 => Result::Ok(BlockStage::Attend),
+        47 => Result::Ok(BlockStage::ProjectAttention),
+        48 => Result::Ok(BlockStage::Residual),
+        49 => Result::Ok(BlockStage::NormalizeFfn),
+        50 => Result::Ok(BlockStage::ProjectHidden),
+        51 => Result::Ok(BlockStage::GateHidden),
+        52 => Result::Ok(BlockStage::ProjectOutput),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+
+Result<void, VulkanError> RecordMain(ref Recording recording, ref BlockOwner owner,
+    BlockFrame frame, uint32 chain)
+{
+    // A retained joint is immutable during compute. Chain mode publishes the
+    // completed candidate into the same joint only at the final boundary.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    if (owner.timed) { discard Timestamp(ref recording); }
+    CopyBytes(ref recording, View(frame, BlockBuffer::Joint), 0, View(frame, BlockBuffer::Input), 0, 16220160)?;
+    CopyBytes(ref recording, View(frame, BlockBuffer::TimestepUpload), 0, View(frame, BlockBuffer::TimestepBf16), 0, 512)?;
+    if (owner.timed) { discard Timestamp(ref recording); }
+    BlockStage[13] schedule = [BlockStage::WidenTimestep, BlockStage::Modulate,
+        BlockStage::Normalize, BlockStage::Project, BlockStage::PositionMainQuery,
+        BlockStage::PositionMainKey, BlockStage::Attend, BlockStage::ProjectAttention,
+        BlockStage::Residual, BlockStage::NormalizeFfn, BlockStage::ProjectHidden,
+        BlockStage::GateHidden, BlockStage::ProjectOutput];
+    for (index in 0..13) {
+        RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Main);
+        if (owner.timed) { discard Timestamp(ref recording); }
+    }
+    if (chain != 0) {
+        CopyBytes(ref recording, View(frame, BlockBuffer::Attention), 0, View(frame, BlockBuffer::Joint), 0, 16220160)?;
+    }
+    if (owner.timed) { discard Timestamp(ref recording); }
+    // Later legacy/session consumers start their own access ledger.
+    ConceptVkCmdBarrier(recording.device, recording.commands,
+        ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
     return Result::Ok();
 }
 
@@ -475,7 +550,7 @@ Result<void, VulkanError> RecordPrefix(ref Recording recording, ref BlockOwner o
     BlockStage[5] schedule = [BlockStage::Modulate, BlockStage::Normalize,
         BlockStage::Project, BlockStage::PositionQuery, BlockStage::PositionKey];
     for (index in 0..5) {
-        RecordStage(ref recording, ref owner, frame, schedule[index], false);
+        RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Noise);
         if (owner.timed) { discard Timestamp(ref recording); }
         Capture(ref recording, frame, stage, (index + 1) as uint32)?;
     }
@@ -537,7 +612,7 @@ Result<void, VulkanError> RecordAttention(ref Recording recording, ref BlockOwne
     BlockFrame frame, Option<TailCapture> capture)
 {
     BlockStage[3] schedule = [BlockStage::Attend, BlockStage::ProjectAttention, BlockStage::Residual];
-    for (index in 0..3) { RecordStage(ref recording, ref owner, frame, schedule[index], false); }
+    for (index in 0..3) { RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Noise); }
     CaptureTail(ref recording, frame, capture, 2)?;
     match (capture) {
         Option::Some(plan) => {
@@ -552,7 +627,7 @@ Result<void, VulkanError> RecordFfn(ref Recording recording, ref BlockOwner owne
 {
     BlockStage[4] schedule = [BlockStage::NormalizeFfn, BlockStage::ProjectHidden, BlockStage::GateHidden, BlockStage::ProjectOutput];
     for (index in 0..4) {
-        RecordStage(ref recording, ref owner, frame, schedule[index], false);
+        RecordStage(ref recording, ref owner, frame, schedule[index], BlockDomain::Noise);
         CaptureTail(ref recording, frame, capture, index as uint32)?;
     }
     return Result::Ok();
@@ -581,6 +656,7 @@ Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, Block
     if (program == BlockProgram::PreAttention and owner.timed) { queries = 7; }
     bool wholeSpan = program == BlockProgram::Attention or program == BlockProgram::Ffn or program == BlockProgram::Context;
     if (wholeSpan and owner.timed) { queries = 2; }
+    if (program == BlockProgram::Main and owner.timed) { queries = 16; }
     owned Recording recording = BeginRecordingOn(owner.context.view, queries)?;
     owner.recordings = owner.recordings + 1;
     if (TakeFlag(ref owner, 8)) {
@@ -611,6 +687,7 @@ Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, Block
     BlockProgram::Attention => { RecordAttention(ref recording, ref owner, frame, capture)?; }
     BlockProgram::Ffn => { RecordFfn(ref recording, ref owner, frame, capture)?; }
     BlockProgram::Context => { RecordContext(ref recording, ref owner, frame, resident)?; }
+    BlockProgram::Main => { RecordMain(ref recording, ref owner, frame, resident)?; }
     }
     if (wholeSpan and owner.timed) { discard Timestamp(ref recording); }
     if (TakeFlag(ref owner, 16)) { return Result::Error(ErrorFromCode(-6908)); }
@@ -721,28 +798,47 @@ export "C" bool PromBlockLoad(ref BlockOwner owner, PromBlockHost host,
 export "C" int PromBlockRun(ref BlockOwner owner, ref const BlockFrame frame, uint32 mode,
     uint32 elements, uint32 stage, uint32 resident)
 {
-    if (mode > 5 or resident > 2) { return -6914; }
+    if (mode > 6 or resident > 2) { return -6914; }
     BlockProgram program = BlockProgram::Closed;
     if (mode == 1) { program = BlockProgram::PreAttention; }
     if (mode == 2) { program = BlockProgram::Ingress; }
     if (mode == 3) { program = BlockProgram::Attention; }
     if (mode == 4) { program = BlockProgram::Ffn; }
     if (mode == 5) { program = BlockProgram::Context; }
+    if (mode == 6) { program = BlockProgram::Main; }
     return BlockCode(ref owner, RunBlock(ref owner, frame, program, elements, stage, resident));
 }
 
 export "C" bool PromBlockRecordStage(ref Recording recording, ref BlockOwner owner,
     ref const BlockFrame frame, uint32 role)
 {
+    if (role >= 40) {
+        match (DecodeMainStage(role)) {
+            Result::Ok(stage) => { RecordStage(ref recording, ref owner, frame, stage, BlockDomain::Main); return true; }
+            Result::Error(error) => { return false; }
+        }
+    }
     if (role >= 20) {
         match (DecodeContextStage(role)) {
-            Result::Ok(stage) => { RecordStage(ref recording, ref owner, ContextFrame(frame), stage, true); return true; }
+            Result::Ok(stage) => { RecordStage(ref recording, ref owner, ContextFrame(frame), stage, BlockDomain::Context); return true; }
             Result::Error(error) => { return false; }
         }
     }
     match (DecodeBlockStage(role)) {
-        Result::Ok(stage) => { RecordStage(ref recording, ref owner, frame, stage, false); return true; }
+        Result::Ok(stage) => { RecordStage(ref recording, ref owner, frame, stage, BlockDomain::Noise); return true; }
         Result::Error(error) => { return false; }
     }
     return false;
+}
+
+// Borrowed only after a successful timed run, until the next drain/run.
+export "C" VkQueryPool PromBlockQueries(ref const BlockOwner owner)
+{
+    return OptionValue(ref const owner.pending).queries;
+}
+export "C" bool PromBlockMainGroups(ref BlockOwner owner, uint32 groups)
+{
+    if (groups != 31680 and groups != 3960) { return false; }
+    owner.mainAttentionGroups = groups;
+    return true;
 }

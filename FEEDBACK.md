@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 102 |
+| Resolved | 105 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,70 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-124 — MainTransformer static replay retained the preceding run's GPU timing
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Static Main replay recorded a fresh computation but did not resolve
+its timestamp queries. M8's independent witness found an unchanged
+`gpu_total_begin_tick` after replay on serial, forced subgroup and Auto routes.
+The output was numerically correct; the reported measurement belonged to an
+earlier execution. All three timestamp assertions failed in
+`.tmp/m8-main-recovery.log`.
+
+Resolution: Read the actual completed recording's query pool before static
+readback. The production pool is borrowed from the Concept submission through
+an opaque export; experimental builds retain their own pool. The test requires
+a new start tick, thirteen measured stage intervals and numerical output.
+Unmeasured legacy CPU command phases are cleared on ordinary Concept execution.
+See `docs/internal/prometheus_concept_main_m8.md`.
+
+---
+
+### FB-123 — Uncertain Main chain publication left an old joint generation valid
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: A chain submission can copy its result into JointWorking before
+the host observes its fence. On uncertain completion, the API returned an error
+without advancing the generation, yet left the joint valid. After retirement,
+a retry could apply the layer again to changed bytes under the old generation.
+M8 reproduced an accepted retry where stale input should have been rejected on
+all three route policies (`.tmp/m8-main-recovery.log`).
+
+Resolution: Invalidate JointWorking when a chain's completion is uncertain, or
+when post-compute timestamp observation fails before host publication commits.
+The old generation cannot authorize reuse. Explicit recomposition from retained
+streams creates a fresh generation; the test then proves a fresh first layer
+and a second chained layer against independent CPU contractions. This does not
+pretend to roll back submitted GPU writes or automatically recover an arbitrary
+later layer. See `docs/internal/prometheus_concept_main_m8.md`.
+
+---
+
+### FB-122 — MainTransformer admission blocked retirement after uncertain completion
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Main execution and static replay rejected a quarantined block
+before reaching the existing reap operation, the same ordering problem found
+for Context in FB-120. M8's failure matrix passed command/submit retries, then
+failed its completion retry (`.tmp/m8-main-first.log`).
+
+Resolution: Let the existing owner observe and retire pending work before reuse.
+Keep session, generation, binding and output-validity checks. The independent
+Main witness checks phase-specific errors, legacy SGEMM on the shared device,
+non-chain recovery and the stricter chain-publication rule in FB-123. See
+`docs/internal/prometheus_concept_main_m8.md`.
+
+---
 
 ### FB-121 — Shared model aliases overwrote audit packets and pinned predecessors
 
