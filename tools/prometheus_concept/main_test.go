@@ -13,7 +13,7 @@ import (
 // Runtime provenance keeps its integrity contract even though its files no
 // longer belong in Git. Exercise stale and missing products in isolation.
 func TestDeploymentProvenanceRejectsStaleInputsAndOutputs(t *testing.T) {
-	for _, corrupt := range []string{"input", "c", "header", "missing"} {
+	for _, corrupt := range []string{"input", "c", "header", "exports", "missing exports", "missing"} {
 		t.Run(corrupt, func(t *testing.T) {
 			root, output := t.TempDir(), t.TempDir()
 			sum := func(data []byte) string { value := sha256.Sum256(data); return hex.EncodeToString(value[:]) }
@@ -31,9 +31,12 @@ func TestDeploymentProvenanceRejectsStaleInputsAndOutputs(t *testing.T) {
 				inputPath := filepath.Join("inputs", stem+".concept")
 				write(filepath.Join(root, inputPath), input)
 				outputs := map[string]string{}
-				for _, ext := range []string{"c", "h"} {
-					name := stem + ".generated." + ext
-					data := []byte("opaque generated " + ext + " fixture")
+				names := []string{stem + ".generated.c", stem + ".generated.h"}
+				if stem == "prometheusmodelblock" {
+					names = append(names, stem+".exports.h")
+				}
+				for _, name := range names {
+					data := []byte("opaque generated " + name + " fixture")
 					write(filepath.Join(output, name), data)
 					outputs[name] = sum(data)
 				}
@@ -58,6 +61,12 @@ func TestDeploymentProvenanceRejectsStaleInputsAndOutputs(t *testing.T) {
 				write(filepath.Join(output, "prometheusexecution.generated.c"), []byte("changed"))
 			case "header":
 				write(filepath.Join(output, "prometheusexecution.generated.h"), []byte("changed"))
+			case "exports":
+				write(filepath.Join(output, "prometheusmodelblock.exports.h"), []byte("changed"))
+			case "missing exports":
+				if err := os.Remove(filepath.Join(output, "prometheusmodelblock.exports.h")); err != nil {
+					t.Fatal(err)
+				}
 			case "missing":
 				if err := os.Remove(filepath.Join(output, "prometheusexecution.generated.c")); err != nil {
 					t.Fatal(err)

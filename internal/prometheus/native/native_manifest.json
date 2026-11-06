@@ -185,6 +185,7 @@
       "paths": [
         "internal/prometheus/.native-build/generated/prometheusmodelblock.generated.c",
         "internal/prometheus/.native-build/generated/prometheusmodelblock.generated.h",
+        "internal/prometheus/.native-build/generated/prometheusmodelblock.exports.h",
         "internal/prometheus/.native-build/generated/prometheusmodelblock.provenance.json"
       ],
       "generator": "go run ./tools/prometheus_concept -concept-root <Concept checkout>",

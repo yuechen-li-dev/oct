@@ -14,9 +14,9 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 8 |
+| Open | 7 |
 | Deferred | 11 |
-| Resolved | 97 |
+| Resolved | 99 |
 | Superseded | 1 |
 
 ## Open issues
@@ -45,26 +45,6 @@ comparing Verify against an unavailable Normal result after a preceding failure.
 The broad run remains failed; an isolated pass is not a full-suite green claim.
 Evidence: `.tmp/m5-concept-full.log`, `.tmp/m5-concept-mixed-rerun.log`, and
 `docs/internal/prometheus_concept_model_block_m5.md`.
-
----
-
-### FB-112 — Concept call arguments do not supply context for Result constructors
-
-Date: 2026-11-05
-
-Status: Open
-
-Observation: With `enum SampleError { Failed, }` and
-`int Consume(Result<void, SampleError> result) { return 0; }`, the call
-`Consume(Result::Error(SampleError::Failed))` rejects with
-`CV4540: Result constructor requires an Option/Result expected type`.
-The callee's declared parameter does not provide the constructor context.
-The production reduction API observes an already available `VulkanError`
-directly, so it does not need to construct and immediately unwrap a carrier.
-This language typing gap remains independently reproducible.
-
-Suggestion: Supply the selected parameter type to ordinary call argument
-validation. Preserve overload ambiguity diagnostics and error type checking.
 
 ---
 
@@ -377,6 +357,46 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-118 — Concept OptionValue field access emitted an ungrouped pointer expression
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: The model-block opaque buffer accessor used
+`OptionValue(ref const owner.buffers[index]).buffer`. Concept accepted it, then
+emitted `&slot->payload.some.value->buffer`; the native C compiler rejected the
+incorrect pointer precedence. A local binding would mask this compiler defect.
+
+Resolution: Group the payload pointer in Concept's C lowering before projecting
+a field. `OptionValueFieldProjectionKeepsReferencePrecedence` in Concept's
+`tests/runtime/contextual_carriers.concept_test` executes const field reads and
+observes mutation of the same payload. The direct accessor remains in the
+production model-block source, so its real native build exercises the fix.
+
+---
+
+### FB-112 — Concept call arguments do not supply context for Result constructors
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: `Consume(Result::Error(SampleError::Failed))` rejected with
+`CV4540` despite a declared `Result<void, SampleError>` parameter. The callee did
+not supply the constructor's expected type.
+
+Resolution: The explicitly authorized EVT1 ergonomics thaw supplies parameter
+context after narrowing ordinary overload candidates. It preserves ambiguity
+(`CV4182`), exact error types in every arm, integer bounds and explicit payload moves. Nested
+carriers, parentheses, conditional/match arms and ordinary callees in templates
+share the path. The Concept runtime contract is
+`tests/runtime/contextual_carriers.concept_test`; `TestErgonomics*` also checks
+negative cases and strict C11 execution. Prometheus now calls
+`BlockCode(ref owner, DrainBlock(ref owner))` through a Concept-authored C export.
+
+---
 
 Recorded fixes and their evidence. Each entry states its qualification scope.
 

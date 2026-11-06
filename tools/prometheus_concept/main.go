@@ -105,7 +105,7 @@ func generate(compilerRoot, compiler string, check bool) error {
 			inputs[path] = hex.EncodeToString(sum[:])
 		}
 		outputHashes := map[string]string{}
-		for _, name := range []string{entry.Stem + ".generated.c", entry.Stem + ".generated.h"} {
+		for _, name := range reactorOutputNames(entry.Stem) {
 			files[name], err = os.ReadFile(filepath.Join(temporary, name))
 			if err != nil {
 				return err
@@ -254,7 +254,7 @@ func verifyDeployment(repoRoot, outputRoot string) error {
 		if err := json.Unmarshal(body, &metadata); err != nil {
 			return err
 		}
-		if len(metadata.CompilerBinary) != 64 || len(metadata.Inputs) == 0 || len(metadata.Outputs) != 2 {
+		if len(metadata.CompilerBinary) != 64 || len(metadata.Inputs) == 0 || len(metadata.Outputs) != len(reactorOutputNames(stem)) {
 			return fmt.Errorf("incomplete Concept build provenance: %s", stem)
 		}
 		check := func(root, path, expected string) error {
@@ -276,11 +276,19 @@ func verifyDeployment(repoRoot, outputRoot string) error {
 				return err
 			}
 		}
-		for _, name := range []string{stem + ".generated.c", stem + ".generated.h"} {
+		for _, name := range reactorOutputNames(stem) {
 			if err := check(outputRoot, name, metadata.Outputs[name]); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func reactorOutputNames(stem string) []string {
+	names := []string{stem + ".generated.c", stem + ".generated.h"}
+	if stem == "prometheusmodelblock" {
+		names = append(names, stem+".exports.h")
+	}
+	return names
 }

@@ -18,14 +18,14 @@ class BlockOwner
 {
 public:
     owned BorrowedContext context;
-    Option<owned Buffer<byte>><array>[128] buffers;
-    Option<owned Pipeline><array>[7] pipelines;
+    Option<owned Buffer<byte>>[128] buffers;
+    Option<owned Pipeline>[7] pipelines;
     Option<owned Submission> pending;
     bool deviceLost;
     int detail;
     uint32 flags;
     bool timed;
-    uint64<array>[6] timings;
+    uint64[6] timings;
     uint64 recordings;
     uint64 submissions;
     uint64 waits;
@@ -35,8 +35,8 @@ public:
 [[repr(C)]]
 record struct BlockFrame
 {
-    BufferRange<array>[21] buffers;
-    BufferRange<array>[13] weights;
+    BufferRange[21] buffers;
+    BufferRange[13] weights;
 };
 
 enum BlockBuffer
@@ -127,8 +127,8 @@ CapturePlan PlanCapture(CaptureStage stage)
 Result<BlockOwner, VulkanError> CreateBlock(DeviceBorrow device, bool timed)
 {
     owned BorrowedContext context = BorrowDevice(device)?;
-    Option<owned Buffer<byte>><array>[128] buffers = [Option::None ...];
-    Option<owned Pipeline><array>[7] pipelines = [Option::None ...];
+    Option<owned Buffer<byte>>[128] buffers = [Option::None ...];
+    Option<owned Pipeline>[7] pipelines = [Option::None ...];
     Option<owned Submission> pending = Option::None;
     owned BlockOwner owner = BlockOwner{move context, move buffers, move pipelines,
         move pending, false, 0, 0, timed, [0 ...], 0, 0, 0, 0};
@@ -258,9 +258,9 @@ Result<void, VulkanError> RecordIngress(ref Recording recording, ref BlockOwner 
     CopyBytes(ref recording, View(frame, BlockBuffer::InputUpload), 0, View(frame, BlockBuffer::InputBf16), 0, (elements as uint64) * 2)?;
     if (timestep != 0) { CopyBytes(ref recording, View(frame, BlockBuffer::TimestepUpload), 0, View(frame, BlockBuffer::TimestepBf16), 0, 512)?; }
     if (measure) { discard Timestamp(ref recording); }
-    Binding<array>[4] bindings = [ReadBuffer(0, View(frame, BlockBuffer::InputBf16)), ReadBuffer(1, View(frame, BlockBuffer::TimestepBf16)),
+    Binding[4] bindings = [ReadBuffer(0, View(frame, BlockBuffer::InputBf16)), ReadBuffer(1, View(frame, BlockBuffer::TimestepBf16)),
         WriteBuffer(2, View(frame, BlockBuffer::Input)), WriteBuffer(3, View(frame, BlockBuffer::Timestep))];
-    uint32<array>[2] push = [elements, timestep];
+    uint32[2] push = [elements, timestep];
     DispatchBlock(ref recording, ref owner, 0, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), (elements + 255u) / 256u, 1);
     return Result::Ok();
 }
@@ -271,31 +271,31 @@ void RecordProjectionStage(ref Recording recording, ref BlockOwner owner, BlockF
 {
     match (stage) {
         ProjectionStage::Modulate => {
-            Binding<array>[8] adaln = [ReadBuffer(0, View(frame, BlockBuffer::Timestep)), ReadBuffer(1, frame.weights[1]), ReadBuffer(2, frame.weights[0]),
+            Binding[8] adaln = [ReadBuffer(0, View(frame, BlockBuffer::Timestep)), ReadBuffer(1, frame.weights[1]), ReadBuffer(2, frame.weights[0]),
                 WriteBuffer(3, View(frame, BlockBuffer::AdaLnProjection)), WriteBuffer(4, View(frame, BlockBuffer::AttentionScale)), WriteBuffer(5, View(frame, BlockBuffer::AttentionGate)),
                 WriteBuffer(6, View(frame, BlockBuffer::MlpScale)), WriteBuffer(7, View(frame, BlockBuffer::MlpGate))];
-            uint32<array>[2] adalnPush = [15360, 256];
+            uint32[2] adalnPush = [15360, 256];
             DispatchBlock(ref recording, ref owner, 1, ReadOnlySpan(adaln), AsBytes(ReadOnlySpan(adalnPush)), 60, 1);
         }
         ProjectionStage::Normalize => {
-            Binding<array>[5] norm = [ReadBuffer(0, View(frame, BlockBuffer::Input)), ReadBuffer(1, frame.weights[6]),
+            Binding[5] norm = [ReadBuffer(0, View(frame, BlockBuffer::Input)), ReadBuffer(1, frame.weights[6]),
                 ReadBuffer(2, View(frame, BlockBuffer::AttentionScale)), WriteBuffer(3, View(frame, BlockBuffer::Modulated)), WriteBuffer(4, View(frame, BlockBuffer::NormAudit))];
-            RowPush<array>[1] normPush = [RowPush{1.0e-5, 1024, 3840, 0}];
+            RowPush[1] normPush = [RowPush{1.0e-5, 1024, 3840, 0}];
             DispatchBlock(ref recording, ref owner, 2, ReadOnlySpan(norm), AsBytes(ReadOnlySpan(normPush)), 1024, 1);
         }
         ProjectionStage::Project => {
-            Binding<array>[3] qkv = [ReadBuffer(0, View(frame, BlockBuffer::Modulated)), ReadBuffer(1, frame.weights[5]), WriteBuffer(2, View(frame, BlockBuffer::Qkv))];
-            uint32<array>[4] qkvPush = [1024, 3840, 11520, 0];
+            Binding[3] qkv = [ReadBuffer(0, View(frame, BlockBuffer::Modulated)), ReadBuffer(1, frame.weights[5]), WriteBuffer(2, View(frame, BlockBuffer::Qkv))];
+            uint32[4] qkvPush = [1024, 3840, 11520, 0];
             DispatchBlock(ref recording, ref owner, 3, ReadOnlySpan(qkv), AsBytes(ReadOnlySpan(qkvPush)), 64, 720);
         }
         ProjectionStage::PositionQuery => {
-            HeadPush<array>[1] headPush = [HeadPush{1.0e-5, 1024, 30, 128}];
-            Binding<array>[3] q = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[4]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            HeadPush[1] headPush = [HeadPush{1.0e-5, 1024, 30, 128}];
+            Binding[3] q = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[4]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
             DispatchBlock(ref recording, ref owner, 4, ReadOnlySpan(q), AsBytes(ReadOnlySpan(headPush)), 30720, 1);
         }
         ProjectionStage::PositionKey => {
-            HeadPush<array>[1] headPush = [HeadPush{1.0e-5, 1024, 30, 128}];
-            Binding<array>[3] k = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[2]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
+            HeadPush[1] headPush = [HeadPush{1.0e-5, 1024, 30, 128}];
+            Binding[3] k = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[2]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
             DispatchBlock(ref recording, ref owner, 5, ReadOnlySpan(k), AsBytes(ReadOnlySpan(headPush)), 30720, 1);
         }
     }
@@ -320,7 +320,7 @@ Result<void, VulkanError> RecordPrefix(ref Recording recording, ref BlockOwner o
     }
     if (owner.timed) { discard Timestamp(ref recording); }
     if (resident == 0) { Capture(ref recording, frame, stage, 0)?; }
-    ProjectionStage<array>[5] schedule = [ProjectionStage::Modulate, ProjectionStage::Normalize,
+    ProjectionStage[5] schedule = [ProjectionStage::Modulate, ProjectionStage::Normalize,
         ProjectionStage::Project, ProjectionStage::PositionQuery, ProjectionStage::PositionKey];
     for (index in 0..5) {
         RecordProjectionStage(ref recording, ref owner, frame, schedule[index]);
@@ -359,8 +359,8 @@ Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, Block
     match (program) {
     BlockProgram::Closed => {
         CopyBytes(ref recording, View(frame, BlockBuffer::InputUpload), 0, View(frame, BlockBuffer::Input), 0, (elements as uint64) * 4)?;
-        Binding<array>[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Input)), WriteBuffer(1, View(frame, BlockBuffer::Output)), WriteBuffer(2, View(frame, BlockBuffer::Audit))];
-        uint32<array>[2] push = [elements, stage];
+        Binding[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Input)), WriteBuffer(1, View(frame, BlockBuffer::Output)), WriteBuffer(2, View(frame, BlockBuffer::Audit))];
+        uint32[2] push = [elements, stage];
         DispatchBlock(ref recording, ref owner, 6, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), (elements + 255u) / 256u, 1);
         CopyBytes(ref recording, View(frame, BlockBuffer::Output), 0, View(frame, BlockBuffer::OutputReadback), 0, (elements as uint64) * 4)?;
         if (stage != 0) { CopyBytes(ref recording, View(frame, BlockBuffer::Audit), 0, View(frame, BlockBuffer::AuditReadback), 0, (stage as uint64) * 4)?; }
@@ -406,3 +406,75 @@ int BlockCode(ref BlockOwner owner, Result<void, VulkanError> result)
     return -6908;
 }
 void DisposeBlock(owned BlockOwner owner) { }
+
+// C observes the owner through explicit operations, never Option/Result tags.
+// Storage construction/destruction remains in the small C11 allocation seam.
+export "C" uint64 PromBlockRecordings(ref const BlockOwner owner) { return owner.recordings; }
+export "C" uint64 PromBlockSubmissions(ref const BlockOwner owner) { return owner.submissions; }
+export "C" uint64 PromBlockWaits(ref const BlockOwner owner) { return owner.waits; }
+export "C" uint64 PromBlockTiming(ref const BlockOwner owner, int index) { return owner.timings[index]; }
+export "C" bool PromBlockDeviceLost(ref const BlockOwner owner) { return owner.deviceLost; }
+export "C" VkDevice PromBlockDevice(ref const BlockOwner owner) { return owner.context.view.device; }
+export "C" void PromBlockSetFlags(ref BlockOwner owner, uint32 flags) { owner.flags = flags; }
+export "C" uint32 PromBlockFlags(ref const BlockOwner owner) { return owner.flags; }
+export "C" bool PromBlockQuarantined(ref const BlockOwner owner)
+{
+    return match (ref const owner.pending) {
+        Option::Some(work) => not work.waited,
+        Option::None => false,
+    };
+}
+export "C" int PromBlockDrain(ref BlockOwner owner)
+{
+    owner.detail = -6910;
+    return BlockCode(ref owner, DrainBlock(ref owner));
+}
+export "C" int PromBlockAllocate(ref BlockOwner owner, usize bytes, uint32 placement)
+{
+    Placement where = Placement::Device;
+    if (placement == 1) { where = Placement::Upload; }
+    if (placement == 2) { where = Placement::Readback; }
+    if (placement == 3) { where = Placement::Shared; }
+    return match (AllocateBlockBuffer(ref owner, bytes, where)) {
+        Result::Ok(index) => index,
+        Result::Error(error) => -1,
+    };
+}
+export "C" VkBuffer PromBlockBuffer(ref const BlockOwner owner, int index)
+{
+    return OptionValue(ref const owner.buffers[index]).buffer;
+}
+export "C" VkDeviceMemory PromBlockMemory(ref const BlockOwner owner, int index)
+{
+    return OptionValue(ref const owner.buffers[index]).memory;
+}
+export "C" int PromBlockFindBuffer(ref const BlockOwner owner, VkBuffer buffer)
+{
+    for (index in 0..128) {
+        match (ref const owner.buffers[index]) {
+            Option::Some(entry) => { if (entry.buffer == buffer) { return index; } }
+            Option::None => { }
+        }
+    }
+    return -1;
+}
+export "C" bool PromBlockRelease(ref BlockOwner owner, int index)
+{
+    return match (ReleaseBlockBuffer(ref owner, index)) { Result::Ok => true, Result::Error(error) => false, };
+}
+export "C" bool PromBlockLoad(ref BlockOwner owner, PromBlockHost host,
+    int slot, uint32 kernel, uint32 bindings, uint32 pushBytes)
+{
+    return match (LoadBlockPipeline(ref owner, host, slot, kernel, bindings, pushBytes)) {
+        Result::Ok => true, Result::Error(error) => false,
+    };
+}
+export "C" int PromBlockRun(ref BlockOwner owner, ref const BlockFrame frame, uint32 mode,
+    uint32 elements, uint32 stage, uint32 resident)
+{
+    if (mode > 2) { return -6914; }
+    BlockProgram program = BlockProgram::Closed;
+    if (mode == 1) { program = BlockProgram::PreAttention; }
+    if (mode == 2) { program = BlockProgram::Ingress; }
+    return BlockCode(ref owner, RunBlock(ref owner, frame, program, elements, stage, resident));
+}
