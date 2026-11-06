@@ -1,0 +1,28 @@
+package PrometheusFftGpu
+
+fn StrictTransform(values: Complex[]) -> Complex[] ! Error {
+    PROMETHEUS { return FFT(values)? }
+}
+
+[Fact]
+fn ForcedFftExecutesWithoutLosingPrecision() -> Void ! Error {
+    let values = [Complex(1.0000000000291038, 0.0), Complex(1.0, 0.0)]
+    PROMETHEUS {
+        let spectrum = StrictTransform(values)?
+        Assert.True(Real(spectrum[0]) > 2.0, "forced GPU FFT retains binary64 low bits")
+        Assert.Near(0.0000000000291038, Real(spectrum[1]), 0.000000000000001, "GPU preserves the small difference")
+    }
+    Assert.Equal(1.0000000000291038, Real(values[0]), "GPU leaves the source untouched")
+}
+
+[Fact]
+fn ForcedFftHasForwardSignAndNoNormalization() -> Void ! Error {
+    let values = [Complex(0.0, 0.0), Complex(1.0, 0.0), Complex(0.0, 0.0), Complex(0.0, 0.0)]
+    PROMETHEUS {
+        let spectrum = FFT(values)?
+        Assert.Near(1.0, Real(spectrum[0]), 0.000000000001, "DC")
+        Assert.Near(-1.0, Imag(spectrum[1]), 0.000000000001, "negative exponential")
+        Assert.Near(-1.0, Real(spectrum[2]), 0.000000000001, "Nyquist")
+        Assert.Near(1.0, Imag(spectrum[3]), 0.000000000001, "positive conjugate")
+    }
+}

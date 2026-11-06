@@ -1595,14 +1595,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		return false, nil
 	case ast.PrometheusStmt:
-		if !ctx.isBenchmark {
-			return false, fmt.Errorf("function %s: PROMETHEUS blocks are only valid inside [Benchmark] functions", ctx.name)
-		}
-		_, err := c.checkBlock(scope, node.Body, ctx)
-		if err != nil {
-			return false, err
-		}
-		return false, nil
+		return c.checkBlock(scope, node.Body, ctx)
 	case ast.GotoStmt:
 		if !ctx.inState {
 			return false, fmt.Errorf("function %s: goto is only valid inside flow state bodies", ctx.name)

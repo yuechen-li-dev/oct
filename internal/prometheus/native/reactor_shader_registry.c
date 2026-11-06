@@ -142,7 +142,37 @@ const prom_compute_implementation* prom_shader_registry_experimental_compute_imp
 const prom_sgemm_kernel_dispatch_metadata* prom_shader_registry_dispatch_metadata(uint32_t id) { const prom_compute_implementation* impl=prom_shader_registry_find_compute_implementation(id); return impl == NULL ? NULL : impl->dispatch; }
 uint32_t prom_shader_registry_is_dispatchable(uint32_t id) { const prom_compute_implementation* impl=prom_shader_registry_find_compute_implementation(id); return impl != NULL && impl->dispatchable != 0u; }
 uint32_t prom_shader_registry_is_selector_eligible(uint32_t id) { const prom_compute_implementation* impl=prom_shader_registry_find_compute_implementation(id); return impl != NULL && impl->selector_eligible != 0u; }
-uint32_t prom_shader_registry_validate_tables(const prom_shader_asset* assets, size_t asset_count, const prom_compute_implementation* implementations, size_t implementation_count) { size_t i,j,k; if(assets==NULL||implementations==NULL||asset_count==0u||implementation_count==0u)return 0u; for(i=0u;i<asset_count;++i){const prom_shader_asset* a=&assets[i]; if(a->shader_id==0u||a->stage!=PROM_SHADER_STAGE_COMPUTE||a->package_variant_id==NULL||a->entry_point==NULL||a->entry_point[0]=='\0')return 0u; for(j=i+1u;j<asset_count;++j)if(a->shader_id==assets[j].shader_id)return 0u;} for(i=0u;i<implementation_count;++i){const prom_compute_implementation* c=&implementations[i];const prom_shader_asset* a=NULL;for(k=0u;k<asset_count;++k)if(assets[k].shader_id==c->shader_id){a=&assets[k];break;}if(c->implementation_id==0u||a==NULL||a->authority!=c->authority||(c->selector_eligible!=0u&&c->dispatchable==0u))return 0u;}return 1u; }
+uint32_t prom_shader_registry_validate_tables(const prom_shader_asset* assets, size_t asset_count,
+    const prom_compute_implementation* implementations, size_t implementation_count) {
+  if (!assets || !implementations || !asset_count || !implementation_count) return 0u;
+  for (size_t i = 0; i < asset_count; ++i) {
+    const prom_shader_asset* asset = &assets[i];
+    if (!asset->shader_id || asset->stage != PROM_SHADER_STAGE_COMPUTE ||
+        !asset->package_variant_id || !asset->entry_point || !asset->entry_point[0]) return 0u;
+    for (size_t j = i + 1; j < asset_count; ++j)
+      if (asset->shader_id == assets[j].shader_id) return 0u;
+  }
+  for (size_t i = 0; i < implementation_count; ++i) {
+    const prom_compute_implementation* impl = &implementations[i];
+    const prom_shader_asset* asset = NULL;
+    for (size_t j = i + 1; j < implementation_count; ++j)
+      if (impl->implementation_id == implementations[j].implementation_id) return 0u;
+    for (size_t j = 0; j < asset_count; ++j)
+      if (assets[j].shader_id == impl->shader_id) { asset = &assets[j]; break; }
+    if (!impl->implementation_id || !asset || asset->authority != impl->authority ||
+        (impl->selector_eligible && !impl->dispatchable)) return 0u;
+    if (impl->operation_id == PROM_SHADER_OPERATION_SGEMM) {
+      if (impl->pipeline_family != PROM_COMPUTE_PIPELINE_FAMILY_SGEMM || !impl->dispatch ||
+          impl->reduction_dispatch || impl->pipeline_slot >= PROM_COMPUTE_PIPELINE_COUNT) return 0u;
+    } else {
+      if (impl->operation_id < PROM_SHADER_OPERATION_REDUCTION_SUM ||
+          impl->operation_id > PROM_SHADER_OPERATION_SOFTMAX ||
+          impl->pipeline_family != PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION ||
+          !impl->reduction_dispatch || impl->dispatch || impl->selector_eligible) return 0u;
+    }
+  }
+  return 1u;
+}
 uint32_t prom_shader_registry_validate(void) { return prom_shader_registry_validate_tables(k_shader_assets,prom_shader_registry_shader_asset_count(),k_compute_implementations,prom_shader_registry_compute_implementation_count()) && prom_shader_registry_validate_tables(k_reduction_shader_assets,prom_shader_registry_reduction_shader_asset_count(),k_reduction_compute_implementations,prom_shader_registry_reduction_compute_implementation_count()); }
 void prom_shader_registry_initialize_pipeline_instances(prom_compute_pipeline_instance* instances,size_t count,const VkPipeline* pipelines,size_t pipeline_count) { size_t i; for(i=0u;i<count;++i){instances[i].implementation=prom_shader_registry_compute_implementation_at(i);instances[i].pipeline=VK_NULL_HANDLE;instances[i].status=PROM_PIPELINE_UNAVAILABLE;instances[i].failure_detail=0;if(instances[i].implementation!=NULL&&instances[i].implementation->pipeline_slot<pipeline_count){instances[i].pipeline=pipelines[instances[i].implementation->pipeline_slot];instances[i].status=instances[i].pipeline!=VK_NULL_HANDLE?PROM_PIPELINE_READY:PROM_PIPELINE_FAILED;}} }
 VkPipeline prom_shader_registry_pipeline_for_variant(const prom_compute_pipeline_instance* instances,size_t count,uint32_t id) { size_t i; for(i=0u;i<count;++i)if(instances[i].implementation!=NULL&&instances[i].implementation->implementation_id==id&&instances[i].status==PROM_PIPELINE_READY)return instances[i].pipeline;return VK_NULL_HANDLE; }

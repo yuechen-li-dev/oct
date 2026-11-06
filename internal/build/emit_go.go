@@ -330,10 +330,13 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if usedBuiltins["Assert.Near"] {
 		importSet["math"] = struct{}{}
 	}
+	if usedBuiltins["FFT"] || usedBuiltins["FFTGPU"] {
+		importSet["github.com/yuechen-li-dev/oct/internal/prometheus"] = struct{}{}
+	}
 	if usedBuiltins["Idx"] {
 		importSet["strings"] = struct{}{}
 	}
-	if usedBuiltins["PrometheusMatMulMM"] {
+	if usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["PrometheusMatMulMMStrict"] {
 		for _, pkg := range []string{"github.com/yuechen-li-dev/oct/internal/prometheus", "os", "os/exec", "strings", "sync"} {
 			importSet[pkg] = struct{}{}
 		}
@@ -356,7 +359,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Abs"] || usedBuiltins["Real"] || usedBuiltins["Imag"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["BaseUnit"] || usedBuiltins["FFT"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Real"] || usedBuiltins["Imag"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["BaseUnit"] {
 		importSet["math"] = struct{}{}
 	}
 	if usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Conj"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] {
@@ -555,7 +558,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if usedBuiltins["Abs"] || usedBuiltins["Real"] || usedBuiltins["Imag"] {
 		b.WriteString(__octComplexHelpers)
 	}
-	if usedBuiltins["FFT"] {
+	if usedBuiltins["FFT"] || usedBuiltins["FFTGPU"] {
 		b.WriteString(__octFFTHelpers)
 	}
 	if usesRandomStreamBuiltins(usedBuiltins) {
@@ -564,7 +567,7 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	if usesEntropyBuiltins(usedBuiltins) {
 		b.WriteString(entropyHelpers)
 	}
-	if usedBuiltins["PrometheusMatMulMM"] {
+	if usedBuiltins["PrometheusMatMulMM"] || usedBuiltins["PrometheusMatMulMMStrict"] {
 		b.WriteString(__octPrometheusHelpers)
 	}
 	if usedBuiltins["StringSplitLines"] || usedBuiltins["StringEscapeJSON"] {
@@ -787,6 +790,9 @@ func emitGoWithOptions(m MIRModule, options goEmitOptions) (string, error) {
 	b.WriteString("}\n\n")
 	b.WriteString("func main() {\n")
 	b.WriteString("\tdiagnostic := __octRunMain(func() {\n")
+	if usedBuiltins["FFT"] || usedBuiltins["FFTGPU"] {
+		b.WriteString("\t\tdefer __octFFTEngine.Close()\n")
+	}
 	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
 		b.WriteString("\t\tdefer __octOctxiliaryClose()\n")
 	}
@@ -1729,7 +1735,9 @@ func goStmt(s MIRStmt) (string, error) {
 			case "MarkdownTableWithColumns":
 				return fmt.Sprintf("%s = __octMarkdownTableWithColumns(%s, %s)", st.Target, args[0], args[1]), nil
 			case "FFT":
-				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, args[0]), nil
+				return fmt.Sprintf("%s = __octFFT(%s, false)", st.Target, args[0]), nil
+			case "FFTGPU":
+				return fmt.Sprintf("%s = __octFFT(%s, true)", st.Target, args[0]), nil
 			case "WriteOctagon":
 				return fmt.Sprintf("__octWriteOctagon(%s, %s, %q); %s = 0", args[0], args[1], st.ArgTypes[1], st.Target), nil
 			case "LoadOctagon":
@@ -1909,6 +1917,8 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				op := strings.TrimPrefix(st.Callee, "ArrayBinarySA:")
 				return fmt.Sprintf("%s = __octArrayBinarySA[%s, %s, %s](%s, %s, %q)", st.Target, goType(st.ArgTypes[0]), goType(rightElem), goType(retElem), args[0], args[1], op), nil
+			case "PrometheusMatMulMMStrict":
+				return fmt.Sprintf("%s = __octPrometheusMatMulMMStrict(%s, %s)", st.Target, args[0], args[1]), nil
 			case "PrometheusMatMulMM":
 				return fmt.Sprintf("%s = __octPrometheusMatMulMM(%s, %s)", st.Target, args[0], args[1]), nil
 			case "Trace":

@@ -1,0 +1,10 @@
+package PrometheusFftGpu
+
+[Fact]
+fn StrictMatrixExecutionUsesTheGpu() -> Void {
+    let a = matrix[[1.0, 2.0] [3.0, 4.0]]
+    PROMETHEUS {
+        let result = a @ a
+        Assert.Equal(7.0, result[0, 0], "matrix execution still works in a strict block")
+    }
+}

@@ -1,4 +1,5 @@
 #include "reactor_api.h"
+#include "reactor_concept_fft.h"
 
 #include "reactor_vulkan.h"
 
@@ -807,4 +808,9 @@ int prometheus_runtime_destroy(void* handle) {
 
 int prometheus_runtime_probe(void* handle, PrometheusCaps* out_caps) {
   return prometheus_reactor_runtime_probe(handle, out_caps);
+}
+
+int prometheus_reactor_runtime_fft64(void* host, const double* input, double* output,
+    uint32_t count, uint32_t* stage, int* detail) {
+  return prom_reactor_runtime_fft64_impl(host, input, output, count, stage, detail);
 }

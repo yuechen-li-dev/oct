@@ -1331,6 +1331,7 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->physical_device = rt->vulkan.physical_device;
   out_services->device = rt->vulkan.device;
   out_services->concept_enabled_features = rt->vulkan.concept_enabled_features;
+  out_services->shader_float64_enabled = rt->vulkan.shader_float64_enabled;
   out_services->compute_queue = rt->vulkan.compute_queue;
   out_services->compute_queue_family_index = rt->vulkan.queue_family_index;
   out_services->compute_command_pool = rt->vulkan.command_pool;
@@ -2530,6 +2531,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->vulkan.device != VK_NULL_HANDLE) {
     (void)prom_async_reap_quarantined_slots(rt, 1u);
     prom_vk_runtime_wait_idle(&rt->vulkan);
+  }
+  if (prom_reactor_runtime_concept_fft_detach(rt) != PROM_OK) {
+    fputs("Prometheus: FFT completion could not be established during teardown\n", stderr);
+    abort();
   }
   if (prom_reactor_runtime_concept_reduction_detach(rt) != PROM_OK) {
     fputs("Prometheus: reduction completion could not be established during teardown\n", stderr);
@@ -8241,5 +8246,15 @@ void* prom_reactor_runtime_concept_norm_state(void* handle) {
 int prom_reactor_runtime_set_concept_norm_state(void* handle, void* state) {
   if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
   ((prometheus_runtime*)handle)->concept_norm_state = state;
+  return PROM_OK;
+}
+
+void* prom_reactor_runtime_concept_fft_state(void* host) {
+  if (!prom_reactor_runtime_validate_handle(host)) return NULL;
+  return ((prometheus_runtime*)host)->concept_fft_state;
+}
+int prom_reactor_runtime_set_concept_fft_state(void* host, void* state) {
+  if (!prom_reactor_runtime_validate_handle(host)) return PROM_INVALID_HANDLE;
+  ((prometheus_runtime*)host)->concept_fft_state = state;
   return PROM_OK;
 }

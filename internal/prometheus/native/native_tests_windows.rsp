@@ -46,3 +46,4 @@
 "internal/prometheus/native/Marionette/reactor_attention_tests.cpp"
 "internal/prometheus/native/Marionette/reactor_concept_rmsnorm_tests.cpp"
 "internal/prometheus/native/Marionette/reactor_model_block_tests.cpp"
+"internal/prometheus/native/Marionette/reactor_fft64_tests.cpp"

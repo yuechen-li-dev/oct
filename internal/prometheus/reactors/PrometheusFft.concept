@@ -1,0 +1,192 @@
+module PrometheusFft;
+profile Vulkan;
+import Vulkan;
+
+extern "C" handle FftHost;
+extern "C" PipelineCreation PromFftLoadPipeline(FftHost host, VkDevice device,
+    VkPipelineCache cache, uint32 role);
+foreign concept PackagePipelineAllocation on PromFftLoadPipeline {
+    requires compiler.Allocates(PromFftLoadPipeline);
+}
+
+[[repr(C)]]
+record struct FftJob {
+    uint32 count;
+    uint32 batches;
+    uint32 stride;
+    uint32 inverse;
+    uint32 normalize;
+    uint32 fp64;
+    uint32 bits;
+    uint32 flags;
+};
+class FftStorage {
+public:
+    owned Buffer<byte> upload;
+    owned Buffer<byte> input;
+    owned Buffer<byte> ping;
+    owned Buffer<byte> pong;
+    owned Buffer<byte> readback;
+    owned Buffer<byte> twiddle;
+    usize bytes;
+};
+class FftExecutor {
+public:
+    owned BorrowedContext context;
+    FftHost host;
+    Option<owned Pipeline><array>[3] pipelines;
+    Option<owned FftStorage> storage;
+    Option<owned Submission> pending;
+    uint64 allocations;
+    uint64 reuses;
+    bool deviceLost;
+    int detail;
+};
+
+Result<FftExecutor, VulkanError> CreateFft(FftHost host, DeviceBorrow device) {
+    owned BorrowedContext context = BorrowDevice(device)?;
+    Option<owned Pipeline><array>[3] pipelines = [Option::None ...];
+    Option<owned FftStorage> storage = Option::None;
+    Option<owned Submission> pending = Option::None;
+    owned FftExecutor executor = FftExecutor{move context, host, move pipelines,
+        move storage, move pending, 0, 0, false, 0};
+    return Result::Ok(move executor);
+}
+Result<void, VulkanError> DrainFft(ref FftExecutor executor) {
+    match (ref executor.pending) {
+        Option::Some(work) => { Wait(ref work)?; }
+        Option::None => { }
+    }
+    executor.pending = Option::None;
+    return Result::Ok();
+}
+Result<FftStorage, VulkanError> CreateStorage(DeviceView device, usize bytes) {
+    owned Buffer<byte> upload = CreateBufferOn<byte>(device, bytes, Placement::Upload)?;
+    owned Buffer<byte> input = CreateBufferOn<byte>(device, bytes, Placement::Device)?;
+    owned Buffer<byte> ping = CreateBufferOn<byte>(device, bytes, Placement::Device)?;
+    owned Buffer<byte> pong = CreateBufferOn<byte>(device, bytes, Placement::Device)?;
+    owned Buffer<byte> readback = CreateBufferOn<byte>(device, bytes, Placement::Readback)?;
+    owned Buffer<byte> twiddle = CreateBufferOn<byte>(device, bytes, Placement::Shared)?;
+    owned FftStorage storage = FftStorage{move upload, move input, move ping, move pong,
+        move readback, move twiddle, bytes};
+    return Result::Ok(move storage);
+}
+Result<void, VulkanError> PrepareFft(ref FftExecutor executor, usize bytes, int role) {
+    DrainFft(ref executor)?;
+    bool ready = match (ref const executor.storage) {
+        Option::Some(storage) => storage.bytes == bytes, Option::None => false,
+    };
+    if (not ready) {
+        owned FftStorage storage = CreateStorage(executor.context.view, bytes)?;
+        executor.storage = Option::Some(move storage);
+        executor.allocations = executor.allocations + 6;
+    } else { executor.reuses = executor.reuses + 6; }
+    bool loaded = match (ref const executor.pipelines[role]) {
+        Option::Some(pipeline) => true, Option::None => false,
+    };
+    if (not loaded) {
+        executor.detail = -805;
+        PipelineCreation created = PromFftLoadPipeline(executor.host, executor.context.view.device,
+            executor.context.view.cache, role as uint32);
+        Check(created.code)?;
+        owned Pipeline pipeline = Pipeline{executor.context.view.device, created.shader,
+            created.setLayout, created.layout, created.pipeline, created.pushBytes};
+        executor.pipelines[role] = Option::Some(move pipeline);
+    }
+    return Result::Ok();
+}
+void DispatchFft(ref Recording recording, ref const FftExecutor executor,
+    ref const FftStorage storage, int role, bool sourcePing, FftJob job, uint32 half) {
+    ref const Pipeline pipeline = OptionValue(ref const executor.pipelines[role]);
+    VkBuffer source = storage.input.buffer;
+    VkBuffer destination = storage.ping.buffer;
+    if (half != 0) {
+        source = storage.pong.buffer;
+        destination = storage.ping.buffer;
+        if (sourcePing) { source = storage.ping.buffer; destination = storage.pong.buffer; }
+    }
+    Binding<array>[3] bindings = [
+        Binding{0, source, storage.bytes as uint64, DescriptorKind::StorageBuffer, Access::Read},
+        Binding{1, destination, storage.bytes as uint64, DescriptorKind::StorageBuffer, Access::Write},
+        Bind(2, ref const storage.twiddle, Access::Read)];
+    uint32<array>[8] constantsData = [job.count, job.batches, job.stride, half,
+        job.inverse + 1, job.normalize, 0, 0];
+    uint32 pushCount = 8;
+    uint32 bindingCount = 2;
+    // The legacy inverse API is normalized, including when its optional
+    // INVERSE_NORMALIZE bit is absent. Apply the scale only on the final pass.
+    constantsData[5] = 0;
+    if (job.inverse != 0 and half * 2u == job.count) { constantsData[5] = 1; }
+    if (half == 0) { pushCount = 4; constantsData[3] = 0; }
+    if (job.fp64 != 0) {
+        constantsData[1] = half; constantsData[2] = job.bits; constantsData[3] = 0;
+        pushCount = 4; bindingCount = 3;
+    }
+    ReadOnlySpan<uint32> constants = Subspan(ReadOnlySpan(constantsData), 0, pushCount as int);
+    ReadOnlySpan<Binding> resources = Subspan(ReadOnlySpan(bindings), 0, bindingCount as int);
+    DispatchWith(ref recording, ref const pipeline, resources, AsBytes(constants),
+        (job.count * job.batches + 255u) / 256u, 1, 1);
+}
+BufferRange FftRange(ref const Buffer<byte> buffer) {
+    return BufferRange{buffer.buffer, buffer.count as uint64};
+}
+Result<void, VulkanError> RunFft(ref FftExecutor executor, FftJob job,
+    ReadOnlySpan<byte> source, ReadOnlySpan<byte> twiddles, Span<byte> destination) {
+    executor.detail = -803;
+    if (executor.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
+    executor.detail = -801;
+    if ((job.flags & 4u) != 0) { return Result::Error(ErrorFromCode(-1)); }
+    int role = 0;
+    if (job.fp64 != 0) { role = 2; }
+    PrepareFft(ref executor, Len(source) as usize, role)?;
+    if (role == 0) { PrepareFft(ref executor, Len(source) as usize, 1)?; }
+    ref FftStorage storage = OptionValue(ref executor.storage);
+    executor.detail = -802;
+    if ((job.flags & 8u) != 0) { return Result::Error(ErrorFromCode(-1)); }
+    Check(ConceptVkWriteBytes(storage.upload.device, storage.upload.memory, 0, source))?;
+    Check(ConceptVkWriteBytes(storage.readback.device, storage.readback.memory, 0, ReadOnlySpan(destination)))?;
+    if (job.fp64 != 0) { Check(ConceptVkWriteBytes(storage.twiddle.device, storage.twiddle.memory, 0, twiddles))?; }
+    executor.detail = -803;
+    if ((job.flags & 16u) != 0) { return Result::Error(ErrorFromCode(-1)); }
+    owned Recording recording = BeginRecordingOn(executor.context.view, 0)?;
+    CopyBytes(ref recording, FftRange(ref const storage.upload), 0, FftRange(ref const storage.input), 0, storage.bytes as uint64)?;
+    DispatchFft(ref recording, ref const executor, ref const storage, role, true, job, 0);
+    bool sourcePing = true;
+    for (bit in 0..(job.bits as int)) {
+        uint32 half = 1u << (bit as uint32);
+        int passRole = 1;
+        if (job.fp64 != 0) { passRole = 2; }
+        DispatchFft(ref recording, ref const executor, ref const storage, passRole, sourcePing, job, half);
+        sourcePing = not sourcePing;
+    }
+    BufferRange final = FftRange(ref const storage.pong);
+    if (sourcePing) { final = FftRange(ref const storage.ping); }
+    uint64 elementBytes = 8;
+    if (job.fp64 != 0) { elementBytes = 16; }
+    for (batch in 0..(job.batches as int)) {
+        uint64 offset = (batch as uint64) * (job.stride as uint64) * elementBytes;
+        CopyBytes(ref recording, final, offset, FftRange(ref const storage.readback), offset,
+            (job.count as uint64) * elementBytes)?;
+    }
+    if ((job.flags & 5242880u) != 0) { return Result::Error(ErrorFromCode(-1)); }
+    owned Submission work = Submit(move recording)?;
+    executor.pending = Option::Some(move work);
+    DrainFft(ref executor)?;
+    executor.detail = -804;
+    if ((job.flags & 32u) != 0) { return Result::Error(ErrorFromCode(-1)); }
+    Check(ConceptVkReadBytes(storage.readback.device, storage.readback.memory, 0, destination))?;
+    executor.detail = 0;
+    return Result::Ok();
+}
+int FftCode(ref FftExecutor executor, Result<void, VulkanError> result) {
+    match (result) {
+        Result::Ok => { return 0; }
+        Result::Error(error) => {
+            int code = CodeFromError(error);
+            if (code == -4) { executor.deviceLost = true; }
+            if (executor.detail == 0) { return -803; }
+            return executor.detail;
+        }
+    }
+}
+void DisposeFft(owned FftExecutor executor) { }

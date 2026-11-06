@@ -1,0 +1,12 @@
+[TestInputUInt(1u, 3u)]
+[Fact]
+fn Binary64ArithmeticKeepsLowBits() -> void {
+    let input: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 0u;
+    let one: f64 = Convert<f64>(input);
+    let tiny: f64 = 0.0000000000291038304567337;
+    let precise: f64 = one + tiny;
+    Assert.True(precise > one, "binary64 addition preserves bits below FP32 precision");
+    Assert.True((precise - one) == tiny, "subtraction recovers the exact power of two");
+    let three: f64 = Convert<f64>(TestInput.UInt[1u]);
+    Assert.True((precise * three) / three == precise, "multiplication and division stay binary64");
+}

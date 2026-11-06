@@ -14,15 +14,35 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 7 |
+| Open | 8 |
 | Deferred | 11 |
-| Resolved | 114 |
+| Resolved | 119 |
 | Superseded | 1 |
 
 ## Open issues
 
 Newest first. These entries remain open; their presence is not an instruction
 to change the implementation during unrelated work.
+
+### FB-139 — Local Windows corpus cleanup intermittently retains a test executable
+
+Date: 2026-11-06
+
+Status: Open
+
+Observation: The full local portable corpus run completed after 475.93 s with
+three failures in `Language/Types/Arrays/valid/compiled`. Removing the shared
+`typed_var_empty_array_m1` executable returned `Access is denied`; the directory
+reported 33 passing facts and three cleanup failures. The same unchanged
+directory passed alone in 19.66 s. The broad run remains failed.
+
+Suggestion: Investigate executable retirement and external file-handle/scanner
+interference before changing cleanup policy. The cause is not established.
+Keep cleanup failures visible and retain compiled execution requirements.
+This is outside FFT's numerical and GPU ownership path.
+Evidence: `.tmp/m12-corpus-full.log` and `.tmp/m12-corpus-array-rerun.log`.
+
+---
 
 ### FB-117 — Parallel native qualification can exhaust the mixed-call host deadline
 
@@ -357,6 +377,119 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-138 — Portable corpus did not register FFT environment lanes
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: Oct #894's first hosted integration run tried the new GPU-required
+facts without a reactor and treated the benchmark-only directory as artifacts,
+failing with `prometheus reactor not found` and `no [Artifact] functions found`.
+The focused local runners had passed, but the global corpus runner also needed
+explicit suite ownership.
+
+Resolution: Register GPU and benchmark suites with the existing checked
+run-elsewhere map. The native runner owns the strict GPU facts in both lanes;
+the benchmark contract now runs in ordinary integration CI. The portable corpus
+sets an intentionally missing reactor so its unavailable-GPU contracts also
+remain deterministic on machines with installed native builds. Targeted corpus
+and benchmark reruns pass; GPU assertions are unchanged.
+Evidence: `.tmp/m12-ci-linux-failed.log`, `.tmp/m12-corpus-routing.log`, and
+`.tmp/m12-ci-bench-owner.log`.
+
+---
+
+### FB-137 — Shader registry validation lost implementation consistency checks
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: M12's native registry rerun failed four assertions. The embedded
+catalog had grown from 40 to 44 entries, while its negative-validation test
+showed that duplicate implementation IDs, mismatched pipeline families, and
+missing dispatch metadata were accepted. The missing checks predated M12.
+
+Resolution: Restore duplicate-ID and operation/family/metadata admission in the
+existing validator, update the reviewed catalog count, and assert that the new
+FP64 FFT asset remains package-only. The five registry facts and all fifteen
+FFT facts pass after the native rebuild, with no Vulkan validation errors.
+Evidence: `.tmp/m12-native-registry.log` retains the failure and
+`.tmp/m12-native-registry-final.log` records the corrected run.
+
+---
+
+### FB-136 — Single-call Windows FFT timings could be zero
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Initial M12 measurements reported zero nanoseconds for small CPU
+and GPU calls on the local Windows clock. Using those samples for automatic
+selection would make the decision depend on clock granularity.
+
+Resolution: Measure complete calls in windows lasting at least 10 ms and select
+from three window medians, with a named 20% stability margin. Retain cold setup
+separately and cache only the current storage shape's decision. Both candidates
+cache their roots of unity. The measurement tool records numerical error and
+the rejection/selection reason. Local results select CPU through 4,096 values
+and GPU at 65,536 and 1,048,576 in the first run. A repeat conservatively kept
+65,536 on CPU when its GPU lead fell below the margin; 1,048,576 still selected
+GPU. These are observations, not portable thresholds.
+Evidence: `docs/internal/prometheus_concept_fft_m12.md` and
+`go run ./tools/fft_measure`.
+
+---
+
+### FB-135 — PROMETHEUS did not enforce GPU execution
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Blocks were restricted to benchmarks, the interpreter had no block
+handler, and compiled matrix execution could fall back to CPU. That could not
+express the requested strict GPU FFT policy.
+
+Resolution: Ordinary lexical blocks require GPU completion for direct FFT and
+matrix-matrix operations. Forced FFT bypasses CPU calibration and propagates
+recoverable errors; strict matrix calls report terminal execution failures.
+The older explicit matrix builtin outside a block retains its fallback API.
+Return propagation through blocks is checked correctly. Contracts in
+`Language/Prometheus` pass in both execution lanes with a real GPU and with an
+explicitly missing reactor. The old benchmark-only assertion was removed from
+the Go checker test; the new behavior is specified by Oct fixtures.
+Software Vulkan is excluded using the runtime's backend classification. The
+benchmark contract now requires CPU success and strict GPU failure when the
+reactor is missing; native benchmark metadata still records its actual device
+environment.
+
+---
+
+### FB-134 — The native FFT could not preserve Oct's binary64 precision
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Oct `Complex[]` uses complex128, but the existing Vulkan FFT API
+and shader arithmetic only supported Complex32. Connecting them directly would
+discard precision. The C executor also rebuilt its resources on every call.
+
+Resolution: Add SDSL-V scalar `f64` with explicit conversion, precision-aware
+literal lowering, capability metadata, and narrowing/intrinsic rejection
+contracts. A separate FP64 native entry point uses binary64 host twiddles and
+requires enabled `shaderFloat64`. Concept now owns execution and reusable
+storage for both native precisions; the handwritten C executor is removed.
+Independent native DFT, low-bit, dynamic-range, failure, warm reuse, and SGEMM
+coexistence tests pass. Normal and Verify FFT builds each pass 15 native tests
+with synchronization validation and no validation errors. The initial inverse
+normalization regression is retained in the M12 evidence and corrected.
+
+---
 
 ### FB-133 — Native launcher failure test depended on an installed Concept distribution
 
@@ -2300,7 +2433,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-134**. Put a new open issue at
+Use the next unused identifier, currently **FB-140**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

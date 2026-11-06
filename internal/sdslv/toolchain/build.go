@@ -407,6 +407,8 @@ func targetContract(module vdmir.Module) shaderTargetContract {
 	result := productionTargetContract("cs_6_0")
 	for _, requirement := range module.Requirements {
 		switch requirement.Kind {
+		case vdmir.CapabilityShaderFloat64:
+			result.spirvCapabilities = append(result.spirvCapabilities, "Float64")
 		case vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup:
 			result.profile = "cs_6_9"
 			result.extraArgs = append(result.extraArgs, "-fspv-use-vulkan-memory-model", "-enable-16bit-types")

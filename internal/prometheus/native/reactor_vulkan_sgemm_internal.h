@@ -596,6 +596,7 @@ typedef struct prometheus_runtime {
   void* reduction_state;
   void* concept_reduction_state;
   void* concept_norm_state;
+  void* concept_fft_state;
   VkDescriptorSetLayout descriptor_set_layout;
   VkDescriptorPool descriptor_pool;
   VkDescriptorSet descriptor_set;

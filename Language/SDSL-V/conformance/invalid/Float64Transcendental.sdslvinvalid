@@ -1,0 +1,3 @@
+fn Unsupported(value: f64) -> f64 {
+    return Sin(value);
+}

@@ -295,6 +295,8 @@ func FormatType(t Type) string {
 		return "i32"
 	case TypeU32:
 		return "u32"
+	case TypeF64:
+		return "f64"
 	case TypeF32:
 		return "f32"
 	case TypeUint2:

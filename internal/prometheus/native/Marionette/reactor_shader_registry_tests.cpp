@@ -233,7 +233,8 @@ FACT(PrometheusForcedAttentionRouteRejectionIsAnOrdinaryProcessFailure)
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(40), prom_shader_registry_shader_asset_count(), "ray-query and FFT package-only assets retain their identities outside the embedded registry");
+  ASSERT_EQUAL(static_cast<std::size_t>(44), prom_shader_registry_shader_asset_count(), "ray-query and FFT package-only assets retain their identities outside the embedded registry");
+  ASSERT_TRUE(prom_shader_registry_find_shader(70u) == nullptr, "FP64 FFT remains a package-only asset");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }

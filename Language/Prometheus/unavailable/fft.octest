@@ -1,0 +1,9 @@
+package PrometheusFftUnavailable
+
+// Run with OCT_PROMETHEUS_REACTOR pointing at a missing library.
+[Fact]
+fn ForcedFftNeverSubstitutesCpuExecution() -> Void {
+    PROMETHEUS {
+        Assert.Error(FFT([Complex(1.0, 0.0), Complex(2.0, 0.0)]), "valid input still fails when GPU execution is unavailable")
+    }
+}
