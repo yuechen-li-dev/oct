@@ -144,3 +144,7 @@ unchanged; the frozen Zig suites were skipped.
 
 The legacy C FFT diagnostic registry and FP32 plan reporting remain compatibility
 code. Moving their bookkeeping is separate from replacing the Vulkan executor.
+
+The owner explicitly refuses new work after a terminal device-loss result.
+The final guard was rebuilt and passed the same Normal/Verify FFT and strict
+C11/determinism checks. Deliberate physical device-loss injection was not run.

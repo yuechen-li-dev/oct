@@ -132,6 +132,8 @@ BufferRange FftRange(ref const Buffer<byte> buffer) {
 }
 Result<void, VulkanError> RunFft(ref FftExecutor executor, FftJob job,
     ReadOnlySpan<byte> source, ReadOnlySpan<byte> twiddles, Span<byte> destination) {
+    executor.detail = -803;
+    if (executor.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
     executor.detail = -801;
     if ((job.flags & 4u) != 0) { return Result::Error(ErrorFromCode(-1)); }
     int role = 0;
