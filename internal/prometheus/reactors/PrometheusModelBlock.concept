@@ -19,13 +19,13 @@ class BlockOwner
 public:
     owned BorrowedContext context;
     Option<owned Buffer<byte>>[128] buffers;
-    Option<owned Pipeline>[7] pipelines;
+    Option<owned Pipeline>[14] pipelines;
     Option<owned Submission> pending;
     bool deviceLost;
     int detail;
     uint32 flags;
     bool timed;
-    uint64[6] timings;
+    uint64[8] timings;
     uint64 recordings;
     uint64 submissions;
     uint64 waits;
@@ -35,7 +35,7 @@ public:
 [[repr(C)]]
 record struct BlockFrame
 {
-    BufferRange[21] buffers;
+    BufferRange[23] buffers;
     BufferRange[13] weights;
 };
 
@@ -44,9 +44,9 @@ enum BlockBuffer
     InputUpload, InputBf16, Input, TimestepUpload, TimestepBf16, Timestep,
     ResidentBoundary, AdaLnProjection, AttentionScale, AttentionGate, MlpScale,
     MlpGate, Modulated, NormAudit, Qkv, Attention, AuditReadback, Output,
-    OutputReadback, Audit, WeightUpload,
+    OutputReadback, Audit, WeightUpload, AttentionProjection, AttentionResidual,
 }
-enum BlockProgram { Closed, PreAttention, Ingress, }
+enum BlockProgram { Closed, PreAttention, Ingress, Attention, Ffn, }
 enum CaptureStage
 {
     IngressInput, IngressTimestep, AdaLnProjection, AttentionScaleRaw,
@@ -67,6 +67,8 @@ record struct CapturePlan
 record struct RowPush { float epsilon; uint32 tokens; uint32 width; uint32 reserved; };
 [[repr(C)]]
 record struct HeadPush { float epsilon; uint32 tokens; uint32 heads; uint32 width; };
+[[repr(C)]]
+record struct FfnOutputPush { float epsilon; uint32 tokens; uint32 width; uint32 hidden; };
 
 BufferRange View(BlockFrame frame, BlockBuffer role)
 {
@@ -92,6 +94,8 @@ BufferRange View(BlockFrame frame, BlockBuffer role)
         BlockBuffer::OutputReadback => frame.buffers[18],
         BlockBuffer::Audit => frame.buffers[19],
         BlockBuffer::WeightUpload => frame.buffers[20],
+        BlockBuffer::AttentionProjection => frame.buffers[21],
+        BlockBuffer::AttentionResidual => frame.buffers[22],
     };
 }
 
@@ -128,7 +132,7 @@ Result<BlockOwner, VulkanError> CreateBlock(DeviceBorrow device, bool timed)
 {
     owned BorrowedContext context = BorrowDevice(device)?;
     Option<owned Buffer<byte>>[128] buffers = [Option::None ...];
-    Option<owned Pipeline>[7] pipelines = [Option::None ...];
+    Option<owned Pipeline>[14] pipelines = [Option::None ...];
     Option<owned Submission> pending = Option::None;
     owned BlockOwner owner = BlockOwner{move context, move buffers, move pipelines,
         move pending, false, 0, 0, timed, [0 ...], 0, 0, 0, 0};
@@ -265,38 +269,110 @@ Result<void, VulkanError> RecordIngress(ref Recording recording, ref BlockOwner 
     return Result::Ok();
 }
 
-enum ProjectionStage { Modulate, Normalize, Project, PositionQuery, PositionKey, }
+enum BlockStage
+{
+    Modulate, Normalize, Project, PositionQuery, PositionKey,
+    Attend, ProjectAttention, Residual, NormalizeFfn, ProjectHidden, GateHidden, ProjectOutput,
+}
 
-void RecordProjectionStage(ref Recording recording, ref BlockOwner owner, BlockFrame frame, ProjectionStage stage)
+// These role numbers are the small legacy recording transport, not enum tags.
+Result<BlockStage, VulkanError> DecodeBlockStage(uint32 role)
+{
+    return match (role) {
+        1 => Result::Ok(BlockStage::Modulate),
+        2 => Result::Ok(BlockStage::Normalize),
+        3 => Result::Ok(BlockStage::Project),
+        4 => Result::Ok(BlockStage::PositionQuery),
+        5 => Result::Ok(BlockStage::PositionKey),
+        7 => Result::Ok(BlockStage::Attend),
+        8 => Result::Ok(BlockStage::ProjectAttention),
+        9 => Result::Ok(BlockStage::Residual),
+        10 => Result::Ok(BlockStage::NormalizeFfn),
+        11 => Result::Ok(BlockStage::ProjectHidden),
+        12 => Result::Ok(BlockStage::GateHidden),
+        13 => Result::Ok(BlockStage::ProjectOutput),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+
+void RecordStage(ref Recording recording, ref BlockOwner owner, BlockFrame frame, BlockStage stage)
 {
     match (stage) {
-        ProjectionStage::Modulate => {
+        BlockStage::Modulate => {
             Binding[8] adaln = [ReadBuffer(0, View(frame, BlockBuffer::Timestep)), ReadBuffer(1, frame.weights[1]), ReadBuffer(2, frame.weights[0]),
                 WriteBuffer(3, View(frame, BlockBuffer::AdaLnProjection)), WriteBuffer(4, View(frame, BlockBuffer::AttentionScale)), WriteBuffer(5, View(frame, BlockBuffer::AttentionGate)),
                 WriteBuffer(6, View(frame, BlockBuffer::MlpScale)), WriteBuffer(7, View(frame, BlockBuffer::MlpGate))];
             uint32[2] adalnPush = [15360, 256];
             DispatchBlock(ref recording, ref owner, 1, ReadOnlySpan(adaln), AsBytes(ReadOnlySpan(adalnPush)), 60, 1);
         }
-        ProjectionStage::Normalize => {
+        BlockStage::Normalize => {
             Binding[5] norm = [ReadBuffer(0, View(frame, BlockBuffer::Input)), ReadBuffer(1, frame.weights[6]),
                 ReadBuffer(2, View(frame, BlockBuffer::AttentionScale)), WriteBuffer(3, View(frame, BlockBuffer::Modulated)), WriteBuffer(4, View(frame, BlockBuffer::NormAudit))];
             RowPush[1] normPush = [RowPush{1.0e-5, 1024, 3840, 0}];
             DispatchBlock(ref recording, ref owner, 2, ReadOnlySpan(norm), AsBytes(ReadOnlySpan(normPush)), 1024, 1);
         }
-        ProjectionStage::Project => {
+        BlockStage::Project => {
             Binding[3] qkv = [ReadBuffer(0, View(frame, BlockBuffer::Modulated)), ReadBuffer(1, frame.weights[5]), WriteBuffer(2, View(frame, BlockBuffer::Qkv))];
             uint32[4] qkvPush = [1024, 3840, 11520, 0];
             DispatchBlock(ref recording, ref owner, 3, ReadOnlySpan(qkv), AsBytes(ReadOnlySpan(qkvPush)), 64, 720);
         }
-        ProjectionStage::PositionQuery => {
+        BlockStage::PositionQuery => {
             HeadPush[1] headPush = [HeadPush{1.0e-5, 1024, 30, 128}];
             Binding[3] q = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[4]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
             DispatchBlock(ref recording, ref owner, 4, ReadOnlySpan(q), AsBytes(ReadOnlySpan(headPush)), 30720, 1);
         }
-        ProjectionStage::PositionKey => {
+        BlockStage::PositionKey => {
             HeadPush[1] headPush = [HeadPush{1.0e-5, 1024, 30, 128}];
             Binding[3] k = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[2]), WriteBuffer(2, View(frame, BlockBuffer::NormAudit))];
             DispatchBlock(ref recording, ref owner, 5, ReadOnlySpan(k), AsBytes(ReadOnlySpan(headPush)), 30720, 1);
+        }
+        BlockStage::Attend => {
+            Binding[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Qkv)),
+                WriteBuffer(1, View(frame, BlockBuffer::Attention)), WriteBuffer(2, View(frame, BlockBuffer::Audit))];
+            uint32[4] push = [1024, 30, 128, 11520];
+            DispatchBlock(ref recording, ref owner, 7, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 30720, 1);
+        }
+        BlockStage::ProjectAttention => {
+            Binding[3] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Attention)), ReadBuffer(1, frame.weights[3]),
+                WriteBuffer(2, View(frame, BlockBuffer::AttentionProjection))];
+            uint32[4] push = [1024, 3840, 3840, 0];
+            DispatchBlock(ref recording, ref owner, 8, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 64, 240);
+        }
+        BlockStage::Residual => {
+            Binding[5] bindings = [ReadBuffer(0, View(frame, BlockBuffer::AttentionProjection)), ReadBuffer(1, frame.weights[7]),
+                ReadBuffer(2, View(frame, BlockBuffer::AttentionGate)), ReadBuffer(3, View(frame, BlockBuffer::Input)),
+                WriteBuffer(4, View(frame, BlockBuffer::AttentionResidual))];
+            RowPush[1] push = [RowPush{1.0e-5, 1024, 3840, 0}];
+            DispatchBlock(ref recording, ref owner, 9, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 1024, 1);
+        }
+        BlockStage::NormalizeFfn => {
+            Binding[5] bindings = [ReadBuffer(0, View(frame, BlockBuffer::AttentionResidual)), ReadBuffer(1, frame.weights[11]),
+                ReadBuffer(2, View(frame, BlockBuffer::MlpScale)), WriteBuffer(3, View(frame, BlockBuffer::NormAudit)),
+                WriteBuffer(4, View(frame, BlockBuffer::Modulated))];
+            RowPush[1] push = [RowPush{1.0e-5, 1024, 3840, 0}];
+            DispatchBlock(ref recording, ref owner, 10, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 1024, 1);
+        }
+        BlockStage::ProjectHidden => {
+            Binding[7] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Modulated)), ReadBuffer(1, frame.weights[8]),
+                ReadBuffer(2, frame.weights[10]), WriteBuffer(3, View(frame, BlockBuffer::Attention)),
+                WriteBuffer(4, View(frame, BlockBuffer::AttentionProjection)), WriteBuffer(5, View(frame, BlockBuffer::NormAudit)),
+                WriteBuffer(6, View(frame, BlockBuffer::Qkv))];
+            uint32[4] push = [1024, 3840, 10240, 0];
+            DispatchBlock(ref recording, ref owner, 11, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 64, 640);
+        }
+        BlockStage::GateHidden => {
+            Binding[4] bindings = [WriteBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, View(frame, BlockBuffer::Attention)),
+                ReadBuffer(2, View(frame, BlockBuffer::AttentionProjection)), ReadBuffer(3, View(frame, BlockBuffer::NormAudit))];
+            uint32[4] push = [10485760, 0, 0, 0];
+            DispatchBlock(ref recording, ref owner, 12, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 40960, 1);
+        }
+        BlockStage::ProjectOutput => {
+            Binding[7] bindings = [ReadBuffer(0, View(frame, BlockBuffer::Qkv)), ReadBuffer(1, frame.weights[9]),
+                ReadBuffer(2, frame.weights[12]), ReadBuffer(3, View(frame, BlockBuffer::MlpGate)),
+                ReadBuffer(4, View(frame, BlockBuffer::AttentionResidual)), WriteBuffer(5, View(frame, BlockBuffer::Input)),
+                WriteBuffer(6, View(frame, BlockBuffer::Attention))];
+            FfnOutputPush[1] push = [FfnOutputPush{1.0e-5, 1024, 3840, 10240}];
+            DispatchBlock(ref recording, ref owner, 13, ReadOnlySpan(bindings), AsBytes(ReadOnlySpan(push)), 1024, 1);
         }
     }
 }
@@ -320,16 +396,89 @@ Result<void, VulkanError> RecordPrefix(ref Recording recording, ref BlockOwner o
     }
     if (owner.timed) { discard Timestamp(ref recording); }
     if (resident == 0) { Capture(ref recording, frame, stage, 0)?; }
-    ProjectionStage[5] schedule = [ProjectionStage::Modulate, ProjectionStage::Normalize,
-        ProjectionStage::Project, ProjectionStage::PositionQuery, ProjectionStage::PositionKey];
+    BlockStage[5] schedule = [BlockStage::Modulate, BlockStage::Normalize,
+        BlockStage::Project, BlockStage::PositionQuery, BlockStage::PositionKey];
     for (index in 0..5) {
-        RecordProjectionStage(ref recording, ref owner, frame, schedule[index]);
+        RecordStage(ref recording, ref owner, frame, schedule[index]);
         if (owner.timed) { discard Timestamp(ref recording); }
         Capture(ref recording, frame, stage, (index + 1) as uint32)?;
     }
     // Publish writes for later C/Concept compute and transfer consumers.
     ConceptVkCmdBarrier(recording.device, recording.commands,
         ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+    return Result::Ok();
+}
+
+enum TailSource { Contiguous(BlockBuffer buffer), HiddenW3, }
+record struct TailCapture { uint32 boundary; TailSource source; uint64 bytes; };
+
+Result<Option<TailCapture>, VulkanError> PlanAttentionCapture(uint32 stage)
+{
+    return match (stage) {
+        0 => Result::Ok(Option::None),
+        1 => Result::Ok(Option::Some(TailCapture{2, TailSource::Contiguous(BlockBuffer::Attention), 15728640})),
+        2 => Result::Ok(Option::Some(TailCapture{2, TailSource::Contiguous(BlockBuffer::AttentionProjection), 15728640})),
+        3 => Result::Ok(Option::Some(TailCapture{2, TailSource::Contiguous(BlockBuffer::AttentionResidual), 15728640})),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+Result<Option<TailCapture>, VulkanError> PlanFfnCapture(uint32 stage)
+{
+    return match (stage) {
+        0 => Result::Ok(Option::None),
+        1 => Result::Ok(Option::Some(TailCapture{0, TailSource::Contiguous(BlockBuffer::NormAudit), 15728640})),
+        2 => Result::Ok(Option::Some(TailCapture{0, TailSource::Contiguous(BlockBuffer::Modulated), 15728640})),
+        3 => Result::Ok(Option::Some(TailCapture{1, TailSource::Contiguous(BlockBuffer::Qkv), 41943040})),
+        4 => Result::Ok(Option::Some(TailCapture{1, TailSource::HiddenW3, 41943040})),
+        5 => Result::Ok(Option::Some(TailCapture{2, TailSource::Contiguous(BlockBuffer::Qkv), 41943040})),
+        6 => Result::Ok(Option::Some(TailCapture{3, TailSource::Contiguous(BlockBuffer::Input), 15728640})),
+        7 => Result::Ok(Option::Some(TailCapture{3, TailSource::Contiguous(BlockBuffer::Attention), 15728640})),
+        _ => Result::Error(ErrorFromCode(-6914)),
+    };
+}
+Result<void, VulkanError> CaptureTail(ref Recording recording, BlockFrame frame,
+    Option<TailCapture> plan, uint32 boundary)
+{
+    match (plan) {
+        Option::Some(capture) => {
+            if (capture.boundary != boundary) { return Result::Ok(); }
+            match (capture.source) {
+                TailSource::Contiguous(buffer) => {
+                    CopyBytes(ref recording, View(frame, buffer), 0, View(frame, BlockBuffer::AuditReadback), 0, capture.bytes)?;
+                }
+                TailSource::HiddenW3 => {
+                    CopyBytes(ref recording, View(frame, BlockBuffer::Attention), 0, View(frame, BlockBuffer::AuditReadback), 0, 15728640)?;
+                    CopyBytes(ref recording, View(frame, BlockBuffer::AttentionProjection), 0, View(frame, BlockBuffer::AuditReadback), 15728640, 15728640)?;
+                    CopyBytes(ref recording, View(frame, BlockBuffer::NormAudit), 0, View(frame, BlockBuffer::AuditReadback), 31457280, 10485760)?;
+                }
+            }
+        }
+        Option::None => { }
+    }
+    return Result::Ok();
+}
+Result<void, VulkanError> RecordAttention(ref Recording recording, ref BlockOwner owner,
+    BlockFrame frame, Option<TailCapture> capture)
+{
+    BlockStage[3] schedule = [BlockStage::Attend, BlockStage::ProjectAttention, BlockStage::Residual];
+    for (index in 0..3) { RecordStage(ref recording, ref owner, frame, schedule[index]); }
+    CaptureTail(ref recording, frame, capture, 2)?;
+    match (capture) {
+        Option::Some(plan) => {
+            CopyBytes(ref recording, View(frame, BlockBuffer::Audit), 0, View(frame, BlockBuffer::AuditReadback), 15728640, 256)?;
+        }
+        Option::None => { }
+    }
+    return Result::Ok();
+}
+Result<void, VulkanError> RecordFfn(ref Recording recording, ref BlockOwner owner,
+    BlockFrame frame, Option<TailCapture> capture)
+{
+    BlockStage[4] schedule = [BlockStage::NormalizeFfn, BlockStage::ProjectHidden, BlockStage::GateHidden, BlockStage::ProjectOutput];
+    for (index in 0..4) {
+        RecordStage(ref recording, ref owner, frame, schedule[index]);
+        CaptureTail(ref recording, frame, capture, index as uint32)?;
+    }
     return Result::Ok();
 }
 
@@ -343,6 +492,10 @@ bool TakeFlag(ref BlockOwner owner, uint32 flag)
 Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, BlockProgram program,
     uint32 elements, uint32 stage, uint32 resident)
 {
+    owner.detail = -6914;
+    Option<TailCapture> capture = Option::None;
+    if (program == BlockProgram::Attention) { capture = PlanAttentionCapture(stage)?; }
+    if (program == BlockProgram::Ffn) { capture = PlanFfnCapture(stage)?; }
     owner.detail = -6910;
     if (owner.deviceLost) { return Result::Error(ErrorFromCode(-4)); }
     DrainBlock(ref owner)?;
@@ -350,11 +503,20 @@ Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, Block
     if (TakeFlag(ref owner, 1)) { return Result::Error(ErrorFromCode(-6908)); }
     uint32 queries = 0;
     if (program == BlockProgram::PreAttention and owner.timed) { queries = 7; }
+    bool tail = program == BlockProgram::Attention or program == BlockProgram::Ffn;
+    if (tail and owner.timed) { queries = 2; }
     owned Recording recording = BeginRecordingOn(owner.context.view, queries)?;
     owner.recordings = owner.recordings + 1;
     if (TakeFlag(ref owner, 8)) {
         if (program != BlockProgram::Closed) { owner.detail = -6914; }
         return Result::Error(ErrorFromCode(owner.detail));
+    }
+    if (tail) {
+        // A previous recording may have been produced by another owner or a
+        // legacy audit submission; this recording starts a fresh access ledger.
+        ConceptVkCmdBarrier(recording.device, recording.commands,
+            ComputeStage().raw | TransferStage().raw, 1, ComputeStage().raw | TransferStage().raw);
+        if (owner.timed) { discard Timestamp(ref recording); }
     }
     match (program) {
     BlockProgram::Closed => {
@@ -370,7 +532,10 @@ Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, Block
         RecordIngress(ref recording, ref owner, frame, elements, 0, false)?;
         CopyBytes(ref recording, View(frame, BlockBuffer::Input), 0, View(frame, BlockBuffer::AuditReadback), 0, (elements as uint64) * 4)?;
     }
+    BlockProgram::Attention => { RecordAttention(ref recording, ref owner, frame, capture)?; }
+    BlockProgram::Ffn => { RecordFfn(ref recording, ref owner, frame, capture)?; }
     }
+    if (tail and owner.timed) { discard Timestamp(ref recording); }
     if (TakeFlag(ref owner, 16)) { return Result::Error(ErrorFromCode(-6908)); }
     owner.detail = -6909;
     if (TakeFlag(ref owner, 2)) { return Result::Error(ErrorFromCode(-6909)); }
@@ -388,6 +553,12 @@ Result<void, VulkanError> RunBlock(ref BlockOwner owner, BlockFrame frame, Block
             double elapsed = ElapsedNanoseconds(ref const work, index as uint32, (index + 1) as uint32)?;
             owner.timings[index] = TruncTo<uint64>(elapsed)!;
         }
+    }
+    if (tail and owner.timed) {
+        double elapsed = ElapsedNanoseconds(ref const work, 0, 1)?;
+        int timing = 6;
+        if (program == BlockProgram::Ffn) { timing = 7; }
+        owner.timings[timing] = TruncTo<uint64>(elapsed)!;
     }
     owner.detail = 0;
     return Result::Ok();
@@ -472,9 +643,21 @@ export "C" bool PromBlockLoad(ref BlockOwner owner, PromBlockHost host,
 export "C" int PromBlockRun(ref BlockOwner owner, ref const BlockFrame frame, uint32 mode,
     uint32 elements, uint32 stage, uint32 resident)
 {
-    if (mode > 2) { return -6914; }
+    if (mode > 4) { return -6914; }
     BlockProgram program = BlockProgram::Closed;
     if (mode == 1) { program = BlockProgram::PreAttention; }
     if (mode == 2) { program = BlockProgram::Ingress; }
+    if (mode == 3) { program = BlockProgram::Attention; }
+    if (mode == 4) { program = BlockProgram::Ffn; }
     return BlockCode(ref owner, RunBlock(ref owner, frame, program, elements, stage, resident));
+}
+
+export "C" bool PromBlockRecordStage(ref Recording recording, ref BlockOwner owner,
+    ref const BlockFrame frame, uint32 role)
+{
+    match (DecodeBlockStage(role)) {
+        Result::Ok(stage) => { RecordStage(ref recording, ref owner, frame, stage); return true; }
+        Result::Error(error) => { return false; }
+    }
+    return false;
 }

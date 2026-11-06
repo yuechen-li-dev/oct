@@ -4,7 +4,15 @@ SDSL-V production-source, generated-artifact, benchmark, and audit ownership
 is documented in `docs/SDSL_V_WORKSPACE.md`. The native shader manifest remains
 the production registry's declarative asset inventory.
 
-Current Vulkan reactor file topology (P12 M5 baseline):
+The Concept migration is a maintenance decision. Handwritten Vulkan C became
+difficult to extend and keep correct even with the tooling around it. Concept
+owns typed GPU operations and resource lifetimes; Concept-shaped C++23 remains
+useful for host integration, package adaptation, and boundaries that benefit
+from its existing ecosystem. Each slice replaces an implementation when the
+replacement is simpler and demonstrably works. Language purity and source-line
+ratios are not acceptance criteria.
+
+Current Vulkan reactor file topology:
 
 - `reactor_vulkan.h`
   - shared internal Vulkan reactor declarations and stable `prom_reactor_runtime_*_impl` declarations used by `reactor_api.c`.
@@ -43,17 +51,18 @@ Current Vulkan reactor file topology (P12 M5 baseline):
 - `../reactors/PrometheusModelBlock.concept`
   - owns the resident block's buffers, replacement candidates, package pipelines,
     and pending work. Its named pre-attention stages implement BF16 ingress,
-    AdaLN, normalization/modulation, QKV projection, and Q/K normalization/RoPE.
-    Typed capture plans select audit projections. Static C audit replay borrows
-    the same Concept stage implementation and resources.
+    AdaLN, normalization/modulation, QKV projection, and Q/K normalization/RoPE;
+    its attention and FFN stages complete standalone NoiseRefiner execution.
+    Typed capture plans include the split W3 intermediate. Static C audit replay
+    borrows the same Concept stage implementations and resources.
 - `reactor_concept_model_block_abi.c` and `reactor_concept_model_block.cpp`
-  - C11 packet/view transport and C++23 shader-package adaptation. The remaining
-    C attention/FFN stages borrow Concept allocations; admission, generation
-    bookkeeping, and the larger model/session executors remain migration seams.
-    See [Concept M5](../../../docs/internal/prometheus_concept_model_block_m5.md).
+  - C11 packet/view transport and C++23 shader-package adaptation. All thirteen
+    standalone NoiseRefiner model pipelines belong to Concept; admission,
+    generation bookkeeping, and the larger model/session executors remain
+    migration seams. See [Concept M6](../../../docs/internal/prometheus_concept_model_tail_m6.md).
 - `reactor_vulkan_model_block.c`
   - the remaining model/session policy and execution paths. Closed-block and
-    NoiseRefiner pre-attention execution now delegate to Concept. Pipeline
+    standalone NoiseRefiner execution now delegate to Concept. Pipeline
     interfaces are checked against the selected shader-package variant, while
     the small native shader registry supplies selector metadata.
 - `reactor_vulkan_queue.cpp`

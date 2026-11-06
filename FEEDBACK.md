@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 99 |
+| Resolved | 100 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,29 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-119 — Resident NoiseRefiner read timestamps from an unused legacy query pool
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: After M5 delegated the pre-attention recording to Concept, resident
+NoiseRefiner still called `prom_model_block_resolve_gpu_span` on its old C query
+pool. Concept had recorded its timestamps in a different, owned pool. Waiting
+for the unissued legacy queries could block and could not report the work that
+actually ran. M6's attention/FFN migration would extend the same mismatch.
+
+Resolution: Sum the measured Concept phase spans through the existing evidence
+seam. The independent nonzero M6 witness performs the required block-1 rebind,
+executes two resident replays of the pinned boundary, checks every output element
+against its CPU oracle, and requires nonzero GPU timing. It passes with Normal
+and Verify model-block C output and Vulkan synchronization validation. The
+unmeasured per-submit/per-fence CPU fields are cleared to prevent stale upload
+timings from appearing as execution measurements. See
+`docs/internal/prometheus_concept_model_tail_m6.md`.
+
+---
 
 ### FB-118 — Concept OptionValue field access emitted an ungrouped pointer expression
 

@@ -84,6 +84,28 @@ int prom_concept_block_pipelines(prom_model_block_state* block) {
     }
     return 1;
 }
+static int tail_pipelines(prom_model_block_state* block, prom_model_block_m1b_pipeline* views,
+    int first, int count) {
+    static const uint32_t bindings[] = {3, 3, 5, 5, 7, 4, 7};
+    for (int i = 0; i < count; ++i) {
+        const int index = first + i;
+        const int role = 7 + index;
+        const uint32_t kernel = 30u + (uint32_t)index;
+        if (!load(block, role, kernel, bindings[index], 16)) return 0;
+        views[i].shader_id = kernel;
+        views[i].binding_count = bindings[index];
+        views[i].push_constant_bytes = 16;
+        views[i].concept_block = block;
+        views[i].concept_role = (uint32_t)role;
+    }
+    return 1;
+}
+int prom_concept_block_attention_pipelines(prom_model_block_state* block) {
+    return tail_pipelines(block, block->m1c_pipelines, 0, 3);
+}
+int prom_concept_block_ffn_pipelines(prom_model_block_state* block) {
+    return tail_pipelines(block, block->m1d_pipelines, 3, 4);
+}
 static concept_buffer_range range(const prom_vk_buffer* view) {
     const concept_buffer_range result = {view->buffer, view->size}; return result;
 }
@@ -93,21 +115,22 @@ static concept_block_frame frame_of(const prom_model_block_state* block) {
         &block->resident_boundary_device, &block->adaln_projection, &block->attention_scale,
         &block->attention_gate, &block->mlp_scale, &block->mlp_gate, &block->modulated,
         &block->norm_audit, &block->qkv, &block->attention, &block->audit_readback,
-        &block->output_device, &block->output_readback, &block->audit_device, &block->weight_upload};
+        &block->output_device, &block->output_readback, &block->audit_device, &block->weight_upload,
+        &block->attention_projection, &block->attention_residual};
     concept_block_frame frame;
-    for (int i = 0; i < 21; ++i) frame.buffers.data[i] = range(views[i]);
+    for (int i = 0; i < 23; ++i) frame.buffers.data[i] = range(views[i]);
     for (int i = 0; i < 13; ++i) frame.weights.data[i] = range(&block->weights[i].device);
     return frame;
 }
 void prom_concept_block_record_stage(prom_model_block_state* block, VkCommandBuffer commands, uint32_t role) {
     block_attachment* a = block->concept_owner;
     concept_recording borrowed = {0};
-    const concept_projection_stage stage = {role - 1u};
-    if (!a || role < 1u || role > 5u) abort(); /* Internal closed-portfolio invariant. */
+    const concept_block_frame frame = frame_of(block);
+    if (!a) abort(); /* Internal closed-portfolio invariant. */
     borrowed.device = PromBlockDevice(&a->owner);
     borrowed.commands = commands;
     borrowed.submitted = true; /* This reference can never free the caller's recording. */
-    concept_prometheus_model_block_record_projection_stage(&borrowed, &a->owner, frame_of(block), stage);
+    if (!PromBlockRecordStage(&borrowed, &a->owner, &frame, role)) abort();
 }
 int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
     uint32_t mode, uint32_t elements, uint32_t stage, uint32_t resident, int32_t* detail) {
@@ -115,7 +138,7 @@ int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block
     const concept_block_frame frame = frame_of(block);
     uint64_t begin = prom_reduction_now_ns();
     const uint64_t recordings = PromBlockRecordings(&a->owner), submissions = PromBlockSubmissions(&a->owner), waits = PromBlockWaits(&a->owner);
-    if (mode > CONCEPT_BLOCK_PROGRAM_INGRESS) { *detail = PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST; return 0; }
+    if (mode > CONCEPT_BLOCK_PROGRAM_FFN) { *detail = PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST; return 0; }
     uint32_t flags = 0;
     if ((state->reduction_test_flags & PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD) != 0u) flags |= 1u;
     if ((block->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u ||
@@ -125,6 +148,10 @@ int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block
     if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) flags |= 8u;
     if ((block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) flags |= 16u;
     PromBlockSetFlags(&a->owner, flags);
+    /* Concept currently instruments whole execution and GPU stages. Do not
+       publish CPU phase timings left over from a legacy upload submission. */
+    block->last_queue_submit_ns = 0;
+    block->last_fence_wait_ns = 0;
     *detail = PromBlockRun(&a->owner, &frame, mode, elements, stage, resident);
     flags = PromBlockFlags(&a->owner);
     /* A combined injection survives until its actual phase is reached. */
@@ -140,7 +167,16 @@ int prom_concept_block_run(prom_reduction_runtime_state* state, prom_model_block
             block->gpu_compute_ns = 0;
             for (int i = 0; i < 6; ++i) { block->m1b_boundary_gpu_ns[i] = PromBlockTiming(&a->owner, i); block->gpu_compute_ns += block->m1b_boundary_gpu_ns[i]; }
         }
+        if (mode == 3 || mode == 4) block->gpu_compute_ns = PromBlockTiming(&a->owner, mode == 3 ? 6 : 7);
         block->last_execution_ns = prom_reduction_elapsed_ns(begin, prom_reduction_now_ns());
     }
     return *detail == 0;
+}
+int prom_concept_block_attention_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
+    uint32_t stage, int capture, int32_t* detail) {
+    return prom_concept_block_run(state, block, CONCEPT_BLOCK_PROGRAM_ATTENTION, 0, capture ? stage : 0, 0, detail);
+}
+int prom_concept_block_ffn_run(prom_reduction_runtime_state* state, prom_model_block_state* block,
+    uint32_t stage, int capture, int32_t* detail) {
+    return prom_concept_block_run(state, block, CONCEPT_BLOCK_PROGRAM_FFN, 0, capture ? stage : 0, 0, detail);
 }
