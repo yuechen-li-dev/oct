@@ -14,7 +14,7 @@ report is historical evidence, not the current issue count.
 
 | Status | Entries |
 | --- | ---: |
-| Open | 7 |
+| Open | 8 |
 | Deferred | 11 |
 | Resolved | 119 |
 | Superseded | 1 |
@@ -23,6 +23,26 @@ report is historical evidence, not the current issue count.
 
 Newest first. These entries remain open; their presence is not an instruction
 to change the implementation during unrelated work.
+
+### FB-139 — Local Windows corpus cleanup intermittently retains a test executable
+
+Date: 2026-11-06
+
+Status: Open
+
+Observation: The full local portable corpus run completed after 475.93 s with
+three failures in `Language/Types/Arrays/valid/compiled`. Removing the shared
+`typed_var_empty_array_m1` executable returned `Access is denied`; the directory
+reported 33 passing facts and three cleanup failures. The same unchanged
+directory passed alone in 19.66 s. The broad run remains failed.
+
+Suggestion: Investigate executable retirement and external file-handle/scanner
+interference before changing cleanup policy. The cause is not established.
+Keep cleanup failures visible and retain compiled execution requirements.
+This is outside FFT's numerical and GPU ownership path.
+Evidence: `.tmp/m12-corpus-full.log` and `.tmp/m12-corpus-array-rerun.log`.
+
+---
 
 ### FB-117 — Parallel native qualification can exhaust the mixed-call host deadline
 
@@ -2413,7 +2433,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-139**. Put a new open issue at
+Use the next unused identifier, currently **FB-140**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

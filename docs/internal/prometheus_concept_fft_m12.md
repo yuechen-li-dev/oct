@@ -131,6 +131,13 @@ absent path. The strict benchmark test is included in ordinary integration CI.
 Targeted corpus routing and benchmark-owner reruns pass. No native assertions
 or compiled execution requirements were relaxed; FB-138 records this repair.
 
+The complete local portable corpus rerun finished after 475.93 s with three
+Windows executable-cleanup failures in the existing array directory (33 facts
+passed there). That unchanged directory passed alone in 19.66 s. The broad
+local integration run is retained as failed, not relabeled green; FB-139 leaves
+the cleanup cause open. This is distinct from the passed fast Go suite and the
+targeted FFT/native qualification.
+
 This is a Windows GPU qualification; Linux GPU execution and other devices are
 not claimed. Concept compiler/library sources and the frozen Zig compiler are
 unchanged; the frozen Zig suites were skipped.
