@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 112 |
+| Resolved | 114 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,46 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-133 — Native launcher failure test depended on an installed Concept distribution
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: Oct #893 Windows CI failed TestWindowsNativeBuildPropagatesCompilerFailure
+before reaching its fake compiler: the runner has no sibling Concept distribution.
+The launcher returned setup error 1 instead of the expected compiler exit 17.
+
+Resolution: The orchestration test supplies a temporary prerequisite header and an
+executable package-tool fixture handling exactly the manifest-check and Concept
+build invocations. It still runs the real launcher and requires the fake compiler's
+exit 17 and exact failed-stage message. Production setup checks and build behavior
+are unchanged. Both affected packages pass locally; the PR verification runs through
+the PR's Windows lane, where checkout and temp roots also differ.
+
+---
+
+### FB-132 — SDSL-V dependency identity failed across Windows drive roots
+
+Date: 2026-11-05
+
+Status: Resolved
+
+Observation: TestNamespaceResolutionUsesExplicitRoots failed in Oct #893 Windows CI
+because filepath.Rel cannot make a C: temp library relative to the D: checkout.
+The same-volume external path also included machine-specific directory placement
+in dependency identity.
+
+Resolution: Keep existing entry-tree relative identities and label dependencies
+under explicit external search roots by ordered root slot and root-relative path.
+Absolute drives and checkout locations do not enter that identity. The test now
+asserts the external identity and unchanged replay identity after relocating its
+library root. Ordinary relative-import identities retain their existing behavior.
+The native SDSL-V module corpus remains the language contract; no shader program
+is embedded in the Go test.
+
+---
 
 ### FB-131 — Async prefetch shared mutable compute telemetry
 
@@ -2260,7 +2300,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-132**. Put a new open issue at
+Use the next unused identifier, currently **FB-134**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.
