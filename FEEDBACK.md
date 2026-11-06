@@ -16,7 +16,7 @@ report is historical evidence, not the current issue count.
 | --- | ---: |
 | Open | 7 |
 | Deferred | 11 |
-| Resolved | 118 |
+| Resolved | 119 |
 | Superseded | 1 |
 
 ## Open issues
@@ -357,6 +357,29 @@ Status: Deferred
 Stabilization note (2026-10-09): Keep the explicit Concepts reference boundary. Cross-field requirements need a Concepts milestone defining construction failure, validation order, field access and JSON decode propagation; adding parser acceptance alone would create a false contract. Refined scalar fields remain supported; no workaround runtime in Oct was added.
 
 ## Resolved issues
+
+### FB-138 — Portable corpus did not register FFT environment lanes
+
+Date: 2026-11-06
+
+Status: Resolved
+
+Observation: Oct #894's first hosted integration run tried the new GPU-required
+facts without a reactor and treated the benchmark-only directory as artifacts,
+failing with `prometheus reactor not found` and `no [Artifact] functions found`.
+The focused local runners had passed, but the global corpus runner also needed
+explicit suite ownership.
+
+Resolution: Register GPU and benchmark suites with the existing checked
+run-elsewhere map. The native runner owns the strict GPU facts in both lanes;
+the benchmark contract now runs in ordinary integration CI. The portable corpus
+sets an intentionally missing reactor so its unavailable-GPU contracts also
+remain deterministic on machines with installed native builds. Targeted corpus
+and benchmark reruns pass; GPU assertions are unchanged.
+Evidence: `.tmp/m12-ci-linux-failed.log`, `.tmp/m12-corpus-routing.log`, and
+`.tmp/m12-ci-bench-owner.log`.
+
+---
 
 ### FB-137 — Shader registry validation lost implementation consistency checks
 
@@ -2390,7 +2413,7 @@ that pass's scope, not all entries now in this file.
 
 ## Adding an issue
 
-Use the next unused identifier, currently **FB-138**. Put a new open issue at
+Use the next unused identifier, currently **FB-139**. Put a new open issue at
 the top of [Open issues](#open-issues), below the section introduction. Keep its
 identifier when its status changes, and move the whole entry to the matching
 section. Add a real date for new findings; do not invent dates for older ones.

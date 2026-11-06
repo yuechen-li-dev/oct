@@ -166,7 +166,6 @@ func TestOctBenchRealSignalBenchmarkExample(t *testing.T) {
 }
 
 func TestOctBenchSupportsPrometheusBlockAndKeepsCPUBenchmarkPath(t *testing.T) {
-	skipUnlessSlow(t)
 	root := filepath.Join("..", "..", "Language", "Prometheus", "bench")
 	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor"))
 	var stdout, stderr bytes.Buffer

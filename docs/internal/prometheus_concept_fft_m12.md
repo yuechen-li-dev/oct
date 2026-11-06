@@ -124,6 +124,13 @@ the exported Octagon report with hardware backend/environment metadata. The
 initial metadata mismatch is retained in `.tmp/m12-native-bench.log`; the
 corrected run is `.tmp/m12-native-bench-final.log`.
 
+The first hosted integration run exposed missing global corpus registration
+for the environment-specific suites. GPU facts and benchmark entry points now
+have explicit checked owners; the portable runner fixes its reactor to an
+absent path. The strict benchmark test is included in ordinary integration CI.
+Targeted corpus routing and benchmark-owner reruns pass. No native assertions
+or compiled execution requirements were relaxed; FB-138 records this repair.
+
 This is a Windows GPU qualification; Linux GPU execution and other devices are
 not claimed. Concept compiler/library sources and the frozen Zig compiler are
 unchanged; the frozen Zig suites were skipped.

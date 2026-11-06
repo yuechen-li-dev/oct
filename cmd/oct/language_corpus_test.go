@@ -40,6 +40,8 @@ var languagePackageSets = []string{
 
 // Directories another test owns, with the reason this test cannot run them.
 var languageRunElsewhere = map[string]string{
+	"Language/Prometheus/gpu":                            "requires hardware Vulkan and shaderFloat64; TestPrometheusFFTRealGpuContractBothLanes in the native lane owns both execution modes",
+	"Language/Prometheus/bench":                          "benchmark-only contract; TestOctBenchSupportsPrometheusBlockAndKeepsCPUBenchmarkPath owns CPU success and strict GPU failure in ordinary integration CI",
 	"Language/Testing/FeedbackStabilization/diagnostics": "deliberately failing assertion fixture; internal/tester/feedback_diagnostics_test.go verifies the diagnostic in both lanes",
 	"Language/Tooling/ConceptCapabilitiesM2/valid":       "artifact entry points that are run with native grants, one of them to be refused; internal/tester/artifact_phase_test.go",
 }
@@ -70,6 +72,9 @@ var languageKnownGaps = []corpusGap{}
 var corpusFactAttribute = regexp.MustCompile(`(?m)^\s*\[(Fact|Theory)\b`)
 
 func TestLanguageCorpusRunsInBothLanes(t *testing.T) {
+	// The portable corpus has no native GPU dependency. Make that environment
+	// explicit even on developer machines with a discoverable reactor DLL.
+	t.Setenv("OCT_PROMETHEUS_REACTOR", filepath.Join(t.TempDir(), "missing-reactor"))
 	repo := filepath.Join("..", "..")
 	directories := languageOctestDirectories(t, repo)
 
