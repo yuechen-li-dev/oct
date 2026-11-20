@@ -138,6 +138,7 @@ var names = withRandomBuiltinNames(map[string]struct{}{
 	"Query.Count":              {},
 	"UIText":                   {},
 	"UIButton":                 {},
+	"UIStyleNode":              {},
 	"UIColumn":                 {},
 	"UIRow":                    {},
 	"UICanvas":                 {},

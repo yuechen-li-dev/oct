@@ -2,6 +2,7 @@ package gio
 
 import (
 	"fmt"
+	"github.com/yuechen-li-dev/oct/internal/machina/uiir"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
 	"github.com/yuechen-li-dev/oct/internal/machina/render"
@@ -19,9 +20,14 @@ const (
 )
 
 type DrawOp struct {
-	Kind DrawOpKind
-	Rect layout.Rect
-	Text string
+	Kind  DrawOpKind
+	Rect  layout.Rect
+	Text  string
+	Fill  render.FillKind
+	Paint *render.Paint
+	Align render.TextAlign
+	Muted bool
+	Color *uiir.RGBA
 }
 
 func Translate(commands []render.Command) ([]DrawOp, error) {
@@ -37,9 +43,9 @@ func Translate(commands []render.Command) ([]DrawOp, error) {
 			}
 			out = append(out, DrawOp{Kind: DrawOpEndFrame})
 		case render.FillRectCommand:
-			out = append(out, DrawOp{Kind: DrawOpFillRect, Rect: c.Rect})
+			out = append(out, DrawOp{Kind: DrawOpFillRect, Rect: c.Rect, Fill: c.Fill, Paint: c.Paint})
 		case render.DrawTextCommand:
-			out = append(out, DrawOp{Kind: DrawOpDrawText, Rect: c.Rect, Text: c.Text})
+			out = append(out, DrawOp{Kind: DrawOpDrawText, Rect: c.Rect, Text: c.Text, Align: c.Align, Muted: c.Muted, Color: c.Color})
 		case render.PushClipCommand:
 			clipDepth++
 			out = append(out, DrawOp{Kind: DrawOpPushClip, Rect: c.Rect})

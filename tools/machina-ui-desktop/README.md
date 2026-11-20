@@ -1,5 +1,12 @@
 # Machina UI Desktop Host (M100 + M100b)
 
+> **Scope (UI-M0 audit, 2026-11-20).** The only `.ui.wasm` this path can load
+> is the hand-assembled M98 counter module emitted by
+> `interpret.EmitMachinaUIWasmArtifact` for runtime-harness tests. No command
+> compiles an Oct program to `.ui.wasm`, so this host has never shown a user's
+> program. To run an Oct UI app, use `oct ui run <app.oct>` (native Gio
+> backend; see `docs/MACHINA_UI_RUN_M0.md`).
+
 This directory contains the desktop-host webview layer for Machina UI.
 
 It keeps the architecture boundary explicit:

@@ -1,5 +1,12 @@
 # Machina UI Native Host (M100 + M100b + M100c)
 
+> **Scope (UI-M0 audit, 2026-11-20).** The only `.ui.wasm` this path can load
+> is the hand-assembled M98 counter module emitted by
+> `interpret.EmitMachinaUIWasmArtifact` for runtime-harness tests. No command
+> compiles an Oct program to `.ui.wasm`, so this host has never shown a user's
+> program. To run an Oct UI app, use `oct ui run <app.oct>` (native Gio
+> backend; see `docs/MACHINA_UI_RUN_M0.md`).
+
 M100 established the first native-host trajectory for Machina UI with a **webview-backed host layer**.
 
 M100b completes the first real native shell slice by adding a **real OS webview binding** around the existing shared host runtime.

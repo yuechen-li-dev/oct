@@ -82,3 +82,16 @@ fn DefaultStyle() -> Style {
         Padding: InsetsAll(0px)
     }
 }
+
+// Styled paints a node with a Style: Background fills the node's rect,
+// BorderColor and BorderWidth outline it, Radius rounds its corners, and
+// Foreground colors the node's own text (a Text's content or a Button's
+// label). A styled Button replaces the default button chrome.
+// Padding is not applied yet: it changes layout geometry.
+fn Styled(node: UI, style: Style) -> UI {
+    return UIStyleNode(node, [
+        style.Background.R, style.Background.G, style.Background.B, style.Background.A,
+        style.Foreground.R, style.Foreground.G, style.Foreground.B, style.Foreground.A,
+        style.BorderColor.R, style.BorderColor.G, style.BorderColor.B, style.BorderColor.A
+    ], style.BorderWidth, style.Radius)
+}

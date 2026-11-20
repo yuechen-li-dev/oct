@@ -143,7 +143,7 @@ Layout is unit-aware:
 
 No CSS/class/cascade system is part of M0.
 
-M112 adds a small immutable typed style-data surface in `Libraries/UI` (`UI.Color`, `UI.Insets`, `UI.TextStyle`, `UI.Style` plus deterministic helper constructors). This remains data-only; style application in lowering/render pipelines is future work.
+M112 adds a small immutable typed style-data surface in `Libraries/UI` (`UI.Color`, `UI.Insets`, `UI.TextStyle`, `UI.Style` plus deterministic helper constructors). M117 applies them: `UI.Styled(node, style)` attaches a `Style` to a node, and lowering, render and the native backend paint its background, border, radius and text foreground. `Padding` and `UI.TextStyle` are not applied yet. The style is part of the node's signature.
 
 Small dispatch helpers are available for explicit update functions: `UI.EventValueDispatch`, `UI.ResolveEventValue`, and `UI.MatchEventPrefix`. These helpers are deterministic and do not provide generic record mutation or state-framework behavior.
 

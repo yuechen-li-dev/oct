@@ -144,6 +144,46 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 			return evalResult{}, fmt.Errorf("runtime invariant violation: UIButton expects (String, String, Bool)")
 		}
 		return evalResult{value: Value{Kind: ValueUI, UI: &uiirNode{Kind: uiirNodeButton, Label: label.value.Text, Event: event.value.Text, Enabled: enabled.value.Bool}}}, nil
+	case "UIStyleNode":
+		if len(argumentExprs) != 4 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: UIStyleNode expects 4 arguments")
+		}
+		args := make([]Value, 4)
+		for idx, expr := range argumentExprs {
+			r, err := i.evalExpr(env, pkgName, expr)
+			if err != nil {
+				return evalResult{}, err
+			}
+			if r.hasError {
+				return evalResult{hasError: true, errorVal: r.errorVal}, nil
+			}
+			args[idx] = r.value
+		}
+		if args[0].Kind != ValueUI || args[0].UI == nil || args[1].Kind != ValueArray || args[2].Kind != ValueInt || args[3].Kind != ValueInt {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: UIStyleNode expects (UI, Int[], Int<px>, Int<px>)")
+		}
+		if len(args[1].Array) != 12 {
+			return evalResult{}, fmt.Errorf("UIStyleNode expects 12 color channels (background, foreground, border RGBA), got %d", len(args[1].Array))
+		}
+		var ch [12]uint8
+		for idx, v := range args[1].Array {
+			if v.Kind != ValueInt || v.Int < 0 || v.Int > 255 {
+				return evalResult{}, fmt.Errorf("UIStyleNode color channel %d must be an Int in 0..255, got %s", idx, v.String())
+			}
+			ch[idx] = uint8(v.Int)
+		}
+		if args[2].Int < 0 || args[3].Int < 0 {
+			return evalResult{}, fmt.Errorf("UIStyleNode border width and radius must be non-negative")
+		}
+		node := cloneUIIR(args[0].UI)
+		node.Style = &machinauiir.StyleSpec{
+			Background:  machinauiir.RGBA{R: ch[0], G: ch[1], B: ch[2], A: ch[3]},
+			Foreground:  machinauiir.RGBA{R: ch[4], G: ch[5], B: ch[6], A: ch[7]},
+			BorderColor: machinauiir.RGBA{R: ch[8], G: ch[9], B: ch[10], A: ch[11]},
+			BorderWidth: float64(args[2].Int),
+			Radius:      float64(args[3].Int),
+		}
+		return evalResult{value: Value{Kind: ValueUI, UI: node}}, nil
 	case "UIColumn", "UIRow", "UICanvas", "UIGrid":
 		if len(argumentExprs) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)

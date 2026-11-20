@@ -146,8 +146,32 @@ let card = base with {
 }
 ```
 
-M112 is an Oct-facing style data contract only.
-Applying styles in lowering/render backends is future work.
+### Applying a style (M117)
+
+`UI.Styled(node, style)` attaches a `Style` to a node. Lowering carries it to
+render, and native backends paint it:
+
+- `Background` fills the node's rect, `BorderColor` and `BorderWidth` outline
+  it, and `Radius` rounds its corners.
+- `Foreground` colors the node's own text (a `Text`'s content or a `Button`'s
+  label). It is not inherited by children.
+- A styled `Button` replaces the default button chrome; a disabled one still
+  renders its label muted.
+- The style is part of the node's identity: `UI.Signature` changes with it.
+
+Not applied yet: `Padding` (it changes layout geometry) and `UI.TextStyle`
+(text size needs real text measurement in layout).
+
+```oct
+let badge = UI.Styled(UI.Text("Status: heating"), UI.DefaultStyle() with {
+    Background: UI.Rgb(255, 152, 0)
+    Foreground: UI.Rgb(255, 255, 255)
+    Radius: 4px
+})
+```
+
+Write `Color` literals one field per line: on a single line, `B: 0 A: 255`
+parses `0 A` as zero amperes, because `A` is the SI unit of current.
 
 ## Canvas/content authoring rule
 

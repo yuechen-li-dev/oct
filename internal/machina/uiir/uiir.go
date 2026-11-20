@@ -43,6 +43,19 @@ type BoxSpec struct {
 
 type ResolvedRect struct{ X, Y, Width, Height float64 }
 
+// RGBA is an 8-bit-per-channel color.
+type RGBA struct{ R, G, B, A uint8 }
+
+// StyleSpec is the paint a node asks for (Libraries/UI `Style`). Padding is
+// not part of it yet: insets change layout geometry and are deferred.
+type StyleSpec struct {
+	Background  RGBA
+	Foreground  RGBA
+	BorderColor RGBA
+	BorderWidth float64
+	Radius      float64
+}
+
 type Node struct {
 	NodeID   string
 	Key      string
@@ -58,6 +71,7 @@ type Node struct {
 	Cell     *CellSpec
 	GridRows int64
 	GridCols int64
+	Style    *StyleSpec
 }
 
 type GridTrackKind string
@@ -118,6 +132,15 @@ type serializedNode struct {
 	Cell     *serializedCell  `json:"cell"`
 	GridRows int64            `json:"gridRows,omitempty"`
 	GridCols int64            `json:"gridColumns,omitempty"`
+	// Style is omitted when unset so unstyled documents keep their bytes.
+	Style *serializedStyle `json:"style,omitempty"`
+}
+type serializedStyle struct {
+	Background  [4]uint8 `json:"background"`
+	Foreground  [4]uint8 `json:"foreground"`
+	BorderColor [4]uint8 `json:"borderColor"`
+	BorderWidth float64  `json:"borderWidth"`
+	Radius      float64  `json:"radius"`
 }
 type serializedGrid struct {
 	Columns   []serializedGridTrack `json:"columns"`
@@ -217,8 +240,17 @@ func Clone(node *Node) *Node {
 	for _, c := range node.Children {
 		ch = append(ch, Clone(c))
 	}
-	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout), Grid: cloneGrid(node.Grid), Cell: cloneCell(node.Cell), GridRows: node.GridRows, GridCols: node.GridCols}
+	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout), Grid: cloneGrid(node.Grid), Cell: cloneCell(node.Cell), GridRows: node.GridRows, GridCols: node.GridCols, Style: cloneStyle(node.Style)}
 }
+func cloneStyle(s *StyleSpec) *StyleSpec {
+	if s == nil {
+		return nil
+	}
+	c := *s
+	return &c
+}
+func rgbaArray(c RGBA) [4]uint8    { return [4]uint8{c.R, c.G, c.B, c.A} }
+func rgbaOf(a [4]uint8) RGBA       { return RGBA{R: a[0], G: a[1], B: a[2], A: a[3]} }
 func WithNodeIDs(node *Node) *Node { root := Clone(node); assignNodeIDs(root, "0"); return root }
 func assignNodeIDs(node *Node, id string) {
 	if node == nil {
@@ -237,6 +269,7 @@ func Signature(node *Node) string {
 	if node.Key != "" {
 		p += "{key=" + node.Key + "}"
 	}
+	p += styleSuffix(node.Style)
 	switch node.Kind {
 	case NodeText:
 		return p + layoutSuffix(node.Layout) + "(" + node.Text + ")"
@@ -286,6 +319,10 @@ func serializeNode(node *Node) serializedNode {
 	}
 	if node.Layout != nil {
 		s.Layout = &serializedRect{X: node.Layout.X, Y: node.Layout.Y, Width: node.Layout.Width, Height: node.Layout.Height}
+	}
+	if node.Style != nil {
+		s.Style = &serializedStyle{Background: rgbaArray(node.Style.Background), Foreground: rgbaArray(node.Style.Foreground),
+			BorderColor: rgbaArray(node.Style.BorderColor), BorderWidth: node.Style.BorderWidth, Radius: node.Style.Radius}
 	}
 	switch node.Kind {
 	case NodeText:
@@ -355,6 +392,10 @@ func deserializeNode(node serializedNode) (*Node, error) {
 	}
 	if node.Layout != nil {
 		r.Layout = &ResolvedRect{X: node.Layout.X, Y: node.Layout.Y, Width: node.Layout.Width, Height: node.Layout.Height}
+	}
+	if node.Style != nil {
+		r.Style = &StyleSpec{Background: rgbaOf(node.Style.Background), Foreground: rgbaOf(node.Style.Foreground),
+			BorderColor: rgbaOf(node.Style.BorderColor), BorderWidth: node.Style.BorderWidth, Radius: node.Style.Radius}
 	}
 	switch k {
 	case NodeText:
@@ -474,4 +515,13 @@ func boxSignature(spec *BoxSpec) string {
 		return fmt.Sprintf("absolute(z=%d,%.2f,%.2f,%.2f,%.2f)", spec.ZOrder, spec.X, spec.Y, spec.Width, spec.Height)
 	}
 	return fmt.Sprintf("anchored(z=%d,%.2f,%.2f,%.2f,%.2f)", spec.ZOrder, spec.Left, spec.Top, spec.Right, spec.Bottom)
+}
+
+// styleSuffix is empty for unstyled nodes so existing signatures are stable.
+func styleSuffix(s *StyleSpec) string {
+	if s == nil {
+		return ""
+	}
+	hex := func(c RGBA) string { return fmt.Sprintf("%02x%02x%02x%02x", c.R, c.G, c.B, c.A) }
+	return fmt.Sprintf("{style=bg:%s,fg:%s,border:%s/%g,radius:%g}", hex(s.Background), hex(s.Foreground), hex(s.BorderColor), s.BorderWidth, s.Radius)
 }

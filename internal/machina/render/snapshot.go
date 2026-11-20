@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"github.com/yuechen-li-dev/oct/internal/machina/uiir"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
@@ -49,12 +50,29 @@ func (SnapshotRecorder) Record(commands []Command) (string, error) {
 			if !frameOpen || frameClosed {
 				return "", fmt.Errorf("render.err.command_outside_frame: DrawText at index %d must be inside active frame", i)
 			}
-			lines = append(lines, fmt.Sprintf("DrawText node=%s rect=%s text=%q", c.NodeID, fmtRect(c.Rect), c.Text))
+			line := fmt.Sprintf("DrawText node=%s rect=%s text=%q", c.NodeID, fmtRect(c.Rect), c.Text)
+			if c.Align != AlignStart {
+				line += " align=" + string(c.Align)
+			}
+			if c.Muted {
+				line += " muted"
+			}
+			if c.Color != nil {
+				line += " color=" + hexRGBA(*c.Color)
+			}
+			lines = append(lines, line)
 		case FillRectCommand:
 			if !frameOpen || frameClosed {
 				return "", fmt.Errorf("render.err.command_outside_frame: FillRect at index %d must be inside active frame", i)
 			}
-			lines = append(lines, fmt.Sprintf("FillRect node=%s rect=%s", c.NodeID, fmtRect(c.Rect)))
+			line := fmt.Sprintf("FillRect node=%s rect=%s", c.NodeID, fmtRect(c.Rect))
+			if c.Fill != FillPlain {
+				line += " fill=" + string(c.Fill)
+			}
+			if c.Paint != nil {
+				line += fmt.Sprintf(" bg=%s border=%s/%.2f radius=%.2f", hexRGBA(c.Paint.Background), hexRGBA(c.Paint.Border), c.Paint.BorderWidth, c.Paint.Radius)
+			}
+			lines = append(lines, line)
 		case PushClipCommand:
 			if !frameOpen || frameClosed {
 				return "", fmt.Errorf("render.err.command_outside_frame: PushClip at index %d must be inside active frame", i)
@@ -83,3 +101,5 @@ func (SnapshotRecorder) Record(commands []Command) (string, error) {
 func fmtRect(r layout.Rect) string {
 	return fmt.Sprintf("(%.2f,%.2f,%.2f,%.2f)", r.X, r.Y, r.Width, r.Height)
 }
+
+func hexRGBA(c uiir.RGBA) string { return fmt.Sprintf("#%02x%02x%02x%02x", c.R, c.G, c.B, c.A) }

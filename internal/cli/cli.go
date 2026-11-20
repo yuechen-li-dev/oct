@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"github.com/yuechen-li-dev/oct/internal/lsp"
 	"io"
 	"os"
 	"path/filepath"
@@ -77,6 +78,29 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 	}
 
 	switch command {
+	case "ui":
+		if isHelpArg(args[1:]) || len(args) == 1 {
+			return writeUIHelp(stdout)
+		}
+		options, err := parseUIOptions(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		options.path = resolveWorkingPath(workingDir, options.path)
+		if err := runUICommand(options, stdout); err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		return nil
+	case "lsp":
+		if isHelpArg(args[1:]) {
+			_, err := fmt.Fprintln(stdout, "usage: oct lsp\nRun the Oct language server over stdio (Language Server Protocol). Editors launch this; it is not interactive.\nProvides diagnostics, formatting, semantic highlighting and document symbols.")
+			return err
+		}
+		in := ctx.Stdin
+		if in == nil {
+			in = os.Stdin
+		}
+		return lsp.Serve(in, stdout, stderr)
 	case "atlas":
 		return executeAtlas(args[1:], stdout, stderr, workingDir)
 	case "templates":
@@ -1393,7 +1417,7 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	return result, nil
 }
 func writeTopLevelHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  check      Validate external semantic contracts\n  test       Run octest suites\n  artifact   Run artifact generators\n  atlas      Compile and query semantic documentation graphs\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  templates  Discover documented *.template.oct declarations\n  json       Infer the declarations a JSON document loads into\n  sdslv      Check, test, emit HLSL, and generate SPIR-V/header artifacts from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  check      Validate external semantic contracts\n  test       Run octest suites\n  artifact   Run artifact generators\n  atlas      Compile and query semantic documentation graphs\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  lsp        Run the language server (used by editors)\n  ui         Run or check a Machina UI app\n  templates  Discover documented *.template.oct declarations\n  json       Infer the declarations a JSON document loads into\n  sdslv      Check, test, emit HLSL, and generate SPIR-V/header artifacts from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
 	return err
 }
 

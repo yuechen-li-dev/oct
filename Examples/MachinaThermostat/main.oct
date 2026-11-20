@@ -1,0 +1,75 @@
+package Main
+
+import UI
+
+// The setpoint is a thermodynamic temperature in kelvin. The `C` literal
+// suffix is authoring sugar that lowers to kelvin (20.0C == 293.15K).
+record Thermostat {
+    Setpoint: Float<K>
+    Heating: Bool
+}
+
+fn Init() -> Thermostat {
+    return Thermostat {
+        Setpoint: 20.0C
+        Heating: false
+    }
+}
+
+fn RaiseEvent() -> UI.EventToken {
+    return UI.Token("thermostat.raise")
+}
+
+fn LowerEvent() -> UI.EventToken {
+    return UI.Token("thermostat.lower")
+}
+
+fn ToggleEvent() -> UI.EventToken {
+    return UI.Token("thermostat.toggle")
+}
+
+fn Update(model: Thermostat, event: String) -> Thermostat {
+    if event == UI.EventTokenValue(RaiseEvent()) {
+        return model with { Setpoint: model.Setpoint + 0.5K }
+    }
+    if event == UI.EventTokenValue(LowerEvent()) {
+        return model with { Setpoint: model.Setpoint - 0.5K }
+    }
+    if event == UI.EventTokenValue(ToggleEvent()) {
+        return model with { Heating: not model.Heating }
+    }
+    return model
+}
+
+// Status badge: orange while heating, neutral while idle.
+fn StatusStyle(heating: Bool) -> UI.Style {
+    if heating {
+        return UI.DefaultStyle() with {
+            Background: UI.Rgb(255, 152, 0)
+            Foreground: UI.Rgb(255, 255, 255)
+            BorderColor: UI.Rgb(194, 108, 0)
+            Radius: 4px
+        }
+    }
+    return UI.DefaultStyle() with {
+        Background: UI.Rgb(236, 239, 244)
+        Foreground: UI.Rgb(60, 66, 80)
+        BorderColor: UI.Rgb(205, 210, 220)
+        Radius: 4px
+    }
+}
+
+fn View(model: Thermostat) -> UI {
+    // Display in Celsius: strip the unit, then offset from kelvin.
+    let celsius = BaseUnit(model.Setpoint) - 273.15
+    let status = if model.Heating { "heating" } else { "idle" }
+    return UI.Column([
+        UI.Text("Setpoint: " + FormatFloat(celsius, 1) + " °C"),
+        UI.Styled(UI.Text("Status: " + status), StatusStyle(model.Heating)),
+        UI.Row([
+            UI.Button("Lower", LowerEvent(), celsius > 5.0),
+            UI.Button("Raise", RaiseEvent(), celsius < 30.0),
+            UI.Button("Toggle heating", ToggleEvent(), true)
+        ])
+    ])
+}

@@ -24,10 +24,9 @@ type Semantics struct {
 	Focusable bool
 }
 
-// Style is a placeholder metadata slot consumed by renderer contracts.
-// M112 adds Oct-facing immutable style records in Libraries/UI; wiring those
-// records into lowering metadata is intentionally deferred.
-type Style struct{}
+// Style is the paint a node requested through UI.Styled (Libraries/UI
+// M112 records). Nodes without a style have no entry in Result.Styles.
+type Style uiir.StyleSpec
 
 type Result struct {
 	Rows      []layout.LayoutRow
@@ -57,6 +56,9 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, order int) e
 		return fmt.Errorf("lowering.err.missing_id: node id is required")
 	}
 	row := layout.LayoutRow{ID: id, Parent: parent, Order: order, Frame: layout.FrameSpec{Kind: layout.FixedFrame, Width: 0, Height: 0}}
+	if node.Style != nil {
+		out.Styles[id] = Style(*node.Style)
+	}
 	switch node.Kind {
 	case uiir.NodeText:
 		row.Frame = layout.FrameSpec{Kind: layout.FixedFrame, Width: textWidth(node.Text), Height: 20}

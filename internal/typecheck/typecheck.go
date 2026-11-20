@@ -5351,6 +5351,41 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
 	}
 
+	if callee == "UIStyleNode" {
+		// UIStyleNode(node: UI, colors: Int[], borderWidth: Int<px>, radius: Int<px>) -> UI
+		// colors holds background, foreground and border RGBA channels (12
+		// Ints). Libraries/UI `Styled` is the public surface.
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'UIStyleNode' does not accept type arguments")
+		}
+		if len(arguments) != 4 {
+			return ExprType{}, fmt.Errorf("function 'UIStyleNode' expects 4 arguments, got %d", len(arguments))
+		}
+		want := []struct {
+			ok   func(Type) bool
+			name string
+		}{
+			{func(t Type) bool { return t == Type{Base: BaseTypeUI} }, "UI"},
+			{func(t Type) bool {
+				return t.Base == BaseTypeInt && t.IsArray && t.ArrayDepth == 1 && t.Dimension == (Type{}).Dimension
+			}, "Int[]"},
+			{func(t Type) bool { return t == Type{Base: BaseTypeInt, Dimension: uiPixelDimension} }, "Int<px>"},
+			{func(t Type) bool { return t == Type{Base: BaseTypeInt, Dimension: uiPixelDimension} }, "Int<px>"},
+		}
+		for idx, w := range want {
+			argType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if argType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+			}
+			if !w.ok(argType.ValueType) {
+				return ExprType{}, fmt.Errorf("function 'UIStyleNode' argument %d expects %s, got %s", idx+1, w.name, argType.ValueType)
+			}
+		}
+		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+	}
 	if callee == "UISpacer" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'UISpacer' does not accept type arguments")
