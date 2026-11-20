@@ -1,4 +1,5 @@
 #include "reactor_vulkan_sgemm_internal.h"
+#include "reactor_concept_sgemm.h"
 #include "reactor_batch.h"
 
 /*
@@ -470,9 +471,8 @@ int prom_sgemm_batch_execute(prometheus_runtime* rt,
     prom_sgemm_async_task* task = jobs[i];
     if (task == NULL) continue;
     if (task->lifecycle_state == PROM_ASYNC_STATE_SUBMITTED) {
-      VkFence fence = rt->submission_ring[task->physical_slot_id].fence;
       rt->submission_ring_diag.total_forced_waits += 1u;
-      (void)vkWaitForFences(rt->vulkan.device, 1u, &fence, VK_TRUE, UINT64_MAX);
+      (void)prom_concept_sgemm_wait(rt->concept_sgemm_state, task->physical_slot_id);
       (void)prom_async_poll_task(rt, task);
     }
     prom_async_process_completion_feedback(rt);

@@ -23,11 +23,17 @@
 static const prom_sgemm_kernel_dispatch_metadata k_meta_8x8 =
     { 8u, 8u, 1u, 1u, 1u, 1u, 1u, 4u, 4u, 0u, 0u };
 static const prom_sgemm_kernel_dispatch_metadata k_meta_16x16 =
-    { 16u, 16u, 1u, 1u, 16u, 16u, 16u, 1u };
+    { .threads_x = 16u, .threads_y = 16u, .threads_z = 1u,
+      .outputs_per_invocation_m = 1u, .outputs_per_invocation_n = 1u,
+      .tile_m = 16u, .tile_n = 16u, .tile_k = 16u, .unroll_k = 1u };
 static const prom_sgemm_kernel_dispatch_metadata k_meta_reg2x2 =
-    { 8u, 8u, 2u, 2u, 16u, 16u, 16u, 1u };
+    { .threads_x = 8u, .threads_y = 8u, .threads_z = 1u,
+      .outputs_per_invocation_m = 2u, .outputs_per_invocation_n = 2u,
+      .tile_m = 16u, .tile_n = 16u, .tile_k = 16u, .unroll_k = 1u };
 static const prom_sgemm_kernel_dispatch_metadata k_meta_reg2x4 =
-    { 8u, 8u, 2u, 4u, 16u, 32u, 16u, 1u };
+    { .threads_x = 8u, .threads_y = 8u, .threads_z = 1u,
+      .outputs_per_invocation_m = 2u, .outputs_per_invocation_n = 4u,
+      .tile_m = 16u, .tile_n = 32u, .tile_k = 16u, .unroll_k = 1u };
 
 static const prom_shader_asset k_shader_assets[] = {
   META(1, "sgemm-baseline-scalar", PROM_SHADER_SOURCE_SPIRV, "main", PROM_SHADER_AUTHORITY_PRODUCTION),

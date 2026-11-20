@@ -335,11 +335,13 @@ FACT(PrometheusM39bReductionRegistryIsProductionOwnedAndIsolated) {
       PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_PACKED_SHORT,
   };
   ASSERT_EQUAL(expected_shader_ids.size(), prom_shader_registry_reduction_compute_implementation_count(), "M39b must register every fixed production reduction implementation");
+  ASSERT_EQUAL(expected_shader_ids.size(), prom_shader_registry_reduction_shader_asset_count(), "M39b shader and implementation inventories must agree");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_compute_implementation_count(), "promoted reduction implementations must not remain experimental");
-  for (std::size_t i = 0; i < prom_shader_registry_reduction_shader_asset_count(); ++i) {
+  for (std::size_t i = 0; i < expected_shader_ids.size(); ++i) {
     const auto* asset = prom_shader_registry_reduction_shader_asset_at(i);
     const auto* implementation = prom_shader_registry_reduction_compute_implementation_at(i);
     ASSERT_TRUE(asset != nullptr && implementation != nullptr, "reduction registry rows must be complete");
+    if (!asset || !implementation) continue;
     ASSERT_EQUAL(expected_shader_ids[i], asset->shader_id, "reduction shader IDs must remain stable, including packed-short variants");
     ASSERT_EQUAL(expected_implementation_ids[i], implementation->implementation_id, "reduction implementation IDs must remain stable, including packed-short variants");
     ASSERT_EQUAL(PROM_SHADER_AUTHORITY_PRODUCTION, asset->authority, "reduction source authority must be production");
@@ -348,7 +350,11 @@ FACT(PrometheusM39bReductionRegistryIsProductionOwnedAndIsolated) {
     ASSERT_EQUAL(0u, implementation->selector_eligible, "fixed reduction plans must not enter the SGEMM selector");
     ASSERT_EQUAL(1u, implementation->dispatchable, "promoted reduction implementation must remain dispatchable");
     ASSERT_TRUE(implementation->reduction_dispatch != nullptr, "reduction implementation needs typed dispatch metadata");
-    ASSERT_TRUE(std::string(asset->source_path).find("/production/reduction/") != std::string::npos, "promoted reduction source must be confined to its production root");
+    // Source provenance belongs to the package catalog, not this compact
+    // selector projection. The package's source test checks the production root.
+    const std::string variant = "kernel-" + std::to_string(asset->shader_id) + "-default";
+    ASSERT_TRUE(asset->package_variant_id != nullptr && variant == asset->package_variant_id,
+        "reduction selection retains the exact package variant identity");
   }
 }
 FACT(PrometheusShaderRegistryReferencesAreValid) {

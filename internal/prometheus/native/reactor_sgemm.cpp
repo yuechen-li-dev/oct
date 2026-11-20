@@ -3,14 +3,80 @@
 #endif
 
 #include "reactor_vulkan_sgemm_internal.h"
-#include <stdio.h>
+#include <cstdio>
+#include <cstdlib>
 #include "reactor_batch.h"
+#include "reactor_concept_sgemm.h"
+#include "reactor_concept_fft.h"
+#include "reactor_concept_rmsnorm.h"
+#include "concept_vulkan.h"
+#include <array>
+#include <chrono>
+#include <expected>
 
 typedef struct prom_vk_push {
   uint32_t m;
   uint32_t n;
   uint32_t k;
 } prom_vk_push;
+
+static uint64_t prom_wall_clock_now_ns(void);
+extern "C" uint64_t PromSgemmNow(void) { return prom_wall_clock_now_ns(); }
+static uint32_t prom_async_outstanding(const prometheus_runtime* rt);
+
+static int prom_sgemm_prepare_job(prometheus_runtime* rt, uint32_t slot,
+    VkPipeline pipeline, VkDescriptorSet descriptors, VkQueryPool queries, uint32_t queryBase,
+    const prom_vk_buffer* a, const prom_vk_buffer* b, const prom_vk_buffer* c,
+    uint32_t m, uint32_t n, uint32_t k, prom_sgemm_dispatch_geometry geometry,
+    uint32_t path, uint32_t dispatches, uint32_t dedicated = 0, const prom_sgemm_job* placement = nullptr) {
+  if (!rt->concept_sgemm_state) {
+    prom_vk_runtime_services services{};
+    if (prom_reactor_runtime_get_vk_services(rt, &services) != PROM_OK) return VK_ERROR_INITIALIZATION_FAILED;
+    rt->concept_sgemm_state = prom_concept_sgemm_create(&services);
+    if (!rt->concept_sgemm_state) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    if (ConceptVkSetQueueSubmit(services.device, rt, prom_vk_concept_queue_submit) != 0 ||
+        ConceptVkSetQueueSubmitSync(services.device, rt, prom_vk_concept_queue_submit_sync) != 0)
+      return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  const int retired = prom_concept_sgemm_wait(rt->concept_sgemm_state, slot);
+  if (retired != 0) return retired;
+  prom_sgemm_job job{};
+  const prom_vk_buffer* buffers[] = {a, b, c, &rt->staged_upload_a, &rt->staged_upload_b, &rt->staged_readback_c};
+  VkDescriptorBufferInfo infos[3]{};
+  VkWriteDescriptorSet writes[3]{};
+  for (uint32_t i = 0; i < 6; ++i) job.buffers[i] = {buffers[i]->buffer, buffers[i]->size};
+  for (uint32_t i = 0; i < 3; ++i) {
+    infos[i] = {buffers[i]->buffer, 0, buffers[i]->size};
+    writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[i].dstSet = descriptors; writes[i].dstBinding = i;
+    writes[i].descriptorCount = 1; writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[i].pBufferInfo = &infos[i];
+  }
+  if (path != 4 && path != 5) vkUpdateDescriptorSets(rt->vulkan.device, 3, writes, 0, nullptr);
+  job.shader = {pipeline, rt->pipeline_layout, descriptors, queries, queryBase,
+      queries != VK_NULL_HANDLE && rt->timestamp_query_supported != 0};
+  job.m = m; job.n = n; job.k = k;
+  job.x = geometry.groups_x; job.y = geometry.groups_y; job.z = geometry.groups_z;
+  job.path = path; job.dispatches = dispatches; job.dedicated = dedicated;
+  if (placement) {
+    for (uint32_t i = 3; i < 7; ++i) job.buffers[i] = placement->buffers[i];
+    job.uploadMask = placement->uploadMask; job.readback = placement->readback;
+    job.perturbWord = placement->perturbWord; job.shader.timed = 2;
+  }
+  return prom_concept_sgemm_record(rt->concept_sgemm_state, slot, &job);
+}
+
+// Temporary audit resources cannot escape their C ABI call. Establish retirement
+// before releasing borrowed storage; an unretirable driver failure is terminal,
+// as it is for a Concept Submission drop, rather than an unsafe release.
+static void prom_sgemm_retire_borrowed_scope(prometheus_runtime* rt) {
+  if (!rt || !rt->concept_sgemm_state) return;
+  const int code = prom_concept_sgemm_wait(rt->concept_sgemm_state, 4);
+  if (code != 0 && code != VK_ERROR_DEVICE_LOST) {
+    std::fprintf(stderr, "Prometheus: SGEMM audit retirement failed (%d)\n", code);
+    std::abort();
+  }
+}
 
 enum {
   PROM_VK_PUSH_FIELD_OFFSET_M = 0,
@@ -1711,6 +1777,22 @@ static void arena_finish_shrink(prometheus_runtime* rt, prom_typed_arena* arena,
   rt->slot_diag.p11_m3_total_committed_bytes = arena_total_committed_bytes(rt);
 }
 
+// Upload/device pairs used by either queue keep one concurrent-family recipe.
+// The semaphore supplies visibility; no implicit exclusive-owner roundtrip is
+// assumed when the same input buffers are uploaded again after a dispatch.
+static VkResult prom_sgemm_create_arena_buffer(prometheus_runtime* rt, bool inputAcrossQueues,
+    VkDeviceSize bytes, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
+    int map, prom_vk_buffer* buffer) {
+  if (inputAcrossQueues && rt->vulkan.transfer_queue_enabled &&
+      rt->vulkan.queue_family_index != rt->vulkan.transfer_queue_family_index) {
+    return prom_vk_create_buffer_shared_between_families(rt->vulkan.physical_device, rt->vulkan.device,
+        rt->vulkan.test_flags, bytes, usage, properties, map, rt->vulkan.queue_family_index,
+        rt->vulkan.transfer_queue_family_index, buffer);
+  }
+  return prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device,
+      rt->vulkan.test_flags, bytes, usage, properties, map, buffer);
+}
+
 static int arena_shrink_single_buffer(prometheus_runtime* rt,
                                       prom_typed_arena* arena,
                                       prom_vk_buffer* buffer,
@@ -1773,7 +1855,7 @@ static int arena_shrink_paired_buffers(prometheus_runtime* rt,
   }
   memset(&replacement_first, 0, sizeof(replacement_first));
   memset(&replacement_second, 0, sizeof(replacement_second));
-  first_result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+  first_result = prom_sgemm_create_arena_buffer(rt, arena->role == PROM_ARENA_ROLE_A || arena->role == PROM_ARENA_ROLE_B,
                                (VkDeviceSize)shrink_target,
                                first_usage,
                                first_memory_props,
@@ -1783,7 +1865,7 @@ static int arena_shrink_paired_buffers(prometheus_runtime* rt,
     arena->last_failure_reason = (int)first_result;
     return 0;
   }
-  second_result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+  second_result = prom_sgemm_create_arena_buffer(rt, arena->role == PROM_ARENA_ROLE_A || arena->role == PROM_ARENA_ROLE_B,
                                 (VkDeviceSize)shrink_target,
                                 second_usage,
                                 second_memory_props,
@@ -2245,7 +2327,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
     }
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_upload_a);
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_a);
-    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+    result = prom_sgemm_create_arena_buffer(rt, true,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2256,7 +2338,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+    result = prom_sgemm_create_arena_buffer(rt, true,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -2297,7 +2379,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
     }
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_upload_b);
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_b);
-    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+    result = prom_sgemm_create_arena_buffer(rt, true,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2308,7 +2390,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
+    result = prom_sgemm_create_arena_buffer(rt, true,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -2463,27 +2545,8 @@ int prom_reactor_runtime_mark_cooperative_matrix_executable(void* handle) {
 }
 
 static uint64_t prom_wall_clock_now_ns(void) {
-#if defined(_WIN32)
-  static LARGE_INTEGER frequency;
-  static uint32_t frequency_initialized = 0u;
-  LARGE_INTEGER counter;
-  if (frequency_initialized == 0u) {
-    if (QueryPerformanceFrequency(&frequency) == 0) {
-      frequency.QuadPart = 0;
-    }
-    frequency_initialized = 1u;
-  }
-  if (frequency.QuadPart <= 0 || QueryPerformanceCounter(&counter) == 0) {
-    return 0u;
-  }
-  return (uint64_t)((counter.QuadPart * 1000000000ll) / frequency.QuadPart);
-#else
-  struct timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-    return 0u;
-  }
-  return ((uint64_t)ts.tv_sec * 1000000000ull) + (uint64_t)ts.tv_nsec;
-#endif
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
 static uint64_t prom_wall_clock_elapsed_ns(uint64_t start_ns, uint64_t end_ns) {
@@ -2548,6 +2611,11 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     fputs("Prometheus: RMSNorm completion could not be established during teardown\n", stderr);
     abort();
   }
+  if (prom_concept_sgemm_destroy(rt->concept_sgemm_state) != 0) {
+    fputs("Prometheus: SGEMM completion could not be established during teardown\n", stderr);
+    abort();
+  }
+  rt->concept_sgemm_state = nullptr;
   for (uint32_t async_index = 0u; async_index < PROM_SGEMM_ASYNC_MAX_TASKS; ++async_index) {
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->async_tasks[async_index].c);
     prom_vk_destroy_buffer(rt->vulkan.device, &rt->async_tasks[async_index].b);
@@ -2619,29 +2687,6 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyQueryPool(rt->vulkan.device, rt->sgemm_timestamp_query_pool, NULL);
     rt->sgemm_timestamp_query_pool = VK_NULL_HANDLE;
   }
-  if (rt->submit_fence != VK_NULL_HANDLE) {
-    vkDestroyFence(rt->vulkan.device, rt->submit_fence, NULL);
-    rt->submit_fence = VK_NULL_HANDLE;
-  }
-  {
-    uint32_t ring_index;
-    for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
-      if (rt->submission_ring[ring_index].fence != VK_NULL_HANDLE) {
-        vkDestroyFence(rt->vulkan.device, rt->submission_ring[ring_index].fence, NULL);
-        rt->submission_ring[ring_index].fence = VK_NULL_HANDLE;
-      }
-      rt->submission_ring[ring_index].command_buffer = VK_NULL_HANDLE;
-      rt->submission_ring[ring_index].descriptor_set = VK_NULL_HANDLE;
-    }
-  }
-  if (rt->transfer_submit_fence != VK_NULL_HANDLE) {
-    vkDestroyFence(rt->vulkan.device, rt->transfer_submit_fence, NULL);
-    rt->transfer_submit_fence = VK_NULL_HANDLE;
-  }
-  if (rt->transfer_ready_semaphore != VK_NULL_HANDLE) {
-    vkDestroySemaphore(rt->vulkan.device, rt->transfer_ready_semaphore, NULL);
-    rt->transfer_ready_semaphore = VK_NULL_HANDLE;
-  }
   /* SGEMM objects above borrow the device and command pools.  The common
      owner is destroyed only after those operation resources are gone. */
   prom_vk_runtime_cleanup(&rt->vulkan);
@@ -2675,21 +2720,42 @@ static VkResult prom_audit_create_arbitrary_spirv_module(
   return vkCreateShaderModule(device, &shader_info, NULL, out_module);
 }
 
+namespace {
+struct ShaderModuleLease {
+  VkDevice device;
+  VkShaderModule module{};
+  ~ShaderModuleLease() { if (module) vkDestroyShaderModule(device, module, nullptr); }
+  ShaderModuleLease(const ShaderModuleLease&) = delete;
+  ShaderModuleLease& operator=(const ShaderModuleLease&) = delete;
+  explicit ShaderModuleLease(VkDevice borrowed) : device(borrowed) {}
+};
+std::expected<VkPipeline, VkResult> CreateSgemmPipeline(prometheus_runtime& host, uint32_t kernel) {
+  ShaderModuleLease shader{host.vulkan.device};
+  char variant[32]{};
+  std::snprintf(variant, sizeof variant, "kernel-%u-default", kernel);
+  const char* entry{};
+  auto code = prom_runtime_create_package_module(&host, variant, &shader.module, &entry);
+  if (code != VK_SUCCESS) return std::unexpected(code);
+  VkComputePipelineCreateInfo info{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+  info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT; info.stage.module = shader.module; info.stage.pName = entry;
+  info.layout = host.pipeline_layout;
+  VkPipeline pipeline{};
+  code = vkCreateComputePipelines(host.vulkan.device, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
+  if (code != VK_SUCCESS) return std::unexpected(code);
+  return pipeline;
+}
+}
+
 static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkResult result;
   VkDescriptorSetLayoutBinding bindings[3];
   VkDescriptorSetLayoutCreateInfo set_layout_info;
   VkPushConstantRange push_range;
   VkPipelineLayoutCreateInfo pipeline_layout_info;
-  VkShaderModule shader_module = VK_NULL_HANDLE;
-  const char* package_entry_point = NULL;
-  VkPipelineShaderStageCreateInfo stage_info;
-  VkComputePipelineCreateInfo pipeline_info;
   VkDescriptorPoolSize pool_size;
   VkDescriptorPoolCreateInfo descriptor_pool_info;
   VkDescriptorSetAllocateInfo set_alloc_info;
-  VkCommandBufferAllocateInfo cmd_alloc_info;
-  VkFenceCreateInfo fence_info;
   VkQueryPoolCreateInfo query_pool_info;
 
   if (rt == NULL) return VK_ERROR_INITIALIZATION_FAILED;
@@ -2805,314 +2871,19 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
 
-  result = prom_runtime_create_package_module(rt, "kernel-3-default",
-                                              &rt->memory_conservative_shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = rt->memory_conservative_shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->memory_conservative_pipeline);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-4-default",
-                                              &rt->sdsl_scalar_plus_shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = rt->sdsl_scalar_plus_shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_scalar_plus_pipeline);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-5-default",
-                                              &rt->sdsl_tile16x16_shared_fp32_shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = rt->sdsl_tile16x16_shared_fp32_shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_tile16x16_shared_fp32_pipeline);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-6-default",
-                                              &rt->sdsl_reg2x2_tile16x16_fp32_shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = rt->sdsl_reg2x2_tile16x16_fp32_shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_reg2x2_tile16x16_fp32_pipeline);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-7-default",
-                                              &rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device,
-                                    VK_NULL_HANDLE,
-                                    1u,
-                                    &pipeline_info,
-                                    NULL,
-                                    &rt->sdsl_reg2x2_tile16x16_exacttail_fp32_pipeline);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-8-default",
-                                              &rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device,
-                                    VK_NULL_HANDLE,
-                                    1u,
-                                    &pipeline_info,
-                                    NULL,
-                                    &rt->sdsl_reg2x2_tile16x16_flowboard_fp32_pipeline);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-9-default",
-                                              &rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device,
-                                    VK_NULL_HANDLE,
-                                    1u,
-                                    &pipeline_info,
-                                    NULL,
-                                    &rt->sdsl_reg2x2_tile16x16_derive_fp32_pipeline);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-10-default", &shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->srt_2accum_k_pipeline);
-  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-11-default", &shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = shader_module;
-  stage_info.pName = package_entry_point;
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
-                                    &rt->b2x2_row_major_biased_pipeline);
-  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-12-default", &shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = shader_module;
-  stage_info.pName = package_entry_point;
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
-                                    &rt->a2x4_row_biased_accum8_pipeline);
-  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-1-default", &shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->pipeline);
-  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-2-default", &shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->tiled_pipeline);
-  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-13-default", &shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->packed4_pipeline);
-  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = prom_runtime_create_package_module(rt, "kernel-14-default", &shader_module,
-                                              &package_entry_point);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  memset(&stage_info, 0, sizeof(stage_info));
-  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-  stage_info.module = shader_module;
-  stage_info.pName = package_entry_point;
-
-  memset(&pipeline_info, 0, sizeof(pipeline_info));
-  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-  pipeline_info.stage = stage_info;
-  pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->fp16_pipeline);
-  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
-  if (result != VK_SUCCESS) {
-    return result;
+  struct PipelineSlot { uint32_t kernel; VkPipeline* instance; };
+  const std::array portfolio{
+      PipelineSlot{1, &rt->pipeline}, PipelineSlot{2, &rt->tiled_pipeline},
+      PipelineSlot{3, &rt->memory_conservative_pipeline}, PipelineSlot{4, &rt->sdsl_scalar_plus_pipeline},
+      PipelineSlot{5, &rt->sdsl_tile16x16_shared_fp32_pipeline}, PipelineSlot{6, &rt->sdsl_reg2x2_tile16x16_fp32_pipeline},
+      PipelineSlot{7, &rt->sdsl_reg2x2_tile16x16_exacttail_fp32_pipeline}, PipelineSlot{8, &rt->sdsl_reg2x2_tile16x16_flowboard_fp32_pipeline},
+      PipelineSlot{9, &rt->sdsl_reg2x2_tile16x16_derive_fp32_pipeline}, PipelineSlot{10, &rt->srt_2accum_k_pipeline},
+      PipelineSlot{11, &rt->b2x2_row_major_biased_pipeline}, PipelineSlot{12, &rt->a2x4_row_biased_accum8_pipeline},
+      PipelineSlot{13, &rt->packed4_pipeline}, PipelineSlot{14, &rt->fp16_pipeline}};
+  for (const auto& slot : portfolio) {
+    auto created = CreateSgemmPipeline(*rt, slot.kernel);
+    if (!created) return created.error();
+    *slot.instance = *created;
   }
   {
     const VkPipeline pipelines[PROM_COMPUTE_PIPELINE_COUNT] = {
@@ -3132,63 +2903,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
                                                         PROM_COMPUTE_PIPELINE_COUNT);
   }
 
-  memset(&cmd_alloc_info, 0, sizeof(cmd_alloc_info));
-  cmd_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  cmd_alloc_info.commandPool = rt->vulkan.command_pool;
-  cmd_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  cmd_alloc_info.commandBufferCount = 1u;
-  result = vkAllocateCommandBuffers(rt->vulkan.device, &cmd_alloc_info, &rt->command_buffer);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  cmd_alloc_info.commandBufferCount = PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH;
-  {
-    VkCommandBuffer ring_command_buffers[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
-    uint32_t ring_index;
-    result = vkAllocateCommandBuffers(rt->vulkan.device, &cmd_alloc_info, ring_command_buffers);
-    if (result != VK_SUCCESS) {
-      return result;
-    }
-    for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
-      rt->submission_ring[ring_index].command_buffer = ring_command_buffers[ring_index];
-    }
-  }
-  cmd_alloc_info.commandBufferCount = 1u;
-  if (rt->vulkan.transfer_queue_enabled != 0u) {
-    cmd_alloc_info.commandPool = rt->vulkan.transfer_command_pool;
-    result = vkAllocateCommandBuffers(rt->vulkan.device, &cmd_alloc_info, &rt->transfer_command_buffer);
-    if (result != VK_SUCCESS) {
-      return result;
-    }
-  }
-
-  memset(&fence_info, 0, sizeof(fence_info));
-  fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  result = vkCreateFence(rt->vulkan.device, &fence_info, NULL, &rt->submit_fence);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  {
-    uint32_t ring_index;
-    for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
-      result = vkCreateFence(rt->vulkan.device, &fence_info, NULL, &rt->submission_ring[ring_index].fence);
-      if (result != VK_SUCCESS) {
-        return result;
-      }
-    }
-  }
-  if (rt->vulkan.transfer_queue_enabled != 0u) {
-    VkSemaphoreCreateInfo semaphore_info;
-    result = vkCreateFence(rt->vulkan.device, &fence_info, NULL, &rt->transfer_submit_fence);
-    if (result != VK_SUCCESS) {
-      return result;
-    }
-    memset(&semaphore_info, 0, sizeof(semaphore_info));
-    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    result = vkCreateSemaphore(rt->vulkan.device, &semaphore_info, NULL, &rt->transfer_ready_semaphore);
-    if (result != VK_SUCCESS) {
-      return result;
-    }
+  for (uint32_t index = 0; index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++index) {
+    rt->submission_ring[index].slot_id = index;
+    rt->submission_ring[index].query_base = 2 + 2 * index;
   }
   return VK_SUCCESS;
 }
@@ -3889,6 +3606,7 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
       }
     }
   }
+  prom_sgemm_retire_borrowed_scope(rt);
   vkDestroyPipeline(rt->vulkan.device, pipeline, NULL);
   vkDestroyShaderModule(rt->vulkan.device, module, NULL);
   if (out_result != NULL) {
@@ -4168,6 +3886,7 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
   query_pool_info.queryCount = 4u;
   vk_result = vkCreateQueryPool(rt->vulkan.device, &query_pool_info, NULL, &timing_query_pool);
   if (vk_result != VK_SUCCESS) goto cleanup;
+  prom_sgemm_retire_borrowed_scope(rt);
   initial_begin = prom_wall_clock_now_ns();
   if (options->reuse_mode != PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
     vk_result = prom_sgemm_placement_allocate_roles(rt, a_size, b_size, c_size, options, &a_role, &b_role, &c_role);
@@ -4186,11 +3905,6 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
   if (out_result != NULL) out_result->initial_preparation_ns = prom_wall_clock_elapsed_ns(initial_begin, prom_wall_clock_now_ns());
   total_dispatches = options->warmup + options->iterations;
   for (dispatch_index = 0u; dispatch_index < total_dispatches; ++dispatch_index) {
-    VkCommandBufferBeginInfo begin_info;
-    VkSubmitInfo submit_info;
-    VkBufferMemoryBarrier barriers[8];
-    VkBufferCopy copies[3];
-    prom_vk_push push;
     prom_sgemm_dispatch_geometry geometry;
     uint64_t timestamps[4];
     uint64_t e2e_begin = prom_wall_clock_now_ns();
@@ -4198,7 +3912,6 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     uint64_t prep_end;
     uint64_t readback_begin;
     uint64_t readback_end;
-    uint32_t barrier_count = 0u;
     uint32_t write_a = options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD ||
                        options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_PERSISTENT_B_REUPLOAD_A ||
                        options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION || dispatch_index == 0u;
@@ -4228,106 +3941,20 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
       if (write_b != 0u) prom_sgemm_placement_write_payload(&b_role, b_payload, b_copy_size);
     }
     prep_end = prom_wall_clock_now_ns();
-    vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
-    if (vk_result != VK_SUCCESS) goto cleanup;
-    memset(&begin_info, 0, sizeof(begin_info)); begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
-    if (vk_result != VK_SUCCESS) goto cleanup;
-    vkCmdResetQueryPool(rt->command_buffer, timing_query_pool, 0u, 4u);
-    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timing_query_pool, 0u);
-    memset(barriers, 0, sizeof(barriers)); memset(copies, 0, sizeof(copies));
-    if (write_a != 0u || write_b != 0u) {
-      prom_sgemm_placement_role_buffer* roles[2] = {&a_role, &b_role};
-    uint32_t writes[2] = {write_a, write_b};
-      uint32_t role_index;
-      for (role_index = 0u; role_index < 2u; ++role_index) {
-        prom_sgemm_placement_role_buffer* role = roles[role_index];
-    if (writes[role_index] == 0u) continue;
-        if (role->placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
-          VkBufferMemoryBarrier host_barrier;
-          VkBufferCopy copy;
-          memset(&host_barrier, 0, sizeof(host_barrier));
-          host_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-          host_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT; host_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-          host_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; host_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-          host_barrier.buffer = role->transfer.buffer; host_barrier.size = role->transfer.size;
-          vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                               0u, 0u, NULL, 1u, &host_barrier, 0u, NULL);
-          memset(&copy, 0, sizeof(copy)); copy.size = role->storage.size;
-          vkCmdCopyBuffer(rt->command_buffer, role->transfer.buffer, role->storage.buffer, 1u, &copy);
-          barriers[barrier_count] = host_barrier;
-          barriers[barrier_count].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-          barriers[barrier_count].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-          barriers[barrier_count].buffer = role->storage.buffer;
-          barrier_count += 1u;
-        } else {
-          barriers[barrier_count].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-          barriers[barrier_count].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-          barriers[barrier_count].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-          barriers[barrier_count].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-          barriers[barrier_count].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-          barriers[barrier_count].buffer = role->storage.buffer;
-          barriers[barrier_count].size = role->storage.size;
-          barrier_count += 1u;
-        }
-      }
-    }
-    if (perturbation.buffer != VK_NULL_HANDLE) {
-      VkBufferMemoryBarrier perturb_barrier;
-      vkCmdFillBuffer(rt->command_buffer, perturbation.buffer, 0u, VK_WHOLE_SIZE, dispatch_index * 2654435761u);
-      memset(&perturb_barrier, 0, sizeof(perturb_barrier));
-      perturb_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-      perturb_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; perturb_barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-      perturb_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; perturb_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      perturb_barrier.buffer = perturbation.buffer; perturb_barrier.size = perturbation.size;
-      vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           0u, 0u, NULL, 1u, &perturb_barrier, 0u, NULL);
-    }
-    if (barrier_count != 0u) {
-      vkCmdPipelineBarrier(rt->command_buffer,
-                           VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           0u, 0u, NULL, barrier_count, barriers, 0u, NULL);
-    }
-    vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-    vkCmdBindDescriptorSets(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline_layout,
-                            0u, 1u, &rt->descriptor_set, 0u, NULL);
-    push.m = m; push.n = n; push.k = compute_k;
-    vkCmdPushConstants(rt->command_buffer, rt->pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0u, PROM_VK_SHADER_PUSH_BYTES, &push);
-    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timing_query_pool, 1u);
+    prom_sgemm_job placement{};
+    placement.buffers[3] = {a_role.transfer.buffer, a_role.transfer.size};
+    placement.buffers[4] = {b_role.transfer.buffer, b_role.transfer.size};
+    placement.buffers[5] = {c_role.transfer.buffer, c_role.transfer.size};
+    placement.buffers[6] = {perturbation.buffer, perturbation.size};
+    placement.uploadMask = (write_a && a_role.placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL ? 1u : 0u)
+        | (write_b && b_role.placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL ? 2u : 0u);
+    placement.readback = c_role.placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL;
+    placement.perturbWord = dispatch_index * 2654435761u;
     geometry = prom_sgemm_dispatch_geometry_for_metadata(m, n, &descriptor->dispatch);
-    vkCmdDispatch(rt->command_buffer, geometry.groups_x, geometry.groups_y, geometry.groups_z);
-    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timing_query_pool, 2u);
-    memset(&barriers[0], 0, sizeof(barriers[0]));
-    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].buffer = c_role.storage.buffer; barriers[0].size = c_role.storage.size;
-    if (c_role.placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
-      barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-      vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           0u, 0u, NULL, 1u, barriers, 0u, NULL);
-      copies[2].size = c_role.storage.size;
-      vkCmdCopyBuffer(rt->command_buffer, c_role.storage.buffer, c_role.transfer.buffer, 1u, &copies[2]);
-      barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; barriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-      barriers[0].buffer = c_role.transfer.buffer; barriers[0].size = c_role.transfer.size;
-      vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
-                           0u, 0u, NULL, 1u, barriers, 0u, NULL);
-    } else {
-      barriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-      vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
-                           0u, 0u, NULL, 1u, barriers, 0u, NULL);
-    }
-    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing_query_pool, 3u);
-    vk_result = vkEndCommandBuffer(rt->command_buffer);
-    if (vk_result != VK_SUCCESS) goto cleanup;
-    vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->submit_fence);
-    if (vk_result != VK_SUCCESS) goto cleanup;
-    memset(&submit_info, 0, sizeof(submit_info)); submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.commandBufferCount = 1u; submit_info.pCommandBuffers = &rt->command_buffer;
-    vk_result = prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
-    if (vk_result != VK_SUCCESS) goto cleanup;
-    vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+    vk_result = static_cast<VkResult>(prom_sgemm_prepare_job(rt, 4, pipeline, rt->descriptor_set, timing_query_pool, 0,
+        &a_role.storage, &b_role.storage, &c_role.storage, m, n, compute_k, geometry, 5, 1, 0, &placement));
+    if (vk_result == VK_SUCCESS) vk_result = static_cast<VkResult>(prom_concept_sgemm_submit(rt->concept_sgemm_state, 4));
+    if (vk_result == VK_SUCCESS) vk_result = static_cast<VkResult>(prom_concept_sgemm_wait(rt->concept_sgemm_state, 4));
     if (vk_result != VK_SUCCESS) goto cleanup;
     vk_result = vkGetQueryPoolResults(rt->vulkan.device, timing_query_pool, 0u, 4u, sizeof(timestamps),
                                       timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
@@ -4380,6 +4007,7 @@ cleanup:
     out_result->detail_code = (int)(vk_result == VK_SUCCESS ? VK_ERROR_UNKNOWN : vk_result);
     out_result->stage = PROM_STAGE_SUBMIT;
   }
+  prom_sgemm_retire_borrowed_scope(rt);
   prom_vk_destroy_buffer(rt != NULL ? rt->vulkan.device : VK_NULL_HANDLE, &perturbation);
   if (rt != NULL) {
     if (persistent_allocated != 0u || options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
@@ -4429,15 +4057,6 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                      int* out_detail_code) {
   prometheus_runtime* rt;
   VkResult vk_result;
-  VkWriteDescriptorSet writes[3];
-  VkDescriptorBufferInfo buffer_infos[3];
-  VkCommandBufferBeginInfo begin_info;
-  VkSubmitInfo submit_info;
-  VkSubmitInfo transfer_submit_info;
-  VkPipelineStageFlags wait_stage_mask;
-  VkBufferMemoryBarrier barriers[4];
-  VkBufferCopy copies[3];
-  prom_vk_push push;
   prom_vk_buffer* shader_a;
   prom_vk_buffer* shader_b;
   prom_vk_buffer* shader_c;
@@ -4488,7 +4107,6 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   prom_dom_sgemm_path_compute_projection path_compute_projection;
   prom_dom_sgemm_path_compute_decision path_compute_decision;
   prom_dom_sgemm_path_compute_snapshot path_compute_snapshot;
-  prom_sgemm_execution_handoff execution_handoff;
   prom_buffering_mode buffering_mode = PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT;
   prom_variance_class variance_class = PROM_VARIANCE_MODERATE;
   prom_predictability_class predictability_class = PROM_PREDICTABILITY_STABLE;
@@ -4520,7 +4138,6 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   uint64_t upload_end_ns = 0u;
   uint64_t command_record_begin_ns = 0u;
   uint64_t dispatch_submit_begin_ns = 0u;
-  uint64_t dispatch_submit_end_ns = 0u;
   uint64_t sync_wait_begin_ns = 0u;
   uint64_t sync_wait_end_ns = 0u;
   uint64_t post_sync_begin_ns = 0u;
@@ -4584,7 +4201,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                rt->async_failure_detail != 0 ? rt->async_failure_detail : PROM_DETAIL_ASYNC_FAILED);
     return PROM_ERROR;
   }
-  if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED || rt->async_state == PROM_ASYNC_STATE_READY) {
+  if (prom_async_outstanding(rt) != 0 || rt->async_state == PROM_ASYNC_STATE_SUBMITTED || rt->async_state == PROM_ASYNC_STATE_READY) {
     rt->slot_diag.inflight_rejection_count += 1u;
     commit_slot_runtime_diag_snapshot(rt, PROM_DETAIL_ASYNC_UNCONSUMED);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_UNCONSUMED);
@@ -4592,7 +4209,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     return PROM_ERROR;
   }
   if (rt->in_flight_submit != 0u) {
-    vk_result = vkGetFenceStatus(rt->vulkan.device, rt->submit_fence);
+    vk_result = static_cast<VkResult>(prom_concept_sgemm_poll(rt->concept_sgemm_state, 4));
     if (vk_result == VK_SUCCESS) {
       rt->in_flight_submit = 0u;
     } else {
@@ -4603,6 +4220,13 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     }
   }
 
+  if (rt->concept_sgemm_state) {
+    const int retired = prom_concept_sgemm_wait(rt->concept_sgemm_state, 4);
+    if (retired != 0) {
+      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, retired);
+      return PROM_ERROR;
+    }
+  }
   if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE);
     return PROM_ERROR;
@@ -5209,7 +4833,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   if (buffering_snapshot.success == 0u) {
     rt->slot_diag.m35_rejection_count += 1u;
     rt->slot_diag.m35_budget_rejection_count += 1u;
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prom_buffering_reason_to_detail(buffering_snapshot.reason_code));
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prom_buffering_reason_to_detail(static_cast<prom_buffering_reason_code>(buffering_snapshot.reason_code)));
     return PROM_ERROR;
   }
   buffering_mode = (prom_buffering_mode)buffering_snapshot.selected_mode;
@@ -5410,287 +5034,11 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
   prom_sgemm_publish_final_dispatch_diagnostics(rt, requested_variant, (uint32_t)policy_mode, &path_compute_snapshot);
 
-  memset(buffer_infos, 0, sizeof(buffer_infos));
-  buffer_infos[0].buffer = shader_a->buffer;
-  buffer_infos[0].offset = 0;
-  buffer_infos[0].range = shader_a->size;
-  buffer_infos[1].buffer = shader_b->buffer;
-  buffer_infos[1].offset = 0;
-  buffer_infos[1].range = shader_b->size;
-  buffer_infos[2].buffer = shader_c->buffer;
-  buffer_infos[2].offset = 0;
-  buffer_infos[2].range = shader_c->size;
-
-  memset(writes, 0, sizeof(writes));
-  writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  writes[0].dstSet = rt->descriptor_set;
-  writes[0].dstBinding = 0u;
-  writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  writes[0].descriptorCount = 1u;
-  writes[0].pBufferInfo = &buffer_infos[0];
-  writes[1] = writes[0];
-  writes[1].dstBinding = 1u;
-  writes[1].pBufferInfo = &buffer_infos[1];
-  writes[2] = writes[0];
-  writes[2].dstBinding = 2u;
-  writes[2].pBufferInfo = &buffer_infos[2];
   command_record_begin_ns = prom_wall_clock_now_ns();
-  rt->px16_m8_last_pre_dispatch_wall_ns =
-      prom_wall_clock_elapsed_ns(pre_dispatch_begin_ns, command_record_begin_ns);
-  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
-
-  if (use_dedicated_transfer_upload != 0u && selected_path == PROM_VK_PATH_STAGED_UPLOAD) {
-    stage_transfer_complete_telemetry(rt, 0u, work_slot_id, 0);
-    vk_result = vkResetCommandBuffer(rt->transfer_command_buffer, 0u);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-    memset(&begin_info, 0, sizeof(begin_info));
-    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vk_result = vkBeginCommandBuffer(rt->transfer_command_buffer, &begin_info);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-    memset(barriers, 0, sizeof(barriers));
-    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].buffer = rt->staged_upload_a.buffer;
-    barriers[0].offset = 0;
-    barriers[0].size = rt->staged_upload_a.size;
-    barriers[1] = barriers[0];
-    barriers[1].buffer = rt->staged_upload_b.buffer;
-    barriers[1].size = rt->staged_upload_b.size;
-    vkCmdPipelineBarrier(rt->transfer_command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 2u, barriers,
-                         0, NULL);
-    memset(copies, 0, sizeof(copies));
-    copies[0].size = rt->staged_upload_a.size;
-    copies[1].size = rt->staged_upload_b.size;
-    vkCmdCopyBuffer(rt->transfer_command_buffer, rt->staged_upload_a.buffer, rt->staged_device_a.buffer, 1u, &copies[0]);
-    vkCmdCopyBuffer(rt->transfer_command_buffer, rt->staged_upload_b.buffer, rt->staged_device_b.buffer, 1u, &copies[1]);
-    barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barriers[0].dstAccessMask = 0u;
-    barriers[0].srcQueueFamilyIndex = rt->vulkan.transfer_queue_family_index;
-    barriers[0].dstQueueFamilyIndex = rt->vulkan.queue_family_index;
-    barriers[0].buffer = rt->staged_device_a.buffer;
-    barriers[0].size = rt->staged_device_a.size;
-    barriers[1] = barriers[0];
-    barriers[1].buffer = rt->staged_device_b.buffer;
-    barriers[1].size = rt->staged_device_b.size;
-    vkCmdPipelineBarrier(rt->transfer_command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 2u,
-                         barriers, 0, NULL);
-    vk_result = vkEndCommandBuffer(rt->transfer_command_buffer);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-    vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->transfer_submit_fence);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-    memset(&transfer_submit_info, 0, sizeof(transfer_submit_info));
-    transfer_submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    transfer_submit_info.commandBufferCount = 1u;
-    transfer_submit_info.pCommandBuffers = &rt->transfer_command_buffer;
-    transfer_submit_info.signalSemaphoreCount = 1u;
-    transfer_submit_info.pSignalSemaphores = &rt->transfer_ready_semaphore;
-    if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_TRANSFER_SUBMIT) != 0u) {
-      prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-      stage_transfer_failure_telemetry(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
-      return PROM_ERROR;
-    }
-    vk_result = prom_vk_queue_submit(rt->vulkan.transfer_queue, 1u, &transfer_submit_info, rt->transfer_submit_fence);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-    stage_transfer_handoff_telemetry(rt, work_slot_id, 0, 2u);
-    vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-    memset(&begin_info, 0, sizeof(begin_info));
-    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-    memset(barriers, 0, sizeof(barriers));
-    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[0].srcAccessMask = 0u;
-    barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barriers[0].srcQueueFamilyIndex = rt->vulkan.transfer_queue_family_index;
-    barriers[0].dstQueueFamilyIndex = rt->vulkan.queue_family_index;
-    barriers[0].buffer = rt->staged_device_a.buffer;
-    barriers[0].offset = 0;
-    barriers[0].size = rt->staged_device_a.size;
-    barriers[1] = barriers[0];
-    barriers[1].buffer = rt->staged_device_b.buffer;
-    barriers[1].size = rt->staged_device_b.size;
-    barriers[2] = barriers[0];
-    barriers[2].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[2].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[2].srcAccessMask = 0u;
-    barriers[2].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barriers[2].buffer = rt->staged_device_c.buffer;
-    barriers[2].size = rt->staged_device_c.size;
-    vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 3u, barriers,
-                         0, NULL);
-  } else {
-    stage_transfer_complete_telemetry(rt, 1u, work_slot_id, 0);
-    vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-
-    memset(&begin_info, 0, sizeof(begin_info));
-    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
-    if (vk_result != VK_SUCCESS) {
-      prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-      prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-      return PROM_ERROR;
-    }
-
-    memset(barriers, 0, sizeof(barriers));
-    if (selected_path == PROM_VK_PATH_DIRECT) {
-    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].buffer = rt->direct_a.buffer;
-    barriers[0].offset = 0;
-    barriers[0].size = rt->direct_a.size;
-    barriers[1] = barriers[0];
-    barriers[1].buffer = rt->direct_b.buffer;
-    barriers[1].size = rt->direct_b.size;
-    barriers[2] = barriers[0];
-    barriers[2].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barriers[2].buffer = rt->direct_c.buffer;
-    barriers[2].size = rt->direct_c.size;
-    vkCmdPipelineBarrier(rt->command_buffer,
-                         VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         0,
-                         0,
-                         NULL,
-                         3u,
-                         barriers,
-                         0,
-                         NULL);
-    } else {
-    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[0].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].buffer = rt->staged_upload_a.buffer;
-    barriers[0].offset = 0;
-    barriers[0].size = rt->staged_upload_a.size;
-    barriers[1] = barriers[0];
-    barriers[1].buffer = rt->staged_upload_b.buffer;
-    barriers[1].size = rt->staged_upload_b.size;
-    vkCmdPipelineBarrier(rt->command_buffer,
-                         VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0,
-                         0,
-                         NULL,
-                         2u,
-                         barriers,
-                         0,
-                         NULL);
-
-    memset(copies, 0, sizeof(copies));
-    copies[0].size = rt->staged_upload_a.size;
-    copies[1].size = rt->staged_upload_b.size;
-    vkCmdCopyBuffer(rt->command_buffer, rt->staged_upload_a.buffer, rt->staged_device_a.buffer, 1u, &copies[0]);
-    vkCmdCopyBuffer(rt->command_buffer, rt->staged_upload_b.buffer, rt->staged_device_b.buffer, 1u, &copies[1]);
-
-    barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barriers[0].buffer = rt->staged_device_a.buffer;
-    barriers[0].size = rt->staged_device_a.size;
-    barriers[1] = barriers[0];
-    barriers[1].buffer = rt->staged_device_b.buffer;
-    barriers[1].size = rt->staged_device_b.size;
-    barriers[2] = barriers[0];
-    barriers[2].dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barriers[2].buffer = rt->staged_device_c.buffer;
-    barriers[2].size = rt->staged_device_c.size;
-    /* Staged device-local C is not pre-zeroed: current SGEMM kernels overwrite every final C element. */
-      vkCmdPipelineBarrier(rt->command_buffer,
-                           VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                           0,
-                           0,
-                           NULL,
-                           3u,
-                           barriers,
-                           0,
-                           NULL);
-    }
-  }
-
-  /* Dispatch/indexing contract: x maps rows (m), y maps columns (n); host and shader must match this. */
-  dispatch_geometry = audit_override != NULL && audit_override->descriptor != NULL
-                          ? prom_sgemm_dispatch_geometry_for_metadata(m, n, &audit_override->descriptor->dispatch)
-                          : prom_sgemm_dispatch_geometry_for_variant(requested_variant, m, n);
-  execution_handoff = prom_sgemm_make_execution_handoff(m,
-                                                         n,
-                                                         k,
-                                                         compute_k,
-                                                         (uint32_t)selected_path,
-                                                         (uint32_t)compute_mode,
-                                                         requested_variant,
-                                                         work_slot_id,
-                                                         use_dedicated_transfer_upload,
-                                                         selected_pipeline,
-                                                         rt->descriptor_set,
-                                                         buffer_infos,
-                                                         &dispatch_geometry);
-  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, execution_handoff.pipeline);
-  vkCmdBindDescriptorSets(rt->command_buffer,
-                          VK_PIPELINE_BIND_POINT_COMPUTE,
-                          rt->pipeline_layout,
-                          0u,
-                          1u,
-                          &execution_handoff.descriptor_set,
-                          0u,
-                          NULL);
-  push.m = execution_handoff.m;
-  push.n = execution_handoff.n;
-  push.k = execution_handoff.compute_k;
-  vkCmdPushConstants(rt->command_buffer,
-                     rt->pipeline_layout,
-                     VK_SHADER_STAGE_COMPUTE_BIT,
-                     0u,
-                     PROM_VK_SHADER_PUSH_BYTES,
-                     &push);
-
+  rt->px16_m8_last_pre_dispatch_wall_ns = prom_wall_clock_elapsed_ns(pre_dispatch_begin_ns, command_record_begin_ns);
+  dispatch_geometry = audit_override && audit_override->descriptor
+      ? prom_sgemm_dispatch_geometry_for_metadata(m, n, &audit_override->descriptor->dispatch)
+      : prom_sgemm_dispatch_geometry_for_variant(requested_variant, m, n);
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, 0);
   if (work_slot_id < 32u) {
     const uint32_t slot_mask = (1u << work_slot_id);
@@ -5718,169 +5066,58 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     return PROM_ERROR;
   }
 
-  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
-    vkCmdResetQueryPool(rt->command_buffer, rt->sgemm_timestamp_query_pool, 0u, 2u);
-    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 0u);
-  }
-
-  vkCmdDispatch(rt->command_buffer,
-                execution_handoff.dispatch_geometry.groups_x,
-                execution_handoff.dispatch_geometry.groups_y,
-                execution_handoff.dispatch_geometry.groups_z);
-  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
-    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 1u);
-  }
-
-  if (selected_path == PROM_VK_PATH_DIRECT) {
-    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].buffer = rt->direct_c.buffer;
-    barriers[0].offset = 0;
-    barriers[0].size = rt->direct_c.size;
-    vkCmdPipelineBarrier(rt->command_buffer,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         VK_PIPELINE_STAGE_HOST_BIT,
-                         0,
-                         0,
-                         NULL,
-                         1u,
-                         barriers,
-                         0,
-                         NULL);
-  } else if (selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
-    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barriers[0].buffer = rt->staged_device_c.buffer;
-    barriers[0].offset = 0;
-    barriers[0].size = rt->staged_device_c.size;
-    vkCmdPipelineBarrier(rt->command_buffer,
-                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         0,
-                         0,
-                         NULL,
-                         1u,
-                         barriers,
-                         0,
-                         NULL);
-
-    copies[2].size = rt->staged_readback_c.size;
-    vkCmdCopyBuffer(rt->command_buffer, rt->staged_device_c.buffer, rt->staged_readback_c.buffer, 1u, &copies[2]);
-
-    barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-    barriers[0].buffer = rt->staged_readback_c.buffer;
-    barriers[0].size = rt->staged_readback_c.size;
-    vkCmdPipelineBarrier(rt->command_buffer,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_HOST_BIT,
-                         0,
-                         0,
-                         NULL,
-                         1u,
-                         barriers,
-                         0,
-                         NULL);
-  }
-
-  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) {
+  const uint32_t execution_path = selected_path == PROM_VK_PATH_DIRECT ? 0u
+      : selected_path == PROM_VK_PATH_STAGED_UPLOAD ? 1u : 2u;
+  if ((rt->vulkan.test_flags & (PROM_TESTCFG_FAIL_COMMAND_END | PROM_TESTCFG_FAIL_RESET_FENCE |
+       PROM_TESTCFG_FAIL_QUEUE_SUBMIT)) != 0u ||
+      (use_dedicated_transfer_upload && (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_TRANSFER_SUBMIT))) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
+    if (use_dedicated_transfer_upload) stage_transfer_failure_telemetry(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
-  vk_result = vkEndCommandBuffer(rt->command_buffer);
-  if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  rt->px16_m8_last_command_record_wall_ns =
-      prom_wall_clock_elapsed_ns(command_record_begin_ns, prom_wall_clock_now_ns());
-
-  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
-    return PROM_ERROR;
-  }
-  vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->submit_fence);
-  if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
-
-  memset(&submit_info, 0, sizeof(submit_info));
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_info.commandBufferCount = 1u;
-  submit_info.pCommandBuffers = &rt->command_buffer;
+  vk_result = static_cast<VkResult>(prom_sgemm_prepare_job(rt, 4, selected_pipeline, rt->descriptor_set,
+      rt->sgemm_timestamp_query_pool, 0, shader_a, shader_b, shader_c,
+      m, n, compute_k, dispatch_geometry, execution_path, 1, use_dedicated_transfer_upload));
+  rt->px16_m8_last_command_record_wall_ns = prom_wall_clock_elapsed_ns(command_record_begin_ns, prom_wall_clock_now_ns());
   dispatch_submit_begin_ns = prom_wall_clock_now_ns();
-  if (execution_handoff.wait_for_transfer != 0u) {
-    wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    submit_info.waitSemaphoreCount = 1u;
-    submit_info.pWaitSemaphores = &rt->transfer_ready_semaphore;
-    submit_info.pWaitDstStageMask = &wait_stage_mask;
-    stage_transfer_wait_telemetry(rt, work_slot_id, 0);
-  }
-  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
-    return PROM_ERROR;
-  }
-  vk_result = prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
+  if (vk_result == VK_SUCCESS) vk_result = static_cast<VkResult>(prom_concept_sgemm_submit(rt->concept_sgemm_state, 4));
+  rt->px16_m8_last_dispatch_submit_wall_ns = prom_wall_clock_elapsed_ns(dispatch_submit_begin_ns, prom_wall_clock_now_ns());
   if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    (void)prom_concept_sgemm_wait(rt->concept_sgemm_state, 4);
+    prom_slot_mark_failure(rt, work_slot_id, vk_result);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, vk_result);
     return PROM_ERROR;
   }
-  dispatch_submit_end_ns = prom_wall_clock_now_ns();
-  rt->px16_m8_last_dispatch_submit_wall_ns =
-      prom_wall_clock_elapsed_ns(dispatch_submit_begin_ns, dispatch_submit_end_ns);
-  rt->in_flight_submit = 1u;
+  uint64_t recordedNanoseconds = 0, submittedNanoseconds = 0;
+  if (prom_concept_sgemm_timings(rt->concept_sgemm_state, 4, &recordedNanoseconds, &submittedNanoseconds) == 0) {
+    rt->px16_m8_last_command_record_wall_ns += recordedNanoseconds;
+    rt->px16_m8_last_dispatch_submit_wall_ns = submittedNanoseconds;
+  }
+  if (use_dedicated_transfer_upload) {
+    stage_transfer_handoff_telemetry(rt, work_slot_id, 0, 2);
+    stage_transfer_wait_telemetry(rt, work_slot_id, 0);
+  } else { stage_transfer_complete_telemetry(rt, 1, work_slot_id, 0); }
+  rt->in_flight_submit = 1;
   if (!prom_slot_mark_submitted(rt, work_slot_id)) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
     return PROM_ERROR;
   }
-
-  if (async_decision.execute_async != 0u) {
-    rt->async_task_id += 1;
-    rt->async_m = m;
-    rt->async_n = n;
-    rt->async_k = k;
-    rt->async_c_copy_size = c_copy_size;
-    rt->async_selected_path = selected_path;
-    rt->async_final_detail = final_detail;
+  if (async_decision.execute_async) {
+    rt->async_task_id++;
+    rt->async_m = m; rt->async_n = n; rt->async_k = k;
+    rt->async_c_copy_size = c_copy_size; rt->async_selected_path = selected_path; rt->async_final_detail = final_detail;
     note_last_execution_shape(rt, m, n, k);
     set_async_state(rt, PROM_ASYNC_STATE_SUBMITTED, PROM_STAGE_SUBMIT, 0);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
     return PROM_OK;
   }
-
   if ((rt->vulkan.test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
     sync_wait_begin_ns = prom_wall_clock_now_ns();
-    if (use_dedicated_transfer_upload != 0u) {
-      vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->transfer_submit_fence, VK_TRUE, UINT64_MAX);
-      if (vk_result != VK_SUCCESS) {
-        prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
-        stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
-        prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-        return PROM_ERROR;
-      }
-      stage_transfer_complete_telemetry(rt, 1u, work_slot_id, 0);
-    }
-    vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+    vk_result = static_cast<VkResult>(prom_concept_sgemm_wait(rt->concept_sgemm_state, 4));
+    if (use_dedicated_transfer_upload && vk_result == VK_SUCCESS) stage_transfer_complete_telemetry(rt, 1, work_slot_id, 0);
     sync_wait_end_ns = prom_wall_clock_now_ns();
     rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(sync_wait_begin_ns, sync_wait_end_ns);
     post_sync_begin_ns = sync_wait_end_ns;
@@ -6219,7 +5456,7 @@ static int prom_sgemm_ring_poll_slot(prometheus_runtime* rt, prom_sgemm_submissi
   VkResult result;
   if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED) return PROM_OK;
   rt->submission_ring_diag.total_polls += 1u;
-  result = vkGetFenceStatus(rt->vulkan.device, slot->fence);
+  result = static_cast<VkResult>(prom_concept_sgemm_poll(rt->concept_sgemm_state, slot->slot_id));
   if (result == VK_NOT_READY) return PROM_OK;
   if (result != VK_SUCCESS) {
     slot->state = PROM_SGEMM_SUBMISSION_SLOT_FAILED;
@@ -6243,7 +5480,7 @@ int prom_sgemm_ring_wait_oldest(prometheus_runtime* rt) {
   }
   if (oldest == NULL) return PROM_OK;
   rt->submission_ring_diag.total_forced_waits += 1u;
-  result = vkWaitForFences(rt->vulkan.device, 1u, &oldest->fence, VK_TRUE, UINT64_MAX);
+  result = static_cast<VkResult>(prom_concept_sgemm_wait(rt->concept_sgemm_state, oldest->slot_id));
   if (result != VK_SUCCESS) return PROM_ERROR;
   return prom_sgemm_ring_harvest_slot(rt, oldest);
 }
@@ -6251,43 +5488,25 @@ int prom_sgemm_ring_wait_oldest(prometheus_runtime* rt) {
 static int prom_sgemm_record_resident_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot,
                                            uint32_t m, uint32_t n, uint32_t compute_k, uint32_t compute_mode,
                                            uint32_t variant) {
-  VkWriteDescriptorSet writes[3]; VkDescriptorBufferInfo infos[3]; VkCommandBufferBeginInfo begin; VkBufferMemoryBarrier barrier;
-  prom_vk_push push; VkPipeline pipeline; VkResult result; prom_sgemm_dispatch_geometry geometry;
-  if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_PREPARING) return PROM_ERROR;
-  pipeline = prom_sgemm_pipeline_for_resident_dispatch(rt, compute_mode, variant);
-  if (pipeline == VK_NULL_HANDLE) return PROM_ERROR;
-  memset(infos, 0, sizeof(infos));
-  infos[0].buffer = rt->staged_device_a.buffer; infos[0].range = rt->staged_device_a.size;
-  infos[1].buffer = rt->staged_device_b.buffer; infos[1].range = rt->staged_device_b.size;
-  infos[2].buffer = rt->staged_device_c.buffer; infos[2].range = rt->staged_device_c.size;
-  memset(writes, 0, sizeof(writes));
-  for (uint32_t i = 0u; i < 3u; ++i) { writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet = slot->descriptor_set; writes[i].dstBinding = i; writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].descriptorCount = 1u; writes[i].pBufferInfo = &infos[i]; }
-  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
-  result = vkResetCommandBuffer(slot->command_buffer, 0u); if (result != VK_SUCCESS) goto failed;
-  memset(&begin, 0, sizeof(begin)); begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  result = vkBeginCommandBuffer(slot->command_buffer, &begin); if (result != VK_SUCCESS) goto failed;
-  memset(&barrier, 0, sizeof(barrier)); barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER; barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT; barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; barrier.buffer = rt->staged_device_c.buffer; barrier.size = rt->staged_device_c.size;
-  vkCmdPipelineBarrier(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1u, &barrier, 0, NULL);
-  vkCmdBindPipeline(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-  vkCmdBindDescriptorSets(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline_layout, 0u, 1u, &slot->descriptor_set, 0u, NULL);
-  push.m=m; push.n=n; push.k=compute_k; vkCmdPushConstants(slot->command_buffer, rt->pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0u, PROM_VK_SHADER_PUSH_BYTES, &push);
-  if (rt->timestamp_query_supported != 0u) { vkCmdResetQueryPool(slot->command_buffer, rt->sgemm_timestamp_query_pool, slot->query_base, 2u); vkCmdWriteTimestamp(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, slot->query_base); }
-  geometry = prom_sgemm_dispatch_geometry_for_variant(variant, m, n); vkCmdDispatch(slot->command_buffer, geometry.groups_x, geometry.groups_y, geometry.groups_z);
-  if (rt->timestamp_query_supported != 0u) vkCmdWriteTimestamp(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, slot->query_base + 1u);
-  result = vkEndCommandBuffer(slot->command_buffer); if (result != VK_SUCCESS) goto failed;
-  slot->m=m; slot->n=n; slot->compute_k=compute_k; slot->compute_mode=compute_mode; slot->variant=variant; slot->state=PROM_SGEMM_SUBMISSION_SLOT_RECORDED; return PROM_OK;
-failed:
-  slot->state=PROM_SGEMM_SUBMISSION_SLOT_FAILED; slot->failure_stage=PROM_STAGE_SUBMIT; slot->failure_detail=(int)result; rt->submission_ring_diag.slot_failure_count += 1u; return PROM_ERROR;
+  if (!rt || !slot || slot->state != PROM_SGEMM_SUBMISSION_SLOT_PREPARING) return PROM_ERROR;
+  const auto pipeline = prom_sgemm_pipeline_for_resident_dispatch(rt, compute_mode, variant);
+  if (!pipeline) return PROM_ERROR;
+  const int code = prom_sgemm_prepare_job(rt, slot->slot_id, pipeline, slot->descriptor_set,
+      rt->sgemm_timestamp_query_pool, slot->query_base, &rt->staged_device_a, &rt->staged_device_b,
+      &rt->staged_device_c, m, n, compute_k, prom_sgemm_dispatch_geometry_for_variant(variant, m, n), 3, 1);
+  if (code != 0) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_FAILED; slot->failure_stage = PROM_STAGE_SUBMIT;
+    slot->failure_detail = code; rt->submission_ring_diag.slot_failure_count++; return PROM_ERROR; }
+  slot->m = m; slot->n = n; slot->compute_k = compute_k; slot->compute_mode = compute_mode;
+  slot->variant = variant; slot->state = PROM_SGEMM_SUBMISSION_SLOT_RECORDED;
+  return PROM_OK;
 }
 
 int prom_sgemm_ring_submit_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot) {
-  VkSubmitInfo info; VkResult result;
-  if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_RECORDED) return PROM_ERROR;
-  result = (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u ? VK_ERROR_INITIALIZATION_FAILED : vkResetFences(rt->vulkan.device, 1u, &slot->fence);
-  if (result != VK_SUCCESS) goto failed;
-  memset(&info, 0, sizeof(info)); info.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; info.commandBufferCount=1u; info.pCommandBuffers=&slot->command_buffer;
-  result = (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u ? VK_ERROR_INITIALIZATION_FAILED : prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &info, slot->fence);
-  if (result != VK_SUCCESS) goto failed;
+  int result;
+  if (!rt || !slot || slot->state != PROM_SGEMM_SUBMISSION_SLOT_RECORDED) return PROM_ERROR;
+  result = (rt->vulkan.test_flags & (PROM_TESTCFG_FAIL_RESET_FENCE | PROM_TESTCFG_FAIL_QUEUE_SUBMIT))
+      ? VK_ERROR_INITIALIZATION_FAILED : prom_concept_sgemm_submit(rt->concept_sgemm_state, slot->slot_id);
+  if (result != 0) goto failed;
   slot->state=PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED; rt->submission_ring_diag.total_submits += 1u; rt->submission_ring_diag.outstanding += 1u;
   if (rt->submission_ring_diag.outstanding > rt->submission_ring_diag.max_outstanding) rt->submission_ring_diag.max_outstanding=rt->submission_ring_diag.outstanding;
   return PROM_OK;
@@ -6335,167 +5554,27 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
                                              uint32_t dispatch_count,
                                              uint32_t* out_stage,
                                              int* out_detail_code) {
-  VkWriteDescriptorSet writes[3];
-  VkDescriptorBufferInfo buffer_infos[3];
-  VkCommandBufferBeginInfo begin_info;
-  VkSubmitInfo submit_info;
-  VkBufferMemoryBarrier barrier;
-  prom_vk_push push;
-  VkPipeline pipeline;
+  if (!rt || !rt->has_staged_buffers) return PROM_ERROR;
+  const auto pipeline = prom_sgemm_pipeline_for_resident_dispatch(rt, compute_mode, variant);
+  if (!pipeline) return PROM_ERROR;
+  const auto start = prom_wall_clock_now_ns();
+  int code = prom_sgemm_prepare_job(rt, 4, pipeline, rt->descriptor_set, rt->sgemm_timestamp_query_pool, 0,
+      &rt->staged_device_a, &rt->staged_device_b, &rt->staged_device_c, m, n, compute_k,
+      prom_sgemm_dispatch_geometry_for_variant(variant, m, n), 3, dispatch_count);
+  rt->px16_m8_last_command_record_wall_ns = prom_wall_clock_elapsed_ns(start, prom_wall_clock_now_ns());
+  const auto submitted = prom_wall_clock_now_ns();
+  if (!code) code = prom_concept_sgemm_submit(rt->concept_sgemm_state, 4);
+  rt->px16_m8_last_dispatch_submit_wall_ns = prom_wall_clock_elapsed_ns(submitted, prom_wall_clock_now_ns());
+  uint64_t recordedNanoseconds = 0, submittedNanoseconds = 0;
+  if (!code && prom_concept_sgemm_timings(rt->concept_sgemm_state, 4, &recordedNanoseconds, &submittedNanoseconds) == 0) {
+    rt->px16_m8_last_command_record_wall_ns += recordedNanoseconds;
+    rt->px16_m8_last_dispatch_submit_wall_ns = submittedNanoseconds;
+  }
+  const auto waited = prom_wall_clock_now_ns();
+  if (!code) code = prom_concept_sgemm_wait(rt->concept_sgemm_state, 4);
+  rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(waited, prom_wall_clock_now_ns());
+  if (code) { prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, code); return PROM_ERROR; }
   VkResult vk_result;
-  uint64_t command_record_begin_ns;
-  uint64_t dispatch_submit_begin_ns;
-  uint64_t dispatch_submit_end_ns;
-  uint64_t sync_wait_begin_ns;
-  uint64_t sync_wait_end_ns;
-  prom_sgemm_dispatch_geometry dispatch_geometry;
-
-  if (rt == NULL || rt->has_staged_buffers == 0u ||
-      rt->staged_device_a.buffer == VK_NULL_HANDLE ||
-      rt->staged_device_b.buffer == VK_NULL_HANDLE ||
-      rt->staged_device_c.buffer == VK_NULL_HANDLE) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
-    return PROM_ERROR;
-  }
-  pipeline = prom_sgemm_pipeline_for_resident_dispatch(rt, compute_mode, variant);
-  if (pipeline == VK_NULL_HANDLE) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_ERROR);
-    return PROM_ERROR;
-  }
-
-  memset(buffer_infos, 0, sizeof(buffer_infos));
-  buffer_infos[0].buffer = rt->staged_device_a.buffer;
-  buffer_infos[0].range = rt->staged_device_a.size;
-  buffer_infos[1].buffer = rt->staged_device_b.buffer;
-  buffer_infos[1].range = rt->staged_device_b.size;
-  buffer_infos[2].buffer = rt->staged_device_c.buffer;
-  buffer_infos[2].range = rt->staged_device_c.size;
-  memset(writes, 0, sizeof(writes));
-  writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  writes[0].dstSet = rt->descriptor_set;
-  writes[0].dstBinding = 0u;
-  writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  writes[0].descriptorCount = 1u;
-  writes[0].pBufferInfo = &buffer_infos[0];
-  writes[1] = writes[0];
-  writes[1].dstBinding = 1u;
-  writes[1].pBufferInfo = &buffer_infos[1];
-  writes[2] = writes[0];
-  writes[2].dstBinding = 2u;
-  writes[2].pBufferInfo = &buffer_infos[2];
-  command_record_begin_ns = prom_wall_clock_now_ns();
-  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
-
-  vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
-  if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
-  if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
-
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = rt->staged_device_c.buffer;
-  barrier.size = rt->staged_device_c.size;
-  vkCmdPipelineBarrier(rt->command_buffer,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       0,
-                       0,
-                       NULL,
-                       1u,
-                       &barrier,
-                       0,
-                       NULL);
-
-  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-  vkCmdBindDescriptorSets(rt->command_buffer,
-                          VK_PIPELINE_BIND_POINT_COMPUTE,
-                          rt->pipeline_layout,
-                          0u,
-                          1u,
-                          &rt->descriptor_set,
-                          0u,
-                          NULL);
-  push.m = m;
-  push.n = n;
-  push.k = compute_k;
-  vkCmdPushConstants(rt->command_buffer,
-                     rt->pipeline_layout,
-                     VK_SHADER_STAGE_COMPUTE_BIT,
-                     0u,
-                     PROM_VK_SHADER_PUSH_BYTES,
-                     &push);
-
-  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
-    vkCmdResetQueryPool(rt->command_buffer, rt->sgemm_timestamp_query_pool, 0u, 2u);
-    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 0u);
-  }
-  dispatch_geometry = prom_sgemm_dispatch_geometry_for_variant(variant, m, n);
-  /* M28 diagnostic batching deliberately reuses the same resident inputs and
-     output.  Each kernel overwrites C, so only the final output is observed;
-     this is a feed-path experiment, not a production scheduling path. */
-  for (uint32_t dispatch_index = 0u; dispatch_index < dispatch_count; ++dispatch_index) {
-    vkCmdDispatch(rt->command_buffer,
-                  dispatch_geometry.groups_x,
-                  dispatch_geometry.groups_y,
-                  dispatch_geometry.groups_z);
-  }
-  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
-    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 1u);
-  }
-  vk_result = vkEndCommandBuffer(rt->command_buffer);
-  if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  rt->px16_m8_last_command_record_wall_ns =
-      prom_wall_clock_elapsed_ns(command_record_begin_ns, prom_wall_clock_now_ns());
-
-  vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->submit_fence);
-  if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  memset(&submit_info, 0, sizeof(submit_info));
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_info.commandBufferCount = 1u;
-  submit_info.pCommandBuffers = &rt->command_buffer;
-  dispatch_submit_begin_ns = prom_wall_clock_now_ns();
-  vk_result = prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
-  dispatch_submit_end_ns = prom_wall_clock_now_ns();
-  rt->px16_m8_last_dispatch_submit_wall_ns =
-      prom_wall_clock_elapsed_ns(dispatch_submit_begin_ns, dispatch_submit_end_ns);
-  if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
-
-  sync_wait_begin_ns = prom_wall_clock_now_ns();
-  vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
-  sync_wait_end_ns = prom_wall_clock_now_ns();
-  rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(sync_wait_begin_ns, sync_wait_end_ns);
-  if (vk_result != VK_SUCCESS) {
-    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
-    return PROM_ERROR;
-  }
-
   if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
     uint64_t timestamps[2];
     const uint64_t query_begin_ns = prom_wall_clock_now_ns();
@@ -6535,86 +5614,13 @@ static int prom_sgemm_resident_readback_once(prometheus_runtime* rt,
                                              size_t c_copy_size,
                                              uint32_t* out_stage,
                                              int* out_detail_code) {
-  VkCommandBufferBeginInfo begin_info;
-  VkSubmitInfo submit_info;
-  VkBufferMemoryBarrier barrier;
-  VkBufferCopy copy;
-  VkResult vk_result;
-  if (rt == NULL || c == NULL || c_copy_size == 0u) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
-    return PROM_ERROR;
-  }
-  vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
-  if (vk_result != VK_SUCCESS) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
-  if (vk_result != VK_SUCCESS) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  memset(&barrier, 0, sizeof(barrier));
-  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = rt->staged_device_c.buffer;
-  barrier.size = rt->staged_device_c.size;
-  vkCmdPipelineBarrier(rt->command_buffer,
-                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       0,
-                       0,
-                       NULL,
-                       1u,
-                       &barrier,
-                       0,
-                       NULL);
-  memset(&copy, 0, sizeof(copy));
-  copy.size = (VkDeviceSize)c_copy_size;
-  vkCmdCopyBuffer(rt->command_buffer, rt->staged_device_c.buffer, rt->staged_readback_c.buffer, 1u, &copy);
-  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-  barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-  barrier.buffer = rt->staged_readback_c.buffer;
-  barrier.size = rt->staged_readback_c.size;
-  vkCmdPipelineBarrier(rt->command_buffer,
-                       VK_PIPELINE_STAGE_TRANSFER_BIT,
-                       VK_PIPELINE_STAGE_HOST_BIT,
-                       0,
-                       0,
-                       NULL,
-                       1u,
-                       &barrier,
-                       0,
-                       NULL);
-  vk_result = vkEndCommandBuffer(rt->command_buffer);
-  if (vk_result != VK_SUCCESS) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->submit_fence);
-  if (vk_result != VK_SUCCESS) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  memset(&submit_info, 0, sizeof(submit_info));
-  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_info.commandBufferCount = 1u;
-  submit_info.pCommandBuffers = &rt->command_buffer;
-  vk_result = prom_vk_queue_submit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
-  if (vk_result != VK_SUCCESS) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
-    return PROM_ERROR;
-  }
-  vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
-  if (vk_result != VK_SUCCESS) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
-    return PROM_ERROR;
-  }
+  if (!rt || !c || !c_copy_size) return PROM_ERROR;
+  int code = prom_sgemm_prepare_job(rt, 4, rt->pipeline, rt->descriptor_set, VK_NULL_HANDLE, 0,
+      &rt->staged_device_a, &rt->staged_device_b, &rt->staged_device_c, 0, 0, 0,
+      prom_sgemm_dispatch_geometry{}, 4, 0);
+  if (!code) code = prom_concept_sgemm_submit(rt->concept_sgemm_state, 4);
+  if (!code) code = prom_concept_sgemm_wait(rt->concept_sgemm_state, 4);
+  if (code) { prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, code); return PROM_ERROR; }
   memcpy(c, rt->staged_readback_c.mapped, c_copy_size);
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED);
   return PROM_OK;
@@ -7131,10 +6137,10 @@ int prom_async_reap_quarantined_slots(prometheus_runtime* rt, uint32_t allow_wai
     if (slot->state != PROM_SGEMM_SUBMISSION_SLOT_QUARANTINED) continue;
     task = prom_async_task_for_slot(rt, slot);
     rt->async_reap_poll_count += 1u;
-    result = vkGetFenceStatus(rt->vulkan.device, slot->fence);
+    result = static_cast<VkResult>(prom_concept_sgemm_poll(rt->concept_sgemm_state, slot->slot_id));
     if (result == VK_NOT_READY && allow_wait != 0u) {
       rt->async_reap_wait_count += 1u;
-      result = vkWaitForFences(rt->vulkan.device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
+      result = static_cast<VkResult>(prom_concept_sgemm_wait(rt->concept_sgemm_state, slot->slot_id));
     }
     if (result == VK_NOT_READY) continue;
     if (result != VK_SUCCESS) {
@@ -7174,33 +6180,17 @@ int prom_async_reap_quarantined_slots(prometheus_runtime* rt, uint32_t allow_wai
 }
 
 int prom_async_record_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot, prom_sgemm_async_task* task) {
-  VkWriteDescriptorSet writes[3]; VkDescriptorBufferInfo infos[3]; VkCommandBufferBeginInfo begin; VkBufferMemoryBarrier barriers[3];
-  VkResult result; prom_vk_push push; prom_sgemm_dispatch_geometry geometry;
-  if (rt == NULL || slot == NULL || task == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_PREPARING) return PROM_ERROR;
-  memset(infos, 0, sizeof(infos));
-  infos[0].buffer=task->a.buffer; infos[0].range=task->a.size;
-  infos[1].buffer=task->b.buffer; infos[1].range=task->b.size;
-  infos[2].buffer=task->c.buffer; infos[2].range=task->c.size;
-  memset(writes, 0, sizeof(writes));
-  for (uint32_t i=0u;i<3u;++i) { writes[i].sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet=slot->descriptor_set; writes[i].dstBinding=i; writes[i].descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].descriptorCount=1u; writes[i].pBufferInfo=&infos[i]; }
-  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
-  result=vkResetCommandBuffer(slot->command_buffer,0u); if(result!=VK_SUCCESS) goto failed;
-  memset(&begin,0,sizeof(begin)); begin.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  result=vkBeginCommandBuffer(slot->command_buffer,&begin); if(result!=VK_SUCCESS) goto failed;
-  memset(barriers,0,sizeof(barriers));
-  for(uint32_t i=0u;i<3u;++i){ barriers[i].sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER; barriers[i].srcAccessMask=VK_ACCESS_HOST_WRITE_BIT; barriers[i].dstAccessMask=i==2u?VK_ACCESS_SHADER_WRITE_BIT:VK_ACCESS_SHADER_READ_BIT; barriers[i].srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; barriers[i].dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; barriers[i].buffer=infos[i].buffer; barriers[i].size=infos[i].range; }
-  vkCmdPipelineBarrier(slot->command_buffer,VK_PIPELINE_STAGE_HOST_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,NULL,3u,barriers,0,NULL);
-  vkCmdBindPipeline(slot->command_buffer,VK_PIPELINE_BIND_POINT_COMPUTE,rt->pipeline);
-  vkCmdBindDescriptorSets(slot->command_buffer,VK_PIPELINE_BIND_POINT_COMPUTE,rt->pipeline_layout,0u,1u,&slot->descriptor_set,0u,NULL);
-  push.m=task->m; push.n=task->n; push.k=task->k; vkCmdPushConstants(slot->command_buffer,rt->pipeline_layout,VK_SHADER_STAGE_COMPUTE_BIT,0u,PROM_VK_SHADER_PUSH_BYTES,&push);
-  if(rt->timestamp_query_supported!=0u){vkCmdResetQueryPool(slot->command_buffer,rt->sgemm_timestamp_query_pool,slot->query_base,2u);vkCmdWriteTimestamp(slot->command_buffer,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,rt->sgemm_timestamp_query_pool,slot->query_base);}
-  geometry=prom_sgemm_dispatch_geometry_for_variant(0u,task->m,task->n); vkCmdDispatch(slot->command_buffer,geometry.groups_x,geometry.groups_y,geometry.groups_z);
-  if(rt->timestamp_query_supported!=0u)vkCmdWriteTimestamp(slot->command_buffer,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,rt->sgemm_timestamp_query_pool,slot->query_base+1u);
-  result=vkEndCommandBuffer(slot->command_buffer);
-  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) result = VK_ERROR_INITIALIZATION_FAILED;
-  if(result!=VK_SUCCESS)goto failed;
-  slot->m=task->m;slot->n=task->n;slot->compute_k=task->k;slot->compute_mode=PROM_VK_COMPUTE_BASELINE;slot->variant=0u;slot->state=PROM_SGEMM_SUBMISSION_SLOT_RECORDED;return PROM_OK;
-failed: slot->state=PROM_SGEMM_SUBMISSION_SLOT_FAILED;slot->failure_stage=PROM_STAGE_SUBMIT;slot->failure_detail=(int)result;return PROM_ERROR;
+  if (!rt || !slot || !task || slot->state != PROM_SGEMM_SUBMISSION_SLOT_PREPARING) return PROM_ERROR;
+  int code = (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_COMMAND_END) ? VK_ERROR_INITIALIZATION_FAILED
+      : prom_sgemm_prepare_job(rt, slot->slot_id, rt->pipeline, slot->descriptor_set,
+          rt->sgemm_timestamp_query_pool, slot->query_base, &task->a, &task->b, &task->c,
+          task->m, task->n, task->k, prom_sgemm_dispatch_geometry_for_variant(0, task->m, task->n), 0, 1);
+  if (code != 0) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_FAILED; slot->failure_stage = PROM_STAGE_SUBMIT;
+    slot->failure_detail = code; return PROM_ERROR; }
+  slot->m = task->m; slot->n = task->n; slot->compute_k = task->k;
+  slot->compute_mode = PROM_VK_COMPUTE_BASELINE; slot->variant = 0;
+  slot->state = PROM_SGEMM_SUBMISSION_SLOT_RECORDED;
+  return PROM_OK;
 }
 
 static uint32_t prom_async_outstanding(const prometheus_runtime* rt);
@@ -7346,7 +6336,7 @@ int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
   if(result!=VK_SUCCESS){slot->state=PROM_SGEMM_SUBMISSION_SLOT_EMPTY;prom_async_task_release(rt,task);prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_TRANSFER_IN,(int)result);return PROM_ERROR;}
   memcpy(task->a.mapped,a,(size_t)a_count*sizeof(float));memcpy(task->b.mapped,b,(size_t)b_count*sizeof(float));memset(task->c.mapped,0,(size_t)c_count*sizeof(float));
   if(prom_async_record_slot(rt,slot,task)!=PROM_OK||prom_sgemm_ring_submit_slot(rt,slot)!=PROM_OK){slot->state=PROM_SGEMM_SUBMISSION_SLOT_EMPTY;prom_async_task_release(rt,task);prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,PROM_ERROR);return PROM_ERROR;}
-  task->lifecycle_state=PROM_ASYNC_STATE_SUBMITTED; *out_task_id=task->public_task_id; rt->async_task_id=*out_task_id;rt->async_state=PROM_ASYNC_STATE_SUBMITTED;
+  task->lifecycle_state=PROM_ASYNC_STATE_SUBMITTED; *out_task_id=task->public_task_id; rt->async_task_id=*out_task_id;
   prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,0);
   return PROM_OK;
 }

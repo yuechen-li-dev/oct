@@ -69,8 +69,6 @@ typedef struct prom_sgemm_submission_slot {
   uint32_t generation;
   uint32_t state;
   uint64_t submission_sequence;
-  VkCommandBuffer command_buffer;
-  VkFence fence;
   VkDescriptorSet descriptor_set;
   uint32_t query_base;
   uint32_t m;
@@ -239,69 +237,6 @@ typedef struct prom_buffer_artifact_key {
   uint32_t precision;
   uint64_t required_bytes;
 } prom_buffer_artifact_key;
-
-/*
- * This is the deliberately narrow boundary between a committed Dominatus
- * decision and mechanical SGEMM command recording. It is a value snapshot,
- * not a plan, registry, or second lifecycle state machine: the mechanism may
- * only bind, record, submit, and report the already-resolved values below.
- *
- * Logical identity, content hash, generation, arena allocation, Vulkan
- * buffer, descriptor binding, and in-flight ownership remain separate. The
- * descriptor inputs are a mechanical binding view; they do not name a tensor
- * or weight and they do not carry ownership.
- */
-typedef struct prom_sgemm_execution_handoff {
-  uint32_t m;
-  uint32_t n;
-  uint32_t k;
-  uint32_t compute_k;
-  uint32_t selected_path;
-  uint32_t compute_mode;
-  uint32_t selected_variant;
-  uint32_t slot_id;
-  uint32_t wait_for_transfer;
-  VkPipeline pipeline;
-  VkDescriptorSet descriptor_set;
-  VkDescriptorBufferInfo descriptor_inputs[3];
-  prom_sgemm_dispatch_geometry dispatch_geometry;
-} prom_sgemm_execution_handoff;
-
-static inline prom_sgemm_execution_handoff prom_sgemm_make_execution_handoff(
-    uint32_t m,
-    uint32_t n,
-    uint32_t k,
-    uint32_t compute_k,
-    uint32_t selected_path,
-    uint32_t compute_mode,
-    uint32_t selected_variant,
-    uint32_t slot_id,
-    uint32_t wait_for_transfer,
-    VkPipeline pipeline,
-    VkDescriptorSet descriptor_set,
-    const VkDescriptorBufferInfo descriptor_inputs[3],
-    const prom_sgemm_dispatch_geometry* dispatch_geometry) {
-  prom_sgemm_execution_handoff handoff;
-  memset(&handoff, 0, sizeof(handoff));
-  handoff.m = m;
-  handoff.n = n;
-  handoff.k = k;
-  handoff.compute_k = compute_k;
-  handoff.selected_path = selected_path;
-  handoff.compute_mode = compute_mode;
-  handoff.selected_variant = selected_variant;
-  handoff.slot_id = slot_id;
-  handoff.wait_for_transfer = wait_for_transfer;
-  handoff.pipeline = pipeline;
-  handoff.descriptor_set = descriptor_set;
-  if (descriptor_inputs != NULL) {
-    memcpy(handoff.descriptor_inputs, descriptor_inputs, sizeof(handoff.descriptor_inputs));
-  }
-  if (dispatch_geometry != NULL) {
-    handoff.dispatch_geometry = *dispatch_geometry;
-  }
-  return handoff;
-}
 
 typedef struct prom_sgemm_controller_defaults {
   uint32_t lookahead_default;
@@ -597,11 +532,11 @@ typedef struct prometheus_runtime {
   void* concept_reduction_state;
   void* concept_norm_state;
   void* concept_fft_state;
+  void* concept_sgemm_state;
   VkDescriptorSetLayout descriptor_set_layout;
   VkDescriptorPool descriptor_pool;
   VkDescriptorSet descriptor_set;
-  /* M29 owns distinct resources per physical submission; legacy handles stay
-     dedicated to synchronous/async compatibility paths. */
+  /* Host policy/identity packets; physical submission resources belong to Concept. */
   prom_sgemm_submission_slot submission_ring[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
   prom_sgemm_submission_ring_diag submission_ring_diag;
   prom_sgemm_async_task async_tasks[PROM_SGEMM_ASYNC_MAX_TASKS];
@@ -619,11 +554,6 @@ typedef struct prometheus_runtime {
   uint64_t async_reap_failure_count;
   uint32_t async_max_quarantine_depth;
   uint32_t async_runtime_unsafe_to_reuse;
-  VkCommandBuffer command_buffer;
-  VkCommandBuffer transfer_command_buffer;
-  VkFence submit_fence;
-  VkFence transfer_submit_fence;
-  VkSemaphore transfer_ready_semaphore;
   VkQueryPool sgemm_timestamp_query_pool;
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
@@ -734,6 +664,9 @@ typedef struct prometheus_runtime {
   PrometheusSgemmBatchDiagnostics batch_diag;
 } prometheus_runtime;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 int prom_async_reap_quarantined_slots(prometheus_runtime* rt, uint32_t allow_wait);
 
 prom_sgemm_async_task* prom_async_task_allocate(prometheus_runtime* rt);
@@ -744,5 +677,9 @@ int prom_async_poll_task(prometheus_runtime* rt, prom_sgemm_async_task* task);
 void prom_async_process_completion_feedback(prometheus_runtime* rt);
 int prom_sgemm_ring_wait_oldest(prometheus_runtime* rt);
 int prom_sgemm_ring_submit_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

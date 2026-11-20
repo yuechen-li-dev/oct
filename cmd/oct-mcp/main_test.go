@@ -18,6 +18,26 @@ import (
 
 // These tests own MCP transport and virtual-workspace behavior only. Oct
 // semantics remain specified by existing contracts under Language/.
+func TestMain(m *testing.M) {
+	if executable := os.Getenv("OCT_MCP_TEST_SERVER_EXECUTABLE"); executable != "" {
+		// Each request deliberately starts with an empty Go build cache. This
+		// transport test must budget for a cold compiler under hosted CI load;
+		// deadline enforcement is exercised independently below.
+		limits := defaultLimits()
+		limits.ExecutionSeconds = 90
+		service, err := newService(limits)
+		if err != nil {
+			panic(err)
+		}
+		service.executable = executable
+		if err := newServer(service).Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+			panic(err)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func TestWorkspaceInfoAndInputBoundary(t *testing.T) {
 	setRuntimeRoot(t)
 	service, err := newService(defaultLimits())
@@ -78,7 +98,24 @@ func TestStdioGoldenFlowAndArtifactRetrieval(t *testing.T) {
 	artifactSuite := readFixture(t, "..", "..", "Experiments", "OctErgonomicsLab", "M0", "oct_ergonomics_lab_m0.octest")
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "oct-mcp-test", Version: "1"}, nil)
-	session, err := client.Connect(context.Background(), &mcp.CommandTransport{Command: exec.Command(executable, "--stdio")}, nil)
+	// Exercise the installed command's actual startup and production limits.
+	defaultSession, err := client.Connect(context.Background(), &mcp.CommandTransport{Command: exec.Command(executable, "--stdio")}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := defaultSession.CallTool(context.Background(), &mcp.CallToolParams{Name: "oct_workspace_info", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limits := decodeToolEnvelope(t, info).Limits; limits.ExecutionSeconds != 15 {
+		t.Fatalf("production execution limit changed: %#v", limits)
+	}
+	if err := defaultSession.Close(); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(os.Args[0])
+	command.Env = append(os.Environ(), "OCT_MCP_TEST_SERVER_EXECUTABLE="+executable)
+	session, err := client.Connect(context.Background(), &mcp.CommandTransport{Command: command}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +163,9 @@ func TestStdioGoldenFlowAndArtifactRetrieval(t *testing.T) {
 	if !ok || execution["compiledCases"] == nil || execution["interpretedFallbacks"] == nil {
 		t.Fatalf("MCP lost explicit execution/fallback fields: %#v", validEnvelope.Result)
 	}
+	if execution["compiledCases"] != float64(1) || execution["interpretedFallbacks"] != float64(0) {
+		t.Fatalf("repaired contract did not use the real compiled path: %#v", execution)
+	}
 
 	artifactCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "oct_artifact", Arguments: map[string]any{"entry": "suite.octest", "files": []map[string]string{{"path": "main.oct", "content": string(artifactSource)}, {"path": "suite.octest", "content": string(artifactSuite)}}}})
 	if err != nil || artifactCall.IsError {
@@ -142,6 +182,41 @@ func TestStdioGoldenFlowAndArtifactRetrieval(t *testing.T) {
 	}
 	if !strings.Contains(toolText(t, retrieval), "base64") || !strings.Contains(toolText(t, retrieval), first.SHA256) {
 		t.Fatalf("retrieval omitted verified content metadata: %s", toolText(t, retrieval))
+	}
+}
+
+func TestExecutionDeadlineCapsServerAndRequest(t *testing.T) {
+	setRuntimeRoot(t)
+	executable := filepath.Join(t.TempDir(), "blocked-execution")
+	if runtime.GOOS == "windows" {
+		executable += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", executable, "./testdata/blocked-execution")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build blocked child: %v\n%s", err, output)
+	}
+	for _, test := range []struct {
+		name            string
+		server, request int
+	}{{"server cap", 1, 90}, {"request cap", 90, 1}} {
+		t.Run(test.name, func(t *testing.T) {
+			limits := defaultLimits()
+			limits.ExecutionSeconds = test.server
+			service, err := newService(limits)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service.executable = executable
+			source := readFixture(t, "..", "..", "Language", "Types", "UnitsM1", "valid", "signed_exponents_and_hz_alias_m1.octest")
+			started := time.Now()
+			envelope := service.execute(context.Background(), "oct_test", "test", "main.octest", SourceInput{Source: string(source), TimeoutSeconds: test.request}, nil, false)
+			if envelope.OK || envelope.ErrorCode != "OCT-MCP-TIMEOUT" {
+				t.Fatalf("blocked child escaped deadline: %#v", envelope)
+			}
+			if elapsed := time.Since(started); elapsed >= 10*time.Second {
+				t.Fatalf("one-second deadline took %s", elapsed)
+			}
+		})
 	}
 }
 

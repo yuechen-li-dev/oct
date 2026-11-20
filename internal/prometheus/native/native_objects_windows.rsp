@@ -14,7 +14,6 @@
 "out/prometheus/native/obj/reactor_vulkan_runtime.obj"
 "out/prometheus/native/obj/reactor_shader_registry.obj"
 "out/prometheus/native/obj/reactor_shader_package.obj"
-"out/prometheus/native/obj/reactor_vulkan_sgemm.obj"
 "out/prometheus/native/obj/reactor_vulkan_ray_query.obj"
 "out/prometheus/native/obj/reactor_batch.obj"
 "out/prometheus/native/obj/reactor_vulkan_fft.obj"

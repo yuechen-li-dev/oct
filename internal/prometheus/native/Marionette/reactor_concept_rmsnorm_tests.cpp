@@ -281,15 +281,17 @@ FACT(PrometheusConceptAttention_FailuresRetainInputsAndRetireBeforeReuse)
     ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "producer reuse observes score completion before overwriting Q");
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_test_score_flags(owner, 4), "arm direct-detach uncertainty");
     ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_gemma4e2b_m1_attention_scores(owner, &request, &result), "detach has a real retained score submission");
+    const int contextsBeforeDetach = ConceptVkTestLiveContexts();
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_concept_norm_detach(owner), "detach drains score work before Q/K and output destruction");
     ASSERT_EQUAL(0, ConceptVkTestPendingSubmissions(), "detach retires retained work");
     ASSERT_EQUAL(buffers, ConceptVkTestLiveBuffers(), "detach releases every score and producer allocation");
     ASSERT_EQUAL(pipelines, ConceptVkTestLivePipelines(), "detach releases the lazy score pipeline");
-    ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "detach releases the shared borrowed context");
+    ASSERT_EQUAL(contextsBeforeDetach - 1, ConceptVkTestLiveContexts(), "norm detach releases its context while SGEMM retains its own contexts");
     ASSERT_TRUE(prom_reactor_runtime_reduction_state(owner) == nullptr, "no legacy model executor is created along any score path");
     prom_vk_runtime_services services{}; prom_reactor_runtime_get_vk_services(owner, &services);
     ASSERT_EQUAL(0u, services.validation_error_count, "score failure/recovery/lifetime paths are validation clean");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(owner), "original device owner remains independently destroyable");
+    ASSERT_EQUAL(contexts, ConceptVkTestLiveContexts(), "device-owner teardown releases the remaining SGEMM contexts");
 }
 
 FACT(PrometheusConceptRmsNorm_UncertainCompletionRetainsAndDrains)

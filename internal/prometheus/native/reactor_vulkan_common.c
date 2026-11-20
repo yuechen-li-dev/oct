@@ -296,10 +296,9 @@ VkResult prom_vk_create_device_address_buffer(VkPhysicalDevice physical_device,
   return result;
 }
 
-/* M2 uses concurrent sharing only for its two weight windows.  This avoids
-   ownership handoffs for a buffer that alternates between the dedicated
-   transfer and compute families; all other reactor buffers retain the
-   established exclusive-owner recipe. */
+/* Weight windows and SGEMM inputs use concurrent sharing when alternating
+   between dedicated transfer and compute families. Other buffers retain the
+   exclusive-owner recipe. */
 VkResult prom_vk_create_buffer_shared_between_families(
     VkPhysicalDevice physical_device, VkDevice device, uint32_t test_flags, VkDeviceSize size,
     VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, int map_memory,
