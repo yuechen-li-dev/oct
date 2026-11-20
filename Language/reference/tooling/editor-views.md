@@ -15,6 +15,7 @@ VSCode may render `en-human` as a view-only projection.
 - Save, git diff, and commit operate on canonical source.
 - `oct fmt`, `oct build`, `oct run`, and `oct test` operate on canonical source.
 - `en-human` does not change parser/typechecker/runtime semantics.
+- The VSCode extension starts the language server (`oct lsp`) when `oct.lsp.enabled` is true (the default), using the executable named by `oct.lsp.path` (default `oct` on PATH). The server then owns diagnostics, formatting, semantic highlighting and the outline; the CLI-based formatter is used only when the server is disabled.
 
 ## Example
 

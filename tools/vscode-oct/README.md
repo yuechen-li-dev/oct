@@ -10,6 +10,26 @@ This directory contains the Oct VSCode extension baseline plus **M76c**:
 
 ---
 
+## Language server (LSP-M0)
+
+The extension starts `oct lsp` for `.oct` and `.octest` files:
+
+- **Diagnostics**: lexer/parser errors live as you type; type errors on open and save (the same pipeline as `oct run`). Errors in other files of the package appear in those files.
+- **Formatting**: `Format Document` uses `oct fmt` rules.
+- **Semantic highlighting**: contextual keywords (`template`, `query`, ...), parameters, fields, and a `unit` token type for SI unit annotations (`9.81 m/s^2`, `Float<K>`).
+- **Outline**: top-level `fn`, `record`, `enum`, `concept` and `flow` declarations.
+
+Setup:
+
+```text
+npm install                  # once, in tools/vscode-oct (installs vscode-languageclient)
+go build -o <dir on PATH>/oct ./cmd/oct
+```
+
+Settings: `oct.lsp.enabled` (default `true`) and `oct.lsp.path` (default `oct`). When the server is disabled, formatting falls back to the CLI command in `oct.cli.command`.
+
+---
+
 ## Core safety rule
 
 Canonical source remains `en-llm` at all times:

@@ -1,0 +1,9 @@
+package Main
+
+record Probe {
+    Mass: Float
+}
+
+fn Main() -> Int {
+    return 0
+}

@@ -1,0 +1,7 @@
+package Main
+
+fn Main() -> Int {
+    let y = Sqrt("four")
+    let w = Sqrt(4.0)
+    return 0
+}

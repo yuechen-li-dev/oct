@@ -23,6 +23,9 @@
     "onCommand:oct.toggleEnHuman"
   ],
   "main": "./extension.js",
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
   "contributes": {
     "languages": [
       {
@@ -45,6 +48,24 @@
         "language": "oct",
         "scopeName": "source.oct",
         "path": "./syntaxes/oct.tmLanguage.json"
+      }
+    ],
+    "semanticTokenTypes": [
+      {
+        "id": "unit",
+        "superType": "type",
+        "description": "An SI unit annotation, such as m, s, degC or kg*m/s^2."
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "oct",
+        "scopes": {
+          "unit": [
+            "support.type.unit.oct",
+            "support.type"
+          ]
+        }
       }
     ],
     "commands": [
@@ -103,6 +124,16 @@
     "configuration": {
       "title": "Oct",
       "properties": {
+        "oct.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the Oct language server (`oct lsp`) for diagnostics, formatting, semantic highlighting and the outline. Requires an `oct` binary that supports `lsp`."
+        },
+        "oct.lsp.path": {
+          "type": "string",
+          "default": "oct",
+          "description": "Path to the `oct` executable used to start the language server. The default looks up `oct` on PATH."
+        },
         "oct.cli.command": {
           "type": "string",
           "default": "go run ./cmd/oct",

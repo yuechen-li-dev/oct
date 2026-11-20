@@ -1,0 +1,5 @@
+package Main
+// 20 °C ≈ 293 K
+fn Main() {
+    return 0
+}

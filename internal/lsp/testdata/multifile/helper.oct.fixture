@@ -1,0 +1,6 @@
+package Main
+
+fn Helper() -> Int {
+    let x: Int = "hi"
+    return 0
+}

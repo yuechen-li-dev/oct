@@ -1,0 +1,5 @@
+package Manifest
+
+fn Manifest() -> Int {
+    return 1
+}

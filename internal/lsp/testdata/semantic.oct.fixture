@@ -1,0 +1,15 @@
+package Main
+
+record Probe {
+    Mass: Float
+}
+
+template fn Scale(x: Float, k: Float) -> Float {
+    return x * k
+}
+
+fn Main() -> Int {
+    let g = 9.81 m/s^2
+    let T: Float<K> = 20.0C
+    return 0
+}

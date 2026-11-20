@@ -1,0 +1,8 @@
+package Main
+
+fn Main() -> Int {
+    let d = 3.0 m
+    let t = 2.0 s
+    let z = d + t
+    return 0
+}

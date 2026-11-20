@@ -26,7 +26,61 @@ const DERIVED_UNIT_WHITELIST = new Map([
   ['1/s', 'Hz']
 ]);
 
+let languageClient;
+
+// startLanguageServer launches `oct lsp`. It returns true when the server owns
+// formatting, so the CLI formatter below is not registered twice.
+function startLanguageServer(context) {
+  const config = vscode.workspace.getConfiguration('oct');
+  if (!config.get('lsp.enabled', true)) {
+    return false;
+  }
+  let lc;
+  try {
+    // Loaded lazily: without `npm install` the extension keeps its CLI-based
+    // features instead of failing to activate.
+    lc = require('vscode-languageclient/node');
+  } catch (err) {
+    vscode.window.showWarningMessage(
+      'Oct: language server disabled because vscode-languageclient is not installed. Run `npm install` in tools/vscode-oct.'
+    );
+    return false;
+  }
+  const command = config.get('lsp.path', 'oct') || 'oct';
+  const serverOptions = {
+    run: { command, args: ['lsp'], transport: lc.TransportKind.stdio },
+    debug: { command, args: ['lsp'], transport: lc.TransportKind.stdio }
+  };
+  const clientOptions = {
+    documentSelector: [{ scheme: 'file', language: LANGUAGE_ID }],
+    outputChannelName: 'Oct Language Server'
+  };
+  languageClient = new lc.LanguageClient('octLanguageServer', 'Oct Language Server', serverOptions, clientOptions);
+  languageClient.start().catch((err) => {
+    const detail = err && err.message ? err.message : String(err);
+    vscode.window.showErrorMessage(
+      `Oct: could not start the language server with \`${command} lsp\` (${detail}). ` +
+      'Install an oct binary that supports `lsp`, set "oct.lsp.path", or disable "oct.lsp.enabled".'
+    );
+    languageClient = undefined;
+  });
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (event.affectsConfiguration('oct.lsp')) {
+        const choice = await vscode.window.showInformationMessage(
+          'Oct language server settings changed. Reload the window to apply them?', 'Reload'
+        );
+        if (choice === 'Reload') {
+          vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+      }
+    })
+  );
+  return true;
+}
+
 function activate(context) {
+  const serverFormats = startLanguageServer(context);
   const enHumanDecoration = vscode.window.createTextEditorDecorationType({
     opacity: '0.45'
   });
@@ -55,7 +109,7 @@ function activate(context) {
     })
   ];
 
-  const formatter = vscode.languages.registerDocumentFormattingEditProvider(LANGUAGE_ID, {
+  const formatter = serverFormats ? undefined : vscode.languages.registerDocumentFormattingEditProvider(LANGUAGE_ID, {
     async provideDocumentFormattingEdits(document) {
       if (!document.uri.fsPath) {
         vscode.window.showWarningMessage('Oct: formatting requires a file on disk.');
@@ -139,7 +193,7 @@ function activate(context) {
 
   context.subscriptions.push(
     ...disposableCommands,
-    formatter,
+    ...(formatter ? [formatter] : []),
     taskProvider,
     docHoverProvider,
     ...listeners,
@@ -150,7 +204,9 @@ function activate(context) {
   refreshEnHumanForVisibleEditors(enHumanDecoration, enHumanAfterDecoration);
 }
 
-function deactivate() {}
+function deactivate() {
+  return languageClient ? languageClient.stop() : undefined;
+}
 
 function refreshEnHumanForVisibleEditors(baseDecoration, afterDecoration, preferredUri) {
   const enabled = isEnHumanEnabled();
