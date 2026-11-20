@@ -1,0 +1,30 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Kind: String
+    EntryMilestone: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "SmartGreenhouseController"
+        Version: "0.1.0"
+        Description: "Greenhouse control demo of core Oct features: SI units, Octomata flows and when-policy hysteresis"
+        Authors: ["Yuechen Li"]
+        Date: "2026-11-20"
+        Kind: "experiment"
+        EntryMilestone: "M0"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
