@@ -3,6 +3,10 @@
 `UI` is Oct's standard-library authoring surface for Machina UI (Machine Native UI).
 For Oct user code, prefer `UI.*` functions. Raw `UI*` builtins are runtime backing details.
 
+The design direction for the authoring surface (layout tables, typed messages,
+stack and grid sugar, and the milestone order) is specified in
+[`DESIGN.md`](DESIGN.md). This README documents what is implemented now.
+
 ## Canonical M0 API
 
 ```oct
