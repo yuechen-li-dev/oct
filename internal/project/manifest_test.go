@@ -232,7 +232,8 @@ func TestLoadValidatesWrapperManifestMetadata(t *testing.T) {
 		{name: "invalid GoModuleDir", src: strings.Replace(projectWrapperManifestSource("Main"), "GoModuleDir: \"octxiliary\"", "GoModuleDir: \"../octxiliary\"", 1), want: "path traversal"},
 		{name: "missing Wrapper record", src: projectRemoveRecord(projectWrapperManifestSource("Main"), "Wrapper"), want: "Wrapper"},
 		{name: "missing WrapperFunction record", src: projectRemoveRecord(projectWrapperManifestSource("Main"), "WrapperFunction"), want: "WrapperFunction"},
-		{name: "declaration-aware Wrappers", src: strings.Replace(projectWrapperManifestSource("Main"), "    Wrappers: Wrapper[]\n", "", 1), want: "invalid package metadata"},
+		{name: "declaration-aware Wrappers", src: strings.Replace(projectWrapperManifestSource("Main"), "    Wrappers: Wrapper[]\n", "", 1), want: `invalid package metadata: field "Wrappers" is not part of the PackageManifest record`},
+		{name: "Name must match the package", src: projectWrapperManifestSource("Other"), want: `invalid package metadata: Name is "Other" but the package is named "Main"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

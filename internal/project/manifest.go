@@ -196,69 +196,69 @@ func findManifestFunction(file ast.File) (ast.FunctionDecl, bool) {
 
 func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manifestFields map[string]bool, dependencyFields map[string]bool, wrapperFields map[string]bool, wrapperFunctionFields map[string]bool) error {
 	if len(fn.Body.Statements) != 1 {
-		return fmt.Errorf("manifest function returned invalid package metadata")
+		return invalidMetadata("the Manifest function body must be a single return statement")
 	}
 	ret, ok := fn.Body.Statements[0].(ast.ReturnStmt)
 	if !ok {
-		return fmt.Errorf("manifest function returned invalid package metadata")
+		return invalidMetadata("the Manifest function must end in return PackageManifest { ... }")
 	}
 	recordExpr, ok := ret.Value.(ast.RecordLiteralExpr)
 	if !ok || recordExpr.TypeName != "PackageManifest" {
-		return fmt.Errorf("manifest function returned invalid package metadata")
+		return invalidMetadata("Manifest must return a PackageManifest { ... } record literal")
 	}
 	fields, err := literalFields(recordExpr, manifestFields)
 	if err != nil {
 		return err
 	}
 	if nameExpr, ok := fields["Name"].(ast.StringLiteralExpr); !ok {
-		return fmt.Errorf("manifest function returned invalid package metadata")
+		return invalidMetadata("Name must be a string literal")
 	} else if nameExpr.Value != packageName {
-		return fmt.Errorf("manifest function returned invalid package metadata")
+		return invalidMetadata("Name is %q but the package is named %q; they must match", nameExpr.Value, packageName)
 	}
 	if _, ok := fields["Version"].(ast.StringLiteralExpr); !ok {
-		return fmt.Errorf("manifest function returned invalid package metadata")
+		return invalidMetadata("Version must be a string literal")
 	}
 	if _, ok := fields["Description"].(ast.StringLiteralExpr); !ok {
-		return fmt.Errorf("manifest function returned invalid package metadata")
+		return invalidMetadata("Description must be a string literal")
 	}
 	if authors, ok := fields["Authors"]; ok {
 		authorArray, ok := authors.(ast.ArrayLiteralExpr)
 		if !ok {
-			return fmt.Errorf("manifest function returned invalid package metadata")
+			return invalidMetadata("Authors must be an array literal of strings")
 		}
 		for _, author := range authorArray.Elements {
 			if _, ok := author.(ast.StringLiteralExpr); !ok {
-				return fmt.Errorf("manifest function returned invalid package metadata")
+				return invalidMetadata("every Authors entry must be a string literal")
 			}
 		}
 	}
 	if date, ok := fields["Date"]; ok {
 		if _, ok := date.(ast.StringLiteralExpr); !ok {
-			return fmt.Errorf("manifest function returned invalid package metadata")
+			return invalidMetadata("Date must be a string literal")
 		}
 	}
 	deps, ok := fields["Dependencies"].(ast.ArrayLiteralExpr)
 	if !ok {
-		return fmt.Errorf("manifest function returned invalid package metadata")
+		return invalidMetadata("Dependencies must be an array literal (use [] for none)")
 	}
 	for _, dep := range deps.Elements {
 		recordDep, ok := dep.(ast.RecordLiteralExpr)
 		if !ok || recordDep.TypeName != "Dependency" {
-			return fmt.Errorf("manifest function returned invalid package metadata")
+			return invalidMetadata("each Dependencies entry must be a Dependency { ... } record literal")
 		}
 		depFields, err := literalFields(recordDep, dependencyFields)
 		if err != nil {
 			return err
 		}
 		if _, ok := depFields["Name"].(ast.StringLiteralExpr); !ok {
-			return fmt.Errorf("manifest function returned invalid package metadata")
+			return invalidMetadata("each Dependency needs a string literal Name")
 		}
 		if _, ok := depFields["VersionRequirement"].(ast.StringLiteralExpr); !ok {
-			return fmt.Errorf("manifest function returned invalid package metadata")
+			return invalidMetadata("each Dependency needs a string literal VersionRequirement")
 		}
 		if source, ok := depFields["Source"]; ok {
 			if _, ok := source.(ast.StringLiteralExpr); !ok {
-				return fmt.Errorf("manifest function returned invalid package metadata")
+				return invalidMetadata("Dependency Source must be a string literal")
 			}
 		}
 	}
@@ -266,7 +266,7 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manif
 	if kind, ok := fields["Kind"]; ok {
 		kindLiteral, ok := kind.(ast.StringLiteralExpr)
 		if !ok {
-			return fmt.Errorf("manifest function returned invalid package metadata")
+			return invalidMetadata("Kind must be a string literal")
 		}
 		kindValue = kindLiteral.Value
 	}
@@ -278,7 +278,7 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manif
 	if entryMilestone, ok := fields["EntryMilestone"]; ok {
 		entryMilestoneLiteral, ok := entryMilestone.(ast.StringLiteralExpr)
 		if !ok {
-			return fmt.Errorf("manifest function returned invalid package metadata")
+			return invalidMetadata("EntryMilestone must be a string literal")
 		}
 		entryMilestoneValue = entryMilestoneLiteral.Value
 	}
@@ -313,10 +313,10 @@ func literalFields(recordExpr ast.RecordLiteralExpr, allowed map[string]bool) (m
 	fields := make(map[string]ast.Expr, len(recordExpr.Fields))
 	for _, field := range recordExpr.Fields {
 		if !allowed[field.Name] {
-			return nil, fmt.Errorf("manifest function returned invalid package metadata")
+			return nil, invalidMetadata("field %q is not part of the %s record declared in manifest.oct", field.Name, recordExpr.TypeName)
 		}
 		if _, exists := fields[field.Name]; exists {
-			return nil, fmt.Errorf("manifest function returned invalid package metadata")
+			return nil, invalidMetadata("field %q is set more than once", field.Name)
 		}
 		fields[field.Name] = field.Value
 	}
@@ -371,4 +371,10 @@ func manifestDependencySet(file ast.File) map[string]string {
 		}
 	}
 	return deps
+}
+
+// invalidMetadata keeps the historical prefix, which tools and tests match on,
+// and names the specific rule the manifest broke.
+func invalidMetadata(format string, args ...any) error {
+	return fmt.Errorf("manifest function returned invalid package metadata: "+format, args...)
 }

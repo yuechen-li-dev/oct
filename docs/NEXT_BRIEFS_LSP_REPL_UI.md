@@ -123,16 +123,12 @@ several per pass is a separate, larger change. Report it, don't bundle it.
 
 ---
 
-## Language friction found along the way
+## Fixed since these briefs were written
 
-- **`0 A` parses as zero amperes inside a one-line record literal.**
-  `UI.Color { R: 300 G: 0 B: 0 A: 255 }` fails with
-  `expected record literal field name` because `A` (ampere) after a numeric
-  literal is read as a unit annotation. `UI.Color` has a field named `A`, so
-  this bites the UI library's own users. One field per line avoids it. Worth a
-  language decision: a unit annotation followed by `:` is never a unit.
-- **Manifest validation errors are unactionable.** Eleven different checks in
-  `project.validateManifestFunctionBody` all report
-  `manifest function returned invalid package metadata`. `MakeOctestPlan`
-  failed only because its sources said `package Main` while its manifest said
-  `MakeOctestPlan`; the message gave no hint. Name the failing field.
+- `0 A` inside a one-line record literal no longer parses as amperes: an
+  identifier followed by `:` is a field label, never a unit
+  (`Language/Types/UnitLabels/valid/unit_names_as_field_labels.octest`).
+- Manifest validation names the rule that failed, e.g.
+  `Name is "X" but the package is named "Y"; they must match`.
+- `internal/sdslv/test` skips when `dxc` is not installed (`ErrDXCNotFound`);
+  a present but failing `dxc` still fails.
