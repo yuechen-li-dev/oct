@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"github.com/yuechen-li-dev/oct/internal/machina/dump"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/hittest"
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
@@ -104,6 +105,14 @@ func (s *Session[TState]) SetViewport(viewport layout.Rect) error {
 	}
 	s.viewport = viewport
 	return s.Rebuild()
+}
+
+// Dump prints the current frame as a layout dump (internal/machina/dump).
+func (s *Session[TState]) Dump() (string, error) {
+	if s == nil {
+		return "", fmt.Errorf("session.err.nil_session: session is required")
+	}
+	return dump.Format(s.resolved, s.lowered)
 }
 
 func (s *Session[TState]) Snapshot() (string, error) {

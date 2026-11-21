@@ -26,9 +26,10 @@ type uiOptions struct {
 	width  float64
 	height float64
 	clicks []string
+	dump   bool
 }
 
-const uiUsage = "usage: oct ui <run|check> <app.oct> [--title <text>] [--width <dp>] [--height <dp>] [--click <label>]..."
+const uiUsage = "usage: oct ui <run|check> <app.oct> [--title <text>] [--width <dp>] [--height <dp>] [--click <label>]... [--dump]"
 
 func writeUIHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, uiUsage+`
@@ -41,6 +42,8 @@ Subcommands:
          the native backend: go build -tags machina_gio ./cmd/oct
   check  Load the app headlessly and print its first frame. Each --click
          presses the button with that exact label and prints the next frame.
+         --dump prints each frame as a layout dump instead: one line per
+         node in paint order, with the spans that place it and its rect.
 Width and height are device-independent units (default 640x480).`)
 	return err
 }
@@ -85,6 +88,8 @@ func parseUIOptions(args []string) (uiOptions, error) {
 			} else {
 				opts.height = n
 			}
+		case "--dump":
+			opts.dump = true
 		case "--click":
 			v, err := value()
 			if err != nil {
@@ -107,6 +112,9 @@ func parseUIOptions(args []string) (uiOptions, error) {
 	if opts.sub == "run" && len(opts.clicks) > 0 {
 		return opts, fmt.Errorf("--click applies to `oct ui check` only")
 	}
+	if opts.sub == "run" && opts.dump {
+		return opts, fmt.Errorf("--dump applies to `oct ui check` only")
+	}
 	return opts, nil
 }
 
@@ -128,7 +136,7 @@ func runUICommand(opts uiOptions, stdout io.Writer) error {
 		return uiWindowRunner(opts, s)
 	}
 	fmt.Fprintf(stdout, "Machina UI app OK: %s (%gx%g)\n", opts.path, opts.width, opts.height)
-	if err := writeUIFrame(stdout, s); err != nil {
+	if err := writeUIFrame(stdout, s, opts.dump); err != nil {
 		return err
 	}
 	for _, label := range opts.clicks {
@@ -148,7 +156,7 @@ func runUICommand(opts uiOptions, stdout io.Writer) error {
 			return fmt.Errorf("--click %q: the label is visible but not interactive", label)
 		}
 		fmt.Fprintf(stdout, "\nclick %q -> event %q\n", label, res.Action.Name)
-		if err := writeUIFrame(stdout, s); err != nil {
+		if err := writeUIFrame(stdout, s, opts.dump); err != nil {
 			return err
 		}
 	}
@@ -165,7 +173,16 @@ func findLabel(cmds []render.Command, label string) (layout.Rect, bool) {
 }
 
 // writeUIFrame prints the frame's text in reading order with positions.
-func writeUIFrame(out io.Writer, s *session.Session[interpret.Value]) error {
+func writeUIFrame(out io.Writer, s *session.Session[interpret.Value], asDump bool) error {
+	if asDump {
+		text, err := s.Dump()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "dump:")
+		_, err = io.WriteString(out, text)
+		return err
+	}
 	cmds, err := s.Commands()
 	if err != nil {
 		return err

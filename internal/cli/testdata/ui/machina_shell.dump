@@ -1,0 +1,39 @@
+Machina UI app OK: ../../Examples/MachinaShell/main.oct (1024x768)
+dump:
+0                        Canvas     (0,0) 1024x768
+  Shell.Header           Region     StretchX(16px, 16px)   Top(16px, 56px)        (16,16) 992x56
+    .0                   Stack(h)   StretchX(0px, 0px)     StretchY(0px, 0px)     (16,16) 992x56
+      .0.0               Text       Left(0px, 160px)       Top(0px, 20px)         (16,16) 160x20 "Northline Supply Co."
+      .0.1               Spacer     Left(160px, 784px)     Top(0px, 56px)         (176,16) 784x56
+      .0.2               Text       Left(944px, 48px)      Top(0px, 20px)         (960,16) 48x20 "Cart 0"
+  Shell.Rail             Region     Left(16px, 240px)      StretchY(84px, 68px)   (16,84) 240x616
+    .0                   Stack(v)   StretchX(0px, 0px)     StretchY(0px, 0px)     (16,84) 240x616
+      .0.0               Text       Left(0px, 64px)        Top(0px, 20px)         (16,84) 64x20 "Category"
+      .0.1               Button     Left(0px, 80px)        Top(20px, 32px)        (16,104) 80x32 "All" disabled
+      .0.2               Button     Left(0px, 80px)        Top(52px, 32px)        (16,136) 80x32 "Desk" -> category.desk
+  Shell.Grid             Region     StretchX(268px, 16px)  StretchY(84px, 68px)   (268,84) 740x616
+    .0                   Text       StretchX(0px, 0px)     StretchY(0px, 0px)     (268,84) 740x616 "Showing: All"
+  Shell.Footer           Region     StretchX(16px, 16px)   Bottom(16px, 40px)     (16,712) 992x40
+    .0                   Text       StretchX(0px, 0px)     StretchY(0px, 0px)     (16,712) 992x40 "Ships from Portland within 48 hours."
+  Shell.Cart [Chrome]    Region     Right(24px, 160px)     Bottom(72px, 40px)     (840,656) 160x40
+    .0                   Button     StretchX(0px, 0px)     StretchY(0px, 0px)     (840,656) 160x40 "Add to cart" -> cart.add
+
+click "Add to cart" -> event "cart.add"
+dump:
+0                        Canvas     (0,0) 1024x768
+  Shell.Header           Region     StretchX(16px, 16px)   Top(16px, 56px)        (16,16) 992x56
+    .0                   Stack(h)   StretchX(0px, 0px)     StretchY(0px, 0px)     (16,16) 992x56
+      .0.0               Text       Left(0px, 160px)       Top(0px, 20px)         (16,16) 160x20 "Northline Supply Co."
+      .0.1               Spacer     Left(160px, 784px)     Top(0px, 56px)         (176,16) 784x56
+      .0.2               Text       Left(944px, 48px)      Top(0px, 20px)         (960,16) 48x20 "Cart 1"
+  Shell.Rail             Region     Left(16px, 240px)      StretchY(84px, 68px)   (16,84) 240x616
+    .0                   Stack(v)   StretchX(0px, 0px)     StretchY(0px, 0px)     (16,84) 240x616
+      .0.0               Text       Left(0px, 64px)        Top(0px, 20px)         (16,84) 64x20 "Category"
+      .0.1               Button     Left(0px, 80px)        Top(20px, 32px)        (16,104) 80x32 "All" disabled
+      .0.2               Button     Left(0px, 80px)        Top(52px, 32px)        (16,136) 80x32 "Desk" -> category.desk
+  Shell.Grid             Region     StretchX(268px, 16px)  StretchY(84px, 68px)   (268,84) 740x616
+    .0                   Text       StretchX(0px, 0px)     StretchY(0px, 0px)     (268,84) 740x616 "Showing: All"
+  Shell.Footer           Region     StretchX(16px, 16px)   Bottom(16px, 40px)     (16,712) 992x40
+    .0                   Text       StretchX(0px, 0px)     StretchY(0px, 0px)     (16,712) 992x40 "Ships from Portland within 48 hours."
+  Shell.Cart [Chrome]    Region     Right(24px, 160px)     Bottom(72px, 40px)     (840,656) 160x40
+    .0                   Button     StretchX(0px, 0px)     StretchY(0px, 0px)     (840,656) 160x40 "Add to cart" -> cart.add
