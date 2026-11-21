@@ -1,0 +1,315 @@
+package StorefrontM8
+
+import UI
+
+// Storefront M8: the M7 storefront rewritten for the UI-M3 surface
+// (Libraries/UI/DESIGN.md). Typed messages replace event strings and
+// dispatch tables, a record table holds the catalog, one layout table holds
+// the page geometry, and stack and grid sugar compose region content.
+
+// Data
+
+enum Section { Shop  Bundles  Journal  Support }
+enum Category { All  Desk  Paper  Cable }
+enum SortBy { Featured  Price  Newest }
+enum Feature { DeskKits  NotebookSets  CableLab }
+
+record table Catalog {
+    Id: String
+    Title: String
+    Subtitle: String
+    Price: Float
+    Badge: String
+    Category: Category
+    IsNew: Bool
+    InStock: Bool
+}
+
+fn Products() -> Catalog {
+    return Catalog {
+        Id: ["harbor-board", "linen-notebook", "cable-dock", "focus-timer", "cork-tray", "steel-ruler"]
+        Title: ["Harbor Board", "Linen Grid Notebook", "Cable Dock Trio", "Focus Dial Timer", "Cork Catch Tray", "Marked Steel Ruler"]
+        Subtitle: ["Walnut riser, cable pass-through", "Lay-flat A5, 3 mm workflow grid", "Weighted brass cable anchors", "Analog 60-minute silent timer", "Soft tray for clips and nibs", "Etched cm/inch layout ruler"]
+        Price: [119.0, 28.0, 36.0, 42.0, 24.0, 18.0]
+        Badge: ["Bestseller", "New", "In stock", "Editor pick", "Studio staple", "Workshop"]
+        Category: [Category.Desk, Category.Paper, Category.Cable, Category.Desk, Category.Desk, Category.Paper]
+        IsNew: [false, true, false, true, false, false]
+        InStock: [true, true, true, false, true, true]
+    }
+}
+
+fn SectionLabel(s: Section) -> String {
+    return switch s {
+        case Section.Shop => "Shop"
+        case Section.Bundles => "Bundles"
+        case Section.Journal => "Journal"
+        case Section.Support => "Support"
+    }
+}
+
+fn CategoryLabel(c: Category) -> String {
+    return switch c {
+        case Category.All => "All"
+        case Category.Desk => "Desk Gear"
+        case Category.Paper => "Stationery"
+        case Category.Cable => "Cable"
+    }
+}
+
+fn SortLabel(s: SortBy) -> String {
+    return switch s {
+        case SortBy.Featured => "Featured"
+        case SortBy.Price => "Price low-high"
+        case SortBy.Newest => "Newest"
+    }
+}
+
+fn FeatureLabel(f: Feature) -> String {
+    return switch f {
+        case Feature.DeskKits => "Desk Kits"
+        case Feature.NotebookSets => "Notebook Sets"
+        case Feature.CableLab => "Cable Lab"
+    }
+}
+
+// Behavior
+
+enum Msg {
+    Nav(Section)
+    Filter(Category)
+    ToggleNewOnly
+    ToggleInStockOnly
+    Sort(SortBy)
+    Feature(Feature)
+    Inspect(String)
+    AddToCart(String)
+}
+
+record Store {
+    Nav: Section
+    Category: Category
+    Sort: SortBy
+    NewOnly: Bool
+    InStockOnly: Bool
+    Feature: Feature
+    Selected: Option<String>
+    Cart: Int
+}
+
+fn Init() -> Store {
+    return Store {
+        Nav: Section.Shop
+        Category: Category.All
+        Sort: SortBy.Featured
+        NewOnly: false
+        InStockOnly: false
+        Feature: Feature.DeskKits
+        Selected: Option.None
+        Cart: 0
+    }
+}
+
+fn Update(model: Store, msg: Msg) -> Store {
+    return match msg {
+        case Msg.Nav(section) => model with { Nav: section }
+        case Msg.Filter(category) => model with { Category: category }
+        case Msg.ToggleNewOnly => model with { NewOnly: not model.NewOnly }
+        case Msg.ToggleInStockOnly => model with { InStockOnly: not model.InStockOnly }
+        case Msg.Sort(sort) => model with { Sort: sort }
+        case Msg.Feature(feature) => model with { Feature: feature }
+        case Msg.Inspect(id) => model with { Selected: Option.Some(id) }
+        case Msg.AddToCart(id) => model with { Cart: model.Cart + 1 }
+    }
+}
+
+fn Shown(model: Store, catalog: Catalog, i: Int) -> Bool {
+    let p = catalog[i]
+    let inCategory = model.Category == Category.All or model.Category == p.Category
+    return inCategory and (p.IsNew or not model.NewOnly) and (p.InStock or not model.InStockOnly)
+}
+
+fn SortsBefore(sort: SortBy, catalog: Catalog, a: Int, b: Int) -> Bool {
+    return switch sort {
+        case SortBy.Featured => a < b
+        case SortBy.Price => catalog[a].Price < catalog[b].Price
+        case SortBy.Newest => catalog[a].IsNew and not catalog[b].IsNew
+    }
+}
+
+// Indices of the products to show, in display order (insertion sort).
+fn ShownOrder(model: Store, catalog: Catalog) -> Int[] {
+    var order: Int[] = []
+    for i in 0..Len(catalog) {
+        if Shown(model, catalog, i) {
+            order = Append(order, i)
+            var j = Len(order) - 1
+            while j > 0 and SortsBefore(model.Sort, catalog, order[j], order[j - 1]) {
+                let previous = order[j - 1]
+                order[j - 1] = order[j]
+                order[j] = previous
+                j = j - 1
+            }
+        }
+    }
+    return order
+}
+
+// Placement: page geometry, one row per region.
+
+enum Page { Header  Announcement  Hero  Rail  Catalog  Support  Footer }
+
+fn PageLayout() -> UI.LayoutTable {
+    let pad = 16px
+    let gap = 12px
+    let heroTop = pad + 48px + gap + 28px + gap
+    let bodyTop = heroTop + 150px + gap
+    let bodyBottom = pad + 72px + gap + 96px + gap
+    return UI.Layout([
+        UI.Region(Page.Header,       UI.StretchX(pad, pad),                 UI.Top(pad, 48px)),
+        UI.Region(Page.Announcement, UI.StretchX(pad, pad),                 UI.Top(pad + 48px + gap, 28px)),
+        UI.Region(Page.Hero,         UI.StretchX(pad, pad),                 UI.Top(heroTop, 150px)),
+        UI.Region(Page.Rail,         UI.Left(pad, 220px),                   UI.StretchY(bodyTop, bodyBottom)),
+        UI.Region(Page.Catalog,      UI.StretchX(pad + 220px + gap, pad),   UI.StretchY(bodyTop, bodyBottom)),
+        UI.Region(Page.Support,      UI.StretchX(pad, pad),                 UI.Bottom(pad + 72px + gap, 96px)),
+        UI.Region(Page.Footer,       UI.StretchX(pad, pad),                 UI.Bottom(pad, 72px))
+    ])
+}
+
+// Composition
+
+fn View(model: Store) -> UI {
+    return UI.Arrange(PageLayout(), model, PageContent)
+}
+
+fn PageContent(model: Store, region: Page) -> UI {
+    return switch region {
+        case Page.Header => HeaderBar(model)
+        case Page.Announcement => UI.Styled(BandStyle(), UI.Inset(UI.InsetsXY(12px, 4px), UI.Text("Studio Dispatch: new modular desk kits landed this week. Ships from Portland within 48 hours.")))
+        case Page.Hero => Hero(model)
+        case Page.Rail => FilterRail(model)
+        case Page.Catalog => CatalogArea(model)
+        case Page.Support => UI.Stack(UI.Horizontal() with { Gap: 12.0 px }, [
+            UI.Fill(1.0, Block("Why Northline", "Small-batch hardware", "Field-tested in studio desks.")),
+            UI.Fill(1.0, Block("Customer notes", "Cable Dock solved my tangle", "R. Kim, Seattle")),
+            UI.Fill(1.0, Block("Journal", "Five-minute reset routine", "Analog timers, notebook blocks."))
+        ])
+        case Page.Footer => Footer(model)
+    }
+}
+
+fn CardStyle(selected: Bool) -> UI.Style {
+    let base = UI.DefaultStyle() with { Background: UI.Rgb(250, 249, 246)  BorderColor: UI.Rgb(214, 210, 200)  Radius: 8px }
+    if selected { return base with { BorderColor: UI.Rgb(60, 90, 170)  BorderWidth: 2px } }
+    return base
+}
+
+fn BandStyle() -> UI.Style {
+    return UI.DefaultStyle() with { Background: UI.Rgb(236, 239, 244)  BorderWidth: 0px  Radius: 4px }
+}
+
+fn Chip(label: String, msg: Msg, active: Bool) -> UI {
+    let mark = if active { "● " } else { "○ " }
+    return UI.Fixed(32px, UI.Button(mark + label, msg, true))
+}
+
+fn Block(tag: String, title: String, body: String) -> UI {
+    return UI.Styled(BandStyle(), UI.Stack(UI.Vertical() with { Gap: 4.0 px  Padding: UI.InsetsAll(10px) }, [UI.Text(tag), UI.Text(title), UI.Text(body)]))
+}
+
+fn HeaderBar(model: Store) -> UI {
+    var items = [UI.Text("Northline Supply Co."), UI.Spacer()]
+    let sections = [Section.Shop, Section.Bundles, Section.Journal, Section.Support]
+    for i in 0..Len(sections) {
+        items = Append(items, UI.Button(SectionLabel(sections[i]), Msg.Nav(sections[i]), model.Nav != sections[i]))
+    }
+    items = Append(items, UI.Spacer())
+    items = Append(items, UI.Text("Cart " + FormatFloat(Float(model.Cart), 0) + " items"))
+    return UI.Stack(UI.Horizontal() with { Gap: 8.0 px  Align: UI.Align.Center }, items)
+}
+
+fn Hero(model: Store) -> UI {
+    return UI.Stack(UI.Vertical() with { Gap: 8.0 px }, [
+        UI.Text("Purpose-built tools for calm workspaces"),
+        UI.Text("Desk hardware, notebooks and cable order systems for focused daily use."),
+        UI.Fill(1.0, UI.Stack(UI.Horizontal() with { Gap: 12.0 px }, [
+            UI.Fill(1.0, Block("Featured", "Desk Starter Grid", "Cable control and writing flow.")),
+            UI.Fill(1.0, Block("Collection", "Analog Workflow", "Timer, ruler and grid notebook.")),
+            UI.Fill(1.0, Block("Status", "Showing " + CategoryLabel(model.Category), "Sort: " + SortLabel(model.Sort)))
+        ]))
+    ])
+}
+
+fn FilterRail(model: Store) -> UI {
+    var items = [UI.Text("Category")]
+    let categories = [Category.All, Category.Desk, Category.Paper, Category.Cable]
+    for i in 0..Len(categories) {
+        items = Append(items, Chip(CategoryLabel(categories[i]), Msg.Filter(categories[i]), model.Category == categories[i]))
+    }
+    items = Append(items, UI.Text("Flags"))
+    items = Append(items, Chip("New arrivals", Msg.ToggleNewOnly, model.NewOnly))
+    items = Append(items, Chip("In stock", Msg.ToggleInStockOnly, model.InStockOnly))
+    items = Append(items, UI.Text("Sort"))
+    let sorts = [SortBy.Featured, SortBy.Price, SortBy.Newest]
+    for i in 0..Len(sorts) {
+        items = Append(items, Chip(SortLabel(sorts[i]), Msg.Sort(sorts[i]), model.Sort == sorts[i]))
+    }
+    return UI.Stack(UI.Vertical() with { Gap: 4.0 px }, items)
+}
+
+fn CatalogArea(model: Store) -> UI {
+    var tabs = [UI.Text("Catalog: " + CategoryLabel(model.Category)), UI.Spacer()]
+    let features = [Feature.DeskKits, Feature.NotebookSets, Feature.CableLab]
+    for i in 0..Len(features) {
+        tabs = Append(tabs, UI.Button(FeatureLabel(features[i]), Msg.Feature(features[i]), model.Feature != features[i]))
+    }
+    return UI.Stack(UI.Vertical() with { Gap: 12.0 px }, [
+        UI.Fixed(32px, UI.Stack(UI.Horizontal() with { Gap: 8.0 px  Align: UI.Align.Center }, tabs)),
+        UI.Fill(1.0, ProductGrid(model, 3))
+    ])
+}
+
+fn ProductGrid(model: Store, columns: Int) -> UI {
+    let catalog = Products()
+    let order = ShownOrder(model, catalog)
+    var cards: UI[] = []
+    for k in 0..Len(order) {
+        cards = Append(cards, UI.Keyed(catalog[order[k]].Id, ProductCard(model, catalog, order[k])))
+    }
+    if Len(cards) == 0 {
+        return UI.Text("No products match these filters.")
+    }
+    let spec = UI.Tracks([UI.Track.Fill(1.0) ... columns]) with {
+        AutoRow: UI.Track.Fixed(170px)
+        ColumnGap: 12.0 px
+        RowGap: 12.0 px
+    }
+    return UI.Grid(spec, UI.Chunk(cards, columns))
+}
+
+fn ProductCard(model: Store, catalog: Catalog, i: Int) -> UI {
+    let p = catalog[i]
+    return UI.Styled(CardStyle(model.Selected == Option.Some(p.Id)), UI.Stack(UI.Vertical() with { Gap: 6.0 px  Padding: UI.InsetsAll(12px) }, [
+        UI.Stack(UI.Horizontal(), [UI.Text(p.Title), UI.Spacer(), UI.Text("$" + FormatFloat(p.Price, 2))]),
+        UI.Text(p.Subtitle),
+        UI.Text(p.Badge),
+        UI.Spacer(),
+        UI.Stack(UI.Horizontal() with { Gap: 8.0 px }, [
+            UI.Button("Inspect", Msg.Inspect(p.Id), true),
+            UI.Button("Add to cart", Msg.AddToCart(p.Id), p.InStock)
+        ])
+    ]))
+}
+
+fn Footer(model: Store) -> UI {
+    let selected = match model.Selected {
+        case Option.Some(id) => id
+        case Option.None => "none"
+    }
+    return UI.Stack(UI.Horizontal() with { Gap: 24.0 px }, [
+        UI.Stack(UI.Vertical(), [UI.Text("Shop"), UI.Text("Desk Gear"), UI.Text("Stationery")]),
+        UI.Stack(UI.Vertical(), [UI.Text("Company"), UI.Text("About"), UI.Text("Wholesale")]),
+        UI.Stack(UI.Vertical(), [UI.Text("Help"), UI.Text("Shipping"), UI.Text("Returns")]),
+        UI.Spacer(),
+        UI.Text("Selected product: " + selected)
+    ])
+}

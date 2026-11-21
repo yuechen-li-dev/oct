@@ -1,0 +1,54 @@
+package StorefrontM8
+
+import String
+import UI
+
+[Fact]
+fn StorefrontM8MessagesUpdateTheStore() -> Void {
+    var model = Init()
+    model = Update(model, Msg.Filter(Category.Desk))
+    model = Update(model, Msg.ToggleNewOnly)
+    model = Update(model, Msg.Inspect("focus-timer"))
+    model = Update(model, Msg.AddToCart("focus-timer"))
+    Assert.True(model.Category == Category.Desk, "Filter selects the category")
+    Assert.True(model.NewOnly, "ToggleNewOnly flips the flag")
+    Assert.True(model.Selected == Option.Some("focus-timer"), "Inspect selects the product")
+    Assert.Equal(1, model.Cart, "AddToCart counts one item")
+}
+
+[Fact]
+fn StorefrontM8FiltersAndSortsTheCatalog() -> Void {
+    let catalog = Products()
+    let desk = ShownOrder(Init() with { Category: Category.Desk }, catalog)
+    Assert.Equal(3, Len(desk), "three desk products")
+    Assert.Equal(3, desk[1], "desk products keep catalog order")
+    let byPrice = ShownOrder(Init() with { Sort: SortBy.Price }, catalog)
+    Assert.Equal(5, byPrice[0], "the steel ruler is cheapest")
+    Assert.Equal(0, byPrice[5], "the harbor board is dearest")
+    Assert.Equal(2, Len(ShownOrder(Init() with { NewOnly: true }, catalog)), "two new products")
+    Assert.Equal(5, Len(ShownOrder(Init() with { InStockOnly: true }, catalog)), "one product is out of stock")
+}
+
+[Fact]
+fn StorefrontM8KeyedCardsKeepTheirIdentityWhenFiltered() -> Void {
+    let all = UI.Signature(View(Init()))
+    let desk = UI.Signature(View(Init() with { Category: Category.Desk }))
+    let card = "#0.4.0.1.focus-timer{key=focus-timer}"
+    Assert.True(String.Contains(all, card), "the focus timer card is keyed in the full catalog")
+    Assert.True(String.Contains(desk, card), "and keeps the same id when earlier cards are filtered out")
+}
+
+[Fact]
+fn StorefrontM8ButtonsCarryTypedMessages() -> Void {
+    let view = UI.Signature(View(Init()))
+    Assert.True(String.Contains(view, "Inspect->Msg.Inspect(\"focus-timer\")"), "Inspect sends the product id")
+    Assert.True(String.Contains(view, "Desk Gear->Msg.Filter(Category.Desk)"), "a category chip sends its category")
+    Assert.True(String.Contains(view, "Add to cart->Msg.AddToCart(\"focus-timer\"),enabled=false"), "an out-of-stock product cannot be added")
+}
+
+[Fact]
+fn StorefrontM8PageGeometryIsOneTable() -> Void {
+    let table = PageLayout()
+    Assert.Equal(7, Len(table.Rows), "one row per page region")
+    Assert.Equal("StorefrontM8.Page.Rail", table.Rows[3].Region, "rows are named by region")
+}

@@ -810,3 +810,54 @@ This was a refactor-only authoring-surface migration:
 - Latest Storefront source now uses canonical `UI.*` construction/placement surface.
 - Local wrapper duplication is removed in M7 source.
 - Dispatch/style/layout-row migrations remain future work.
+
+---
+
+# Storefront M8 Report (UI-M3 surface)
+
+M8 rewrites the storefront on the authoring surface specified in
+`Libraries/UI/DESIGN.md` and built in UI-M2 and UI-M3. It is the UI-M3
+acceptance test.
+
+## What changed from M7
+
+| M7 | M8 |
+|---|---|
+| 19 `...Event() -> UI.EventToken` functions, 4 `EventValueDispatch` tables, `MatchEventPrefix` | one `enum Msg` with payload variants (`Msg.Inspect(String)`); `Update` is one exhaustive `match` |
+| `KeyLabelMapping` tables and `ResolveLabelMapping` | exhaustive `switch` label functions over `Section`, `Category`, `SortBy`, `Feature` |
+| six parallel arrays in `ProductCatalog` and a linear `ProductById` | one `record table Catalog` |
+| 13 `ui` fraction constants and a canvas of `AnchorBox` | one layout table, `PageLayout()`, in pixels; regions stretch with the window |
+| `UI.Column`/`UI.Row` with fixed 0 gap and no sizing | stacks with gap, padding and alignment; `UI.Fill` and `UI.Fixed` where it matters |
+| filtered cards replaced by "Filtered out" placeholders | filtered cards are removed; `UI.Keyed` keeps each card's id stable |
+| `SourceParts` record listing the file's sections | none: the file's order is the structure |
+
+M8 also adds what M7 described but did not do: the flags filter the catalog,
+the sort orders it, cards and bands are styled, and out-of-stock products
+cannot be added to the cart.
+
+## Measurements
+
+- 315 lines against M7's 454 (271 against 388 without blank and comment
+  lines).
+- `oct ui check Experiments/Storefront/M8/storefront_m8.oct --width 1280 --height 900`
+  lays out and clicks through. M7 does not lay out: since UI-M2 made canvases
+  work in the session path, it stops with an explicit overflow
+  (`stack "0.4.0.0" needs 992 along its horizontal axis ... but its inner
+  size is 921.6`): its catalog header row does not fit the 72%-wide fraction
+  box it was given, which nothing had ever checked.
+- `storefront_m8.octest` pins message updates, filtering and sorting, typed
+  button messages, the one-table page geometry, and that the focus-timer card
+  keeps id `0.4.0.1.focus-timer` when earlier cards are filtered out.
+
+## Friction found
+
+- Twice in one app, a row nested in a vertical card (title and price; the
+  button row) took a fill share of the card under the M0 rule that unwrapped
+  containers fill. UI-M3 now measures unwrapped nested stacks along the
+  parent's axis; see the note in DESIGN.md §5.5.
+- Hero and support blocks need `UI.Fill(1.0, ...)` to share a row equally;
+  without it they are measured.
+- Text metrics are fixed (8 dp per character), so a price label runs a few
+  pixels past its card edge in the native window. Real measurement is UI-M4.
+- A `record table` row type has no source name, so `ProductCard` takes
+  `(catalog, i)` (DESIGN.md L5).
