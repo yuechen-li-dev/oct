@@ -404,6 +404,13 @@ name, not two.
 
 ### 5.4 Layout tables: where page geometry lives
 
+> **Implemented in UI-M2** ([README](README.md#explicit-placement-and-layout-tables-ui-m2),
+> `Examples/MachinaShell`). Differences from the sketch below, all pending
+> typed views (L1): the table type is spelled `UI.LayoutTable` (a record and
+> a function cannot share the name `Layout`), views return `UI` rather than
+> `UI<Msg>`, and region coverage is checked when `UI.Arrange` runs rather
+> than at compile time. `UI.Nudge` is part of UI-M3 with the sugar.
+
 A screen declares its regions as an enum and its geometry as a table, apart
 from the widgets:
 
@@ -967,7 +974,7 @@ before the type-system work.
 
 | Milestone | Content | Gate |
 |---|---|---|
-| UI-M2 | Layout tables (`UI.Layout`, `UI.Region`, `UI.Arrange`), per-axis spans and `UI.At` (R2a), layers and z (R5), `--dump` in span vocabulary (R6) | Storefront shell as one table; moving a region is a one-row edit; resize keeps the rail at 240px; dump golden tests |
+| UI-M2 (**done**) | Layout tables (`UI.Layout`, `UI.Region`, `UI.Arrange`), per-axis spans and `UI.At` (R2a), layers and z (R5), `--dump` in span vocabulary (R6) | Storefront shell as one table; moving a region is a one-row edit; resize keeps the rail at 240px; dump golden tests |
 | UI-M3 | Step 0 typed messages (R1); stack and grid sugar, `Fixed`/`Fill`/`Auto`, `Nudge`, `Keyed`, padding moved to layout (R2b) | Storefront rewrite: no strings, no `ui` fractions, keyed cards survive filtering, fewer lines |
 | UI-M4 | Text measurement seam, `Paragraph`, `TextSpec`, overflow policy (R3) | No clipped or wrapped-out-of-view labels at 1×/2× scale |
 | UI-M5 | `UI<M>` (L1), variant constructors as values (L2), markup items (L3, L4) | A wrong-message button is a compile error |

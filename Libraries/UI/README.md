@@ -174,13 +174,91 @@ let badge = UI.Styled(UI.Text("Status: heating"), UI.DefaultStyle() with {
 })
 ```
 
+## Explicit placement and layout tables (UI-M2)
+
+Page geometry is declared, not computed. A screen names its regions with an
+enum, declares one placement row per region in a layout table, and binds
+content to regions with an exhaustive `switch`. See `Examples/MachinaShell`
+and [DESIGN.md §5.4](DESIGN.md).
+
+```oct
+enum Shell { Header  Rail  Grid  Footer  Cart }
+
+fn WideShell() -> UI.LayoutTable {
+    return UI.Layout([
+        UI.Region(Shell.Header, UI.StretchX(16px, 16px),  UI.Top(16px, 56px)),
+        UI.Region(Shell.Rail,   UI.Left(16px, 240px),     UI.StretchY(84px, 68px)),
+        UI.Region(Shell.Grid,   UI.StretchX(268px, 16px), UI.StretchY(84px, 68px)),
+        UI.Region(Shell.Footer, UI.StretchX(16px, 16px),  UI.Bottom(16px, 40px)),
+        UI.Region(Shell.Cart,   UI.Right(24px, 160px),    UI.Bottom(72px, 40px)) with { Layer: UI.Layer.Chrome }
+    ])
+}
+
+fn View(model: Store) -> UI {
+    return UI.Arrange(WideShell(), model, ShellContent)
+}
+
+fn ShellContent(model: Store, region: Shell) -> UI {
+    return switch region {
+        case Shell.Header => HeaderBar(model)
+        // ... one case per region
+    }
+}
+```
+
+Spans constrain one axis of a box, in dp against the parent box. Each
+constructor is one shape, so a box is always exactly constrained:
+
+```oct
+UI.Left(left: Float<px>, width: Float<px>) -> UI.XSpan
+UI.Right(right: Float<px>, width: Float<px>) -> UI.XSpan
+UI.StretchX(left: Float<px>, right: Float<px>) -> UI.XSpan     // width follows the parent
+UI.CenterX(width: Float<px>) -> UI.XSpan
+UI.FractionX(left: Float<ui>, right: Float<ui>) -> UI.XSpan
+UI.Top / UI.Bottom / UI.StretchY / UI.CenterY / UI.FractionY   // the same shapes, vertically -> UI.YSpan
+```
+
+Layout tables:
+
+```oct
+UI.Region(region: R, x: UI.XSpan, y: UI.YSpan) -> UI.Placement    // R: any enum without payloads
+UI.Layout(rows: UI.Placement[]) -> UI.LayoutTable
+UI.Arrange(layout: UI.LayoutTable, context: C, content: fn(C, R) -> UI) -> UI
+UI.At(x: UI.XSpan, y: UI.YSpan, child: UI) -> UI                   // one box in a UI.Canvas
+```
+
+- `UI.Region` fills `Layer: UI.Layer.Content` and `Z: 0`; change them with
+  `with`. `UI.Placement.Region` holds the region's canonical name
+  (`Main.Shell.Header`) for dumps; build rows with `UI.Region`, not by hand.
+- `UI.Arrange` calls `content(context, region)` once per row, in row order, and
+  places each result in its row's box; the content fills the box.
+- `UI.Arrange` fails, naming the region, when the table misses a region,
+  places one twice, mixes region enums, places a different enum than the
+  content function takes, or gives a `Z` outside −5..5. These are checked when
+  the view is built (by `oct ui check` before a window opens), not at compile
+  time; compile-time checking arrives with typed views (DESIGN.md L1). The
+  content function's `switch` is checked at compile time like any `switch`.
+- A stretch whose insets exceed the parent is a layout error, never a clamp.
+- Paint order among siblings is `(layer, z, authored order)`, and hit testing
+  follows it: a `Chrome` region is clickable above the `Content` region it
+  overlaps. `UI.Layer` is `Base`, `Content`, `Chrome`, `Overlay`, `Modal`,
+  `Tooltip`.
+- `UI.Region` and `UI.Arrange` are compiler-owned builtins (they are generic
+  over the region enum); the other names are ordinary `UI` functions.
+
+`oct ui check <app.oct> --dump` prints each frame as a layout dump: one line
+per node in paint order, with the spans that place it in its parent and its
+absolute rect. Regions show their table row; children of stacks show the
+`Left`/`Top` spans the stack resolved to.
+
 ## Canvas/content authoring rule
 
 Canvas is a placement surface. Content is a content surface. These do not mix.
 
-Canvas children should be positioned regions:
-- `UI.AnchorBox(...)`
-- `UI.AbsoluteBox(...)`
+Canvas children must be placed boxes; an unplaced child is a lowering error:
+- `UI.At(...)`, or regions placed by `UI.Arrange`
+- `UI.AnchorBox(...)` and `UI.AbsoluteBox(...)` (older spellings of `UI.At`
+  with `FractionX`/`FractionY` and `Left`/`Top`)
 
 Inside those regions, use content trees:
 - `UI.Row`
