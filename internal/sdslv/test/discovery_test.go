@@ -157,9 +157,7 @@ func TestSdslvTestCompilesOneModulePerWorkgroupSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireCompiled(t, err)
 	if len(groups) != 1 {
 		t.Fatalf("groups=%d", len(groups))
 	}
@@ -182,9 +180,7 @@ func TestSdslvTestBodiesUseNormalVDMIRAndNoFixtureEmitter(t *testing.T) {
 		t.Fatalf("normal lowering did not retain test function: %#v", suite.MIR.Functions)
 	}
 	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireCompiled(t, err)
 	hlsl, err := os.ReadFile(groups[0].HLSLPath)
 	if err != nil {
 		t.Fatal(err)
@@ -227,9 +223,7 @@ func TestSdslvAssertOperandEmissionMaterializesOnceInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireCompiled(t, err)
 	hlsl, err := os.ReadFile(groups[0].HLSLPath)
 	if err != nil {
 		t.Fatal(err)
@@ -358,9 +352,7 @@ func TestSdslvTestInputCompilesThroughSharedHLSLResource(t *testing.T) {
 		t.Fatalf("program = %#v", p)
 	}
 	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireCompiled(t, err)
 	hlsl, err := os.ReadFile(groups[0].HLSLPath)
 	if err != nil {
 		t.Fatal(err)

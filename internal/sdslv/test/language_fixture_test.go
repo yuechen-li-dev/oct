@@ -36,9 +36,8 @@ func TestSdslvValidLanguageFixtureCorpusCompiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts")); err != nil {
-				t.Fatal(err)
-			}
+			_, err = Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
+			requireCompiled(t, err)
 		})
 	}
 }

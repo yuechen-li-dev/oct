@@ -4,6 +4,7 @@ package test
 // including ordinary VD-MIR bodies and AssertStmt, belongs to emit/hlsl.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,11 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/sdslv/emit/hlsl"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
 )
+
+// ErrDXCNotFound reports that no dxc executable is on PATH. Callers that can
+// run without shader compilation (tests on machines without the toolchain)
+// match it with errors.Is; any other compile failure stays a hard error.
+var ErrDXCNotFound = errors.New("DXC not found")
 
 type Group struct {
 	ID            string    `json:"id"`
@@ -42,7 +48,7 @@ func Compile(suite Suite, artifactRoot string) ([]Group, error) {
 		}
 		dxc, err := exec.LookPath("dxc")
 		if err != nil {
-			return nil, fmt.Errorf("DXC not found: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrDXCNotFound, err)
 		}
 		// DXC's highest spelling is vulkan1.3; test artifacts are SPIR-V 1.6
 		// and the production validator applies Vulkan 1.4 semantics.

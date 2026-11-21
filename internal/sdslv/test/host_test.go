@@ -72,9 +72,7 @@ func compileHostSuiteFromFile(t *testing.T, suitePath string) compiledHostSuite 
 		t.Fatal(err)
 	}
 	groups, err := Compile(suite, artifactRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireCompiled(t, err)
 	manifest := ProjectManifest(suite, groups)
 	manifestPath := filepath.Join(artifactRoot, "manifest.json")
 	if err := WriteManifest(manifestPath, manifest); err != nil {

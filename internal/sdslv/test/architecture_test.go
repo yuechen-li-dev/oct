@@ -101,9 +101,7 @@ func TestSdslvTestInputUsesHiddenResourceNotLocalArraySubstitution(t *testing.T)
 		t.Fatal(err)
 	}
 	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireCompiled(t, err)
 	hlsl, err := os.ReadFile(groups[0].HLSLPath)
 	if err != nil {
 		t.Fatal(err)
