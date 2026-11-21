@@ -1,0 +1,119 @@
+package UI
+
+// Explicit placement (DESIGN.md §5.4): spans, UI.At, and layout tables.
+//
+// A span constrains one axis of a box with exactly one shape, so a placed
+// box is always exactly constrained. Pixel spans are dp against the parent
+// box; fraction spans are parent fractions.
+
+// Paint layers, lowest first. Declaration order is the paint rank.
+enum Layer {
+    Base
+    Content
+    Chrome
+    Overlay
+    Modal
+    Tooltip
+}
+
+enum SpanKind {
+    Start
+    End
+    Stretch
+    Center
+    Fraction
+}
+
+// A and B are pixel values whose meaning depends on Kind (see the
+// constructors). From and To are used only by Fraction.
+record XSpan {
+    Kind: SpanKind
+    A: Float<px>
+    B: Float<px>
+    From: Float<ui>
+    To: Float<ui>
+}
+
+record YSpan {
+    Kind: SpanKind
+    A: Float<px>
+    B: Float<px>
+    From: Float<ui>
+    To: Float<ui>
+}
+
+// `left` from the parent's left edge, `width` wide.
+fn Left(left: Float<px>, width: Float<px>) -> XSpan {
+    return XSpan { Kind: SpanKind.Start  A: left  B: width  From: 0.0 ui  To: 0.0 ui }
+}
+
+// `right` from the parent's right edge, `width` wide.
+fn Right(right: Float<px>, width: Float<px>) -> XSpan {
+    return XSpan { Kind: SpanKind.End  A: right  B: width  From: 0.0 ui  To: 0.0 ui }
+}
+
+// Inset from both edges; the width follows the parent.
+fn StretchX(left: Float<px>, right: Float<px>) -> XSpan {
+    return XSpan { Kind: SpanKind.Stretch  A: left  B: right  From: 0.0 ui  To: 0.0 ui }
+}
+
+// `width` wide, centered in the parent.
+fn CenterX(width: Float<px>) -> XSpan {
+    return XSpan { Kind: SpanKind.Center  A: 0.0 px  B: width  From: 0.0 ui  To: 0.0 ui }
+}
+
+// From `left` to `right` as fractions of the parent's width.
+fn FractionX(left: Float<ui>, right: Float<ui>) -> XSpan {
+    return XSpan { Kind: SpanKind.Fraction  A: 0.0 px  B: 0.0 px  From: left  To: right }
+}
+
+// `top` from the parent's top edge, `height` tall.
+fn Top(top: Float<px>, height: Float<px>) -> YSpan {
+    return YSpan { Kind: SpanKind.Start  A: top  B: height  From: 0.0 ui  To: 0.0 ui }
+}
+
+// `bottom` from the parent's bottom edge, `height` tall.
+fn Bottom(bottom: Float<px>, height: Float<px>) -> YSpan {
+    return YSpan { Kind: SpanKind.End  A: bottom  B: height  From: 0.0 ui  To: 0.0 ui }
+}
+
+// Inset from both edges; the height follows the parent.
+fn StretchY(top: Float<px>, bottom: Float<px>) -> YSpan {
+    return YSpan { Kind: SpanKind.Stretch  A: top  B: bottom  From: 0.0 ui  To: 0.0 ui }
+}
+
+// `height` tall, centered in the parent.
+fn CenterY(height: Float<px>) -> YSpan {
+    return YSpan { Kind: SpanKind.Center  A: 0.0 px  B: height  From: 0.0 ui  To: 0.0 ui }
+}
+
+// From `top` to `bottom` as fractions of the parent's height.
+fn FractionY(top: Float<ui>, bottom: Float<ui>) -> YSpan {
+    return YSpan { Kind: SpanKind.Fraction  A: 0.0 px  B: 0.0 px  From: top  To: bottom }
+}
+
+// Places one box inside a UI.Canvas. Its child fills the box.
+fn At(x: XSpan, y: YSpan, child: UI) -> UI {
+    return UIPlaceSpan(x, y, child)
+}
+
+// One row of a layout table: where a region goes. Build rows with UI.Region,
+// which fills Region from the region enum value; customize Layer and Z with
+// `with`. Region is the canonical region name, used by UI.Arrange and dumps.
+record Placement {
+    Region: String
+    X: XSpan
+    Y: YSpan
+    Layer: Layer
+    Z: Int
+}
+
+// A screen's page geometry: one placement per region of a region enum.
+// UI.Arrange checks that every region is placed exactly once.
+record LayoutTable {
+    Rows: Placement[]
+}
+
+fn Layout(rows: Placement[]) -> LayoutTable {
+    return LayoutTable { Rows: rows }
+}

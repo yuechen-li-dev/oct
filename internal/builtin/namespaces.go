@@ -5,6 +5,12 @@ var namespaceAliases = map[string]map[string]string{
 		"CrossSection": "ArrayCrossSection",
 		"Where":        "ArrayWhere",
 	},
+	// Libraries/UI placement builtins that are polymorphic over the app's
+	// region enum, so they cannot be ordinary UI package functions.
+	"UI": {
+		"Region":  "UIRegion",
+		"Arrange": "UIArrange",
+	},
 	"String": {
 		"Concat":     "StringConcat",
 		"From":       "StringFrom",

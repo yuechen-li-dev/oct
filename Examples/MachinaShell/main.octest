@@ -1,0 +1,35 @@
+package Main
+
+import String
+import UI
+
+[Fact]
+fn AddToCartCountsUp() -> Void {
+    let next = Update(Init(), "cart.add")
+    Assert.Equal(1, next.Cart, "one click adds one item")
+}
+
+[Fact]
+fn TheTablePlacesEveryRegionOnce() -> Void {
+    let table = WideShell()
+    Assert.Equal(5, Len(table.Rows), "one row per Shell region")
+    Assert.Equal("Main.Shell.Header", table.Rows[0].Region, "UI.Region records the region's canonical name")
+    Assert.True(table.Rows[4].Layer == UI.Layer.Chrome, "the cart button paints above the page")
+}
+
+[Fact]
+fn MovingARegionIsARowEdit() -> Void {
+    let table = WideShell()
+    let moved = table.Rows[1] with { Y: UI.StretchY(82px, 68px) }
+    Assert.Near(82.0, BaseUnit(moved.Y.A), 0.000001, "the rail moved 2px up")
+    Assert.Near(84.0, BaseUnit(table.Rows[2].Y.A), 0.000001, "the grid did not move")
+}
+
+[Fact]
+fn ViewArrangesEveryRegion() -> Void {
+    let signature = UI.Signature(View(Init()))
+    let regions = ["Shell.Header", "Shell.Rail", "Shell.Grid", "Shell.Footer", "Shell.Cart"]
+    for i in 0..Len(regions) {
+        Assert.True(String.Contains(signature, "region=" + regions[i]), "the view places " + regions[i])
+    }
+}

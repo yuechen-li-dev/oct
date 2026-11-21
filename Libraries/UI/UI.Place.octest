@@ -1,0 +1,29 @@
+package UI
+
+import String
+
+[Fact]
+fn PlaceSpanConstructorsRecordOneShapePerAxis() -> Void {
+    Assert.True(Left(16px, 240px).Kind == SpanKind.Start, "Left is offset from the near edge")
+    Assert.True(Right(24px, 160px).Kind == SpanKind.End, "Right is offset from the far edge")
+    Assert.True(StretchX(16px, 16px).Kind == SpanKind.Stretch, "StretchX insets both edges")
+    Assert.True(CenterX(480px).Kind == SpanKind.Center, "CenterX centers a width")
+    Assert.True(FractionX(0.25 ui, 0.75 ui).Kind == SpanKind.Fraction, "FractionX uses parent fractions")
+    Assert.True(Bottom(16px, 40px).Kind == SpanKind.End, "Bottom is offset from the far edge")
+    Assert.Near(240.0, BaseUnit(Left(16px, 240px).B), 0.000001, "Left keeps its width")
+    Assert.Near(0.75, BaseUnit(FractionY(0.25 ui, 0.75 ui).To), 0.000001, "FractionY keeps its far edge")
+}
+
+[Fact]
+fn PlaceAtIsPartOfTheNodeSignature() -> Void {
+    let a = Canvas([At(Left(16px, 240px), Top(16px, 56px), Text("x"))])
+    let b = Canvas([At(Left(16px, 240px), Top(14px, 56px), Text("x"))])
+    Assert.True(String.Contains(Signature(a), "span("), "UI.At places a span box")
+    Assert.True(Signature(a) != Signature(b), "moving the box 2px changes the frame")
+}
+
+[Fact]
+fn PlaceLayoutWrapsItsRows() -> Void {
+    let empty: Placement[] = []
+    Assert.Equal(0, Len(Layout(empty).Rows), "UI.Layout keeps the rows it is given")
+}

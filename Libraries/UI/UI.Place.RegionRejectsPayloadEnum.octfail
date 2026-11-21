@@ -1,0 +1,15 @@
+expect error: "function 'UI.Region' argument 1 expects a region enum whose variants carry no payload; Pane.Named has one"
+
+package Main
+
+import UI
+
+enum Pane {
+    Main
+    Named(String)
+}
+
+fn Main() -> Int {
+    let row = UI.Region(Pane.Main, UI.Left(0px, 10px), UI.Top(0px, 10px))
+    return 0
+}

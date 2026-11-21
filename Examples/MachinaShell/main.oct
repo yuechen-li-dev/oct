@@ -1,0 +1,67 @@
+package Main
+
+import UI
+
+// A storefront-style shell: page geometry in one layout table, widgets in
+// ordinary content functions (Libraries/UI/DESIGN.md §5.4).
+
+enum Shell {
+    Header
+    Rail
+    Grid
+    Footer
+    Cart
+}
+
+record Store {
+    Category: String
+    Cart: Int
+}
+
+fn Init() -> Store {
+    return Store { Category: "All"  Cart: 0 }
+}
+
+fn Update(model: Store, event: String) -> Store {
+    if event == "cart.add" { return model with { Cart: model.Cart + 1 } }
+    if event == "category.desk" { return model with { Category: "Desk" } }
+    if event == "category.all" { return model with { Category: "All" } }
+    return model
+}
+
+// Page geometry. Moving a region is an edit to its row; widget code is not
+// touched. Shared edges are arithmetic.
+fn WideShell() -> UI.LayoutTable {
+    let pad = 16px
+    let gap = 12px
+    let headerH = 56px
+    let footerH = 40px
+    let railW = 240px
+    let bodyTop = pad + headerH + gap
+    let bodyBottom = pad + footerH + gap
+    return UI.Layout([
+        UI.Region(Shell.Header, UI.StretchX(pad, pad),                UI.Top(pad, headerH)),
+        UI.Region(Shell.Rail,   UI.Left(pad, railW),                  UI.StretchY(bodyTop, bodyBottom)),
+        UI.Region(Shell.Grid,   UI.StretchX(pad + railW + gap, pad),  UI.StretchY(bodyTop, bodyBottom)),
+        UI.Region(Shell.Footer, UI.StretchX(pad, pad),                UI.Bottom(pad, footerH)),
+        UI.Region(Shell.Cart,   UI.Right(24px, 160px),                UI.Bottom(pad + footerH + 16px, 40px)) with { Layer: UI.Layer.Chrome }
+    ])
+}
+
+fn View(model: Store) -> UI {
+    return UI.Arrange(WideShell(), model, ShellContent)
+}
+
+fn ShellContent(model: Store, region: Shell) -> UI {
+    return switch region {
+        case Shell.Header => UI.Row([UI.Text("Northline Supply Co."), UI.Spacer(), UI.Text("Cart " + FormatFloat(Float(model.Cart), 0))])
+        case Shell.Rail => UI.Column([
+            UI.Text("Category"),
+            UI.ButtonRaw("All", "category.all", model.Category != "All"),
+            UI.ButtonRaw("Desk", "category.desk", model.Category != "Desk")
+        ])
+        case Shell.Grid => UI.Text("Showing: " + model.Category)
+        case Shell.Footer => UI.Text("Ships from Portland within 48 hours.")
+        case Shell.Cart => UI.ButtonRaw("Add to cart", "cart.add", true)
+    }
+}

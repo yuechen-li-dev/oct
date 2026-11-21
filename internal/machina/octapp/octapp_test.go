@@ -100,3 +100,75 @@ func TestNonAppProgramsAreRejectedWithTheConvention(t *testing.T) {
 		}
 	}
 }
+
+// loadVariant writes the layout-table fixture with one line replaced into a
+// directory inside the repository (so `import UI` resolves) and loads it.
+func loadVariant(t *testing.T, oldLine, newLine string) error {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "layouttable", "main.oct.fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	if oldLine != "" {
+		if !strings.Contains(src, oldLine) {
+			t.Fatalf("fixture lacks %q", oldLine)
+		}
+		src = strings.Replace(src, oldLine, newLine, 1)
+	}
+	dir, err := os.MkdirTemp("testdata", "variant-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(abs, "main.oct")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewSession(path, layout.Rect{Width: 320, Height: 240}, nil)
+	return err
+}
+
+func TestLayoutTableArrangesEveryRegion(t *testing.T) {
+	if err := loadVariant(t, "", ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLayoutTableValidation(t *testing.T) {
+	body := "UI.Region(Shell.Body, UI.StretchX(0px, 0px), UI.StretchY(40px, 0px)) // BODY"
+	cases := []struct {
+		name, replacement, want string
+	}{
+		{"missing region", "UI.Region(Shell.Header, UI.StretchX(0px, 0px), UI.Top(0px, 40px)) // BODY", "region Shell.Header is placed twice"},
+		{"duplicate", "UI.Region(Shell.Body, UI.StretchX(0px, 0px), UI.StretchY(40px, 0px)),\n        UI.Region(Shell.Body, UI.StretchX(0px, 0px), UI.Top(0px, 1px))", "region Shell.Body is placed twice"},
+		{"mixed enums", "UI.Region(Other.Body, UI.StretchX(0px, 0px), UI.StretchY(40px, 0px))", "row 1 places Other.Body, but the table's regions are Shell"},
+		{"z out of range", "UI.Region(Shell.Body, UI.StretchX(0px, 0px), UI.StretchY(40px, 0px)) with { Z: 9 }", "region Shell.Body has z 9, outside -5..5"},
+		{"stretch overflow", "UI.Region(Shell.Body, UI.StretchX(200px, 200px), UI.StretchY(40px, 0px))", "stretch insets 200 + 200 exceed the parent's 320"},
+	}
+	for _, c := range cases {
+		err := loadVariant(t, body, c.replacement)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: error %v, want %q", c.name, err, c.want)
+		}
+	}
+}
+
+func TestLayoutTableMustPlaceEveryRegion(t *testing.T) {
+	err := loadVariant(t, "UI.Region(Shell.Header, UI.StretchX(0px, 0px), UI.Top(0px, 40px)),\n", "")
+	if err == nil || !strings.Contains(err.Error(), "the layout table does not place region Shell.Header") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestLayoutTableMustMatchTheContentRegions(t *testing.T) {
+	err := loadVariant(t, "fn Content(model: Model, region: Shell) -> UI {\n    return switch region {\n        case Shell.Header => UI.Text(\"header\")\n        case Shell.Body => UI.Text(\"body\")",
+		"fn Content(model: Model, region: Other) -> UI {\n    return switch region {\n        case Other.Header => UI.Text(\"header\")\n        case Other.Body => UI.Text(\"body\")")
+	if err == nil || !strings.Contains(err.Error(), "places Shell regions, but the content function takes Other") {
+		t.Fatalf("error %v", err)
+	}
+}

@@ -1,0 +1,19 @@
+expect error: "function 'UI.Arrange' content function takes Int first, but the context argument is String"
+
+package Main
+
+import UI
+
+enum Pane {
+    Only
+}
+
+fn Content(count: Int, pane: Pane) -> UI {
+    return UI.Text("x")
+}
+
+fn Main() -> Int {
+    let table = UI.Layout([UI.Region(Pane.Only, UI.StretchX(0px, 0px), UI.StretchY(0px, 0px))])
+    let view = UI.Arrange(table, "not a count", Content)
+    return 0
+}

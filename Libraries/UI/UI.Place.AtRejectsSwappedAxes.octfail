@@ -1,0 +1,10 @@
+expect error: "expects UI.XSpan, got UI.YSpan"
+
+package Main
+
+import UI
+
+fn Main() -> Int {
+    let view = UI.Canvas([UI.At(UI.Top(16px, 56px), UI.Left(16px, 240px), UI.Text("x"))])
+    return 0
+}

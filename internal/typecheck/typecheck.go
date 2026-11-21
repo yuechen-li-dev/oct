@@ -5386,6 +5386,9 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
 	}
+	if callee == "UIPlaceSpan" || callee == "UIRegion" || callee == "UIArrange" {
+		return c.checkUIPlacementCall(scope, callee, typeArguments, arguments, ctx)
+	}
 	if callee == "UISpacer" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'UISpacer' does not accept type arguments")

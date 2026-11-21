@@ -1,0 +1,46 @@
+package Main
+
+import UI
+
+// Base app for the layout-table validation tests in octapp_test.go. The test
+// rewrites the marked lines to produce each invalid table.
+
+enum Shell {
+    Header
+    Body
+}
+
+enum Other {
+    Header
+    Body
+}
+
+record Model {
+    Clicks: Int
+}
+
+fn Init() -> Model {
+    return Model { Clicks: 0 }
+}
+
+fn Update(model: Model, event: String) -> Model {
+    return model
+}
+
+fn Table() -> UI.LayoutTable {
+    return UI.Layout([
+        UI.Region(Shell.Header, UI.StretchX(0px, 0px), UI.Top(0px, 40px)),
+        UI.Region(Shell.Body, UI.StretchX(0px, 0px), UI.StretchY(40px, 0px)) // BODY
+    ])
+}
+
+fn View(model: Model) -> UI {
+    return UI.Arrange(Table(), model, Content)
+}
+
+fn Content(model: Model, region: Shell) -> UI {
+    return switch region {
+        case Shell.Header => UI.Text("header")
+        case Shell.Body => UI.Text("body")
+    }
+}
