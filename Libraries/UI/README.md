@@ -1,4 +1,4 @@
-# UI standard library (Machina UI M0)
+# UI standard library (Machina UI)
 
 `UI` is Oct's standard-library authoring surface for Machina UI (Machine Native UI).
 For Oct user code, prefer `UI.*` functions. Raw `UI*` builtins are runtime backing details.
@@ -7,61 +7,167 @@ The design direction for the authoring surface (layout tables, typed messages,
 stack and grid sugar, and the milestone order) is specified in
 [`DESIGN.md`](DESIGN.md). This README documents what is implemented now.
 
-## Canonical M0 API
+## Apps and messages (UI-M3)
+
+An app declares its model, its message enum, and three functions:
+
+```oct
+enum Msg {
+    Raise
+    Select(String)
+}
+
+fn Init() -> Model
+fn Update(model: Model, msg: Msg) -> Model
+fn View(model: Model) -> UI
+```
+
+Buttons carry message values, and `Update` matches them exhaustively:
+
+```oct
+UI.Button("Raise", Msg.Raise, model.Setpoint < 30.0C)
+
+fn Update(model: Model, msg: Msg) -> Model {
+    return match msg {
+        case Msg.Raise => model with { Setpoint: model.Setpoint + 0.5K }
+        case Msg.Select(id) => model with { Selected: Option.Some(id) }
+    }
+}
+```
+
+- `UI.Button(label, message, enabled)` takes a value of any enum. It is a
+  compiler-owned builtin (generic over the message enum). Message variants
+  may carry a payload.
+- The button keeps the message value; `Update` receives the value itself.
+  Its printed form (`Msg.Select("harbor-board")`) is a tool-facing alias for
+  dumps and `oct ui check --click`; nothing parses it back.
+- `oct ui` checks when the app loads that `Update`'s second parameter is the
+  app's message enum, and when a button is pressed that its message is of
+  that enum. A mismatch is an error naming both.
+- `UI.Button` still accepts a `UI.EventToken`, and `Update` may still take
+  `event: String`, for apps written before UI-M3. New apps use messages.
+  `UI.Token`, `UI.ButtonRaw` and the `UI.Dispatch` helpers below exist for
+  those apps.
+
+`Examples/MachinaThermostat` is the smallest app; `Experiments/Storefront/M8`
+is a full storefront on this surface.
+
+## Canonical API
 
 ```oct
 UI.Text(content: String) -> UI
-UI.Button(label: String, event: UI.EventToken, enabled: Bool) -> UI
-UI.ButtonRaw(label: String, event: String, enabled: Bool) -> UI
-
-UI.Row(children: UI[]) -> UI
-UI.Column(children: UI[]) -> UI
-UI.Canvas(children: UI[]) -> UI
-UI.Grid(children: UI[]) -> UI
-UI.GridRows(cells: UI[][]) -> UI
+UI.Button(label: String, message: Msg, enabled: Bool) -> UI      // Msg: any enum
 UI.Spacer() -> UI
+UI.Styled(style: UI.Style, node: UI) -> UI
 
-UI.AbsoluteBox(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, child: UI) -> UI
-UI.AbsoluteBoxZ(x: Float<px>, y: Float<px>, width: Float<px>, height: Float<px>, z: Int, child: UI) -> UI
-UI.AnchorBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, child: UI) -> UI
-UI.AnchorBoxZ(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, z: Int, child: UI) -> UI
+// Placement (UI-M2)
+UI.Canvas(children: UI[]) -> UI
+UI.At(x: UI.XSpan, y: UI.YSpan, child: UI) -> UI
+UI.Region(region: R, x: UI.XSpan, y: UI.YSpan) -> UI.Placement
+UI.Layout(rows: UI.Placement[]) -> UI.LayoutTable
+UI.Arrange(layout: UI.LayoutTable, context: C, content: fn(C, R) -> UI) -> UI
 
-UI.Mount(root: UI) -> UI.MountRef
-UI.Patch(mount: UI.MountRef, next: UI) -> Int
-UI.Unmount(mount: UI.MountRef) -> Int
-UI.Emit(mount: UI.MountRef, event: String) -> Int ! Error
-UI.DrainEvents(mount: UI.MountRef) -> String[]
+// Stacks and grids (UI-M3)
+UI.Stack(spec: UI.StackSpec, children: UI[]) -> UI
+UI.Vertical() -> UI.StackSpec
+UI.Horizontal() -> UI.StackSpec
+UI.Column(children: UI[]) -> UI                  // Stack(Vertical(), children)
+UI.Row(children: UI[]) -> UI                     // Stack(Horizontal(), children)
+UI.Fixed(main: Float<px>, child: UI) -> UI
+UI.Fill(weight: Float, child: UI) -> UI
+UI.Auto(child: UI) -> UI
+UI.Size(width: Float<px>, height: Float<px>, child: UI) -> UI
+UI.Nudge(dx: Float<px>, dy: Float<px>, child: UI) -> UI
+UI.Inset(insets: UI.Insets, child: UI) -> UI
+UI.Grid(spec: UI.GridSpec, rows: UI[][]) -> UI
+UI.Tracks(columns: UI.Track[]) -> UI.GridSpec
+UI.Span(columns: Int, rows: Int, child: UI) -> UI
+UI.Skip() -> UI
+UI.Chunk(items: UI[], columns: Int) -> UI[][]
+UI.Keyed(key: String, child: UI) -> UI
+
 UI.Signature(node: UI) -> String
 ```
 
-Compatibility aliases remain available for pre-M117 two-step placement authoring:
-- `Absolute` / `AbsoluteZ`
-- `Anchor` / `AnchorZ`
-- `Place(box, child)`
-- `AnchoredBox` / `AnchoredBoxZ`
-- `MountUI` / `PatchUI` / `UnmountUI`
+Older spellings remain callable for existing code and are not part of the
+documented surface: `UI.AbsoluteBox`/`UI.AnchorBox` (and their `Z` forms,
+`Absolute`, `Anchor`, `Place`, `AnchoredBox`), `UI.GridRows` (a grid of equal
+fill tracks), `UI.ButtonRaw`, `UI.Token`, and the mount helpers `UI.Mount`,
+`UI.Patch`, `UI.Unmount`, `UI.Emit`, `UI.DrainEvents` (and `MountUI`,
+`PatchUI`, `UnmountUI`).
 
-Prefer canonical names in new code.
-
-`MountRef` is the canonical handle/reference record returned by `UI.Mount`.
+`MountRef` is the handle record returned by `UI.Mount`.
 The distinct naming (`Mount` function, `MountRef` record) intentionally avoids record/function namespace collision in Oct.
 
-## M0 scope (and non-scope)
+## Stacks, sizing and grids (UI-M3)
 
-M0 is semantic UI construction with the current explicit box placement model.
-It is intentionally not layout rows, hit-testing, render command streams, style/theme records, or CSS-like styling.
+Sugar places children with declared sizes and lowers to the same explicit
+rectangles a layout table writes. It never negotiates, shrinks or wraps; when
+children do not fit, layout fails with an error naming the stack and the
+sizes involved.
 
-Layout is unit-aware:
-- absolute coordinates/sizes use `Float<px>`
-- anchor fractions use `Float<ui>`
+```oct
+UI.Stack(UI.Vertical() with { Gap: 12.0 px  Padding: UI.InsetsAll(16px) }, [
+    UI.Fixed(56px, HeaderBar(model)),
+    UI.Fill(1.0, ProductGrid(model, 3)),
+    Footer(model)
+])
+```
 
-Events are nominal `UI.EventToken` values at the authoring boundary (string-backed at runtime interop boundaries).
-State should live in Oct records/app logic; UI is usually a pure projection `View(state) -> UI`.
+- `StackSpec` has `Axis`, `Gap`, `Padding`, `Align` (`Start`, `Center`, `End`
+  on the cross axis) and `Justify` (`Start`, `Center`, `End`, `SpaceBetween`
+  for leftover main space when no child fills). Start from `UI.Vertical()` or
+  `UI.Horizontal()` and change fields with `with`.
+- Main size is height in a vertical stack and width in a horizontal one.
+  `UI.Fixed(main, child)` sets it; `UI.Fill(weight, child)` takes a share of
+  what fixed children leave; `UI.Auto(child)` measures the child;
+  `UI.Size(w, h, child)` sets both axes.
+- Unwrapped children: `Text` and `Button` are measured on both axes and placed
+  across by `Align`; a nested stack is measured along the parent's axis and
+  stretches across it; `Spacer`, grids and canvases fill (`UI.Fill(1.0)`).
+  A fixed or measured container stretches across the stack, as `UI.Fixed`
+  does.
+- Sizing applies only to a child of a stack; elsewhere it is an error.
+- Text is measured with fixed metrics (8 dp per character, 20 dp per line;
+  buttons add 24 dp and are at least 80 dp wide) until the backend's
+  measurement reaches layout (UI-M4).
+- `UI.Nudge(dx, dy, child)` moves a node after placement without moving its
+  siblings.
+- `UI.Inset(insets, child)` puts space around one child. Padding is layout,
+  never style.
 
-Octomata is not Dominatus and does not provide stack push/pop UI semantics.
+Grids have declared tracks and no implicit columns:
 
+```oct
+let spec = UI.Tracks([UI.Track.Fixed(280px), UI.Track.Fill(1.0)]) with {
+    Rows: [UI.Track.Fixed(56px), UI.Track.Fill(1.0)]
+    ColumnGap: 16.0 px
+}
+UI.Grid(spec, [
+    [UI.Span(2, 1, TopBar(model)), UI.Skip()],
+    [Sidebar(model), Content(model)]
+])
+```
 
-## Generic event vocabulary
+- `UI.Track` is `Fixed(Float<px>)`, `Fill(Float)` or `Auto` (as wide or tall
+  as its largest single-span cell). Rows past `Rows` use `AutoRow`.
+- Every row has one cell per column. A cell a span covers must be
+  `UI.Skip()`; an uncovered `UI.Skip()` is an empty cell.
+- `UI.Chunk(items, columns)` splits a list into rows, padding the last with
+  `UI.Skip()`, so a dynamic list becomes a grid in plain sight.
+
+`UI.Keyed(key, child)` gives a repeated child its id from a domain key instead
+of its position, so a card keeps its id when earlier cards are filtered out.
+Keys must be unique among siblings.
+
+## Model
+
+Layout is unit-aware: pixel lengths use `Float<px>` and parent fractions use
+`Float<ui>`. State lives in the app's model; the UI is a pure projection
+`View(model) -> UI`. Octomata flows are not Dominatus and provide no stack
+push/pop UI semantics.
+
+## Generic event vocabulary (M0 apps)
 
 `UI` exposes a tiny, domain-independent event record surface:
 
@@ -86,7 +192,7 @@ This vocabulary is intentionally small and does not define an app model, app con
 Session/runtime app contracts used for backend integration live in internal Go packages, not in the Oct standard-library API surface.
 
 
-## Dispatch helpers (M111, small/pure)
+## Dispatch helpers (M111, M0 apps)
 
 `UI` includes tiny deterministic dispatch helpers for explicit app update functions:
 
@@ -125,7 +231,7 @@ fn Update(model: StoreState, event: String) -> StoreState {
 `UI` now includes a small typed style surface made of immutable records:
 
 - `UI.Color`
-- `UI.Insets`
+- `UI.Insets` (used by stack and grid padding)
 - `UI.TextStyle`
 - `UI.Style`
 
@@ -146,13 +252,12 @@ let base = UI.DefaultStyle()
 let card = base with {
     Background: UI.Rgb(245, 245, 245)
     Radius: 8px
-    Padding: UI.InsetsAll(12px)
 }
 ```
 
 ### Applying a style (M117)
 
-`UI.Styled(node, style)` attaches a `Style` to a node. Lowering carries it to
+`UI.Styled(style, node)` attaches a `Style` to a node. Lowering carries it to
 render, and native backends paint it:
 
 - `Background` fills the node's rect, `BorderColor` and `BorderWidth` outline
@@ -163,15 +268,16 @@ render, and native backends paint it:
   renders its label muted.
 - The style is part of the node's identity: `UI.Signature` changes with it.
 
-Not applied yet: `Padding` (it changes layout geometry) and `UI.TextStyle`
-(text size needs real text measurement in layout).
+`Style` has no padding: inner space is layout (a stack's `Padding` or
+`UI.Inset`). `UI.TextStyle` is not applied yet (text size needs real text
+measurement in layout).
 
 ```oct
-let badge = UI.Styled(UI.Text("Status: heating"), UI.DefaultStyle() with {
+let badge = UI.Styled(UI.DefaultStyle() with {
     Background: UI.Rgb(255, 152, 0)
     Foreground: UI.Rgb(255, 255, 255)
     Radius: 4px
-})
+}, UI.Text("Status: heating"))
 ```
 
 ## Explicit placement and layout tables (UI-M2)
@@ -277,18 +383,28 @@ package Example
 
 import UI
 
-record AppState {
-    Count: Float
+record Counter {
+    Count: Int
 }
 
-fn View(state: AppState) -> UI {
-    return UI.Canvas([
-        UI.AnchorBox(0.1 ui, 0.1 ui, 0.9 ui, 0.3 ui,
-            UI.Column([
-                UI.Text("count=" + FormatFloat(state.Count, 0)),
-                UI.Button("Increment", Token("counter.increment"), true)
-            ])
-        )
+enum Msg {
+    Increment
+}
+
+fn Init() -> Counter {
+    return Counter { Count: 0 }
+}
+
+fn Update(model: Counter, msg: Msg) -> Counter {
+    return match msg {
+        case Msg.Increment => model with { Count: model.Count + 1 }
+    }
+}
+
+fn View(model: Counter) -> UI {
+    return UI.Stack(UI.Vertical() with { Gap: 8.0 px  Padding: UI.InsetsAll(16px) }, [
+        UI.Text("count=" + FormatFloat(Float(model.Count), 0)),
+        UI.Button("Increment", Msg.Increment, true)
     ])
 }
 ```
@@ -296,4 +412,4 @@ fn View(state: AppState) -> UI {
 
 ## Deterministic grid/cell authoring (M114)
 
-`UI.GridRows` is the M114 deterministic nested-array grid API (outer array = rows, inner arrays = columns). Rows must be rectangular and non-empty; there is no auto-placement or spans. Use `UI.Spacer()` for explicit empty cells. `UI.Grid(children: UI[])` remains as the legacy flat compatibility wrapper.
+`UI.GridRows` is the M114 nested-array grid (outer array = rows, inner arrays = columns) with equal fill tracks. Rows must be rectangular and non-empty; there is no auto-placement or spans. New code uses `UI.Grid(spec, rows)` above. The M0 flat `UI.Grid(children: UI[])` was replaced by it in UI-M3.

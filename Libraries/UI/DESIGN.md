@@ -562,6 +562,16 @@ edit.
 
 ### 5.5 Sugar: stacks
 
+> **Implemented in UI-M3** with §5.6, §5.7 (style changes 1 and 2), §5.8 and
+> step 0 of §5.1/§5.2 ([README](README.md#stacks-sizing-and-grids-ui-m3);
+> `Experiments/Storefront/M8`). One refinement from building Storefront M8:
+> an unwrapped *nested stack* is measured along its parent's axis instead of
+> filling (it stretches across), because a row of labels or buttons inside a
+> card took a fill share of the card twice in one app. `Text` and `Button`
+> are measured as specified; `Spacer`, grids and canvases fill. State styles
+> (§5.7 change 3) wait for hover and focus input (UI-M6). `UI.Button` still
+> accepts a `UI.EventToken` for apps written before UI-M3.
+
 A stack is the cursor walk you would otherwise write by hand
 (`x += width + gap`): it places children one after another along an axis
 using their declared sizes. It does not negotiate, shrink or wrap.
@@ -882,6 +892,14 @@ improvement (gaps, padding, a real grid, styled cards). The estimate is from
 the source, not from a rewrite; rewriting Storefront is the acceptance test
 proposed for UI-M3 below, and its line count is the measurement.
 
+**Measured in UI-M3** (`Experiments/Storefront/M8`): 315 lines against M7's
+454 (271 against 388 without blank and comment lines), with filtering,
+sorting, styled cards and a page that actually lays out: M7's fraction
+canvas fails `oct ui check` with a stack overflow (its catalog header row
+does not fit the fraction box it was given). No
+event strings, dispatch tables or `ui` fractions remain, and a keyed card
+keeps its id when earlier cards are filtered out.
+
 ## 7. What this needs
 
 ### Language
@@ -975,7 +993,7 @@ before the type-system work.
 | Milestone | Content | Gate |
 |---|---|---|
 | UI-M2 (**done**) | Layout tables (`UI.Layout`, `UI.Region`, `UI.Arrange`), per-axis spans and `UI.At` (R2a), layers and z (R5), `--dump` in span vocabulary (R6) | Storefront shell as one table; moving a region is a one-row edit; resize keeps the rail at 240px; dump golden tests |
-| UI-M3 | Step 0 typed messages (R1); stack and grid sugar, `Fixed`/`Fill`/`Auto`, `Nudge`, `Keyed`, padding moved to layout (R2b) | Storefront rewrite: no strings, no `ui` fractions, keyed cards survive filtering, fewer lines |
+| UI-M3 (**done**) | Step 0 typed messages (R1); stack and grid sugar, `Fixed`/`Fill`/`Auto`, `Nudge`, `Keyed`, padding moved to layout (R2b) | Storefront rewrite: no strings, no `ui` fractions, keyed cards survive filtering, fewer lines |
 | UI-M4 | Text measurement seam, `Paragraph`, `TextSpec`, overflow policy (R3) | No clipped or wrapped-out-of-view labels at 1×/2× scale |
 | UI-M5 | `UI<M>` (L1), variant constructors as values (L2), markup items (L3, L4) | A wrong-message button is a compile error |
 | UI-M6 | Inputs and focus (R4), state styles | Form sample: checkbox, text field, slider round-trip through `Update` |

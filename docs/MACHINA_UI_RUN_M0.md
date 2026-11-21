@@ -11,6 +11,10 @@ go build -tags machina_gio -o oct ./cmd/oct    # native backend build
 
 ## App convention
 
+> Since UI-M3, `Update` takes the app's message enum (`fn Update(model:
+> Model, msg: Msg) -> Model`) and buttons carry message values; see
+> `Libraries/UI/README.md`. The string form below still works.
+
 An app package declares the trio the Machina storefront fixtures already used:
 
 ```oct
