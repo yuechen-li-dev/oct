@@ -186,6 +186,8 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		return evalResult{value: Value{Kind: ValueUI, UI: node}}, nil
 	case "UIPlaceSpan", "UIRegion", "UIArrange":
 		return i.evalUIPlacementBuiltin(env, pkgName, callee, argumentExprs)
+	case "UIStack", "UISizing", "UINudge", "UIKeyed", "UIGridMatrix", "UISkip", "UISpan", "UIButtonMsg":
+		return i.evalUISugarBuiltin(env, pkgName, callee, argumentExprs)
 	case "UIColumn", "UIRow", "UICanvas", "UIGrid":
 		if len(argumentExprs) != 1 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 1 argument", callee)

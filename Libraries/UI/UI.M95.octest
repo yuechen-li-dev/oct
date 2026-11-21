@@ -37,10 +37,10 @@ fn M95UIIRStructuralNodeKindsAreExplicit() -> Void {
         Button("Save", Token("evt.save"), true),
         Row([
             Spacer(),
-            Grid([
+            GridRows([[
                 Text("cell.0"),
                 Text("cell.1")
-            ])
+            ]])
         ]),
         Canvas([
             AbsoluteBox(8.0 px, 12.0 px, 48.0 px, 20.0 px, Text("absolute")),

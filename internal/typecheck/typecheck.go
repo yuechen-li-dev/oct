@@ -5389,6 +5389,9 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 	if callee == "UIPlaceSpan" || callee == "UIRegion" || callee == "UIArrange" {
 		return c.checkUIPlacementCall(scope, callee, typeArguments, arguments, ctx)
 	}
+	if callee == "UIStack" || callee == "UISizing" || callee == "UINudge" || callee == "UIKeyed" || callee == "UIGridMatrix" || callee == "UISkip" || callee == "UISpan" || callee == "UIButtonMsg" {
+		return c.checkUISugarCall(scope, callee, typeArguments, arguments, ctx)
+	}
 	if callee == "UISpacer" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'UISpacer' does not accept type arguments")

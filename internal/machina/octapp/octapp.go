@@ -4,8 +4,11 @@
 // the Machina storefront fixtures:
 //
 //	fn Init() -> S
-//	fn Update(model: S, event: String) -> S
+//	fn Update(model: S, msg: Msg) -> S     // Msg: the app's message enum
 //	fn View(model: S) -> UI
+//
+// Update may instead take `event: String`, the M0 form, for apps whose
+// buttons send UI.EventToken strings.
 //
 // App adapts that trio to session.App, so the existing deterministic spine
 // (UIIR -> lowering -> layout -> hit test -> render) drives any backend. The
@@ -18,6 +21,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/interpret"
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
 	"github.com/yuechen-li-dev/oct/internal/machina/lowering"
@@ -32,6 +36,9 @@ type App struct {
 	program project.Program
 	pkg     string
 	out     io.Writer
+	// msgEnum is the enum Update's second parameter takes, or "" when
+	// Update takes the M0 `event: String`.
+	msgEnum string
 }
 
 // convention lists the required functions and their parameter counts.
@@ -41,7 +48,7 @@ var convention = []struct {
 	sig    string
 }{
 	{"Init", 0, "fn Init() -> Model"},
-	{"Update", 2, "fn Update(model: Model, event: String) -> Model"},
+	{"Update", 2, "fn Update(model: Model, msg: Msg) -> Model"},
 	{"View", 1, "fn View(model: Model) -> UI"},
 }
 
@@ -85,6 +92,15 @@ func (a *App) checkConvention(path string) error {
 					return fmt.Errorf("%s: %s takes %d parameter(s); a Machina UI app declares %s",
 						path, want.name, len(fn.Parameters), want.sig)
 				}
+				if want.name == "Update" {
+					t := fn.Parameters[1].Type
+					if t.Name != "String" || t.Package != "" || t.IsArray {
+						if !declaresEnum(pkg.Enums, t.Name) || t.Package != "" || t.IsArray {
+							return fmt.Errorf("%s: Update's second parameter must be the app's message enum (or String for UI.EventToken events), got %s", path, t.Name)
+						}
+						a.msgEnum = t.Name
+					}
+				}
 			}
 		}
 		if !found {
@@ -114,13 +130,41 @@ func (a *App) Project(state interpret.Value) (*uiir.Node, error) {
 	return v.UI, nil
 }
 
-// Dispatch delivers a symbolic event to Update.
+func declaresEnum(enums []ast.EnumDecl, name string) bool {
+	for _, e := range enums {
+		if e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Dispatch delivers an action to Update: the button's message value when
+// Update takes the app's message enum, or the event string when it takes
+// String. A button whose message does not match Update is an error.
 func (a *App) Dispatch(state interpret.Value, action lowering.Action) (interpret.Value, error) {
-	next, err := a.call("Update", state, interpret.Value{Kind: interpret.ValueString, Text: action.Name})
+	arg := interpret.Value{Kind: interpret.ValueString, Text: action.Name}
+	msg, typed := action.Message.(interpret.Value)
+	switch {
+	case a.msgEnum == "" && typed:
+		return state, fmt.Errorf("button sends %s, but Update takes an event String; declare Update(model, msg: %s)", action.Name, localName(msg.Enum.TypeName))
+	case a.msgEnum != "" && !typed:
+		return state, fmt.Errorf("button sends the event string %q, but Update takes %s; give the button a %s value", action.Name, a.msgEnum, a.msgEnum)
+	case typed:
+		if localName(msg.Enum.TypeName) != a.msgEnum {
+			return state, fmt.Errorf("button sends %s, but Update takes %s", action.Name, a.msgEnum)
+		}
+		arg = msg
+	}
+	next, err := a.call("Update", state, arg)
 	if err != nil {
-		return state, fmt.Errorf("Update(%q): %w", action.Name, err)
+		return state, fmt.Errorf("Update(%s): %w", action.Name, err)
 	}
 	return next, nil
+}
+
+func localName(typeName string) string {
+	return strings.TrimPrefix(typeName, strings.SplitN(typeName, ".", 2)[0]+".")
 }
 
 // NewSession loads the app at path and builds a session for the viewport.

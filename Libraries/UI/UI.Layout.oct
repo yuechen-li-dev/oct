@@ -33,9 +33,6 @@ fn Canvas(children: UI[]) -> UI {
     return UICanvas(children)
 }
 
-fn Grid(children: UI[]) -> UI {
-    return UIGrid(children)
-}
 fn GridRows(cells: UI[][]) -> UI {
     return UIGridRows(cells)
 }

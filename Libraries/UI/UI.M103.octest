@@ -38,7 +38,7 @@ fn M103CanvasPlacementAbsoluteAndAnchored() -> Void {
 
 [Fact]
 fn M103GridAndSpacerWrappers() -> Void {
-    let sig = Signature(Grid([Spacer(), Text("cell")]))
+    let sig = Signature(GridRows([[Spacer(), Text("cell")]]))
     Assert.True(Contains(sig, "Grid#"), "grid wrapper should lower to grid node")
     Assert.True(Contains(sig, "Spacer#"), "spacer wrapper should lower to spacer node")
 }

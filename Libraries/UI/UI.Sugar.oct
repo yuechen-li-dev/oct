@@ -1,0 +1,156 @@
+package UI
+
+// Stack and grid sugar (DESIGN.md §5.5, §5.6) and keyed identity (§5.8).
+// Sugar places children with declared sizes and lowers to the same explicit
+// rectangles a layout table writes; it never negotiates, shrinks or wraps.
+
+enum Axis {
+    Vertical
+    Horizontal
+}
+
+// Cross-axis placement of a child narrower than its stack.
+enum Align {
+    Start
+    Center
+    End
+}
+
+// Main-axis placement of leftover space when no child fills it.
+enum Justify {
+    Start
+    Center
+    End
+    SpaceBetween
+}
+
+record StackSpec {
+    Axis: Axis
+    Gap: Float<px>
+    Padding: Insets
+    Align: Align
+    Justify: Justify
+}
+
+// A vertical stack with no gap or padding; customize it with `with`.
+fn Vertical() -> StackSpec {
+    return StackSpec {
+        Axis: Axis.Vertical
+        Gap: 0.0 px
+        Padding: InsetsAll(0px)
+        Align: Align.Start
+        Justify: Justify.Start
+    }
+}
+
+// A horizontal stack with no gap or padding; customize it with `with`.
+fn Horizontal() -> StackSpec {
+    return Vertical() with { Axis: Axis.Horizontal }
+}
+
+// Places children one after another along the spec's axis.
+fn Stack(spec: StackSpec, children: UI[]) -> UI {
+    return UIStack(spec, children)
+}
+
+// A stack child `main` long along the stack's axis (height in a vertical
+// stack, width in a horizontal one). The cross axis follows the stack.
+fn Fixed(main: Float<px>, child: UI) -> UI {
+    return UISizing(0, BaseUnit(main), 0.0, child)
+}
+
+// A stack child that takes `weight` shares of the space fixed children leave.
+fn Fill(weight: Float, child: UI) -> UI {
+    return UISizing(1, weight, 0.0, child)
+}
+
+// A stack child sized to its measured content.
+fn Auto(child: UI) -> UI {
+    return UISizing(2, 0.0, 0.0, child)
+}
+
+// A stack child of exactly `width` by `height`.
+fn Size(width: Float<px>, height: Float<px>, child: UI) -> UI {
+    return UISizing(3, BaseUnit(width), BaseUnit(height), child)
+}
+
+// Moves a node by (dx, dy) after placement without moving its siblings.
+fn Nudge(dx: Float<px>, dy: Float<px>, child: UI) -> UI {
+    return UINudge(BaseUnit(dx), BaseUnit(dy), child)
+}
+
+// Gives a repeated child a stable identity from a domain key, so it keeps
+// its id when earlier siblings come and go. Keys are unique among siblings.
+fn Keyed(key: String, child: UI) -> UI {
+    return UIKeyed(key, child)
+}
+
+// Space around a single child.
+fn Inset(insets: Insets, child: UI) -> UI {
+    return Stack(Vertical() with { Padding: insets }, [Fill(1.0, child)])
+}
+
+enum Track {
+    Fixed(Float<px>)
+    Fill(Float)
+    Auto
+}
+
+record GridSpec {
+    Columns: Track[]
+    Rows: Track[]
+    AutoRow: Track
+    ColumnGap: Float<px>
+    RowGap: Float<px>
+    Padding: Insets
+}
+
+// A grid spec with these columns, no declared rows (every row uses
+// AutoRow, which measures its cells), and no gaps or padding.
+fn Tracks(columns: Track[]) -> GridSpec {
+    return GridSpec {
+        Columns: columns
+        Rows: []
+        AutoRow: Track.Auto
+        ColumnGap: 0.0 px
+        RowGap: 0.0 px
+        Padding: InsetsAll(0px)
+    }
+}
+
+// A grid from rows of cells. Every row has one cell per column; a cell a
+// span covers is UI.Skip(); there are no implicit columns.
+fn Grid(spec: GridSpec, rows: UI[][]) -> UI {
+    return UIGridMatrix(spec, rows)
+}
+
+// A grid cell spanning `columns` by `rows` cells from its position.
+fn Span(columns: Int, rows: Int, child: UI) -> UI {
+    return UISpan(columns, rows, child)
+}
+
+// A grid cell covered by a span, or an empty cell.
+fn Skip() -> UI {
+    return UISkip()
+}
+
+// Splits items into rows of `columns` cells, row-major, padding the last row
+// with UI.Skip().
+fn Chunk(items: UI[], columns: Int) -> UI[][] {
+    var rows: UI[][] = []
+    var row: UI[] = []
+    for i in 0..Len(items) {
+        row = Append(row, items[i])
+        if Len(row) == columns {
+            rows = Append(rows, row)
+            row = []
+        }
+    }
+    if Len(row) > 0 {
+        while Len(row) < columns {
+            row = Append(row, Skip())
+        }
+        rows = Append(rows, row)
+    }
+    return rows
+}

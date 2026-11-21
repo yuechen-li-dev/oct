@@ -26,7 +26,6 @@ record Style {
     BorderColor: Color
     BorderWidth: Int<px>
     Radius: Int<px>
-    Padding: Insets
 }
 
 concept ColorChannel = Int {
@@ -79,16 +78,15 @@ fn DefaultStyle() -> Style {
         BorderColor: Rgb(210, 210, 210)
         BorderWidth: 1px
         Radius: 0px
-        Padding: InsetsAll(0px)
     }
 }
 
 // Styled paints a node with a Style: Background fills the node's rect,
 // BorderColor and BorderWidth outline it, Radius rounds its corners, and
 // Foreground colors the node's own text (a Text's content or a Button's
-// label). A styled Button replaces the default button chrome.
-// Padding is not applied yet: it changes layout geometry.
-fn Styled(node: UI, style: Style) -> UI {
+// label). A styled Button replaces the default button chrome. Inner space
+// is layout, not paint: use a stack's Padding or UI.Inset.
+fn Styled(style: Style, node: UI) -> UI {
     return UIStyleNode(node, [
         style.Background.R, style.Background.G, style.Background.B, style.Background.A,
         style.Foreground.R, style.Foreground.G, style.Foreground.B, style.Foreground.A,

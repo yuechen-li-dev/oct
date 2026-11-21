@@ -10,6 +10,7 @@ var namespaceAliases = map[string]map[string]string{
 	"UI": {
 		"Region":  "UIRegion",
 		"Arrange": "UIArrange",
+		"Button":  "UIButtonMsg",
 	},
 	"String": {
 		"Concat":     "StringConcat",

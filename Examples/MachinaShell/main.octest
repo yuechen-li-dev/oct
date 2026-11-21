@@ -5,7 +5,7 @@ import UI
 
 [Fact]
 fn AddToCartCountsUp() -> Void {
-    let next = Update(Init(), "cart.add")
+    let next = Update(Init(), Msg.AddToCart)
     Assert.Equal(1, next.Cart, "one click adds one item")
 }
 

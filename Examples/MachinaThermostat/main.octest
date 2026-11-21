@@ -1,36 +1,31 @@
 package Main
 
+import String
 import UI
 
 [Fact]
 fn RaiseAddsHalfAKelvin() -> Void {
-    let raised = Update(Init(), UI.EventTokenValue(RaiseEvent()))
+    let raised = Update(Init(), Msg.Raise)
     Assert.Near(293.65, BaseUnit(raised.Setpoint), 0.000001, "Raise adds 0.5 K to the 20.0C (293.15 K) setpoint")
 }
 
 [Fact]
 fn LowerSubtractsHalfAKelvin() -> Void {
-    let lowered = Update(Init(), UI.EventTokenValue(LowerEvent()))
+    let lowered = Update(Init(), Msg.Lower)
     Assert.Near(292.65, BaseUnit(lowered.Setpoint), 0.000001, "Lower subtracts 0.5 K")
 }
 
 [Fact]
 fn ToggleFlipsHeating() -> Void {
-    let on = Update(Init(), UI.EventTokenValue(ToggleEvent()))
+    let on = Update(Init(), Msg.ToggleHeating)
     Assert.True(on.Heating, "Toggle turns heating on")
-    let off = Update(on, UI.EventTokenValue(ToggleEvent()))
+    let off = Update(on, Msg.ToggleHeating)
     Assert.False(off.Heating, "Toggle turns heating back off")
 }
 
 [Fact]
-fn UnknownEventsLeaveTheModelUnchanged() -> Void {
-    let model = Init()
-    let same = Update(model, "thermostat.unknown")
-    Assert.Near(BaseUnit(model.Setpoint), BaseUnit(same.Setpoint), 0.000001, "unknown events do not move the setpoint")
-    Assert.False(same.Heating, "unknown events do not toggle heating")
-}
-
-[Fact]
-fn ViewProducesUI() -> Void {
-    Assert.True(Len(UI.Signature(View(Init()))) > 0, "View must produce a UI value")
+fn ButtonsCarryTheirMessages() -> Void {
+    let signature = UI.Signature(View(Init()))
+    Assert.True(String.Contains(signature, "Raise->Msg.Raise"), "the Raise button sends Msg.Raise")
+    Assert.True(String.Contains(signature, "Toggle heating->Msg.ToggleHeating"), "the toggle sends Msg.ToggleHeating")
 }

@@ -13,20 +13,37 @@ enum Shell {
     Cart
 }
 
+enum Category {
+    All
+    Desk
+}
+
+enum Msg {
+    Filter(Category)
+    AddToCart
+}
+
 record Store {
-    Category: String
+    Category: Category
     Cart: Int
 }
 
 fn Init() -> Store {
-    return Store { Category: "All"  Cart: 0 }
+    return Store { Category: Category.All  Cart: 0 }
 }
 
-fn Update(model: Store, event: String) -> Store {
-    if event == "cart.add" { return model with { Cart: model.Cart + 1 } }
-    if event == "category.desk" { return model with { Category: "Desk" } }
-    if event == "category.all" { return model with { Category: "All" } }
-    return model
+fn Update(model: Store, msg: Msg) -> Store {
+    return match msg {
+        case Msg.Filter(category) => model with { Category: category }
+        case Msg.AddToCart => model with { Cart: model.Cart + 1 }
+    }
+}
+
+fn CategoryLabel(category: Category) -> String {
+    return switch category {
+        case Category.All => "All"
+        case Category.Desk => "Desk"
+    }
 }
 
 // Page geometry. Moving a region is an edit to its row; widget code is not
@@ -57,11 +74,11 @@ fn ShellContent(model: Store, region: Shell) -> UI {
         case Shell.Header => UI.Row([UI.Text("Northline Supply Co."), UI.Spacer(), UI.Text("Cart " + FormatFloat(Float(model.Cart), 0))])
         case Shell.Rail => UI.Column([
             UI.Text("Category"),
-            UI.ButtonRaw("All", "category.all", model.Category != "All"),
-            UI.ButtonRaw("Desk", "category.desk", model.Category != "Desk")
+            UI.Button("All", Msg.Filter(Category.All), model.Category != Category.All),
+            UI.Button("Desk", Msg.Filter(Category.Desk), model.Category != Category.Desk)
         ])
-        case Shell.Grid => UI.Text("Showing: " + model.Category)
+        case Shell.Grid => UI.Text("Showing: " + CategoryLabel(model.Category))
         case Shell.Footer => UI.Text("Ships from Portland within 48 hours.")
-        case Shell.Cart => UI.ButtonRaw("Add to cart", "cart.add", true)
+        case Shell.Cart => UI.Button("Add to cart", Msg.AddToCart, true)
     }
 }

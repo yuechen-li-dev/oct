@@ -16,29 +16,20 @@ fn Init() -> Thermostat {
     }
 }
 
-fn RaiseEvent() -> UI.EventToken {
-    return UI.Token("thermostat.raise")
+// Everything the UI can ask for. Update handles each case; a new message
+// without a case is a compile error.
+enum Msg {
+    Raise
+    Lower
+    ToggleHeating
 }
 
-fn LowerEvent() -> UI.EventToken {
-    return UI.Token("thermostat.lower")
-}
-
-fn ToggleEvent() -> UI.EventToken {
-    return UI.Token("thermostat.toggle")
-}
-
-fn Update(model: Thermostat, event: String) -> Thermostat {
-    if event == UI.EventTokenValue(RaiseEvent()) {
-        return model with { Setpoint: model.Setpoint + 0.5K }
+fn Update(model: Thermostat, msg: Msg) -> Thermostat {
+    return match msg {
+        case Msg.Raise => model with { Setpoint: model.Setpoint + 0.5K }
+        case Msg.Lower => model with { Setpoint: model.Setpoint - 0.5K }
+        case Msg.ToggleHeating => model with { Heating: not model.Heating }
     }
-    if event == UI.EventTokenValue(LowerEvent()) {
-        return model with { Setpoint: model.Setpoint - 0.5K }
-    }
-    if event == UI.EventTokenValue(ToggleEvent()) {
-        return model with { Heating: not model.Heating }
-    }
-    return model
 }
 
 // Status badge: orange while heating, neutral while idle.
@@ -63,13 +54,13 @@ fn View(model: Thermostat) -> UI {
     // Display in Celsius: strip the unit, then offset from kelvin.
     let celsius = BaseUnit(model.Setpoint) - 273.15
     let status = if model.Heating { "heating" } else { "idle" }
-    return UI.Column([
+    return UI.Stack(UI.Vertical() with { Gap: 8.0 px  Padding: UI.InsetsAll(16px) }, [
         UI.Text("Setpoint: " + FormatFloat(celsius, 1) + " °C"),
-        UI.Styled(UI.Text("Status: " + status), StatusStyle(model.Heating)),
-        UI.Row([
-            UI.Button("Lower", LowerEvent(), celsius > 5.0),
-            UI.Button("Raise", RaiseEvent(), celsius < 30.0),
-            UI.Button("Toggle heating", ToggleEvent(), true)
+        UI.Styled(StatusStyle(model.Heating), UI.Text("Status: " + status)),
+        UI.Stack(UI.Horizontal() with { Gap: 8.0 px }, [
+            UI.Button("Lower", Msg.Lower, celsius > 5.0),
+            UI.Button("Raise", Msg.Raise, celsius < 30.0),
+            UI.Button("Toggle heating", Msg.ToggleHeating, true)
         ])
     ])
 }

@@ -55,7 +55,6 @@ fn M112DefaultStyleDeterministicAndWithUpdate() -> Void {
     let next = base with { Radius: 8px }
 
     Assert.Equal(base.Radius, again.Radius, "default style should be deterministic")
-    Assert.Equal(base.Padding.Left, again.Padding.Left, "default style should be deterministic")
     Assert.Equal(0px, base.Radius, "base radius should use default")
     Assert.Equal(8px, next.Radius, "with update should override radius")
     Assert.Equal(0px, base.Radius, "with update should not mutate base")

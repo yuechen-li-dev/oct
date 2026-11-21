@@ -35,13 +35,15 @@ func writeUIHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, uiUsage+`
 Run an Oct program as a Machina UI app. An app package declares:
   fn Init() -> Model
-  fn Update(model: Model, event: String) -> Model
+  fn Update(model: Model, msg: Msg) -> Model     (Msg: the app's message enum)
   fn View(model: Model) -> UI
 Subcommands:
   run    Open the app in a native window. Requires an oct binary built with
          the native backend: go build -tags machina_gio ./cmd/oct
   check  Load the app headlessly and print its first frame. Each --click
-         presses the button with that exact label and prints the next frame.
+         presses the button with that exact label, or the one sending that
+         message (for example 'Msg.Inspect("harbor-board")'), and prints
+         the next frame.
          --dump prints each frame as a layout dump instead: one line per
          node in paint order, with the spans that place it and its rect.
 Width and height are device-independent units (default 640x480).`)
@@ -146,7 +148,10 @@ func runUICommand(opts uiOptions, stdout io.Writer) error {
 		}
 		target, ok := findLabel(cmds, label)
 		if !ok {
-			return fmt.Errorf("--click %q: no element with that exact label in the current frame", label)
+			target, ok = s.ActionRect(label)
+		}
+		if !ok {
+			return fmt.Errorf("--click %q: no element with that exact label or message in the current frame", label)
 		}
 		res, err := s.PointerDown(session.PointerEvent{X: target.X + target.Width/2, Y: target.Y + target.Height/2})
 		if err != nil {
@@ -155,7 +160,7 @@ func runUICommand(opts uiOptions, stdout io.Writer) error {
 		if !res.Hit {
 			return fmt.Errorf("--click %q: the label is visible but not interactive", label)
 		}
-		fmt.Fprintf(stdout, "\nclick %q -> event %q\n", label, res.Action.Name)
+		fmt.Fprintf(stdout, "\nclick %q -> %s\n", label, res.Action.Name)
 		if err := writeUIFrame(stdout, s, opts.dump); err != nil {
 			return err
 		}

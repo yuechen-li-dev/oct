@@ -55,7 +55,7 @@ func TestPointerPressRoundTripsThroughOct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Hit || res.Action == nil || res.Action.Name != "thermostat.raise" {
+	if !res.Hit || res.Action == nil || res.Action.Name != "Msg.Raise" {
 		t.Fatalf("dispatch = %+v", res)
 	}
 	after := strings.Join(frameTexts(t, s), "|")
@@ -72,11 +72,21 @@ func TestResizeRelayoutsWithoutReloading(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetViewport(layout.Rect{Width: 320, Height: 240}); err != nil {
+	if err := s.SetViewport(layout.Rect{Width: 480, Height: 320}); err != nil {
 		t.Fatal(err)
 	}
 	if len(frameTexts(t, s)) == 0 {
 		t.Fatal("no frame after resize")
+	}
+	// Too narrow for the button row: an explicit overflow error, and the
+	// session keeps the last frame that fit.
+	before := strings.Join(frameTexts(t, s), "|")
+	err = s.SetViewport(layout.Rect{Width: 200, Height: 320})
+	if err == nil || !strings.Contains(err.Error(), "stack_overflow") {
+		t.Fatalf("narrow viewport error = %v", err)
+	}
+	if after := strings.Join(frameTexts(t, s), "|"); after != before {
+		t.Fatalf("frame changed after a failed resize: %s", after)
 	}
 }
 
@@ -170,5 +180,81 @@ func TestLayoutTableMustMatchTheContentRegions(t *testing.T) {
 		"fn Content(model: Model, region: Other) -> UI {\n    return switch region {\n        case Other.Header => UI.Text(\"header\")\n        case Other.Body => UI.Text(\"body\")")
 	if err == nil || !strings.Contains(err.Error(), "places Shell regions, but the content function takes Other") {
 		t.Fatalf("error %v", err)
+	}
+}
+
+// clickVariant loads a layout-table fixture variant and clicks the button
+// labeled label.
+func clickVariant(t *testing.T, replacements [][2]string, label string) error {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "layouttable", "main.oct.fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	for _, r := range replacements {
+		if !strings.Contains(src, r[0]) {
+			t.Fatalf("fixture lacks %q", r[0])
+		}
+		src = strings.Replace(src, r[0], r[1], 1)
+	}
+	dir, err := os.MkdirTemp("testdata", "variant-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	abs, _ := filepath.Abs(dir)
+	path := filepath.Join(abs, "main.oct")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewSession(path, layout.Rect{Width: 320, Height: 240}, nil)
+	if err != nil {
+		return err
+	}
+	_, err = s.PointerDown(centerOf(t, s, label))
+	return err
+}
+
+const headerText = `case Shell.Header => UI.Text("header")`
+
+func TestTypedMessageToAStringUpdateIsAnError(t *testing.T) {
+	err := clickVariant(t, [][2]string{{headerText, `case Shell.Header => UI.Button("Go", Other.Body, true)`}}, "Go")
+	if err == nil || !strings.Contains(err.Error(), "button sends Other.Body, but Update takes an event String") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestStringEventToAnEnumUpdateIsAnError(t *testing.T) {
+	err := clickVariant(t, [][2]string{
+		{"fn Update(model: Model, event: String) -> Model", "fn Update(model: Model, msg: Other) -> Model"},
+		{headerText, `case Shell.Header => UI.ButtonRaw("Go", "go", true)`},
+	}, "Go")
+	if err == nil || !strings.Contains(err.Error(), `button sends the event string "go", but Update takes Other`) {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestUpdateMustTakeAMessageEnumOrString(t *testing.T) {
+	err := clickVariant(t, [][2]string{{"fn Update(model: Model, event: String) -> Model", "fn Update(model: Model, event: Int) -> Model"}}, "header")
+	if err == nil || !strings.Contains(err.Error(), "Update's second parameter must be the app's message enum") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestGridMatrixValidation(t *testing.T) {
+	const body = `case Shell.Body => UI.Text("body")`
+	two := `UI.Tracks([UI.Track.Fill(1.0), UI.Track.Fill(1.0)])`
+	cases := []struct{ grid, want string }{
+		{`UI.Grid(` + two + `, [[UI.Span(2, 1, UI.Text("a")), UI.Text("b")]])`, "covers (row 0, column 1), which must be UI.Skip()"},
+		{`UI.Grid(` + two + `, [[UI.Text("a")]])`, "row 0 has 1 cells but the spec declares 2 columns"},
+		{`UI.Grid(` + two + `, [[UI.Span(3, 1, UI.Text("a")), UI.Skip()]])`, "runs past the grid's 2 columns"},
+		{`UI.Grid(` + two + ` with { Rows: [UI.Track.Auto, UI.Track.Auto] }, [[UI.Text("a"), UI.Text("b")]])`, "declares 2 rows but the grid has 1"},
+	}
+	for _, c := range cases {
+		err := clickVariant(t, [][2]string{{body, "case Shell.Body => " + c.grid}}, "header")
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: error %v, want %q", c.grid, err, c.want)
+		}
 	}
 }

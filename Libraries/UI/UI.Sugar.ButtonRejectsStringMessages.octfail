@@ -1,0 +1,10 @@
+expect error: "function 'UI.Button' argument 2 expects a value of the app's message enum (for example Msg.Raise), got String"
+
+package Main
+
+import UI
+
+fn Main() -> Int {
+    let view = UI.Button("Raise", "thermostat.raise", true)
+    return 0
+}

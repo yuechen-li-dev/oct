@@ -10,15 +10,15 @@ dump:
     .0                   Stack(v)   StretchX(0px, 0px)     StretchY(0px, 0px)     (16,84) 240x616
       .0.0               Text       Left(0px, 64px)        Top(0px, 20px)         (16,84) 64x20 "Category"
       .0.1               Button     Left(0px, 80px)        Top(20px, 32px)        (16,104) 80x32 "All" disabled
-      .0.2               Button     Left(0px, 80px)        Top(52px, 32px)        (16,136) 80x32 "Desk" -> category.desk
+      .0.2               Button     Left(0px, 80px)        Top(52px, 32px)        (16,136) 80x32 "Desk" -> Msg.Filter(Category.Desk)
   Shell.Grid             Region     StretchX(268px, 16px)  StretchY(84px, 68px)   (268,84) 740x616
     .0                   Text       StretchX(0px, 0px)     StretchY(0px, 0px)     (268,84) 740x616 "Showing: All"
   Shell.Footer           Region     StretchX(16px, 16px)   Bottom(16px, 40px)     (16,712) 992x40
     .0                   Text       StretchX(0px, 0px)     StretchY(0px, 0px)     (16,712) 992x40 "Ships from Portland within 48 hours."
   Shell.Cart [Chrome]    Region     Right(24px, 160px)     Bottom(72px, 40px)     (840,656) 160x40
-    .0                   Button     StretchX(0px, 0px)     StretchY(0px, 0px)     (840,656) 160x40 "Add to cart" -> cart.add
+    .0                   Button     StretchX(0px, 0px)     StretchY(0px, 0px)     (840,656) 160x40 "Add to cart" -> Msg.AddToCart
 
-click "Add to cart" -> event "cart.add"
+click "Add to cart" -> Msg.AddToCart
 dump:
 0                        Canvas     (0,0) 1024x768
   Shell.Header           Region     StretchX(16px, 16px)   Top(16px, 56px)        (16,16) 992x56
@@ -30,10 +30,10 @@ dump:
     .0                   Stack(v)   StretchX(0px, 0px)     StretchY(0px, 0px)     (16,84) 240x616
       .0.0               Text       Left(0px, 64px)        Top(0px, 20px)         (16,84) 64x20 "Category"
       .0.1               Button     Left(0px, 80px)        Top(20px, 32px)        (16,104) 80x32 "All" disabled
-      .0.2               Button     Left(0px, 80px)        Top(52px, 32px)        (16,136) 80x32 "Desk" -> category.desk
+      .0.2               Button     Left(0px, 80px)        Top(52px, 32px)        (16,136) 80x32 "Desk" -> Msg.Filter(Category.Desk)
   Shell.Grid             Region     StretchX(268px, 16px)  StretchY(84px, 68px)   (268,84) 740x616
     .0                   Text       StretchX(0px, 0px)     StretchY(0px, 0px)     (268,84) 740x616 "Showing: All"
   Shell.Footer           Region     StretchX(16px, 16px)   Bottom(16px, 40px)     (16,712) 992x40
     .0                   Text       StretchX(0px, 0px)     StretchY(0px, 0px)     (16,712) 992x40 "Ships from Portland within 48 hours."
   Shell.Cart [Chrome]    Region     Right(24px, 160px)     Bottom(72px, 40px)     (840,656) 160x40
-    .0                   Button     StretchX(0px, 0px)     StretchY(0px, 0px)     (840,656) 160x40 "Add to cart" -> cart.add
+    .0                   Button     StretchX(0px, 0px)     StretchY(0px, 0px)     (840,656) 160x40 "Add to cart" -> Msg.AddToCart

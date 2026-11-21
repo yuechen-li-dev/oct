@@ -1,0 +1,50 @@
+package UI
+
+import String
+
+[Fact]
+fn SugarStackCarriesItsSpec() -> Void {
+    let spec = Vertical() with { Gap: 12.0 px  Padding: InsetsAll(16px) }
+    let sig = Signature(Stack(spec, [Text("a"), Text("b")]))
+    Assert.True(String.Contains(sig, "Column#"), "a vertical stack is a column")
+    Assert.True(String.Contains(sig, "{stack=gap:12,pad:16/16/16/16,align:start,justify:start}"), "the spec is part of the node")
+    Assert.True(String.Contains(Signature(Stack(Horizontal(), [Text("a")])), "Row#"), "a horizontal stack is a row")
+}
+
+[Fact]
+fn SugarSizingAnnotatesTheChild() -> Void {
+    Assert.True(String.Contains(Signature(Fixed(56px, Text("h"))), "{size=fixed:56/0/0/0}"), "Fixed records its main size")
+    Assert.True(String.Contains(Signature(Fill(2.0, Text("h"))), "{size=fill:0/2/0/0}"), "Fill records its weight")
+    Assert.True(String.Contains(Signature(Size(40px, 20px, Text("h"))), "{size=size:0/0/40/20}"), "Size records both axes")
+    Assert.True(String.Contains(Signature(Nudge(0px, -2px, Text("h"))), "{nudge=0,-2}"), "Nudge records its offset")
+}
+
+[Fact]
+fn SugarKeyedChildrenAreNamedByKey() -> Void {
+    let sig = Signature(Column([Keyed("harbor-board", Text("a")), Keyed("cable.dock", Text("b"))]))
+    Assert.True(String.Contains(sig, "Text#0.harbor-board{key=harbor-board}"), "a keyed child's id ends in its key")
+    Assert.True(String.Contains(sig, "Text#0.cable%2Edock"), "dots in keys are escaped")
+}
+
+[Fact]
+fn SugarChunkPadsTheLastRowWithSkip() -> Void {
+    let rows = Chunk([Text("1"), Text("2"), Text("3"), Text("4"), Text("5")], 3)
+    Assert.Equal(2, Len(rows), "five items in rows of three make two rows")
+    Assert.Equal(3, Len(rows[1]), "the last row is padded to three cells")
+    Assert.True(String.Contains(Signature(rows[1][2]), "Skip#"), "padding cells are UI.Skip")
+    Assert.Equal(0, Len(Chunk([], 3)), "no items make no rows")
+}
+
+[Fact]
+fn SugarGridPlacesSpansAndSkips() -> Void {
+    let spec = Tracks([Track.Fixed(280px), Track.Fill(1.0)]) with { Rows: [Track.Fixed(56px), Track.Fill(1.0)]  ColumnGap: 16.0 px }
+    let sig = Signature(Grid(spec, [[Span(2, 1, Text("top")), Skip()], [Text("side"), Text("main")]]))
+    Assert.True(String.Contains(sig, "Grid#0(gridSpec)"), "Grid builds a spec'd grid")
+    Assert.False(String.Contains(sig, "Skip#"), "covered cells lower to nothing")
+}
+
+[Fact]
+fn SugarStyledTakesTheStyleFirst() -> Void {
+    let sig = Signature(Styled(DefaultStyle() with { Radius: 4px }, Text("x")))
+    Assert.True(String.Contains(sig, "radius:4"), "Styled(style, node) paints the node")
+}
