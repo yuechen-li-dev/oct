@@ -170,9 +170,6 @@ let badge = UI.Styled(UI.Text("Status: heating"), UI.DefaultStyle() with {
 })
 ```
 
-Write `Color` literals one field per line: on a single line, `B: 0 A: 255`
-parses `0 A` as zero amperes, because `A` is the SI unit of current.
-
 ## Canvas/content authoring rule
 
 Canvas is a placement surface. Content is a content surface. These do not mix.

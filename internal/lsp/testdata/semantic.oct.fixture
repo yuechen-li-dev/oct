@@ -4,6 +4,11 @@ record Probe {
     Mass: Float
 }
 
+record Channel {
+    B: Int
+    A: Int
+}
+
 template fn Scale(x: Float, k: Float) -> Float {
     return x * k
 }
@@ -11,5 +16,6 @@ template fn Scale(x: Float, k: Float) -> Float {
 fn Main() -> Int {
     let g = 9.81 m/s^2
     let T: Float<K> = 20.0C
+    let c = Channel { B: 0 A: 255 }
     return 0
 }

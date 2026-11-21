@@ -3672,6 +3672,12 @@ func (p *parser) parseLiteralUnitSuffix(numberToken lex.Token) (dimension.Dimens
 		if _, ok := dimension.FromBaseName(p.current().Lexeme); !ok {
 			return dimension.Zero(), false, nil
 		}
+		// `name:` is a field or argument label, never a unit annotation, so in
+		// `Color { R: 0 G: 0 B: 0 A: 255 }` the A after `0` is the next field,
+		// not amperes. No Oct syntax places a unit directly before ':'.
+		if p.peek(1).Kind == lex.Colon {
+			return dimension.Zero(), false, nil
+		}
 	}
 	dim, err := p.parseDimensionSpec()
 	if err != nil {

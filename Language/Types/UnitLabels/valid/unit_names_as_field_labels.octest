@@ -1,0 +1,41 @@
+package UnitLabelsValid
+
+record Channel {
+    R: Int
+    G: Int
+    B: Int
+    A: Int
+}
+
+record Pair {
+    X: Int
+    K: Int
+}
+
+record Reading {
+    Current: Float<A>
+    Temperature: Float<K>
+    Label: String
+}
+
+[Fact]
+fn UnitNameFollowedByColonIsAFieldLabel() -> Void {
+    // A (ampere) and K (kelvin) are base units, but `A:` / `K:` after a
+    // number label the next field instead of annotating the number.
+    let c = Channel { R: 1 G: 2 B: 3 A: 255 }
+    let p = Pair { X: 0 K: 7 }
+    Assert.Equal(255, c.A, "A: after 3 is the A field, not amperes")
+    Assert.Equal(3, c.B, "B keeps its plain Int value")
+    Assert.Equal(7, p.K, "K: after 0 is the K field, not kelvin")
+}
+
+[Fact]
+fn UnitsStillAnnotateWhenNotFollowedByColon() -> Void {
+    // The same letters stay units when they are not labels, including when
+    // a unit is immediately followed by the next field on the same line.
+    let r = Reading { Current: 2.0 A Temperature: 300.0 K Label: "probe" }
+    let current: Float<A> = 3.0 A
+    Assert.Equal(2.0 A, r.Current, "2.0 A is two amperes")
+    Assert.Equal(300.0 K, r.Temperature, "300.0 K is kelvin")
+    Assert.Equal(3.0 A, current, "a trailing A is still a unit")
+}

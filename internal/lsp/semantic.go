@@ -141,7 +141,9 @@ func classifyIdentifier(tokens []lex.Token, i int, prev, next lex.Token, inUnitA
 		return tokUnit, 0
 	}
 	// A unit annotation directly follows a numeric literal: `3.0 m`, `20.0C`.
-	if (prev.Kind == lex.FloatLiteral || prev.Kind == lex.IntLiteral) && sameLine(prev, tokens[i]) {
+	// `name:` after a number is the next field (`B: 0 A: 255`), matching the
+	// parser's rule.
+	if (prev.Kind == lex.FloatLiteral || prev.Kind == lex.IntLiteral) && sameLine(prev, tokens[i]) && next.Kind != lex.Colon {
 		return tokUnit, 0
 	}
 	// ...and continues through a compound unit: `9.81 m/s^2`, `1 kg*m`.

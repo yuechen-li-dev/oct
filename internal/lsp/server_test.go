@@ -345,7 +345,12 @@ func TestSemanticTokensMarkUnitsParametersAndContextualKeywords(t *testing.T) {
 	has("property", "Mass")
 	has("variable", "g")
 	has("number", "9.81")
+	// `B: 0 A: 255`: A labels the next field; it is not amperes.
+	has("property", "A")
 	for _, v := range got["unit"] {
+		if v == "A" {
+			t.Errorf("field label A misclassified as a unit")
+		}
 		if v == "g" || v == "T" {
 			t.Errorf("variable %q misclassified as unit", v)
 		}

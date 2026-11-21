@@ -16,6 +16,7 @@ Unit behavior is explicit and deterministic.
 - `ui` is the normalized anchored coordinate unit used by Machina UI anchored layout builtins.
 - `deg` is accepted for angle literals used with trigonometric builtins.
 - `C` is accepted as an authoring-only literal suffix for absolute temperature and lowers to Kelvin (`0C == 273.15K`).
+- A unit annotation follows a numeric literal on the same line (`3.0 A`, `9.81 m/s^2`). An identifier followed by `:` is a field or argument label, never a unit, so `Color { R: 0 G: 0 B: 0 A: 255 }` sets field `A` rather than writing zero amperes.
 - Only `Int` and `Float` may be dimension-qualified.
 - Dimensions are part of type identity.
 - `Int<m>` and `Int<s>` are different types.
