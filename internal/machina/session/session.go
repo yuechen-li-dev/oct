@@ -103,8 +103,31 @@ func (s *Session[TState]) SetViewport(viewport layout.Rect) error {
 	if err := validateViewport(viewport); err != nil {
 		return err
 	}
+	previous := s.viewport
 	s.viewport = viewport
-	return s.Rebuild()
+	if err := s.Rebuild(); err != nil {
+		// Keep the last frame that fit; the caller reports why this one
+		// did not.
+		s.viewport = previous
+		return err
+	}
+	return nil
+}
+
+// ActionRect finds the enabled control whose action alias is alias (for
+// example `Msg.Inspect("harbor-board")`) in the current frame.
+func (s *Session[TState]) ActionRect(alias string) (layout.Rect, bool) {
+	if s == nil || s.lowered == nil || s.resolved == nil {
+		return layout.Rect{}, false
+	}
+	for id, action := range s.lowered.Actions {
+		if action.Name == alias {
+			if node, ok := s.resolved.Nodes[id]; ok {
+				return node.Rect, true
+			}
+		}
+	}
+	return layout.Rect{}, false
 }
 
 // Dump prints the current frame as a layout dump (internal/machina/dump).

@@ -2,12 +2,19 @@ package lowering
 
 import (
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
 	"github.com/yuechen-li-dev/oct/internal/machina/uiir"
 )
 
-type Action struct{ Name string }
+// Action is what activating a node sends. Name is the tool-facing alias;
+// Message, when set, is the typed value (an Oct enum value) the app's
+// Update receives instead of Name.
+type Action struct {
+	Name    string
+	Message any
+}
 
 type Role string
 
@@ -85,18 +92,20 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 		enabled := node.Enabled
 		out.Semantics[id] = Semantics{Role: RoleButton, Label: node.Label, Disabled: !enabled, Focusable: enabled}
 		if enabled && node.Event != "" {
-			out.Actions[id] = Action{Name: node.Event}
+			out.Actions[id] = Action{Name: node.Event, Message: node.Message}
 		}
 	case uiir.NodeSpacer:
 		row.Frame = layout.FrameSpec{Kind: layout.FillFrame, Weight: 1}
 	case uiir.NodeColumn:
 		row.Frame = inferFrame(node, parent)
-		row.Arrange = &layout.ArrangeSpec{Kind: layout.StackArrange, Axis: layout.AxisVertical}
+		row.Arrange = stackArrange(node, layout.AxisVertical)
 		out.Semantics[id] = Semantics{Role: RoleContainer}
 	case uiir.NodeRow:
 		row.Frame = inferFrame(node, parent)
-		row.Arrange = &layout.ArrangeSpec{Kind: layout.StackArrange, Axis: layout.AxisHorizontal}
+		row.Arrange = stackArrange(node, layout.AxisHorizontal)
 		out.Semantics[id] = Semantics{Role: RoleContainer}
+	case uiir.NodeSkip:
+		return fmt.Errorf("lowering.err.skip_outside_grid: node %q is UI.Skip, which only marks a cell inside UI.Grid rows", node.NodeID)
 	case uiir.NodeGrid:
 		row.Frame = inferFrame(node, parent)
 		if node.GridRows > 0 && node.GridCols > 0 {
@@ -109,12 +118,11 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 			}
 		} else if node.Grid != nil {
 			row.Arrange = &layout.ArrangeSpec{Kind: layout.GridArrange, ColumnGap: node.Grid.ColumnGap, RowGap: node.Grid.RowGap, Padding: layout.EdgeInsets{Top: node.Grid.Padding.Top, Right: node.Grid.Padding.Right, Bottom: node.Grid.Padding.Bottom, Left: node.Grid.Padding.Left}}
-			for _, c := range node.Grid.Columns {
-				row.Arrange.Columns = append(row.Arrange.Columns, layout.GridTrack{Kind: layout.GridTrackKind(c.Kind), Size: c.Size, Weight: c.Weight})
+			cols, rows, err := gridTracks(node)
+			if err != nil {
+				return err
 			}
-			for _, r := range node.Grid.Rows {
-				row.Arrange.Rows = append(row.Arrange.Rows, layout.GridTrack{Kind: layout.GridTrackKind(r.Kind), Size: r.Size, Weight: r.Weight})
-			}
+			row.Arrange.Columns, row.Arrange.Rows = cols, rows
 		} else {
 			row.Arrange = &layout.ArrangeSpec{Kind: layout.StackArrange, Axis: layout.AxisVertical}
 		}
@@ -166,6 +174,43 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 			break
 		}
 	}
+	if node.Cell != nil && (parentNode == nil || parentNode.Kind != uiir.NodeGrid) {
+		return fmt.Errorf("lowering.err.span_outside_grid: node %q is a UI.Span cell, which belongs in UI.Grid rows", node.NodeID)
+	}
+	if node.Sizing == nil && (node.Kind == uiir.NodeColumn || node.Kind == uiir.NodeRow) {
+		// An unwrapped stack inside a stack sizes to its content along the
+		// parent's axis and stretches across it.
+		if axis, ok := stackAxis(parentNode); ok {
+			frame, err := sizingFrame(&uiir.Node{NodeID: node.NodeID, Kind: node.Kind, Stack: node.Stack, Children: node.Children, Sizing: &uiir.SizingSpec{Kind: uiir.SizingAuto}}, axis)
+			if err != nil {
+				return fmt.Errorf("%w (stack %q sizes to its content by default; wrap it in UI.Fill or UI.Fixed)", err, node.NodeID)
+			}
+			row.Frame = frame
+		}
+	}
+	if node.Sizing != nil {
+		axis, ok := stackAxis(parentNode)
+		if !ok {
+			return fmt.Errorf("lowering.err.sizing_outside_stack: node %q has UI.%s sizing, which applies only to a child of a stack (UI.Stack, UI.Column, UI.Row)", node.NodeID, sizingName(node.Sizing.Kind))
+		}
+		frame, err := sizingFrame(node, axis)
+		if err != nil {
+			return err
+		}
+		row.Frame = frame
+	}
+	if node.Offset != nil {
+		row.OffsetX, row.OffsetY = node.Offset.X, node.Offset.Y
+	}
+	keys := map[string]bool{}
+	for _, child := range node.Children {
+		if child != nil && child.Key != "" {
+			if keys[child.Key] {
+				return fmt.Errorf("lowering.err.duplicate_key: two children of %q use UI.Keyed key %q; keys must be unique among siblings", node.NodeID, child.Key)
+			}
+			keys[child.Key] = true
+		}
+	}
 	out.Kinds[id] = kindLabel(node)
 	out.Rows = append(out.Rows, row)
 	for i, child := range node.Children {
@@ -201,13 +246,13 @@ func boxFrame(box *uiir.BoxSpec) (layout.FrameSpec, error) {
 }
 
 func textWidth(s string) float64 {
-	if w := float64(len(s) * 8); w > 0 {
+	if w := float64(utf8.RuneCountInString(s) * 8); w > 0 {
 		return w
 	}
 	return 1
 }
 func buttonWidth(label string) float64 {
-	if w := float64(len(label)*8 + 24); w > 80 {
+	if w := float64(utf8.RuneCountInString(label)*8 + 24); w > 80 {
 		return w
 	}
 	return 80

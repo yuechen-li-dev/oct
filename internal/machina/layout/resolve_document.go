@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 )
 
 type ResolvedLayoutNode struct {
@@ -53,6 +54,8 @@ func ResolveDocument(document *LayoutDocument, root Rect) (*ResolvedLayoutDocume
 
 func resolveNode(doc *LayoutDocument, out *ResolvedLayoutDocument, nodeID NodeID, rect Rect) error {
 	row := doc.Nodes[nodeID]
+	rect.X += row.OffsetX
+	rect.Y += row.OffsetY
 	out.Nodes[nodeID] = ResolvedLayoutNode{ID: nodeID, Rect: rect, Frame: row.Frame, Order: row.Order, Z: row.Z, Layer: row.Layer, DebugLabel: row.DebugLabel}
 	children := doc.Children[nodeID]
 	if len(children) == 0 {
@@ -204,9 +207,24 @@ func resolveStackChildren(doc *LayoutDocument, out *ResolvedLayoutDocument, pare
 	}
 	remaining := mainAvailable - fixedTotal
 	if remaining < 0 {
-		return fmt.Errorf("layout.err.stack_negative_space: parent %q has negative remaining space %.4f", parentID, remaining)
+		gaps := mainAvailable0(arrange, inner) - mainAvailable
+		return fmt.Errorf("layout.err.stack_overflow: stack %q needs %s along its %s axis (children %s + gaps %s) but its inner size is %s; give a child UI.Fill or make the stack larger",
+			parentID, dp(fixedTotal+gaps), arrange.Axis, dp(fixedTotal), dp(gaps), dp(mainAvailable0(arrange, inner)))
 	}
-	cursor := 0.0
+	// Justify distributes leftover main space when no child fills it.
+	cursor, extraGap := 0.0, 0.0
+	if fillWeight == 0 && remaining > 0 {
+		switch arrange.Justify {
+		case JustifyCenter:
+			cursor = remaining / 2
+		case JustifyEnd:
+			cursor = remaining
+		case JustifySpaceBetween:
+			if len(children) > 1 {
+				extraGap = remaining / float64(len(children)-1)
+			}
+		}
+	}
 	for _, childID := range children {
 		child := doc.Nodes[childID]
 		childMain := 0.0
@@ -233,11 +251,19 @@ func resolveStackChildren(doc *LayoutDocument, out *ResolvedLayoutDocument, pare
 		} else if child.Frame.Width > 0 {
 			childCross = child.Frame.Width
 		}
+		// Align places a child narrower than the stack on the cross axis.
+		crossOffset := 0.0
+		switch arrange.Align {
+		case AlignCenter:
+			crossOffset = (crossAvailable - childCross) / 2
+		case AlignEnd:
+			crossOffset = crossAvailable - childCross
+		}
 		childRect := Rect{}
 		if arrange.Axis == AxisHorizontal {
-			childRect = Rect{X: inner.X + cursor, Y: inner.Y, Width: childMain, Height: childCross}
+			childRect = Rect{X: inner.X + cursor, Y: inner.Y + crossOffset, Width: childMain, Height: childCross}
 		} else {
-			childRect = Rect{X: inner.X, Y: inner.Y + cursor, Width: childCross, Height: childMain}
+			childRect = Rect{X: inner.X + crossOffset, Y: inner.Y + cursor, Width: childCross, Height: childMain}
 		}
 		if err := validateRect(childRect, "child"); err != nil {
 			return err
@@ -245,7 +271,7 @@ func resolveStackChildren(doc *LayoutDocument, out *ResolvedLayoutDocument, pare
 		if err := resolveNode(doc, out, childID, childRect); err != nil {
 			return err
 		}
-		cursor += childMain + arrange.Gap
+		cursor += childMain + arrange.Gap + extraGap
 	}
 	return nil
 }
@@ -399,4 +425,18 @@ func (d *ResolvedLayoutDocument) PaintOrder(id NodeID) []NodeID {
 		return string(left.ID) < string(right.ID)
 	})
 	return children
+}
+
+// mainAvailable0 is the stack's inner main extent before gaps.
+func mainAvailable0(arrange ArrangeSpec, inner Rect) float64 {
+	if arrange.Axis == AxisHorizontal {
+		return inner.Width
+	}
+	return inner.Height
+}
+
+// dp formats a length for diagnostics: at most two decimals, no trailing
+// zeros.
+func dp(v float64) string {
+	return strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.2f", v), "0"), ".")
 }

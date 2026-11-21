@@ -107,11 +107,15 @@ type ArrangeSpec struct {
 }
 
 type LayoutRow struct {
-	ID         NodeID
-	Parent     *NodeID
-	Order      int
-	Z          int
-	Layer      int
+	ID     NodeID
+	Parent *NodeID
+	Order  int
+	Z      int
+	Layer  int
+	// OffsetX and OffsetY move the node (and its subtree) after placement
+	// without moving its siblings (UI.Nudge).
+	OffsetX    float64
+	OffsetY    float64
 	Frame      FrameSpec
 	Arrange    *ArrangeSpec
 	DebugLabel string

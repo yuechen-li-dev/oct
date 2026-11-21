@@ -102,8 +102,11 @@ func runLoop(w *app.Window, s SessionAdapter) error {
 			// Follow window resizes: the session lays out in dp.
 			next := machinalayout.Rect{Width: float64(e.Size.X) / scale, Height: float64(e.Size.Y) / scale}
 			if next.Width > 0 && next.Height > 0 && next != viewport {
+				// A size the layout cannot fit (for example a stack
+				// overflow) keeps the last frame and says why, once per
+				// size, instead of closing the window.
 				if err := s.SetViewport(next); err != nil {
-					return err
+					fmt.Fprintf(os.Stderr, "machina ui: %gx%g does not fit: %v\n", next.Width, next.Height, err)
 				}
 				viewport = next
 			}

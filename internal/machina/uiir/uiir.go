@@ -9,12 +9,15 @@ import (
 type NodeKind string
 
 const (
-	NodeText        NodeKind = "Text"
-	NodeButton      NodeKind = "Button"
-	NodeColumn      NodeKind = "Column"
-	NodeRow         NodeKind = "Row"
-	NodeGrid        NodeKind = "Grid"
-	NodeSpacer      NodeKind = "Spacer"
+	NodeText   NodeKind = "Text"
+	NodeButton NodeKind = "Button"
+	NodeColumn NodeKind = "Column"
+	NodeRow    NodeKind = "Row"
+	NodeGrid   NodeKind = "Grid"
+	NodeSpacer NodeKind = "Spacer"
+	// NodeSkip is a grid cell covered by another cell's span, or an
+	// explicitly empty cell. It lowers to nothing.
+	NodeSkip        NodeKind = "Skip"
 	NodeAbsoluteBox NodeKind = "AbsoluteBox"
 	NodeAnchorBox   NodeKind = "AnchorBox"
 	JSONABI                  = "machina.uiir.v1"
@@ -101,13 +104,55 @@ type Node struct {
 	GridRows int64
 	GridCols int64
 	Style    *StyleSpec
+	// Stack is the arrangement of a Column or Row (gap, padding, alignment).
+	Stack *StackSpec
+	// Sizing says how this node takes space along its parent stack's main
+	// axis (UI.Fixed, UI.Fill, UI.Auto, UI.Size).
+	Sizing *SizingSpec
+	// Offset moves the node after placement without moving its siblings
+	// (UI.Nudge).
+	Offset *Offset
+	// Message is the typed value a Button sends (an Oct enum value); Event
+	// is then its tool-facing alias. Message is opaque here and never
+	// serialized.
+	Message any
 }
+
+// StackSpec is a Column or Row's arrangement (Libraries/UI StackSpec).
+type StackSpec struct {
+	Gap     float64
+	Padding EdgeInsets
+	Align   string // start | center | end (cross axis)
+	Justify string // start | center | end | space-between (main axis)
+}
+
+type SizingKind string
+
+const (
+	SizingFixed SizingKind = "fixed" // Main along the stack axis
+	SizingFill  SizingKind = "fill"  // Weight of the remaining main space
+	SizingAuto  SizingKind = "auto"  // measured intrinsic size
+	SizingSize  SizingKind = "size"  // Width and Height
+)
+
+type SizingSpec struct {
+	Kind   SizingKind
+	Main   float64
+	Weight float64
+	Width  float64
+	Height float64
+}
+
+type Offset struct{ X, Y float64 }
 
 type GridTrackKind string
 
 const (
 	GridTrackFixed GridTrackKind = "fixed"
 	GridTrackFill  GridTrackKind = "fill"
+	// GridTrackAuto is sized to its widest (or tallest) single-span cell's
+	// measured size. Lowering turns it into a fixed track.
+	GridTrackAuto GridTrackKind = "auto"
 )
 
 type GridTrack struct {
@@ -281,7 +326,28 @@ func Clone(node *Node) *Node {
 	for _, c := range node.Children {
 		ch = append(ch, Clone(c))
 	}
-	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout), Grid: cloneGrid(node.Grid), Cell: cloneCell(node.Cell), GridRows: node.GridRows, GridCols: node.GridCols, Style: cloneStyle(node.Style)}
+	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout), Grid: cloneGrid(node.Grid), Cell: cloneCell(node.Cell), GridRows: node.GridRows, GridCols: node.GridCols, Style: cloneStyle(node.Style), Stack: cloneStack(node.Stack), Sizing: cloneSizing(node.Sizing), Offset: cloneOffset(node.Offset), Message: node.Message}
+}
+func cloneStack(s *StackSpec) *StackSpec {
+	if s == nil {
+		return nil
+	}
+	c := *s
+	return &c
+}
+func cloneSizing(s *SizingSpec) *SizingSpec {
+	if s == nil {
+		return nil
+	}
+	c := *s
+	return &c
+}
+func cloneOffset(o *Offset) *Offset {
+	if o == nil {
+		return nil
+	}
+	c := *o
+	return &c
 }
 func cloneStyle(s *StyleSpec) *StyleSpec {
 	if s == nil {
@@ -298,8 +364,12 @@ func assignNodeIDs(node *Node, id string) {
 		return
 	}
 	node.NodeID = id
-	for i := range node.Children {
-		assignNodeIDs(node.Children[i], fmt.Sprintf("%s.%d", id, i))
+	for i, child := range node.Children {
+		segment := fmt.Sprintf("%d", i)
+		if child != nil && child.Key != "" {
+			segment = EscapeKey(child.Key)
+		}
+		assignNodeIDs(child, id+"."+segment)
 	}
 }
 func Signature(node *Node) string {
@@ -310,11 +380,11 @@ func Signature(node *Node) string {
 	if node.Key != "" {
 		p += "{key=" + node.Key + "}"
 	}
-	p += styleSuffix(node.Style)
+	p += styleSuffix(node.Style) + sugarSuffix(node)
 	switch node.Kind {
 	case NodeText:
 		return p + layoutSuffix(node.Layout) + "(" + node.Text + ")"
-	case NodeSpacer:
+	case NodeSpacer, NodeSkip:
 		return p + layoutSuffix(node.Layout)
 	case NodeButton:
 		return p + layoutSuffix(node.Layout) + "(" + node.Label + "->" + node.Event + ",enabled=" + fmt.Sprintf("%t", node.Enabled) + ")"
@@ -586,4 +656,28 @@ func styleSuffix(s *StyleSpec) string {
 
 func spanSignature(s SpanSpec) string {
 	return fmt.Sprintf("%s:%.2f/%.2f", s.Kind, s.A, s.B)
+}
+
+// EscapeKey makes a UI.Keyed key safe as one node-id segment: "." and "%"
+// are percent-escaped, so a key can never collide with a nested path.
+func EscapeKey(key string) string {
+	return strings.NewReplacer("%", "%25", ".", "%2E").Replace(key)
+}
+
+// sugarSuffix is empty for nodes without stack spec, sizing or offset, so
+// existing signatures are stable.
+func sugarSuffix(node *Node) string {
+	out := ""
+	if node.Stack != nil {
+		st := node.Stack
+		out += fmt.Sprintf("{stack=gap:%g,pad:%g/%g/%g/%g,align:%s,justify:%s}", st.Gap, st.Padding.Top, st.Padding.Right, st.Padding.Bottom, st.Padding.Left, st.Align, st.Justify)
+	}
+	if node.Sizing != nil {
+		z := node.Sizing
+		out += fmt.Sprintf("{size=%s:%g/%g/%g/%g}", z.Kind, z.Main, z.Weight, z.Width, z.Height)
+	}
+	if node.Offset != nil {
+		out += fmt.Sprintf("{nudge=%g,%g}", node.Offset.X, node.Offset.Y)
+	}
+	return out
 }
