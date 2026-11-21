@@ -33,6 +33,9 @@ type Result struct {
 	Actions   map[layout.NodeID]Action
 	Semantics map[layout.NodeID]Semantics
 	Styles    map[layout.NodeID]Style
+	// Kinds names each node's authoring construct (Text, Button, Stack(v),
+	// Canvas, At, ...) for layout dumps.
+	Kinds map[layout.NodeID]string
 }
 
 func Lower(root *uiir.Node) (*Result, error) {
@@ -40,14 +43,28 @@ func Lower(root *uiir.Node) (*Result, error) {
 		return nil, fmt.Errorf("lowering.err.nil_root: root is required")
 	}
 	withIDs := uiir.WithNodeIDs(root)
-	res := &Result{Rows: make([]layout.LayoutRow, 0), Actions: map[layout.NodeID]Action{}, Semantics: map[layout.NodeID]Semantics{}, Styles: map[layout.NodeID]Style{}}
-	if err := lowerNode(res, withIDs, nil, 0); err != nil {
+	res := &Result{Rows: make([]layout.LayoutRow, 0), Actions: map[layout.NodeID]Action{}, Semantics: map[layout.NodeID]Semantics{}, Styles: map[layout.NodeID]Style{}, Kinds: map[layout.NodeID]string{}}
+	if err := lowerNode(res, withIDs, nil, nil, 0); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, order int) error {
+// isCanvas reports a placement surface: a box-kind node with no box of its
+// own (UI.Canvas). Its children must be placed boxes.
+func isCanvas(node *uiir.Node) bool {
+	return node != nil && (node.Kind == uiir.NodeAbsoluteBox || node.Kind == uiir.NodeAnchorBox) && node.Box == nil
+}
+
+// isPlacedBox reports a box that places exactly the content it wraps.
+func isPlacedBox(node *uiir.Node) bool {
+	return node != nil && (node.Kind == uiir.NodeAbsoluteBox || node.Kind == uiir.NodeAnchorBox) && node.Box != nil
+}
+
+// fillParent is the frame of a placed box's content: the whole box.
+var fillParent = layout.FrameSpec{Kind: layout.SpanFrame, XSpan: uiir.SpanSpec{Kind: uiir.SpanStretch}, YSpan: uiir.SpanSpec{Kind: uiir.SpanStretch}}
+
+func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *uiir.Node, order int) error {
 	if node == nil {
 		return fmt.Errorf("lowering.err.nil_node: node is required")
 	}
@@ -103,20 +120,33 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, order int) e
 		}
 		out.Semantics[id] = Semantics{Role: RoleContainer}
 	case uiir.NodeAbsoluteBox, uiir.NodeAnchorBox:
+		out.Semantics[id] = Semantics{Role: RoleContainer}
 		if node.Box == nil {
-			return fmt.Errorf("lowering.err.invalid_box: node %q requires box spec", node.NodeID)
+			// UI.Canvas: a placement surface that fills its parent.
+			row.Frame = inferFrame(node, parent)
+			break
 		}
 		f, err := boxFrame(node.Box)
 		if err != nil {
 			return err
 		}
 		row.Frame = f
-		out.Semantics[id] = Semantics{Role: RoleContainer}
+		row.Z = int(node.Box.ZOrder)
+		row.Layer = int(node.Box.Layer)
+		row.DebugLabel = node.Box.Region
 	default:
 		return fmt.Errorf("lowering.err.unsupported_kind: unsupported node kind %q", node.Kind)
 	}
+	if isCanvas(parentNode) && !isPlacedBox(node) {
+		return fmt.Errorf("lowering.err.unplaced_canvas_child: node %q (%s) is a child of a canvas but is not placed; wrap it in UI.At or place it with a layout table", node.NodeID, node.Kind)
+	}
+	if isPlacedBox(node) && parentNode != nil && !isCanvas(parentNode) && !isPlacedBox(parentNode) {
+		return fmt.Errorf("lowering.err.box_outside_canvas: placed box %q must be a child of UI.Canvas, not %s", node.NodeID, parentNode.Kind)
+	}
 	if parent == nil {
 		row.Frame = layout.FrameSpec{Kind: layout.RootFrame}
+	} else if isPlacedBox(parentNode) && !isPlacedBox(node) {
+		row.Frame = fillParent
 	} else if node.Cell != nil {
 		row.Frame = layout.FrameSpec{Kind: layout.CellFrame, Column: int(node.Cell.Column), Row: int(node.Cell.Row), ColumnSpan: int(node.Cell.ColumnSpan), RowSpan: int(node.Cell.RowSpan)}
 	} else if parent != nil {
@@ -136,10 +166,11 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, order int) e
 			break
 		}
 	}
+	out.Kinds[id] = kindLabel(node)
 	out.Rows = append(out.Rows, row)
 	for i, child := range node.Children {
 		p := id
-		if err := lowerNode(out, child, &p, i); err != nil {
+		if err := lowerNode(out, child, &p, node, i); err != nil {
 			return err
 		}
 	}
@@ -162,6 +193,8 @@ func boxFrame(box *uiir.BoxSpec) (layout.FrameSpec, error) {
 		return layout.FrameSpec{Kind: layout.AbsoluteFrame, X: box.X, Y: box.Y, Width: box.Width, Height: box.Height}, nil
 	case uiir.BoxAnchored:
 		return layout.FrameSpec{Kind: layout.AnchorFrame, Left: box.Left, Top: box.Top, Right: box.Right, Bottom: box.Bottom}, nil
+	case uiir.BoxSpan:
+		return layout.FrameSpec{Kind: layout.SpanFrame, XSpan: box.XSpan, YSpan: box.YSpan}, nil
 	default:
 		return layout.FrameSpec{}, fmt.Errorf("lowering.err.invalid_box: unsupported box kind %q", box.Kind)
 	}
@@ -178,4 +211,23 @@ func buttonWidth(label string) float64 {
 		return w
 	}
 	return 80
+}
+
+func kindLabel(node *uiir.Node) string {
+	switch node.Kind {
+	case uiir.NodeColumn:
+		return "Stack(v)"
+	case uiir.NodeRow:
+		return "Stack(h)"
+	case uiir.NodeAbsoluteBox, uiir.NodeAnchorBox:
+		if node.Box == nil {
+			return "Canvas"
+		}
+		if node.Box.Region != "" {
+			return "Region"
+		}
+		return "At"
+	default:
+		return string(node.Kind)
+	}
 }

@@ -101,7 +101,7 @@ func collectPreOrder(resolved *layout.ResolvedLayoutDocument, id layout.NodeID, 
 		return fmt.Errorf("hittest.err.missing_node: resolved tree references unknown node %q", id)
 	}
 	*out = append(*out, id)
-	for _, child := range resolved.Children[id] {
+	for _, child := range resolved.PaintOrder(id) {
 		if err := collectPreOrder(resolved, child, out); err != nil {
 			return err
 		}

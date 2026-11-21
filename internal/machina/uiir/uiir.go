@@ -25,19 +25,48 @@ type BoxKind string
 const (
 	BoxAbsolute BoxKind = "absolute"
 	BoxAnchored BoxKind = "anchored"
+	// BoxSpan places a box with one span per axis (Libraries/UI `UI.At` and
+	// layout-table regions).
+	BoxSpan BoxKind = "span"
 )
 
+// SpanKind is how one axis of a span box is constrained. Exactly one shape
+// per axis, so a span box is always exactly constrained.
+type SpanKind string
+
+const (
+	SpanStart    SpanKind = "start"    // A = offset from the near edge, B = size
+	SpanEnd      SpanKind = "end"      // A = offset from the far edge, B = size
+	SpanStretch  SpanKind = "stretch"  // A = near inset, B = far inset
+	SpanCenter   SpanKind = "center"   // B = size
+	SpanFraction SpanKind = "fraction" // A, B = near and far edge as parent fractions
+)
+
+// SpanSpec is one axis of a span box, in dp (fractions for SpanFraction).
+type SpanSpec struct {
+	Kind SpanKind
+	A    float64
+	B    float64
+}
+
 type BoxSpec struct {
-	Kind         BoxKind
-	ZOrder       int64
-	X            float64
-	Y            float64
-	Width        float64
-	Height       float64
-	Left         float64
-	Top          float64
-	Right        float64
-	Bottom       float64
+	Kind   BoxKind
+	ZOrder int64
+	X      float64
+	Y      float64
+	Width  float64
+	Height float64
+	Left   float64
+	Top    float64
+	Right  float64
+	Bottom float64
+	XSpan  SpanSpec
+	YSpan  SpanSpec
+	// Layer is the paint layer relative to Content (Base -1, Content 0,
+	// Chrome 1, Overlay 2, Modal 3, Tooltip 4). Zero is Content.
+	Layer int64
+	// Region names the layout-table region this box places, for dumps.
+	Region       string
 	ResolvedRect *ResolvedRect
 }
 
@@ -166,6 +195,18 @@ type serializedBox struct {
 	Z        int64                  `json:"z"`
 	Absolute *serializedRect        `json:"absolute"`
 	Anchored *serializedBoxAnchored `json:"anchored"`
+	Span     *serializedBoxSpan     `json:"span,omitempty"`
+	Layer    int64                  `json:"layer,omitempty"`
+	Region   string                 `json:"region,omitempty"`
+}
+type serializedBoxSpan struct {
+	X serializedSpan `json:"x"`
+	Y serializedSpan `json:"y"`
+}
+type serializedSpan struct {
+	Kind string  `json:"kind"`
+	A    float64 `json:"a"`
+	B    float64 `json:"b"`
 }
 type serializedBoxAnchored struct {
 	Left   float64 `json:"left"`
@@ -373,7 +414,14 @@ func serializeBox(box *BoxSpec) *serializedBox {
 	if box == nil {
 		return nil
 	}
-	s := &serializedBox{Kind: string(box.Kind), Z: box.ZOrder}
+	s := &serializedBox{Kind: string(box.Kind), Z: box.ZOrder, Layer: box.Layer, Region: box.Region}
+	if box.Kind == BoxSpan {
+		s.Span = &serializedBoxSpan{
+			X: serializedSpan{Kind: string(box.XSpan.Kind), A: box.XSpan.A, B: box.XSpan.B},
+			Y: serializedSpan{Kind: string(box.YSpan.Kind), A: box.YSpan.A, B: box.YSpan.B},
+		}
+		return s
+	}
 	if box.Kind == BoxAbsolute {
 		s.Absolute = &serializedRect{X: box.X, Y: box.Y, Width: box.Width, Height: box.Height}
 		return s
@@ -466,12 +514,19 @@ func deserializeBox(box *serializedBox) (*BoxSpec, error) {
 		if box.Absolute == nil {
 			return nil, fmt.Errorf("uiir box deserialization failed: absolute payload missing")
 		}
-		return &BoxSpec{Kind: BoxAbsolute, ZOrder: box.Z, X: box.Absolute.X, Y: box.Absolute.Y, Width: box.Absolute.Width, Height: box.Absolute.Height}, nil
+		return &BoxSpec{Kind: BoxAbsolute, ZOrder: box.Z, Layer: box.Layer, X: box.Absolute.X, Y: box.Absolute.Y, Width: box.Absolute.Width, Height: box.Absolute.Height}, nil
 	case BoxAnchored:
 		if box.Anchored == nil {
 			return nil, fmt.Errorf("uiir box deserialization failed: anchored payload missing")
 		}
-		return &BoxSpec{Kind: BoxAnchored, ZOrder: box.Z, Left: box.Anchored.Left, Top: box.Anchored.Top, Right: box.Anchored.Right, Bottom: box.Anchored.Bottom}, nil
+		return &BoxSpec{Kind: BoxAnchored, ZOrder: box.Z, Layer: box.Layer, Left: box.Anchored.Left, Top: box.Anchored.Top, Right: box.Anchored.Right, Bottom: box.Anchored.Bottom}, nil
+	case BoxSpan:
+		if box.Span == nil {
+			return nil, fmt.Errorf("uiir box deserialization failed: span payload missing")
+		}
+		return &BoxSpec{Kind: BoxSpan, ZOrder: box.Z, Layer: box.Layer, Region: box.Region,
+			XSpan: SpanSpec{Kind: SpanKind(box.Span.X.Kind), A: box.Span.X.A, B: box.Span.X.B},
+			YSpan: SpanSpec{Kind: SpanKind(box.Span.Y.Kind), A: box.Span.Y.A, B: box.Span.Y.B}}, nil
 	default:
 		return nil, fmt.Errorf("uiir box deserialization failed: unsupported kind %q", box.Kind)
 	}
@@ -480,7 +535,7 @@ func cloneBox(spec *BoxSpec) *BoxSpec {
 	if spec == nil {
 		return nil
 	}
-	return &BoxSpec{Kind: spec.Kind, ZOrder: spec.ZOrder, X: spec.X, Y: spec.Y, Width: spec.Width, Height: spec.Height, Left: spec.Left, Top: spec.Top, Right: spec.Right, Bottom: spec.Bottom, ResolvedRect: cloneRect(spec.ResolvedRect)}
+	return &BoxSpec{Kind: spec.Kind, ZOrder: spec.ZOrder, X: spec.X, Y: spec.Y, Width: spec.Width, Height: spec.Height, Left: spec.Left, Top: spec.Top, Right: spec.Right, Bottom: spec.Bottom, XSpan: spec.XSpan, YSpan: spec.YSpan, Layer: spec.Layer, Region: spec.Region, ResolvedRect: cloneRect(spec.ResolvedRect)}
 }
 func cloneRect(r *ResolvedRect) *ResolvedRect {
 	if r == nil {
@@ -511,6 +566,9 @@ func boxSignature(spec *BoxSpec) string {
 	if spec == nil {
 		return "<nil>"
 	}
+	if spec.Kind == BoxSpan {
+		return fmt.Sprintf("span(z=%d,layer=%d,region=%s,x=%s,y=%s)", spec.ZOrder, spec.Layer, spec.Region, spanSignature(spec.XSpan), spanSignature(spec.YSpan))
+	}
 	if spec.Kind == BoxAbsolute {
 		return fmt.Sprintf("absolute(z=%d,%.2f,%.2f,%.2f,%.2f)", spec.ZOrder, spec.X, spec.Y, spec.Width, spec.Height)
 	}
@@ -524,4 +582,8 @@ func styleSuffix(s *StyleSpec) string {
 	}
 	hex := func(c RGBA) string { return fmt.Sprintf("%02x%02x%02x%02x", c.R, c.G, c.B, c.A) }
 	return fmt.Sprintf("{style=bg:%s,fg:%s,border:%s/%g,radius:%g}", hex(s.Background), hex(s.Foreground), hex(s.BorderColor), s.BorderWidth, s.Radius)
+}
+
+func spanSignature(s SpanSpec) string {
+	return fmt.Sprintf("%s:%.2f/%.2f", s.Kind, s.A, s.B)
 }

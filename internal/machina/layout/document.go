@@ -2,6 +2,7 @@ package layout
 
 import (
 	"fmt"
+	"github.com/yuechen-li-dev/oct/internal/machina/uiir"
 	"sort"
 )
 
@@ -23,6 +24,9 @@ const (
 	FixedFrame    FrameKind = "fixed"
 	FillFrame     FrameKind = "fill"
 	CellFrame     FrameKind = "cell"
+	// SpanFrame resolves each axis from one span: offset+size from either
+	// edge, both insets, centered size, or parent fractions.
+	SpanFrame FrameKind = "span"
 )
 
 type FrameSpec struct {
@@ -40,6 +44,8 @@ type FrameSpec struct {
 	Row        int
 	ColumnSpan int
 	RowSpan    int
+	XSpan      uiir.SpanSpec
+	YSpan      uiir.SpanSpec
 }
 
 type Axis string
@@ -105,6 +111,7 @@ type LayoutRow struct {
 	Parent     *NodeID
 	Order      int
 	Z          int
+	Layer      int
 	Frame      FrameSpec
 	Arrange    *ArrangeSpec
 	DebugLabel string

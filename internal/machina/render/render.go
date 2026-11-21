@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/yuechen-li-dev/oct/internal/machina/uiir"
 	"math"
-	"sort"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
 	"github.com/yuechen-li-dev/oct/internal/machina/lowering"
@@ -159,19 +158,7 @@ func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.Node
 			}
 		}
 	}
-	children := append([]layout.NodeID(nil), resolved.Children[id]...)
-	sort.SliceStable(children, func(i, j int) bool {
-		left := resolved.Nodes[children[i]]
-		right := resolved.Nodes[children[j]]
-		if left.Z != right.Z {
-			return left.Z < right.Z
-		}
-		if left.Order != right.Order {
-			return left.Order < right.Order
-		}
-		return string(left.ID) < string(right.ID)
-	})
-	for _, child := range children {
+	for _, child := range resolved.PaintOrder(id) {
 		if err := emitNode(resolved, semantics, styles, child, out); err != nil {
 			return err
 		}

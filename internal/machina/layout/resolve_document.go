@@ -3,6 +3,7 @@ package layout
 import (
 	"fmt"
 	"math"
+	"sort"
 )
 
 type ResolvedLayoutNode struct {
@@ -11,6 +12,7 @@ type ResolvedLayoutNode struct {
 	Frame      FrameSpec
 	Order      int
 	Z          int
+	Layer      int
 	DebugLabel string
 }
 
@@ -51,7 +53,7 @@ func ResolveDocument(document *LayoutDocument, root Rect) (*ResolvedLayoutDocume
 
 func resolveNode(doc *LayoutDocument, out *ResolvedLayoutDocument, nodeID NodeID, rect Rect) error {
 	row := doc.Nodes[nodeID]
-	out.Nodes[nodeID] = ResolvedLayoutNode{ID: nodeID, Rect: rect, Frame: row.Frame, Order: row.Order, Z: row.Z, DebugLabel: row.DebugLabel}
+	out.Nodes[nodeID] = ResolvedLayoutNode{ID: nodeID, Rect: rect, Frame: row.Frame, Order: row.Order, Z: row.Z, Layer: row.Layer, DebugLabel: row.DebugLabel}
 	children := doc.Children[nodeID]
 	if len(children) == 0 {
 		return nil
@@ -261,6 +263,17 @@ func resolveFrame(frame FrameSpec, parent Rect) (Rect, error) {
 		h := parent.Height * (frame.Bottom - frame.Top)
 		r := Rect{X: x, Y: y, Width: w, Height: h}
 		return r, validateRect(r, "anchor")
+	case SpanFrame:
+		x, w, err := ResolveSpan(frame.XSpan, parent.X, parent.Width, "x")
+		if err != nil {
+			return Rect{}, err
+		}
+		y, h, err := ResolveSpan(frame.YSpan, parent.Y, parent.Height, "y")
+		if err != nil {
+			return Rect{}, err
+		}
+		r := Rect{X: x, Y: y, Width: w, Height: h}
+		return r, validateRect(r, "span")
 	default:
 		return Rect{}, fmt.Errorf("layout.err.unsupported_frame_kind: unsupported frame kind %q", frame.Kind)
 	}
@@ -287,6 +300,13 @@ func validateFrame(frame FrameSpec) error {
 	case FillFrame:
 		if frame.Weight < 0 {
 			return fmt.Errorf("layout.err.invalid_fill_weight: fill frame weight must be positive")
+		}
+	case SpanFrame:
+		if err := ValidateSpan(frame.XSpan, "x"); err != nil {
+			return err
+		}
+		if err := ValidateSpan(frame.YSpan, "y"); err != nil {
+			return err
 		}
 	case CellFrame:
 		if frame.Column < 0 || frame.Row < 0 || frame.ColumnSpan <= 0 || frame.RowSpan <= 0 {
@@ -358,4 +378,25 @@ func validateFiniteFrame(frame FrameSpec) error {
 
 func isFinite(v float64) bool {
 	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+// PaintOrder returns a node's children in paint order: semantic layer rank,
+// then z, then authored order. Renderers paint in this order and hit testing
+// treats the last painted child as topmost.
+func (d *ResolvedLayoutDocument) PaintOrder(id NodeID) []NodeID {
+	children := append([]NodeID(nil), d.Children[id]...)
+	sort.SliceStable(children, func(i, j int) bool {
+		left, right := d.Nodes[children[i]], d.Nodes[children[j]]
+		if left.Layer != right.Layer {
+			return left.Layer < right.Layer
+		}
+		if left.Z != right.Z {
+			return left.Z < right.Z
+		}
+		if left.Order != right.Order {
+			return left.Order < right.Order
+		}
+		return string(left.ID) < string(right.ID)
+	})
+	return children
 }

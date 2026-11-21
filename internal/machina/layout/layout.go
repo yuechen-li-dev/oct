@@ -68,6 +68,16 @@ func ResolveBox(spec *uiir.BoxSpec, parent *uiir.ResolvedRect) (*uiir.ResolvedRe
 		w := parent.Width * (spec.Right - spec.Left)
 		h := parent.Height * (spec.Bottom - spec.Top)
 		return &uiir.ResolvedRect{X: x, Y: y, Width: w, Height: h}, nil
+	case uiir.BoxSpan:
+		x, w, err := ResolveSpan(spec.XSpan, parent.X, parent.Width, "x")
+		if err != nil {
+			return nil, err
+		}
+		y, h, err := ResolveSpan(spec.YSpan, parent.Y, parent.Height, "y")
+		if err != nil {
+			return nil, err
+		}
+		return &uiir.ResolvedRect{X: x, Y: y, Width: w, Height: h}, nil
 	default:
 		return nil, fmt.Errorf("unsupported box kind %q", spec.Kind)
 	}

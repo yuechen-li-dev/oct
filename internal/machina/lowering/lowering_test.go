@@ -1,6 +1,7 @@
 package lowering
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
@@ -110,5 +111,49 @@ func TestLoweringResultResolves(t *testing.T) {
 	}
 	if _, err := layout.ResolveRows(out.Rows, layout.Rect{X: 0, Y: 0, Width: 300, Height: 120}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func spanBox(child *uiir.Node, region string, layer int64) *uiir.Node {
+	return &uiir.Node{Kind: uiir.NodeAnchorBox, Box: &uiir.BoxSpec{Kind: uiir.BoxSpan, Region: region, Layer: layer,
+		XSpan: uiir.SpanSpec{Kind: uiir.SpanStart, A: 10, B: 100},
+		YSpan: uiir.SpanSpec{Kind: uiir.SpanStart, A: 20, B: 30}}, Children: []*uiir.Node{child}}
+}
+
+func TestCanvasPlacesBoxesAndBoxContentFillsTheBox(t *testing.T) {
+	canvas := &uiir.Node{Kind: uiir.NodeAbsoluteBox, Children: []*uiir.Node{spanBox(&uiir.Node{Kind: uiir.NodeText, Text: "hi"}, "Shell.Header", 1)}}
+	out, err := Lower(canvas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, content := out.Rows[1], out.Rows[2]
+	if box.Frame.Kind != layout.SpanFrame || box.Layer != 1 || box.DebugLabel != "Shell.Header" {
+		t.Fatalf("box row = %+v", box)
+	}
+	doc, err := layout.ResolveRows(out.Rows, layout.Rect{Width: 640, Height: 480})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := doc.Nodes[content.ID].Rect, (layout.Rect{X: 10, Y: 20, Width: 100, Height: 30}); got != want {
+		t.Fatalf("content = %+v, want the box %+v", got, want)
+	}
+	if out.Kinds[box.ID] != "Region" || out.Kinds[out.Rows[0].ID] != "Canvas" {
+		t.Fatalf("kinds = %v", out.Kinds)
+	}
+}
+
+func TestCanvasRejectsUnplacedChildren(t *testing.T) {
+	canvas := &uiir.Node{Kind: uiir.NodeAbsoluteBox, Children: []*uiir.Node{{Kind: uiir.NodeText, Text: "loose"}}}
+	_, err := Lower(canvas)
+	if err == nil || !strings.Contains(err.Error(), "is a child of a canvas but is not placed") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPlacedBoxesBelongInACanvas(t *testing.T) {
+	col := &uiir.Node{Kind: uiir.NodeColumn, Children: []*uiir.Node{spanBox(&uiir.Node{Kind: uiir.NodeText, Text: "x"}, "", 0)}}
+	_, err := Lower(col)
+	if err == nil || !strings.Contains(err.Error(), "must be a child of UI.Canvas") {
+		t.Fatalf("err = %v", err)
 	}
 }

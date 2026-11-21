@@ -137,3 +137,23 @@ func mustResolve(t *testing.T, rows []layout.LayoutRow, root layout.Rect) *layou
 	return r
 }
 func center(r layout.Rect) Point { return Point{X: r.X + r.Width/2, Y: r.Y + r.Height/2} }
+
+// A region on a higher layer is topmost even when it is authored first.
+func TestHigherLayerWinsOverlap(t *testing.T) {
+	root := layout.NodeID("root")
+	box := layout.FrameSpec{Kind: layout.AbsoluteFrame, Width: 50, Height: 50}
+	resolved := mustResolve(t, []layout.LayoutRow{
+		{ID: root, Frame: layout.FrameSpec{Kind: layout.RootFrame}},
+		{ID: "cart", Parent: &root, Order: 0, Layer: 1, Frame: box},
+		{ID: "grid", Parent: &root, Order: 1, Frame: box},
+	}, layout.Rect{Width: 100, Height: 100})
+	actions := map[layout.NodeID]lowering.Action{"cart": {Name: "cart.add"}, "grid": {Name: "grid.open"}}
+	idx, err := BuildIndex(resolved, actions, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, ok, err := idx.HitTest(Point{X: 10, Y: 10}, nil)
+	if err != nil || !ok || res.Action.Name != "cart.add" {
+		t.Fatalf("hit = %+v, %v, %v; want the Chrome-layer cart", res, ok, err)
+	}
+}
