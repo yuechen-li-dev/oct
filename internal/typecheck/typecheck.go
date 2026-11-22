@@ -1925,7 +1925,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", node.EnumName, node.Variant)
 		}
 		if variant.payload != nil {
-			return ExprType{}, fmt.Errorf("enum '%s' variant '%s' requires one payload argument", node.EnumName, node.Variant)
+			return ExprType{ValueType: c.variantConstructorType(node.EnumName, *variant.payload)}, nil
 		}
 		return ExprType{ValueType: Type{Name: node.EnumName}}, nil
 	case ast.IndexExpr:
@@ -2106,7 +2106,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 					return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", identifier.Name, node.Field)
 				}
 				if variant.payload != nil {
-					return ExprType{}, fmt.Errorf("enum '%s' variant '%s' requires one payload argument", identifier.Name, node.Field)
+					return ExprType{ValueType: c.variantConstructorType(identifier.Name, *variant.payload)}, nil
 				}
 				return ExprType{ValueType: Type{Name: identifier.Name}}, nil
 			}
@@ -2119,7 +2119,7 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 					return ExprType{}, fmt.Errorf("enum '%s' has no variant '%s'", enumName, node.Field)
 				}
 				if variant.payload != nil {
-					return ExprType{}, fmt.Errorf("enum '%s' variant '%s' requires one payload argument", enumName, node.Field)
+					return ExprType{ValueType: c.variantConstructorType(enumName, *variant.payload)}, nil
 				}
 				return ExprType{ValueType: Type{Name: enumName}}, nil
 			}
@@ -3303,6 +3303,11 @@ func (c checker) checkSwitchCaseLabelType(scope *scope, expr ast.Expr, ctx funct
 	case ast.IntegerLiteral, ast.FloatLiteral, ast.BoolLiteral, ast.StringLiteralExpr:
 		return exprType.ValueType, nil
 	case ast.FieldAccessExpr:
+		if exprType.ValueType.IsFunction {
+			if _, isEnum := c.lookupEnum(subjectType.Name); isEnum {
+				return Type{}, fmt.Errorf("enum '%s' variant '%s' requires one payload argument; a switch label names a variant without a payload, so use match to bind it", subjectType.Name, expr.(ast.FieldAccessExpr).Field)
+			}
+		}
 		if _, ok := c.lookupEnum(exprType.ValueType.Name); !ok {
 			return Type{}, fmt.Errorf("case labels must match switch subject type")
 		}

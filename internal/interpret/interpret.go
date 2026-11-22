@@ -193,6 +193,9 @@ type MatrixValue struct {
 type FunctionValue struct {
 	Key       string
 	Anonymous *AnonymousFunctionValue
+	// Variant is set for a payload variant used as a function value,
+	// `Msg.SetAudio`: calling it builds the variant around its argument.
+	Variant *EnumValue
 }
 
 type AnonymousFunctionValue struct {
@@ -312,6 +315,9 @@ func (v Value) String() string {
 	case ValueFunc:
 		if v.Function.Anonymous != nil {
 			return "<anonymous function>"
+		}
+		if v.Function.Variant != nil {
+			return v.Function.Variant.TypeName + "." + v.Function.Variant.Variant
 		}
 		return v.Function.Key
 	case ValueFlow:
@@ -900,6 +906,9 @@ func (i interpreter) executeAnonymousFunction(function *AnonymousFunctionValue, 
 }
 
 func (i interpreter) invokeFunctionValue(function FunctionValue, callerPackage string, arguments []Value) (callResult, error) {
+	if function.Variant != nil {
+		return callResult{value: buildVariant(function, arguments)}, nil
+	}
 	if function.Anonymous != nil {
 		return i.executeAnonymousFunction(function.Anonymous, arguments)
 	}
@@ -1860,7 +1869,7 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 			return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' has no variant '%s'", node.EnumName, node.Variant)
 		}
 		if variant.Payload != nil {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' variant '%s' requires one payload argument", node.EnumName, node.Variant)
+			return evalResult{value: variantFunction(enumTypeName, node.Variant)}, nil
 		}
 		return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Variant}}}, nil
 	case ast.IndexExpr:
@@ -2013,7 +2022,7 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				variant, exists := lookupEnumVariant(enumDecl, node.Field)
 				if exists {
 					if variant.Payload != nil {
-						return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' variant '%s' requires one payload argument", identifier.Name, node.Field)
+						return evalResult{value: variantFunction(enumTypeName, node.Field)}, nil
 					}
 					return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Field}}}, nil
 				}
@@ -2025,7 +2034,7 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				variant, exists := lookupEnumVariant(enumDecl, node.Field)
 				if exists {
 					if variant.Payload != nil {
-						return evalResult{}, fmt.Errorf("runtime invariant violation: enum '%s' variant '%s' requires one payload argument", enumName, node.Field)
+						return evalResult{value: variantFunction(enumTypeName, node.Field)}, nil
 					}
 					return evalResult{value: Value{Kind: ValueEnum, Enum: EnumValue{TypeName: enumTypeName, Variant: node.Field}}}, nil
 				}
@@ -2705,6 +2714,9 @@ regularCall:
 	var anonymousFunction *AnonymousFunctionValue
 	if ident, ok := expr.Callee.(ast.IdentifierExpr); ok {
 		if binding, exists := env.lookup(ident.Name); exists && binding.value.Kind == ValueFunc {
+			if binding.value.Function.Variant != nil {
+				return i.callVariantFunction(env, pkgName, binding.value.Function, expr.Arguments)
+			}
 			functionKey = binding.value.Function.Key
 			anonymousFunction = binding.value.Function.Anonymous
 		}
@@ -2726,6 +2738,9 @@ regularCall:
 		}
 		if calleeValue.value.Kind != ValueFunc {
 			return evalResult{}, fmt.Errorf("runtime error: call target must be function value")
+		}
+		if calleeValue.value.Function.Variant != nil {
+			return i.callVariantFunction(env, pkgName, calleeValue.value.Function, expr.Arguments)
 		}
 		functionKey = calleeValue.value.Function.Key
 		anonymousFunction = calleeValue.value.Function.Anonymous

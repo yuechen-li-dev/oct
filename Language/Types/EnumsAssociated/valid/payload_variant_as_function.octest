@@ -1,0 +1,36 @@
+package EnumsAssociated
+
+// A payload variant named without its payload is a function from the
+// payload to the enum: `Setting.Volume` is a `fn(Int) -> Setting`.
+
+enum Setting {
+    Volume(Int)
+    Muted(Bool)
+    Reset
+}
+
+fn Apply(convert: fn(Int) -> Setting, value: Int) -> Setting {
+    return convert(value)
+}
+
+fn VolumeOf(setting: Setting) -> Int {
+    return match setting {
+        case Setting.Volume(v) => v
+        case Setting.Muted(m) => -1
+        case Setting.Reset => 0
+    }
+}
+
+[Fact]
+fn PayloadVariantIsAFunctionValue() -> Void {
+    let make: fn(Int) -> Setting = Setting.Volume
+    Assert.Equal(7, VolumeOf(make(7)), "calling the variant builds it")
+    Assert.Equal(11, VolumeOf(Apply(Setting.Volume, 11)), "a variant can be passed where a function is expected")
+    Assert.True(Apply(Setting.Volume, 3) == Setting.Volume(3), "it builds the same value as the constructor call")
+}
+
+[Fact]
+fn VariantFunctionsHaveTheirPayloadType() -> Void {
+    let mute: fn(Bool) -> Setting = Setting.Muted
+    Assert.Equal(-1, VolumeOf(mute(true)), "a Bool payload variant is a fn(Bool) -> Setting")
+}

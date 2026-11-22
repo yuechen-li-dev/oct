@@ -1,0 +1,13 @@
+expect error: "expected fn(Int) -> Setting, got fn(Bool) -> Setting"
+
+package EnumsAssociated
+
+enum Setting {
+    Volume(Int)
+    Muted(Bool)
+}
+
+fn Main() -> Int {
+    let make: fn(Int) -> Setting = Setting.Muted
+    return 0
+}

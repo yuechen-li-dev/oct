@@ -2970,6 +2970,14 @@ func (c *lowerCtx) resolveEnumVariantValue(enumType string, variant string) (str
 			continue
 		}
 		for _, declaredVariant := range enumDecl.Variants {
+			if declaredVariant.Name == variant && declaredVariant.Payload != nil {
+				// A payload variant named without its payload is a function
+				// from the payload to the enum.
+				payloadType := typeRefStringForPackage(enumPkg, *declaredVariant.Payload)
+				enumType := enumPkg + "." + enumName
+				value := fmt.Sprintf("func(payload %s) %s { return %s_%s{Tag: %s_%s_%s_tag, Payload: %s} }", goType(payloadType), goType(enumType), enumPkg, enumName, enumPkg, enumName, variant, cloneCompiledValueExpr("payload", payloadType))
+				return value, "fn(" + payloadType + ") -> " + enumType, true, nil
+			}
 			if declaredVariant.Name == variant {
 				return fmt.Sprintf("%s_%s{Tag: %s_%s_%s_tag}", enumPkg, enumName, enumPkg, enumName, variant), enumPkg + "." + enumName, true, nil
 			}

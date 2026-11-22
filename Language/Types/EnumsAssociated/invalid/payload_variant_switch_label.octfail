@@ -1,0 +1,15 @@
+expect error: "enum 'Setting' variant 'Volume' requires one payload argument; a switch label names a variant without a payload, so use match to bind it"
+
+package EnumsAssociated
+
+enum Setting {
+    Volume(Int)
+    Reset
+}
+
+fn Main(setting: Setting) -> Bool {
+    return switch setting {
+        case Setting.Volume => true
+        else => false
+    }
+}

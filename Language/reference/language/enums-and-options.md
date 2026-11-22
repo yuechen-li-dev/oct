@@ -18,6 +18,12 @@ Variant references are qualified.
 - Variant construction forms are:
   - `Name.Variant`
   - `Name.Variant(value)` for payload variants
+- A payload variant written without its payload, `Name.Variant`, is a function
+  value of type `fn(Payload) -> Name`: calling it builds the variant. Pass it
+  where a function is expected, as in `Apply(Setting.Volume, 11)` or a UI
+  input's message callback. A `switch` label still names a variant without a
+  payload, so a payload variant there is an error; use `match` to bind it.
+  Contracts: `Language/Types/EnumsAssociated` (`payload_variant_*`).
 - `match` over enum variants is exhaustive and binds payload names per case:
   - `case Name.Variant(v) => ...` for payload variants
   - `case Name.Tag => ...` for tag-only variants
