@@ -14,7 +14,8 @@ go build -tags machina_gio -o oct ./cmd/oct    # native backend build
 > Since UI-M3, `Update` takes the app's message enum (`fn Update(model:
 > Model, msg: Msg) -> Model`) and buttons carry message values; since UI-M5
 > `View` returns `UI<Msg>`. See `Libraries/UI/README.md`. The string form
-> below still works.
+> below was retired with the rest of the string-event surface; this report
+> keeps it as the M0 record.
 
 An app package declares the trio the Machina storefront fixtures already used:
 

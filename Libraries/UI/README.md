@@ -1,13 +1,24 @@
 # UI standard library (Machina UI)
 
-`UI` is Oct's standard-library authoring surface for Machina UI (Machine Native UI).
-For Oct user code, prefer `UI.*` functions. Raw `UI*` builtins are runtime backing details.
+`UI` is Oct's authoring surface for Machina UI (Machine Native UI): views are
+values, page geometry is declared in layout tables, and stacks and grids are
+sugar over the same explicit rectangles. The design and its milestone history
+are in [`DESIGN.md`](DESIGN.md); this README documents what is implemented.
+Use `UI.*` functions; raw `UI*` builtins are backing details.
 
-The design direction for the authoring surface (layout tables, typed messages,
-stack and grid sugar, and the milestone order) is specified in
-[`DESIGN.md`](DESIGN.md). This README documents what is implemented now.
+| File | Contents |
+|---|---|
+| `UI.View.oct` | `UI.Signature`; notes on the compiler-owned widgets |
+| `UI.Place.oct` | Spans, `UI.At`, `UI.Canvas`, layers, layout tables |
+| `UI.Stack.oct` | Stacks, `Column`/`Row`/`Spacer`, sizing, `Nudge`, `Inset`, `Keyed` |
+| `UI.Grid.oct` | Tracks, `UI.Grid`, spans, `UI.Chunk` |
+| `UI.Text.oct` | `Text`, `Paragraph`, `TextSpec`, overflow, `MarkupTextUI` |
+| `UI.Style.oct` | Colors, insets, `Style`, `Styled` |
 
-## Apps and messages (UI-M3)
+Tests are named after the file they cover (`UI.Stack.octest`), and `.octfail`
+contracts after the area and the rule (`UI.Messages.WrongMessageButton.octfail`).
+
+## Apps and messages
 
 An app declares its model, its message enum, and three functions:
 
@@ -38,22 +49,18 @@ fn Update(model: Model, msg: Msg) -> Model {
 - `UI.Button(label, message, enabled)` takes a value of any enum. It is a
   compiler-owned builtin (generic over the message enum). Message variants
   may carry a payload. A button that sends `Msg` is a `UI<Msg>` (see
-  [Typed views](#typed-views-ui-m5)).
+  [Typed views](#typed-views)).
 - The button keeps the message value; `Update` receives the value itself.
   Its printed form (`Msg.Select("harbor-board")`) is a tool-facing alias for
   dumps and `oct ui check --click`; nothing parses it back.
 - `oct ui` checks when the app loads that `Update`'s second parameter is the
   app's message enum and that `View` returns `UI<Msg>` for that same enum.
   The typechecker has already rejected a button of any other enum.
-- `UI.Button` still accepts a `UI.EventToken`, and `Update` may still take
-  `event: String` (with `View` returning `UI`), for apps written before UI-M3. New apps use messages.
-  `UI.Token`, `UI.ButtonRaw` and the `UI.Dispatch` helpers below exist for
-  those apps.
 
 `Examples/MachinaThermostat` is the smallest app; `Experiments/Storefront/M8`
 is a full storefront on this surface.
 
-## Typed views (UI-M5)
+## Typed views
 
 A view's type says which message its buttons send: `UI<Msg>`. The compiler
 checks it, so a button of the wrong enum is a compile error rather than an
@@ -91,28 +98,10 @@ fn Card(title: String, body: UI) -> UI {
   that will hold buttons is declared `var items: UI<Msg>[] = []`; `var items
   = [UI.Text("a")]` is a messageless list.
 - A payload variant written without its payload is a function value:
-  `Msg.Open` is a `fn(Int) -> Msg`. UI inputs (UI-M6) will take it as their
+  `Msg.Open` is a `fn(Int) -> Msg`. UI inputs will take it as their
   callback, as in `UI.Checkbox("Audio", model.Audio, Msg.SetAudio)`.
 
-Views can also be written in Oct-XML ([typed markup](../../Language/reference/language/typed-markup.md)).
-Containers take their children as an array, wrappers that take one `UI`
-(`UI.Styled`, `UI.Fill`, `UI.Keyed`...) take exactly one child, and bare text
-among the children of a container is a `UI.Text` (through `MarkupTextUI`):
-
-```oct
-<UI.Styled Style={CardStyle()}>
-    <UI.Stack Spec={UI.Vertical() with { Gap: 6.0 px }}>
-        Desk Starter Grid
-        <UI.Button Label="Add to cart" On={Msg.AddToCart(id)} Enabled={true} />
-    </UI.Stack>
-</UI.Styled>
-```
-
-Function calls remain the default; markup suits deep, mostly static trees.
-`Examples/MachinaThermostat/main.octest` builds the thermostat's view both
-ways and checks they are the same tree.
-
-## Canonical API
+## API at a glance
 
 ```oct
 UI.Text(content: String) -> UI
@@ -120,14 +109,14 @@ UI.Button(label: String, message: Msg, enabled: Bool) -> UI<Msg> // Msg: any enu
 UI.Spacer() -> UI
 UI.Styled(style: UI.Style, node: UI) -> UI
 
-// Placement (UI-M2)
+// Placement
 UI.Canvas(children: UI[]) -> UI
 UI.At(x: UI.XSpan, y: UI.YSpan, child: UI) -> UI
 UI.Region(region: R, x: UI.XSpan, y: UI.YSpan) -> UI.Placement
 UI.Layout(rows: UI.Placement[]) -> UI.LayoutTable
 UI.Arrange(layout: UI.LayoutTable, context: C, content: fn(C, R) -> UI<M>) -> UI<M>
 
-// Stacks and grids (UI-M3)
+// Stacks and grids
 UI.Stack(spec: UI.StackSpec, children: UI[]) -> UI
 UI.Vertical() -> UI.StackSpec
 UI.Horizontal() -> UI.StackSpec
@@ -151,245 +140,9 @@ UI.Signature(node: UI) -> String
 
 Every `UI` above is bare, so each function returns the message type of its
 UI arguments: `UI.Stack(spec, children)` with `UI<Msg>[]` children is a
-`UI<Msg>` ([Typed views](#typed-views-ui-m5)).
+`UI<Msg>` ([Typed views](#typed-views)).
 
-Older spellings remain callable for existing code and are not part of the
-documented surface: `UI.AbsoluteBox`/`UI.AnchorBox` (and their `Z` forms,
-`Absolute`, `Anchor`, `Place`, `AnchoredBox`), `UI.GridRows` (a grid of equal
-fill tracks), `UI.ButtonRaw`, `UI.Token`, and the mount helpers `UI.Mount`,
-`UI.Patch`, `UI.Unmount`, `UI.Emit`, `UI.DrainEvents` (and `MountUI`,
-`PatchUI`, `UnmountUI`).
-
-`MountRef` is the handle record returned by `UI.Mount`.
-The distinct naming (`Mount` function, `MountRef` record) intentionally avoids record/function namespace collision in Oct.
-
-## Stacks, sizing and grids (UI-M3)
-
-Sugar places children with declared sizes and lowers to the same explicit
-rectangles a layout table writes. It never negotiates, shrinks or wraps; when
-children do not fit, layout fails with an error naming the stack and the
-sizes involved.
-
-```oct
-UI.Stack(UI.Vertical() with { Gap: 12.0 px  Padding: UI.InsetsAll(16px) }, [
-    UI.Fixed(56px, HeaderBar(model)),
-    UI.Fill(1.0, ProductGrid(model, 3)),
-    Footer(model)
-])
-```
-
-- `StackSpec` has `Axis`, `Gap`, `Padding`, `Align` (`Start`, `Center`, `End`
-  on the cross axis) and `Justify` (`Start`, `Center`, `End`, `SpaceBetween`
-  for leftover main space when no child fills). Start from `UI.Vertical()` or
-  `UI.Horizontal()` and change fields with `with`.
-- Main size is height in a vertical stack and width in a horizontal one.
-  `UI.Fixed(main, child)` sets it; `UI.Fill(weight, child)` takes a share of
-  what fixed children leave; `UI.Auto(child)` measures the child;
-  `UI.Size(w, h, child)` sets both axes.
-- Unwrapped children: `Text` and `Button` are measured on both axes and placed
-  across by `Align`; a nested stack is measured along the parent's axis and
-  stretches across it; `Spacer`, grids and canvases fill (`UI.Fill(1.0)`).
-  A fixed or measured container stretches across the stack, as `UI.Fixed`
-  does.
-- Sizing applies only to a child of a stack; elsewhere it is an error.
-- Text and buttons are measured with the session's text metrics (see Text
-  below); buttons add 24 dp around their label and are at least 80 dp wide.
-- `UI.Nudge(dx, dy, child)` moves a node after placement without moving its
-  siblings.
-- `UI.Inset(insets, child)` puts space around one child. Padding is layout,
-  never style.
-
-Grids have declared tracks and no implicit columns:
-
-```oct
-let spec = UI.Tracks([UI.Track.Fixed(280px), UI.Track.Fill(1.0)]) with {
-    Rows: [UI.Track.Fixed(56px), UI.Track.Fill(1.0)]
-    ColumnGap: 16.0 px
-}
-UI.Grid(spec, [
-    [UI.Span(2, 1, TopBar(model)), UI.Skip()],
-    [Sidebar(model), Content(model)]
-])
-```
-
-- `UI.Track` is `Fixed(Float<px>)`, `Fill(Float)` or `Auto` (as wide or tall
-  as its largest single-span cell). Rows past `Rows` use `AutoRow`.
-- Every row has one cell per column. A cell a span covers must be
-  `UI.Skip()`; an uncovered `UI.Skip()` is an empty cell.
-- `UI.Chunk(items, columns)` splits a list into rows, padding the last with
-  `UI.Skip()`, so a dynamic list becomes a grid in plain sight.
-
-`UI.Keyed(key, child)` gives a repeated child its id from a domain key instead
-of its position, so a card keeps its id when earlier cards are filtered out.
-Keys must be unique among siblings.
-
-## Model
-
-Layout is unit-aware: pixel lengths use `Float<px>` and parent fractions use
-`Float<ui>`. State lives in the app's model; the UI is a pure projection
-`View(model) -> UI`. Octomata flows are not Dominatus and provide no stack
-push/pop UI semantics.
-
-## Generic event vocabulary (M0 apps)
-
-`UI` exposes a tiny, domain-independent event record surface:
-
-```oct
-record UI.EventToken {
-    Value: String
-}
-
-record UI.UIEvent {
-    Token: UI.EventToken
-    Payload: String
-}
-
-UI.Token(value: String) -> UI.EventToken
-UI.EventTokenValue(token: UI.EventToken) -> String
-UI.Event(token: UI.EventToken, payload: String) -> UI.UIEvent
-UI.EventTokenOf(event: UI.UIEvent) -> UI.EventToken
-UI.EventPayload(event: UI.UIEvent) -> String
-```
-
-This vocabulary is intentionally small and does not define an app model, app contract, or runtime-owned state container.
-Session/runtime app contracts used for backend integration live in internal Go packages, not in the Oct standard-library API surface.
-
-
-## Dispatch helpers (M111, M0 apps)
-
-`UI` includes tiny deterministic dispatch helpers for explicit app update functions:
-
-```oct
-record EventValueDispatch {
-    Events: String[]
-    Values: String[]
-}
-
-UI.ResolveEventValue(event: String, table: UI.EventValueDispatch) -> String
-UI.MatchEventPrefix(event: String, prefix: String, allowedSuffixes: String[]) -> String
-```
-
-These helpers are **not** a router/store/state framework.
-They do not mutate records and do not perform reflection-like field updates.
-You still write explicit `Update(model, event)` functions and explicit `with` state updates.
-
-```oct
-fn Update(model: StoreState, event: String) -> StoreState {
-    let nav = UI.ResolveEventValue(event, UI.EventValueDispatch {
-        Events: ["nav.shop", "nav.support"]
-        Values: ["Shop", "Support"]
-    })
-
-    if nav != "" {
-        return model with { SelectedNav: nav }
-    }
-
-    return model
-}
-```
-
-
-## Style records (M112, data-only)
-
-`UI` now includes a small typed style surface made of immutable records:
-
-- `UI.Color`
-- `UI.Insets` (used by stack and grid padding)
-- `UI.TextSpec` (see Text)
-- `UI.Style`
-
-Helper constructors:
-
-- `UI.Rgb(r, g, b)`
-- `UI.Rgba(r, g, b, a)`
-- `UI.InsetsAll(value)`
-- `UI.InsetsXY(x, y)`
-- `UI.DefaultStyle()`
-
-These are plain Oct records, so customization is explicit and immutable via `with` updates.
-There are no CSS strings, class names, selectors, or cascade semantics.
-
-```oct
-let base = UI.DefaultStyle()
-let card = base with {
-    Background: UI.Rgb(245, 245, 245)
-    Radius: 8px
-}
-```
-
-### Applying a style (M117)
-
-`UI.Styled(style, node)` attaches a `Style` to a node. Lowering carries it to
-render, and native backends paint it:
-
-- `Background` fills the node's rect, `BorderColor` and `BorderWidth` outline
-  it, and `Radius` rounds its corners.
-- `Foreground` colors the node's own text (a `Text`'s content or a `Button`'s
-  label). It is not inherited by children.
-- A styled `Button` replaces the default button chrome; a disabled one still
-  renders its label muted.
-- The style is part of the node's identity: `UI.Signature` changes with it.
-
-`Style` has no padding: inner space is layout (a stack's `Padding` or
-`UI.Inset`). Text size, weight and color are a `UI.TextSpec`.
-
-```oct
-let badge = UI.Styled(UI.DefaultStyle() with {
-    Background: UI.Rgb(255, 152, 0)
-    Foreground: UI.Rgb(255, 255, 255)
-    Radius: 4px
-}, UI.Text("Status: heating"))
-```
-
-## Text (UI-M4)
-
-Text lives in the box it is given. Measurement decides how the box's text
-survives, never how big the box is (except where a stack measures a child).
-
-```oct
-UI.Text(content: String) -> UI                      // one line of body text
-UI.TextWith(spec: UI.TextSpec, content: String) -> UI
-UI.Paragraph(content: String) -> UI                 // body text that wraps
-
-UI.Body() / UI.Title() / UI.Caption() / UI.Mono() -> UI.TextSpec
-
-record TextSpec {
-    Size: Int<px>            // 16 body, 22 title, 12 caption, 14 mono
-    Weight: Int              // 400 regular, 700 bold
-    Mono: Bool
-    Wrap: Bool
-    Overflow: UI.Overflow    // Ellipsis | Clip | Error
-    Color: Option<UI.Color>  // None: the styled foreground or the default
-}
-```
-
-```oct
-UI.TextWith(UI.Caption() with { Color: Option.Some(UI.Rgb(110, 116, 128)) }, "Updated today")
-UI.TextWith(UI.Body() with { Overflow: UI.Overflow.Error }, order.Id)
-```
-
-- **Wrapping.** Text with `Wrap: true` (`UI.Paragraph`) breaks at spaces to
-  the width it is given, and inside a word only when the word alone is too
-  wide. In a vertical stack it takes the stack's width and is exactly as tall
-  as its lines, so what follows moves down as the window narrows; a stack
-  that contains it is measured the same way. In a horizontal stack it fills
-  (`UI.Fill(1.0)`). In a box it shows the lines that fit.
-- **Overflow.** When text does not fit its box: `Ellipsis` (the default)
-  shortens the line, and ends the last visible line of wrapped text with
-  `…`; `Clip` draws what fits and clips the rest; `Error` fails the frame,
-  naming the node and the shortfall. Button labels are shortened with an
-  ellipsis.
-- **Metrics.** Layout, wrapping and truncation all measure with one set of
-  text metrics, so what is drawn is what was measured. The native window
-  measures with the font it draws (the Go font collection). `oct ui check`,
-  `--dump` and tests use fixed metrics so their output is deterministic:
-  each character is half the font size wide (0.6 for `Mono`) and a line is
-  1.25 times the size, which is 8 dp and 20 dp at the body size. The fixed
-  metric is a little wider than the Go font, so text that fits in
-  `oct ui check` also fits in the window. If a frame does not fit with the
-  window's metrics, the window keeps the fixed-metric frame and says why.
-
-## Explicit placement and layout tables (UI-M2)
+## Placement and layout tables
 
 Page geometry is declared, not computed. A screen names its regions with an
 enum, declares one placement row per region in a layout table, and binds
@@ -451,8 +204,8 @@ UI.At(x: UI.XSpan, y: UI.YSpan, child: UI) -> UI                   // one box in
   places one twice, mixes region enums, places a different enum than the
   content function takes, or gives a `Z` outside −5..5. These are checked when
   the view is built (by `oct ui check` before a window opens), not at compile
-  time; compile-time checking arrives with typed views (DESIGN.md L1). The
-  content function's `switch` is checked at compile time like any `switch`.
+  time. The content function's `switch` is checked at compile time like any
+  `switch`.
 - A stretch whose insets exceed the parent is a layout error, never a clamp.
 - Paint order among siblings is `(layer, z, authored order)`, and hit testing
   follows it: a `Chrome` region is clickable above the `Content` region it
@@ -466,24 +219,192 @@ per node in paint order, with the spans that place it in its parent and its
 absolute rect. Regions show their table row; children of stacks show the
 `Left`/`Top` spans the stack resolved to.
 
-## Canvas/content authoring rule
+A `UI.Canvas` is a placement surface: each child is placed by `UI.At`, and an
+unplaced child is a lowering error. Inside a placed box, use content trees
+(stacks, grids, text, buttons). A component function returns content; a
+helper that calls `UI.At` is writing page layout.
 
-Canvas is a placement surface. Content is a content surface. These do not mix.
+## Stacks and sizing
 
-Canvas children must be placed boxes; an unplaced child is a lowering error:
-- `UI.At(...)`, or regions placed by `UI.Arrange`
-- `UI.AnchorBox(...)` and `UI.AbsoluteBox(...)` (older spellings of `UI.At`
-  with `FractionX`/`FractionY` and `Left`/`Top`)
+A stack places children with declared sizes and lowers to the same explicit
+rectangles a layout table writes. It never negotiates, shrinks or wraps; when
+children do not fit, layout fails with an error naming the stack and the
+sizes involved.
 
-Inside those regions, use content trees:
-- `UI.Row`
-- `UI.Column`
-- `UI.GridRows`
-- `UI.Text`
-- `UI.Button`
-- `UI.Spacer`
+```oct
+UI.Stack(UI.Vertical() with { Gap: 12.0 px  Padding: UI.InsetsAll(16px) }, [
+    UI.Fixed(56px, HeaderBar(model)),
+    UI.Fill(1.0, ProductGrid(model, 3)),
+    Footer(model)
+])
+```
 
-Component functions should usually return content trees. If a helper calls `AnchorBox` or `AbsoluteBox`, it is probably writing page layout rather than reusable content.
+- `StackSpec` has `Axis`, `Gap`, `Padding`, `Align` (`Start`, `Center`, `End`
+  on the cross axis) and `Justify` (`Start`, `Center`, `End`, `SpaceBetween`
+  for leftover main space when no child fills). Start from `UI.Vertical()` or
+  `UI.Horizontal()` and change fields with `with`.
+- Main size is height in a vertical stack and width in a horizontal one.
+  `UI.Fixed(main, child)` sets it; `UI.Fill(weight, child)` takes a share of
+  what fixed children leave; `UI.Auto(child)` measures the child;
+  `UI.Size(w, h, child)` sets both axes.
+- Unwrapped children: `Text` and `Button` are measured on both axes and placed
+  across by `Align`; a nested stack is measured along the parent's axis and
+  stretches across it; `Spacer`, grids and canvases fill (`UI.Fill(1.0)`).
+  A fixed or measured container stretches across the stack, as `UI.Fixed`
+  does.
+- Sizing applies only to a child of a stack; elsewhere it is an error.
+- Text and buttons are measured with the session's text metrics (see Text
+  below); buttons add 24 dp around their label and are at least 80 dp wide.
+- `UI.Nudge(dx, dy, child)` moves a node after placement without moving its
+  siblings.
+- `UI.Inset(insets, child)` puts space around one child. Padding is layout,
+  never style.
+
+`UI.Keyed(key, child)` gives a repeated child its id from a domain key instead
+of its position, so a card keeps its id when earlier cards are filtered out.
+Keys must be unique among siblings.
+
+## Grids
+
+Grids have declared tracks and no implicit columns:
+
+```oct
+let spec = UI.Tracks([UI.Track.Fixed(280px), UI.Track.Fill(1.0)]) with {
+    Rows: [UI.Track.Fixed(56px), UI.Track.Fill(1.0)]
+    ColumnGap: 16.0 px
+}
+UI.Grid(spec, [
+    [UI.Span(2, 1, TopBar(model)), UI.Skip()],
+    [Sidebar(model), Content(model)]
+])
+```
+
+- `UI.Track` is `Fixed(Float<px>)`, `Fill(Float)` or `Auto` (as wide or tall
+  as its largest single-span cell). Rows past `Rows` use `AutoRow`.
+- Every row has one cell per column. A cell a span covers must be
+  `UI.Skip()`; an uncovered `UI.Skip()` is an empty cell.
+- `UI.Chunk(items, columns)` splits a list into rows, padding the last with
+  `UI.Skip()`, so a dynamic list becomes a grid in plain sight.
+
+## Text
+
+Text lives in the box it is given. Measurement decides how the box's text
+survives, never how big the box is (except where a stack measures a child).
+
+```oct
+UI.Text(content: String) -> UI                      // one line of body text
+UI.TextWith(spec: UI.TextSpec, content: String) -> UI
+UI.Paragraph(content: String) -> UI                 // body text that wraps
+
+UI.Body() / UI.Title() / UI.Caption() / UI.Mono() -> UI.TextSpec
+
+record TextSpec {
+    Size: Int<px>            // 16 body, 22 title, 12 caption, 14 mono
+    Weight: Int              // 400 regular, 700 bold
+    Mono: Bool
+    Wrap: Bool
+    Overflow: UI.Overflow    // Ellipsis | Clip | Error
+    Color: Option<UI.Color>  // None: the styled foreground or the default
+}
+```
+
+```oct
+UI.TextWith(UI.Caption() with { Color: Option.Some(UI.Rgb(110, 116, 128)) }, "Updated today")
+UI.TextWith(UI.Body() with { Overflow: UI.Overflow.Error }, order.Id)
+```
+
+- **Wrapping.** Text with `Wrap: true` (`UI.Paragraph`) breaks at spaces to
+  the width it is given, and inside a word only when the word alone is too
+  wide. In a vertical stack it takes the stack's width and is exactly as tall
+  as its lines, so what follows moves down as the window narrows; a stack
+  that contains it is measured the same way. In a horizontal stack it fills
+  (`UI.Fill(1.0)`). In a box it shows the lines that fit.
+- **Overflow.** When text does not fit its box: `Ellipsis` (the default)
+  shortens the line, and ends the last visible line of wrapped text with
+  `…`; `Clip` draws what fits and clips the rest; `Error` fails the frame,
+  naming the node and the shortfall. Button labels are shortened with an
+  ellipsis.
+- **Metrics.** Layout, wrapping and truncation all measure with one set of
+  text metrics, so what is drawn is what was measured. The native window
+  measures with the font it draws (the Go font collection). `oct ui check`,
+  `--dump` and tests use fixed metrics so their output is deterministic:
+  each character is half the font size wide (0.6 for `Mono`) and a line is
+  1.25 times the size, which is 8 dp and 20 dp at the body size. The fixed
+  metric is a little wider than the Go font, so text that fits in
+  `oct ui check` also fits in the window. If a frame does not fit with the
+  window's metrics, the window keeps the fixed-metric frame and says why.
+
+## Styles
+
+Styles are immutable records:
+
+- `UI.Color`
+- `UI.Insets` (used by stack and grid padding)
+- `UI.TextSpec` (see Text)
+- `UI.Style`
+
+Helper constructors:
+
+- `UI.Rgb(r, g, b)`
+- `UI.Rgba(r, g, b, a)`
+- `UI.InsetsAll(value)`
+- `UI.InsetsXY(x, y)`
+- `UI.DefaultStyle()`
+
+These are plain Oct records, so customization is explicit and immutable via `with` updates.
+There are no CSS strings, class names, selectors, or cascade semantics.
+
+```oct
+let base = UI.DefaultStyle()
+let card = base with {
+    Background: UI.Rgb(245, 245, 245)
+    Radius: 8px
+}
+```
+
+### Applying a style
+
+`UI.Styled(style, node)` attaches a `Style` to a node. Lowering carries it to
+render, and native backends paint it:
+
+- `Background` fills the node's rect, `BorderColor` and `BorderWidth` outline
+  it, and `Radius` rounds its corners.
+- `Foreground` colors the node's own text (a `Text`'s content or a `Button`'s
+  label). It is not inherited by children.
+- A styled `Button` replaces the default button chrome; a disabled one still
+  renders its label muted.
+- The style is part of the node's identity: `UI.Signature` changes with it.
+
+`Style` has no padding: inner space is layout (a stack's `Padding` or
+`UI.Inset`). Text size, weight and color are a `UI.TextSpec`.
+
+```oct
+let badge = UI.Styled(UI.DefaultStyle() with {
+    Background: UI.Rgb(255, 152, 0)
+    Foreground: UI.Rgb(255, 255, 255)
+    Radius: 4px
+}, UI.Text("Status: heating"))
+```
+
+## Markup
+
+Views can also be written in Oct-XML ([typed markup](../../Language/reference/language/typed-markup.md)).
+Containers take their children as an array, wrappers that take one `UI`
+(`UI.Styled`, `UI.Fill`, `UI.Keyed`...) take exactly one child, and bare text
+among the children of a container is a `UI.Text` (through `MarkupTextUI`):
+
+```oct
+<UI.Styled Style={CardStyle()}>
+    <UI.Stack Spec={UI.Vertical() with { Gap: 6.0 px }}>
+        Desk Starter Grid
+        <UI.Button Label="Add to cart" On={Msg.AddToCart(id)} Enabled={true} />
+    </UI.Stack>
+</UI.Styled>
+```
+
+Function calls remain the default; markup suits deep, mostly static trees.
+`Examples/MachinaThermostat/main.octest` builds the thermostat's view both
+ways and checks they are the same tree.
 
 ## Example
 
@@ -518,7 +439,14 @@ fn View(model: Counter) -> UI<Msg> {
 }
 ```
 
+## Retired surface
 
-## Deterministic grid/cell authoring (M114)
-
-`UI.GridRows` is the M114 nested-array grid (outer array = rows, inner arrays = columns) with equal fill tracks. Rows must be rectangular and non-empty; there is no auto-placement or spans. New code uses `UI.Grid(spec, rows)` above. The M0 flat `UI.Grid(children: UI[])` was replaced by it in UI-M3.
+The string-event surface the library started with is gone: `UI.EventToken`,
+`UI.Token`, `UI.ButtonRaw`, the `UI.EventValueDispatch` helpers, the `UI.Counter`
+example, two-step `UI.Place`/`UIBox` placement, `UI.AbsoluteBox` and
+`UI.AnchorBox` (use `UI.At` with `Left`/`Top` or `FractionX`/`FractionY`
+spans), `UI.GridRows` (use `UI.Grid`), and the `UI.Mount`/`UI.Patch`/`UI.Emit`/
+`UI.DrainEvents` bridge wrappers. `oct ui` apps take a message enum in
+`Update`; the `event: String` form is no longer accepted.
+`Experiments/Storefront/M7` keeps its own copies of the helpers it used, so
+that record of the old surface still runs as tests.

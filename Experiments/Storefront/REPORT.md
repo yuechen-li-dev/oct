@@ -861,3 +861,13 @@ cannot be added to the cart.
   pixels past its card edge in the native window. Real measurement is UI-M4.
 - A `record table` row type has no source name, so `ProductCard` takes
   `(catalog, i)` (DESIGN.md L5).
+
+## M7 after the string-event surface was retired
+
+After UI-M5 the UI library retired the string-event surface M7 was written
+against (`UI.EventToken`, `UI.Token`, the dispatch helpers, `UI.AnchorBox`,
+`UI.GridRows`). M7 now carries its own copies of those helpers in
+`M7/retired_ui.oct`, over the backing builtins, and calls them unqualified;
+nothing else in M7 changed. Its tests still run. It is no longer an `oct ui`
+app, because `oct ui` requires `Update` to take a message enum. M8 is the
+storefront on the current surface.

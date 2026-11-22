@@ -131,23 +131,26 @@ Manifest wrapper functions are a different thing: native code outside the toolch
 
 ## UI (Machina UI authoring surface)
 
-`Libraries/UI` is the canonical standard-library authoring surface for Machina UI (Machine Native UI) in Oct.
+`Libraries/UI` is the standard-library authoring surface for Machina UI
+(Machine Native UI). Its README is the reference for the surface; in short:
 
-Use `UI.*` in Oct programs (`UI.Text`, `UI.Button`, `UI.Row`, `UI.Column`, `UI.Canvas`, `UI.Grid`, `UI.GridRows`, `UI.Spacer`, placement helpers, and mount/patch/emit wrappers). `UI.GridRows(UI[][])` is the M114 nested-array deterministic grid API (rows x columns, rectangular only).
-Treat raw UI builtins (`UIText`, `UIButton`, `UIPlaceAbsolute`, etc.) as backing runtime implementation details.
+- A view is a `UI<M>` value ([Types](types.md)): `View(model) -> UI<Msg>`,
+  with `UI.Button(label, Msg.X, enabled)` and the inputs sending values of
+  the app's message enum, which `Update(model, msg: Msg)` matches.
+- Page geometry is a layout table: `UI.Layout([UI.Region(Shell.Header, xspan,
+  yspan), ...])`, bound to content by `UI.Arrange(table, model, Content)`.
+  Spans (`UI.Left`, `UI.StretchX`, `UI.FractionX`, `UI.Top`, ...) take
+  `Float<px>`, or `Float<ui>` parent fractions ([Units](units.md)).
+- Stacks (`UI.Stack`, `UI.Column`, `UI.Row`, `UI.Fixed`, `UI.Fill`,
+  `UI.Auto`), grids (`UI.Grid`, `UI.Span`, `UI.Skip`, `UI.Chunk`) and
+  `UI.Keyed` are sugar over the same explicit rectangles.
+- Text is `UI.Text`, `UI.Paragraph` and `UI.TextWith(UI.TextSpec, ...)`;
+  styles are immutable records applied with `UI.Styled(style, node)`. There is
+  no CSS, class or cascade system.
+- Views can be written in [typed markup](typed-markup.md).
 
-M0 scope is semantic UI construction plus current absolute/anchored box placement.
-Layout is unit-aware:
-- `UI.AbsoluteBox(..., child)` uses `Float<px>` and is canonical for canvas placement
-- `UI.AnchorBox(..., child)` uses `Float<ui>` and is canonical for canvas placement
-
-No CSS/class/cascade system is part of M0.
-
-M112 adds a small immutable typed style-data surface in `Libraries/UI` (`UI.Color`, `UI.Insets`, `UI.TextStyle`, `UI.Style` plus deterministic helper constructors). M117 applies them: `UI.Styled(node, style)` attaches a `Style` to a node, and lowering, render and the native backend paint its background, border, radius and text foreground. `Padding` and `UI.TextStyle` are not applied yet. The style is part of the node's signature.
-
-Small dispatch helpers are available for explicit update functions: `UI.EventValueDispatch`, `UI.ResolveEventValue`, and `UI.MatchEventPrefix`. These helpers are deterministic and do not provide generic record mutation or state-framework behavior.
-
-UI event authoring is nominal: `UI.EventToken` values are used in `UI.Button` and `UI.UIEvent` APIs. Runtime bridge/event drain surfaces may remain string-backed (`UI.DrainEvents` returns `String[]`) for compatibility.
+Raw UI builtins (`UIText`, `UIStack`, `UIPlaceAnchored`, ...) are backing
+details, not authoring surface.
 
 ## String
 

@@ -265,7 +265,7 @@ Types and names marked *new* do not exist yet. Everything else is current Oct.
 
 ### 5.1 The app
 
-> **Implemented in UI-M5** ([README](README.md#typed-views-ui-m5); contracts
+> **Implemented in UI-M5** ([README](README.md#typed-views); contracts
 > `Libraries/UI/UI.Messages*`). `UI<Msg>` is checked by the compiler and
 > `oct ui` checks that `View` returns `UI<Update's Msg>`. One difference
 > from §7: the Libraries/UI wrappers did not move to builtins. Bare `UI` in
@@ -389,7 +389,7 @@ and a missing label becomes a compile error instead of a silent fallback.
 
 ### 5.3 Content leaves
 
-> **Implemented in UI-M4** ([README](README.md#text-ui-m4),
+> **Implemented in UI-M4** ([README](README.md#text),
 > `Examples/MachinaText`). `UI.TextStyle` was folded into `TextSpec`.
 > `TextSpec.Color` is an `Option<Color>` so text can inherit the styled
 > foreground. Wrapped text answers the paragraph question from the review
@@ -425,7 +425,7 @@ name, not two.
 
 ### 5.4 Layout tables: where page geometry lives
 
-> **Implemented in UI-M2** ([README](README.md#explicit-placement-and-layout-tables-ui-m2),
+> **Implemented in UI-M2** ([README](README.md#placement-and-layout-tables),
 > `Examples/MachinaShell`). Differences from the sketch below, all pending
 > typed views (L1): the table type is spelled `UI.LayoutTable` (a record and
 > a function cannot share the name `Layout`), and region coverage is checked
@@ -586,14 +586,14 @@ edit.
 ### 5.5 Sugar: stacks
 
 > **Implemented in UI-M3** with §5.6, §5.7 (style changes 1 and 2), §5.8 and
-> step 0 of §5.1/§5.2 ([README](README.md#stacks-sizing-and-grids-ui-m3);
+> step 0 of §5.1/§5.2 ([README](README.md#stacks-and-sizing);
 > `Experiments/Storefront/M8`). One refinement from building Storefront M8:
 > an unwrapped *nested stack* is measured along its parent's axis instead of
 > filling (it stretches across), because a row of labels or buttons inside a
 > card took a fill share of the card twice in one app. `Text` and `Button`
 > are measured as specified; `Spacer`, grids and canvases fill. State styles
-> (§5.7 change 3) wait for hover and focus input (UI-M6). `UI.Button` still
-> accepts a `UI.EventToken` for apps written before UI-M3.
+> (§5.7 change 3) wait for hover and focus input (UI-M6). (`UI.Button` also
+> accepted a `UI.EventToken` until that surface was retired after UI-M5.)
 
 A stack is the cursor walk you would otherwise write by hand
 (`x += width + gap`): it places children one after another along an axis

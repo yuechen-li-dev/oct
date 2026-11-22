@@ -17,10 +17,10 @@ record Dependency {
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "UI"
-        Version: "0.1.0"
-        Authors: ["Codex"]
-        Date: "2026-06-15"
-        Description: "Tiny declarative UI M0 surface over Go-owned reconciler runtime"
+        Version: "0.2.0"
+        Authors: ["Codex", "Claude"]
+        Date: "2026-11-22"
+        Description: "Machina UI authoring surface: typed views, layout tables, stacks and grids, text, styles and inputs"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }
