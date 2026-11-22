@@ -553,6 +553,29 @@ func CallFunctionWithArgsAndOptions(program project.Program, pkgName string, fun
 	return result.value, nil
 }
 
+// CallFunctionValue calls an Oct function value (a named function, an
+// anonymous function with its captures, or a payload variant) with
+// arguments. Machina UI inputs use it to build the message for a proposed
+// value.
+func CallFunctionValue(program project.Program, pkgName string, function Value, arguments []Value, stdout io.Writer) (Value, error) {
+	if function.Kind != ValueFunc {
+		return Value{}, fmt.Errorf("runtime invariant violation: CallFunctionValue expects a function value, got %s", function.Kind)
+	}
+	interpreter, err := newInterpreter(program, stdout)
+	if err != nil {
+		return Value{}, err
+	}
+	defer interpreter.close()
+	result, err := interpreter.invokeFunctionValue(function.Function, pkgName, arguments)
+	if err != nil {
+		return Value{}, err
+	}
+	if result.hasError {
+		return Value{}, fmt.Errorf("fatal error: %s", result.errorVal.Error.Message)
+	}
+	return result.value, nil
+}
+
 type FlowRunResult struct {
 	Result       Value
 	Completed    bool
@@ -3229,7 +3252,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return i.wrappers.eval(&i, env, pkgName, callee, argumentExprs)
 	}
-	if callee == "UIText" || callee == "UIButton" || callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" || callee == "UIGrid" || callee == "UIGridRows" || callee == "UISpacer" || callee == "UIPlaceAbsolute" || callee == "UIPlaceAnchored" || callee == "UIMount" || callee == "UIPatch" || callee == "UIUnmount" || callee == "UIEmit" || callee == "UIDrainEvents" || callee == "UISignature" || callee == "UIStyleNode" || callee == "UIPlaceSpan" || callee == "UIRegion" || callee == "UIArrange" || callee == "UIStack" || callee == "UISizing" || callee == "UINudge" || callee == "UIKeyed" || callee == "UIGridMatrix" || callee == "UISkip" || callee == "UISpan" || callee == "UIButtonMsg" || callee == "UITextWith" {
+	if callee == "UIText" || callee == "UIButton" || callee == "UIColumn" || callee == "UIRow" || callee == "UICanvas" || callee == "UIGrid" || callee == "UIGridRows" || callee == "UISpacer" || callee == "UIPlaceAbsolute" || callee == "UIPlaceAnchored" || callee == "UIMount" || callee == "UIPatch" || callee == "UIUnmount" || callee == "UIEmit" || callee == "UIDrainEvents" || callee == "UISignature" || callee == "UIStyleNode" || callee == "UIPlaceSpan" || callee == "UIRegion" || callee == "UIArrange" || callee == "UIStack" || callee == "UISizing" || callee == "UINudge" || callee == "UIKeyed" || callee == "UIGridMatrix" || callee == "UISkip" || callee == "UISpan" || callee == "UIButtonMsg" || callee == "UITextWith" || callee == "UICheckbox" || callee == "UITextField" || callee == "UISlider" || callee == "UIStyleStates" {
 		if len(typeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)
 		}

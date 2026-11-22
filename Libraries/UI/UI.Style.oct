@@ -79,3 +79,26 @@ fn Styled(style: Style, node: UI) -> UI {
         style.BorderColor.R, style.BorderColor.G, style.BorderColor.B, style.BorderColor.A
     ], style.BorderWidth, style.Radius)
 }
+
+// A node's styles in each interaction state the session tracks. The
+// session paints the first state that holds: Disabled, then Pressed, then
+// Focused, then Hover, else Normal.
+record StyleStates {
+    Normal: Style
+    Hover: Style
+    Pressed: Style
+    Focused: Style
+    Disabled: Style
+}
+
+// Every state starts as base; customize the ones that differ with `with`.
+fn States(base: Style) -> StyleStates {
+    return StyleStates { Normal: base  Hover: base  Pressed: base  Focused: base  Disabled: base }
+}
+
+// StyledStates paints a node by its interaction state. A control styled
+// this way draws no default chrome or focus ring of its own: the states
+// say how it looks hovered, pressed and focused.
+fn StyledStates(states: StyleStates, node: UI) -> UI {
+    return UIStyleStates(states, node)
+}

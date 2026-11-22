@@ -163,6 +163,13 @@ func declaresEnum(enums []ast.EnumDecl, name string) bool {
 // has already matched every button's message to View's UI<Msg>; a node
 // built from the raw string-event builtin has none and is an error.
 func (a *App) Dispatch(state interpret.Value, action lowering.Action) (interpret.Value, error) {
+	if action.Callback != nil {
+		built, err := a.buildMessage(action)
+		if err != nil {
+			return state, err
+		}
+		action.Message = built
+	}
 	msg, typed := action.Message.(interpret.Value)
 	if !typed {
 		return state, fmt.Errorf("button sends the event string %q, but Update takes %s; give the button a %s value", action.Name, a.msgEnum, a.msgEnum)
@@ -175,6 +182,31 @@ func (a *App) Dispatch(state interpret.Value, action lowering.Action) (interpret
 		return state, fmt.Errorf("Update(%s): %w", action.Name, err)
 	}
 	return next, nil
+}
+
+// buildMessage calls an input's callback with the value the session
+// proposes, which makes the message Update receives.
+func (a *App) buildMessage(action lowering.Action) (interpret.Value, error) {
+	callback, ok := action.Callback.(interpret.Value)
+	if !ok {
+		return interpret.Value{}, fmt.Errorf("input %s has no callback value", action.Name)
+	}
+	var arg interpret.Value
+	switch v := action.Value.(type) {
+	case bool:
+		arg = interpret.Value{Kind: interpret.ValueBool, Bool: v}
+	case string:
+		arg = interpret.Value{Kind: interpret.ValueString, Text: v}
+	case float64:
+		arg = interpret.Value{Kind: interpret.ValueFloat, Float: v}
+	default:
+		return interpret.Value{}, fmt.Errorf("input %s proposed a %T, which no input takes", action.Name, action.Value)
+	}
+	msg, err := interpret.CallFunctionValue(a.program, a.pkg, callback, []interpret.Value{arg}, a.out)
+	if err != nil {
+		return interpret.Value{}, fmt.Errorf("%s(%s): %w", action.Name, arg.String(), err)
+	}
+	return msg, nil
 }
 
 func localName(typeName string) string {

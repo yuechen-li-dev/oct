@@ -88,6 +88,18 @@ func (idx *Index) HitTest(point Point, semantics map[layout.NodeID]lowering.Sema
 	return nil, false, nil
 }
 
+// Targets lists the interactive nodes in paint order (the order Tab walks).
+func (idx *Index) Targets() []layout.NodeID {
+	if idx == nil {
+		return nil
+	}
+	out := make([]layout.NodeID, 0, len(idx.candidates))
+	for _, c := range idx.candidates {
+		out = append(out, c.nodeID)
+	}
+	return out
+}
+
 func HitTest(resolved *layout.ResolvedLayoutDocument, actions map[layout.NodeID]lowering.Action, semantics map[layout.NodeID]lowering.Semantics, point Point) (*Result, bool, error) {
 	idx, err := BuildIndex(resolved, actions, semantics)
 	if err != nil {

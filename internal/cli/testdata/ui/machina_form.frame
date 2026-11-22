@@ -1,0 +1,120 @@
+Machina UI app OK: ../../Examples/MachinaForm/main.oct (480x320)
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studio"                     at (24, 93.5) size 49x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "50%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studio, audio on, volume 50%, saved 0 times" at (16, 247.5) size 344x20
+
+click "Msg.Rename" -> focus
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studio"                     at (24, 93.5) size 49x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "50%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studio, audio on, volume 50%, saved 0 times" at (16, 247.5) size 344x20
+
+key End (focus 0.2)
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studio"                     at (24, 93.5) size 49x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "50%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studio, audio on, volume 50%, saved 0 times" at (16, 247.5) size 344x20
+
+key Backspace (focus 0.2)
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studi"                      at (24, 93.5) size 41x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "50%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studi, audio on, volume 50%, saved 0 times" at (16, 247.5) size 336x20
+
+type "-B"
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studi-B"                    at (24, 93.5) size 57x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "50%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studi-B, audio on, volume 50%, saved 0 times" at (16, 247.5) size 352x20
+
+key Tab (focus 0.3)
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studi-B"                    at (24, 93.5) size 57x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "50%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studi-B, audio on, volume 50%, saved 0 times" at (16, 247.5) size 352x20
+
+key Space (focus 0.3)
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studi-B"                    at (24, 93.5) size 57x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "50%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studi-B, audio off, volume 50%, saved 0 times" at (16, 247.5) size 360x20
+
+key Tab (focus 0.4.1)
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studi-B"                    at (24, 93.5) size 57x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "50%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studi-B, audio off, volume 50%, saved 0 times" at (16, 247.5) size 360x20
+
+key Right (focus 0.4.1)
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studi-B"                    at (24, 93.5) size 57x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "55%"                        at (288, 169.5) size 24x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studi-B, audio off, volume 55%, saved 0 times" at (16, 247.5) size 360x20
+
+key Home (focus 0.4.1)
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studi-B"                    at (24, 93.5) size 57x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "0%"                         at (288, 169.5) size 16x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studi-B, audio off, volume 0%, saved 0 times" at (16, 247.5) size 352x20
+
+click "Save" -> Msg.Save
+frame:
+  "Settings"                   at (16, 16) size 88x27.5
+  "Name"                       at (16, 55.5) size 32x20
+  "Studi-B"                    at (24, 93.5) size 57x20
+  "Include audio"              at (42, 133.5) size 104x20
+  "Volume"                     at (16, 169.5) size 48x20
+  "0%"                         at (288, 169.5) size 16x20
+  "Save"                       at (16, 203.5) size 80x32
+  "Studi-B, audio off, volume 0%, saved 1 times" at (16, 247.5) size 352x20

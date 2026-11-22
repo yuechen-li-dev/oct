@@ -42,6 +42,12 @@ const (
 	// FillStyled carries explicit Paint from UI.Styled and replaces the
 	// default chrome for that node.
 	FillStyled FillKind = "styled"
+	// Default button chrome under the pointer and while pressed.
+	FillButtonHover   FillKind = "button-hover"
+	FillButtonPressed FillKind = "button-pressed"
+	// FillCheck is a check mark drawn in Paint.Background inside Rect (a
+	// checked checkbox). Backends stroke it; fonts need not have a glyph.
+	FillCheck FillKind = "check"
 )
 
 // Paint is explicit fill and border for a styled node.
@@ -56,7 +62,7 @@ type FillRectCommand struct {
 	NodeID layout.NodeID
 	Rect   layout.Rect
 	Fill   FillKind
-	Paint  *Paint // set iff Fill == FillStyled
+	Paint  *Paint // set iff Fill is FillStyled or FillCheck
 }
 
 func (FillRectCommand) Kind() CommandKind { return KindFillRect }
@@ -100,9 +106,31 @@ type PopClipCommand struct{ NodeID layout.NodeID }
 func (PopClipCommand) Kind() CommandKind { return KindPopClip }
 
 // Options configures command building. Metrics measures text for wrapping
-// and truncation; nil is the deterministic fixed metric.
+// and truncation; nil is the deterministic fixed metric. Interaction is
+// the session's transient state, which decides state styles, focus rings
+// and the caret. States are the nodes' state styles.
 type Options struct {
-	Metrics textmetrics.Metrics
+	Metrics     textmetrics.Metrics
+	Interaction Interaction
+	States      map[layout.NodeID]uiir.StateStyles
+}
+
+// Interaction is what the session tracks between frames, keyed by node id:
+// the control under the pointer, the one being pressed, the one with
+// keyboard focus, and the caret (a rune index) in a focused text field.
+type Interaction struct {
+	Hover   layout.NodeID
+	Pressed layout.NodeID
+	Focus   layout.NodeID
+	Caret   int
+}
+
+type emitter struct {
+	resolved  *layout.ResolvedLayoutDocument
+	semantics map[layout.NodeID]lowering.Semantics
+	styles    map[layout.NodeID]lowering.Style
+	options   Options
+	out       *[]Command
 }
 
 func BuildCommands(resolved *layout.ResolvedLayoutDocument, semantics map[layout.NodeID]lowering.Semantics, styles map[layout.NodeID]lowering.Style, options Options) ([]Command, error) {
@@ -123,14 +151,16 @@ func BuildCommands(resolved *layout.ResolvedLayoutDocument, semantics map[layout
 		semantics = map[layout.NodeID]lowering.Semantics{}
 	}
 	out := []Command{BeginFrameCommand{Root: root.Rect}}
-	if err := emitNode(resolved, semantics, styles, options.Metrics, resolved.RootID, &out); err != nil {
+	e := emitter{resolved: resolved, semantics: semantics, styles: styles, options: options, out: &out}
+	if err := e.emitNode(resolved.RootID); err != nil {
 		return nil, err
 	}
 	out = append(out, EndFrameCommand{})
 	return out, nil
 }
 
-func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.NodeID]lowering.Semantics, styles map[layout.NodeID]lowering.Style, m textmetrics.Metrics, id layout.NodeID, out *[]Command) error {
+func (e emitter) emitNode(id layout.NodeID) error {
+	resolved, semantics, m, out := e.resolved, e.semantics, e.options.Metrics, e.out
 	node, ok := resolved.Nodes[id]
 	if !ok {
 		return fmt.Errorf("render.err.missing_node: resolved tree references unknown node %q", id)
@@ -138,7 +168,7 @@ func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.Node
 	if err := validateRect(node.Rect); err != nil {
 		return fmt.Errorf("render.err.invalid_rect: node %q: %w", id, err)
 	}
-	style, styled := styles[id]
+	style, styled := e.styleFor(id)
 	var textColor *uiir.RGBA
 	if styled {
 		// Explicit paint comes first so the node's own text and its
@@ -163,8 +193,13 @@ func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.Node
 			// button already has its paint.
 			if !styled {
 				fill := FillButton
-				if sem.Disabled {
+				switch {
+				case sem.Disabled:
 					fill = FillButtonDisabled
+				case e.options.Interaction.Pressed == id:
+					fill = FillButtonPressed
+				case e.options.Interaction.Hover == id:
+					fill = FillButtonHover
 				}
 				*out = append(*out, FillRectCommand{NodeID: id, Rect: node.Rect, Fill: fill})
 			}
@@ -173,10 +208,13 @@ func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.Node
 				label := textmetrics.Fit(m, sem.Label, textmetrics.Body, node.Rect.Width-buttonLabelInset)
 				*out = append(*out, DrawTextCommand{NodeID: id, Rect: node.Rect, Text: label, Align: AlignCenter, Muted: sem.Disabled, Color: textColor})
 			}
+			e.focusRing(id, node.Rect, styled)
+		case lowering.RoleCheckbox, lowering.RoleTextField, lowering.RoleSlider:
+			e.emitInput(id, node.Rect, sem, styled, textColor)
 		}
 	}
 	for _, child := range resolved.PaintOrder(id) {
-		if err := emitNode(resolved, semantics, styles, m, child, out); err != nil {
+		if err := e.emitNode(child); err != nil {
 			return err
 		}
 	}

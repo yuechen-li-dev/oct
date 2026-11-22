@@ -1,0 +1,14 @@
+expect error: "function 'UI.Checkbox' argument 3 expects a callback fn(Bool) -> Msg that builds the app's message (for example a payload variant such as Msg.Set), got fn(String) -> Msg"
+
+package Main
+
+import UI
+
+enum Msg {
+    Rename(String)
+}
+
+fn Main() -> Int {
+    let view = UI.Checkbox("Audio", true, Msg.Rename)
+    return 0
+}

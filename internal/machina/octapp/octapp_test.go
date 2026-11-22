@@ -258,3 +258,88 @@ func TestGridMatrixValidation(t *testing.T) {
 		}
 	}
 }
+
+var form = filepath.Join("..", "..", "..", "Examples", "MachinaForm", "main.oct")
+
+func field(t *testing.T, s *session.Session[interpret.Value], name string) interpret.Value {
+	t.Helper()
+	v, ok := s.State().Record.Fields[name]
+	if !ok {
+		t.Fatalf("model has no field %s", name)
+	}
+	return v
+}
+
+func press(t *testing.T, s *session.Session[interpret.Value], alias string) {
+	t.Helper()
+	r, ok := s.ActionRect(alias)
+	if !ok {
+		t.Fatalf("no control sends %s", alias)
+	}
+	if _, err := s.PointerDown(session.PointerEvent{X: r.X + r.Width/2, Y: r.Y + r.Height/2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PointerUp(session.PointerEvent{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The UI-M6 gate: a checkbox, a text field and a slider each round-trip a
+// value through the Oct callback (a payload variant) and Update.
+func TestFormInputsRoundTripThroughUpdate(t *testing.T) {
+	s, err := NewSession(form, layout.Rect{Width: 480, Height: 320}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	press(t, s, "Msg.SetAudio")
+	if field(t, s, "Audio").Bool {
+		t.Fatal("the checkbox proposed false through Msg.SetAudio")
+	}
+	press(t, s, "Msg.Rename")
+	for _, step := range []func() (bool, error){
+		func() (bool, error) { return s.KeyPress(session.KeyEnd) },
+		func() (bool, error) { return s.TextInput(" B") },
+	} {
+		if _, err := step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := field(t, s, "Name").Text; got != "Studio B" {
+		t.Fatalf("name = %q, want \"Studio B\"", got)
+	}
+	r, _ := s.ActionRect("Msg.SetVolume")
+	if _, err := s.PointerDown(session.PointerEvent{X: r.X + r.Width - 1, Y: r.Y + r.Height/2}); err != nil {
+		t.Fatal(err)
+	}
+	if got := field(t, s, "Volume").Float; got != 1 {
+		t.Fatalf("volume = %g, want 1", got)
+	}
+}
+
+// A callback can be an anonymous function as well as a variant.
+func TestInputCallbackMayBeAnAnonymousFunction(t *testing.T) {
+	b, err := os.ReadFile(form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := strings.Replace(string(b), "UI.Checkbox(\"Include audio\", model.Audio, Msg.SetAudio)",
+		"UI.Checkbox(\"Include audio\", model.Audio, fn(on: Bool) -> Msg { return Msg.SetAudio(on) })", 1)
+	dir, err := os.MkdirTemp("testdata", "variant-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	abs, _ := filepath.Abs(dir)
+	path := filepath.Join(abs, "main.oct")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewSession(path, layout.Rect{Width: 480, Height: 320}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	press(t, s, "<anonymous function>")
+	if field(t, s, "Audio").Bool {
+		t.Fatal("the anonymous callback built Msg.SetAudio(false)")
+	}
+}

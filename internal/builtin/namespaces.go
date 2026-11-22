@@ -11,6 +11,10 @@ var namespaceAliases = map[string]map[string]string{
 		"Region":  "UIRegion",
 		"Arrange": "UIArrange",
 		"Button":  "UIButtonMsg",
+		// Inputs are generic over the message their callback builds.
+		"Checkbox":  "UICheckbox",
+		"TextField": "UITextField",
+		"Slider":    "UISlider",
 	},
 	"String": {
 		"Concat":     "StringConcat",
@@ -121,6 +125,9 @@ func ArtifactPhaseSpelling(name string) (string, bool) {
 // they take no body: every parameter is an attribute.
 var markupParameters = map[string][]string{
 	"UIButtonMsg": {"label", "on", "enabled"},
+	"UICheckbox":  {"label", "checked", "on"},
+	"UITextField": {"value", "on"},
+	"UISlider":    {"value", "min", "max", "on"},
 }
 
 // MarkupParameters reports the parameter names of a compiler-owned builtin

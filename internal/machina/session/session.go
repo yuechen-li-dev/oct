@@ -40,6 +40,12 @@ type Session[TState any] struct {
 	index    *hittest.Index
 	commands []render.Command
 	snapshot string
+
+	// interaction is the transient state the session owns between frames
+	// (hover, press, focus, caret), keyed by node id; the model owns every
+	// value (DESIGN.md §5.9). dragging is a slider following the pointer.
+	interaction render.Interaction
+	dragging    layout.NodeID
 }
 
 type DispatchResult struct {
@@ -83,7 +89,21 @@ func (s *Session[TState]) Rebuild() error {
 	if err != nil {
 		return fmt.Errorf("session.err.build_hittest: %w", err)
 	}
-	commands, err := render.BuildCommands(resolved, low.Semantics, low.Styles, render.Options{Metrics: s.metrics})
+	previous := [3]any{s.lowered, s.resolved, s.index}
+	s.lowered, s.resolved, s.index = low, resolved, index
+	s.settleInteraction()
+	if err := s.repaint(); err != nil {
+		s.lowered, s.resolved, s.index = previous[0].(*lowering.Result), previous[1].(*layout.ResolvedLayoutDocument), previous[2].(*hittest.Index)
+		return err
+	}
+	s.root = root
+	return nil
+}
+
+// repaint rebuilds the frame's commands from the current layout and
+// interaction, without projecting the model again.
+func (s *Session[TState]) repaint() error {
+	commands, err := render.BuildCommands(s.resolved, s.lowered.Semantics, s.lowered.Styles, render.Options{Metrics: s.metrics, Interaction: s.interaction, States: s.lowered.States})
 	if err != nil {
 		return fmt.Errorf("session.err.build_commands: %w", err)
 	}
@@ -91,10 +111,6 @@ func (s *Session[TState]) Rebuild() error {
 	if err != nil {
 		return fmt.Errorf("session.err.record_snapshot: %w", err)
 	}
-	s.root = root
-	s.lowered = low
-	s.resolved = resolved
-	s.index = index
 	s.commands = commands
 	s.snapshot = snapshot
 	return nil
@@ -165,6 +181,11 @@ func (s *Session[TState]) Snapshot() (string, error) {
 	return s.snapshot, nil
 }
 
+// PointerDown presses the control under the pointer and focuses it. A
+// button sends its message and a checkbox proposes the opposite value; a
+// text field places its caret; a slider proposes the value under the
+// pointer and follows it until PointerUp. A press on nothing clears focus.
+// Action is the action sent, or nil when the press sent nothing.
 func (s *Session[TState]) PointerDown(event PointerEvent) (*DispatchResult, error) {
 	if s == nil {
 		return nil, fmt.Errorf("session.err.nil_session: session is required")
@@ -175,18 +196,54 @@ func (s *Session[TState]) PointerDown(event PointerEvent) (*DispatchResult, erro
 		return nil, fmt.Errorf("session.err.hit_test: %w", err)
 	}
 	if !ok {
-		return &DispatchResult{Hit: false, SnapshotBefore: before, SnapshotAfter: before}, nil
+		s.interaction.Focus, s.interaction.Pressed = "", ""
+		if err := s.repaint(); err != nil {
+			return nil, err
+		}
+		return &DispatchResult{Hit: false, SnapshotBefore: before, SnapshotAfter: s.snapshot}, nil
 	}
-	nextState, err := s.app.Dispatch(s.state, hit.Action)
-	if err != nil {
-		return nil, fmt.Errorf("session.err.dispatch: %w", err)
+	id := hit.NodeID
+	if s.interaction.Focus != id {
+		s.interaction.Caret = 0
 	}
-	s.state = nextState
-	if err := s.Rebuild(); err != nil {
+	s.interaction.Focus, s.interaction.Pressed = id, id
+	action := hit.Action
+	sem := s.lowered.Semantics[id]
+	var sent *lowering.Action
+	switch sem.Role {
+	case lowering.RoleCheckbox:
+		action.Value = !sem.Input.Checked
+		sent = &action
+	case lowering.RoleTextField:
+		s.interaction.Caret = s.caretAt(id, event.X)
+	case lowering.RoleSlider:
+		s.dragging = id
+		if v := s.sliderValueAt(id, event.X); v != sem.Input.Number {
+			action.Value = v
+			sent = &action
+		}
+	default:
+		sent = &action
+	}
+	if sent != nil {
+		if err := s.send(*sent); err != nil {
+			return nil, err
+		}
+	} else if err := s.repaint(); err != nil {
 		return nil, err
 	}
-	action := hit.Action
-	return &DispatchResult{Hit: true, Action: &action, SnapshotBefore: before, SnapshotAfter: s.snapshot}, nil
+	return &DispatchResult{Hit: true, Action: sent, SnapshotBefore: before, SnapshotAfter: s.snapshot}, nil
+}
+
+// send delivers an action to the app and rebuilds the frame from the new
+// model.
+func (s *Session[TState]) send(action lowering.Action) error {
+	nextState, err := s.app.Dispatch(s.state, action)
+	if err != nil {
+		return fmt.Errorf("session.err.dispatch: %w", err)
+	}
+	s.state = nextState
+	return s.Rebuild()
 }
 
 func (s *Session[TState]) State() TState {

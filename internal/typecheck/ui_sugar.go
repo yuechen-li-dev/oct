@@ -13,8 +13,8 @@ import (
 // enum, so it is reached through the UI namespace alias.
 func (c checker) checkUISugarCall(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	written := callee
-	if callee == "UIButtonMsg" {
-		written = "UI.Button"
+	if w, ok := map[string]string{"UIButtonMsg": "UI.Button", "UICheckbox": "UI.Checkbox", "UITextField": "UI.TextField", "UISlider": "UI.Slider"}[callee]; ok {
+		written = w
 	}
 	if len(typeArguments) > 0 {
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", written)
@@ -34,6 +34,22 @@ func (c checker) checkUISugarCall(scope *scope, callee string, typeArguments []a
 		"UISpan":       {integer, integer, ui},
 		"UIButtonMsg":  {str, {}, boolean},
 		"UITextWith":   {c.uiPackageType("TextSpec"), str},
+		// An input's last argument is its callback; see callbacks below.
+		"UICheckbox":    {str, boolean, {}},
+		"UITextField":   {str, {}},
+		"UISlider":      {float, float, float, {}},
+		"UIStyleStates": {c.uiPackageType("StyleStates"), ui},
+	}[callee]
+	// callbacks gives an input's callback position and the value it is
+	// called with: `on: fn(Bool) -> M` builds the message for a proposed
+	// value (DESIGN.md §5.9).
+	callback, isInput := map[string]struct {
+		index int
+		value Type
+	}{
+		"UICheckbox":  {2, boolean},
+		"UITextField": {1, str},
+		"UISlider":    {3, float},
 	}[callee]
 	if len(arguments) != len(params) {
 		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", written, len(params), len(arguments))
@@ -55,13 +71,21 @@ func (c checker) checkUISugarCall(scope *scope, callee string, typeArguments []a
 			join.addMessage(idx, t.Name)
 			continue
 		}
+		if isInput && idx == callback.index {
+			message, err := c.inputCallbackMessage(t, callback.value)
+			if err != nil {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d %v", written, idx+1, err)
+			}
+			join.addMessage(idx, message)
+			continue
+		}
 		if params[idx].Base == BaseTypeUI {
 			if err := c.checkUIValueArgument(scope, join, idx, params[idx].ArrayDepth, t); err != nil {
 				return ExprType{}, err
 			}
 			continue
 		}
-		if t != params[idx] {
+		if !isAssignable(t, params[idx]) {
 			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", written, idx+1, params[idx], t)
 		}
 	}
@@ -75,4 +99,21 @@ func (c checker) isMessageEnum(t Type) bool {
 	}
 	_, ok := c.lookupEnum(t.Name)
 	return ok
+}
+
+// inputCallbackMessage checks an input's callback, fn(value) -> M, and
+// names M. A payload variant such as Msg.SetAudio is one.
+func (c checker) inputCallbackMessage(t Type, value Type) (string, error) {
+	want := fmt.Sprintf("expects a callback fn(%s) -> Msg that builds the app's message (for example a payload variant such as Msg.Set)", value)
+	if !t.IsFunction {
+		return "", fmt.Errorf("%s, got %s", want, t)
+	}
+	signature, ok := c.functionTypes[t.FunctionSignature]
+	if !ok {
+		return "", fmt.Errorf("internal error: missing function type metadata for %s", t.FunctionSignature)
+	}
+	if len(signature.parameters) != 1 || signature.parameters[0] != value || signature.isFallible || !c.isMessageEnum(signature.returnType) {
+		return "", fmt.Errorf("%s, got %s", want, t)
+	}
+	return signature.returnType.Name, nil
 }

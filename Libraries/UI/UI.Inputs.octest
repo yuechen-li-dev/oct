@@ -1,0 +1,40 @@
+package UI
+
+import String
+
+// Controlled inputs (DESIGN.md §5.9) and state styles (§5.7). Inputs are
+// compiler-owned; inside package UI they are reached by their backing
+// builtins. The session behavior they drive is covered by the Go session
+// tests and Examples/MachinaForm.
+
+enum FormMsg {
+    SetAudio(Bool)
+    Rename(String)
+    SetVolume(Float)
+}
+
+fn FormView(audio: Bool, name: String, volume: Float) -> UI<FormMsg> {
+    return Column([
+        UICheckbox("Audio", audio, FormMsg.SetAudio),
+        UITextField(name, FormMsg.Rename),
+        UISlider(volume, 0.0, 10.0, FormMsg.SetVolume)
+    ])
+}
+
+[Fact]
+fn InputsShowTheModelsValueAndTheirCallback() -> Void {
+    let sig = Signature(FormView(true, "Studio", 2.5))
+    Assert.True(String.Contains(sig, "Checkbox#0.0(Audio,checked=true->FormMsg.SetAudio)"), "a checkbox shows checked and its callback")
+    Assert.True(String.Contains(sig, "TextField#0.1(\"Studio\"->FormMsg.Rename)"), "a text field shows its value")
+    Assert.True(String.Contains(sig, "Slider#0.2(2.5 in 0..10->FormMsg.SetVolume)"), "a slider shows its value in its range")
+}
+
+[Fact]
+fn StateStylesAreDeclaredPerState() -> Void {
+    let base = DefaultStyle()
+    let states = States(base) with { Hover: base with { Radius: 4px }  Pressed: base with { Radius: 8px } }
+    let sig = Signature(StyledStates(states, Text("x")))
+    Assert.True(String.Contains(sig, "{states=hover{style=") and String.Contains(sig, "radius:4}"), "the hover style is part of the node")
+    Assert.True(String.Contains(sig, "radius:8}"), "so is the pressed style")
+    Assert.Equal(Signature(StyledStates(States(base), Text("x"))), Signature(StyledStates(States(base), Text("x"))), "state styles are deterministic")
+}

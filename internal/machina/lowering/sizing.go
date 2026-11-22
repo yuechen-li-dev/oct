@@ -78,6 +78,16 @@ func isWrapped(node *uiir.Node) bool {
 
 // leafSize is a Text or Button's measured size on one line.
 func leafSize(node *uiir.Node, m textmetrics.Metrics) (float64, float64) {
+	line := m.LineHeight(textmetrics.Body)
+	switch node.Kind {
+	case uiir.NodeCheckbox:
+		// The box, a gap, then the label.
+		return CheckboxBox + CheckboxGap + m.Width(node.Label, textmetrics.Body), line + inputPadY
+	case uiir.NodeTextField:
+		return InputWidth, line + 2*TextFieldPadY
+	case uiir.NodeSlider:
+		return InputWidth, line + inputPadY
+	}
 	if node.Kind == uiir.NodeButton {
 		w := m.Width(node.Label, textmetrics.Body) + buttonPadX
 		if w < buttonMinWidth {
@@ -137,7 +147,7 @@ func sizingFrame(node *uiir.Node, z uiir.SizingSpec, axis layout.Axis, m textmet
 	case uiir.SizingSize:
 		return layout.FrameSpec{Kind: layout.FixedFrame, Width: z.Width, Height: z.Height}, nil
 	}
-	if (node.Kind == uiir.NodeText && !isWrapped(node)) || node.Kind == uiir.NodeButton {
+	if (node.Kind == uiir.NodeText && !isWrapped(node)) || isControl(node) {
 		w, h := leafSize(node, m)
 		return layout.FrameSpec{Kind: layout.FixedFrame, Width: w, Height: h}, nil
 	}
@@ -166,7 +176,7 @@ func intrinsic(node *uiir.Node, m textmetrics.Metrics) (float64, float64, error)
 		return z.Width, z.Height, nil
 	}
 	switch node.Kind {
-	case uiir.NodeText, uiir.NodeButton:
+	case uiir.NodeText, uiir.NodeButton, uiir.NodeCheckbox, uiir.NodeTextField, uiir.NodeSlider:
 		w, h := leafSize(node, m)
 		return w, h, nil
 	case uiir.NodeSpacer, uiir.NodeSkip:
@@ -382,4 +392,25 @@ func gridTracks(node *uiir.Node, m textmetrics.Metrics) ([]layout.GridTrack, []l
 		return nil, nil, err
 	}
 	return cols, rows, nil
+}
+
+// Control geometry, in dp. Render draws inputs inside the same boxes.
+const (
+	CheckboxBox   = 18.0
+	CheckboxGap   = 8.0
+	InputWidth    = 200.0
+	TextFieldPadX = 8.0
+	TextFieldPadY = 6.0
+	SliderThumb   = 16.0
+	inputPadY     = 4.0
+)
+
+// isControl reports a button or input: a leaf measured on both axes that
+// the session can focus.
+func isControl(node *uiir.Node) bool {
+	switch node.Kind {
+	case uiir.NodeButton, uiir.NodeCheckbox, uiir.NodeTextField, uiir.NodeSlider:
+		return true
+	}
+	return false
 }

@@ -20,7 +20,12 @@ const (
 	NodeSkip        NodeKind = "Skip"
 	NodeAbsoluteBox NodeKind = "AbsoluteBox"
 	NodeAnchorBox   NodeKind = "AnchorBox"
-	JSONABI                  = "machina.uiir.v1"
+	// Controlled inputs (UI.Checkbox, UI.TextField, UI.Slider): the model
+	// owns the value; the input proposes a change through Callback.
+	NodeCheckbox  NodeKind = "Checkbox"
+	NodeTextField NodeKind = "TextField"
+	NodeSlider    NodeKind = "Slider"
+	JSONABI                = "machina.uiir.v1"
 )
 
 type BoxKind string
@@ -119,6 +124,34 @@ type Node struct {
 	// TextSpec is a Text node's size, weight, wrapping and overflow
 	// (UI.TextWith); nil is the body spec.
 	TextSpec *TextSpec
+	// Input is a controlled input's current value.
+	Input *InputSpec
+	// Callback is the Oct function value an input calls with a proposed
+	// value to build its message; Event is then its tool-facing alias.
+	// Opaque here and never serialized.
+	Callback any
+	// States are the styles a node takes in interaction states
+	// (UI.StyledStates); Style is its normal style.
+	States *StateStyles
+}
+
+// InputSpec is the value a controlled input shows. Checked is a checkbox's;
+// Value a text field's; Number, Min and Max a slider's.
+type InputSpec struct {
+	Checked bool
+	Value   string
+	Number  float64
+	Min     float64
+	Max     float64
+}
+
+// StateStyles are a node's styles for the interaction states the session
+// tracks. Each replaces the normal style while its state holds.
+type StateStyles struct {
+	Hover    StyleSpec
+	Pressed  StyleSpec
+	Focused  StyleSpec
+	Disabled StyleSpec
 }
 
 type Overflow string
@@ -347,7 +380,19 @@ func Clone(node *Node) *Node {
 	for _, c := range node.Children {
 		ch = append(ch, Clone(c))
 	}
-	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout), Grid: cloneGrid(node.Grid), Cell: cloneCell(node.Cell), GridRows: node.GridRows, GridCols: node.GridCols, Style: cloneStyle(node.Style), Stack: cloneStack(node.Stack), Sizing: cloneSizing(node.Sizing), Offset: cloneOffset(node.Offset), Message: node.Message, TextSpec: cloneTextSpec(node.TextSpec)}
+	c := *node
+	c.Children = ch
+	c.Box, c.Layout, c.Grid, c.Cell = cloneBox(node.Box), cloneRect(node.Layout), cloneGrid(node.Grid), cloneCell(node.Cell)
+	c.Style, c.Stack, c.Sizing, c.Offset, c.TextSpec = cloneStyle(node.Style), cloneStack(node.Stack), cloneSizing(node.Sizing), cloneOffset(node.Offset), cloneTextSpec(node.TextSpec)
+	if node.Input != nil {
+		in := *node.Input
+		c.Input = &in
+	}
+	if node.States != nil {
+		st := *node.States
+		c.States = &st
+	}
+	return &c
 }
 func cloneStack(s *StackSpec) *StackSpec {
 	if s == nil {
@@ -420,6 +465,12 @@ func Signature(node *Node) string {
 		return p + layoutSuffix(node.Layout)
 	case NodeButton:
 		return p + layoutSuffix(node.Layout) + "(" + node.Label + "->" + node.Event + ",enabled=" + fmt.Sprintf("%t", node.Enabled) + ")"
+	case NodeCheckbox:
+		return p + layoutSuffix(node.Layout) + "(" + node.Label + ",checked=" + fmt.Sprintf("%t", node.Input.Checked) + "->" + node.Event + ")"
+	case NodeTextField:
+		return p + layoutSuffix(node.Layout) + "(" + fmt.Sprintf("%q", node.Input.Value) + "->" + node.Event + ")"
+	case NodeSlider:
+		return p + layoutSuffix(node.Layout) + "(" + fmt.Sprintf("%g in %g..%g", node.Input.Number, node.Input.Min, node.Input.Max) + "->" + node.Event + ")"
 	case NodeColumn, NodeRow, NodeGrid, NodeAbsoluteBox, NodeAnchorBox:
 		parts := make([]string, 0, len(node.Children))
 		for _, c := range node.Children {
@@ -710,6 +761,9 @@ func sugarSuffix(node *Node) string {
 	}
 	if node.Offset != nil {
 		out += fmt.Sprintf("{nudge=%g,%g}", node.Offset.X, node.Offset.Y)
+	}
+	if st := node.States; st != nil {
+		out += "{states=hover" + styleSuffix(&st.Hover) + ",pressed" + styleSuffix(&st.Pressed) + ",focused" + styleSuffix(&st.Focused) + ",disabled" + styleSuffix(&st.Disabled) + "}"
 	}
 	if t := node.TextSpec; t != nil {
 		color := "inherit"

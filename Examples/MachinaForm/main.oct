@@ -1,0 +1,72 @@
+package Main
+
+import UI
+
+// A settings form with controlled inputs (Libraries/UI/DESIGN.md §5.9): the
+// model owns every value, each input proposes a change as a message, and
+// the session owns only hover, press, focus and the caret.
+
+record Settings {
+    Name: String
+    Audio: Bool
+    Volume: Float
+    Saved: Int
+}
+
+enum Msg {
+    Rename(String)
+    SetAudio(Bool)
+    SetVolume(Float)
+    Save
+}
+
+fn Init() -> Settings {
+    return Settings { Name: "Studio"  Audio: true  Volume: 0.5  Saved: 0 }
+}
+
+fn Update(model: Settings, msg: Msg) -> Settings {
+    return match msg {
+        case Msg.Rename(name) => model with { Name: name }
+        case Msg.SetAudio(on) => model with { Audio: on }
+        case Msg.SetVolume(v) => model with { Volume: v }
+        case Msg.Save => model with { Saved: model.Saved + 1 }
+    }
+}
+
+// A primary button: accent fill, darker while hovered and pressed, and an
+// outline when it has keyboard focus.
+fn PrimaryStates() -> UI.StyleStates {
+    let base = UI.DefaultStyle() with {
+        Background: UI.Rgb(59, 110, 214)
+        Foreground: UI.Rgb(255, 255, 255)
+        BorderColor: UI.Rgb(59, 110, 214)
+        Radius: 6px
+    }
+    return UI.States(base) with {
+        Hover: base with { Background: UI.Rgb(47, 92, 186) }
+        Pressed: base with { Background: UI.Rgb(33, 70, 150) }
+        Focused: base with { BorderColor: UI.Rgb(20, 40, 90)  BorderWidth: 2px }
+        Disabled: base with { Background: UI.Rgb(236, 239, 244)  Foreground: UI.Rgb(150, 154, 162) }
+    }
+}
+
+fn Percent(v: Float) -> String {
+    return FormatFloat(v * 100.0, 0) + "%"
+}
+
+fn View(model: Settings) -> UI<Msg> {
+    let audio = if model.Audio { "on" } else { "off" }
+    return UI.Stack(UI.Vertical() with { Gap: 12.0 px  Padding: UI.InsetsAll(16px) }, [
+        UI.TextWith(UI.Title(), "Settings"),
+        UI.Text("Name"),
+        UI.TextField(model.Name, Msg.Rename),
+        UI.Checkbox("Include audio", model.Audio, Msg.SetAudio),
+        UI.Stack(UI.Horizontal() with { Gap: 12.0 px  Align: UI.Align.Center }, [
+            UI.Text("Volume"),
+            UI.Slider(model.Volume, 0.0, 1.0, Msg.SetVolume),
+            UI.Text(Percent(model.Volume))
+        ]),
+        UI.StyledStates(PrimaryStates(), UI.Button("Save", Msg.Save, model.Name != "")),
+        UI.Text(model.Name + ", audio " + audio + ", volume " + Percent(model.Volume) + ", saved " + FormatFloat(Float(model.Saved), 0) + " times")
+    ])
+}

@@ -25,25 +25,35 @@ type uiOptions struct {
 	title  string
 	width  float64
 	height float64
-	clicks []string
+	steps  []uiStep
 	dump   bool
 }
 
-const uiUsage = "usage: oct ui <run|check> <app.oct> [--title <text>] [--width <dp>] [--height <dp>] [--click <label>]... [--dump]"
+// uiStep is one scripted input for `oct ui check`, applied in order.
+type uiStep struct {
+	kind  string // "click", "type" or "key"
+	value string
+}
+
+const uiUsage = "usage: oct ui <run|check> <app.oct> [--title <text>] [--width <dp>] [--height <dp>] [--click <label>] [--type <text>] [--key <key>]... [--dump]"
 
 func writeUIHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, uiUsage+`
 Run an Oct program as a Machina UI app. An app package declares:
   fn Init() -> Model
   fn Update(model: Model, msg: Msg) -> Model     (Msg: the app's message enum)
-  fn View(model: Model) -> UI
+  fn View(model: Model) -> UI<Msg>
 Subcommands:
   run    Open the app in a native window. Requires an oct binary built with
          the native backend: go build -tags machina_gio ./cmd/oct
-  check  Load the app headlessly and print its first frame. Each --click
-         presses the button with that exact label, or the one sending that
-         message (for example 'Msg.Inspect("harbor-board")'), and prints
-         the next frame.
+  check  Load the app headlessly and print its first frame. Then, in
+         order, each --click presses the control with that exact label, or
+         the one sending that message or callback (for example
+         'Msg.Inspect("harbor-board")' or 'Msg.Rename'), at its center;
+         each --type types text into the focused text field; each --key
+         presses a key (Tab, Shift+Tab, Enter, Space, Escape, Backspace,
+         Delete, Left, Right, Up, Down, Home, End). Each step prints the
+         next frame.
          --dump prints each frame as a layout dump instead: one line per
          node in paint order, with the spans that place it and its rect.
 Width and height are device-independent units (default 640x480).`)
@@ -92,12 +102,12 @@ func parseUIOptions(args []string) (uiOptions, error) {
 			}
 		case "--dump":
 			opts.dump = true
-		case "--click":
+		case "--click", "--type", "--key":
 			v, err := value()
 			if err != nil {
 				return opts, err
 			}
-			opts.clicks = append(opts.clicks, v)
+			opts.steps = append(opts.steps, uiStep{kind: strings.TrimPrefix(arg, "--"), value: v})
 		default:
 			if strings.HasPrefix(arg, "--") {
 				return opts, fmt.Errorf("unknown option %s; %s", arg, uiUsage)
@@ -111,8 +121,8 @@ func parseUIOptions(args []string) (uiOptions, error) {
 	if opts.path == "" {
 		return opts, errors.New(uiUsage)
 	}
-	if opts.sub == "run" && len(opts.clicks) > 0 {
-		return opts, fmt.Errorf("--click applies to `oct ui check` only")
+	if opts.sub == "run" && len(opts.steps) > 0 {
+		return opts, fmt.Errorf("--click, --type and --key apply to `oct ui check` only")
 	}
 	if opts.sub == "run" && opts.dump {
 		return opts, fmt.Errorf("--dump applies to `oct ui check` only")
@@ -141,31 +151,70 @@ func runUICommand(opts uiOptions, stdout io.Writer) error {
 	if err := writeUIFrame(stdout, s, opts.dump); err != nil {
 		return err
 	}
-	for _, label := range opts.clicks {
-		cmds, err := s.Commands()
+	for _, step := range opts.steps {
+		line, err := runUIStep(s, step)
 		if err != nil {
 			return err
 		}
-		target, ok := findLabel(cmds, label)
-		if !ok {
-			target, ok = s.ActionRect(label)
-		}
-		if !ok {
-			return fmt.Errorf("--click %q: no element with that exact label or message in the current frame", label)
-		}
-		res, err := s.PointerDown(session.PointerEvent{X: target.X + target.Width/2, Y: target.Y + target.Height/2})
-		if err != nil {
-			return err
-		}
-		if !res.Hit {
-			return fmt.Errorf("--click %q: the label is visible but not interactive", label)
-		}
-		fmt.Fprintf(stdout, "\nclick %q -> %s\n", label, res.Action.Name)
+		fmt.Fprintf(stdout, "\n%s\n", line)
 		if err := writeUIFrame(stdout, s, opts.dump); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// runUIStep applies one scripted input and describes what it did.
+func runUIStep(s *session.Session[interpret.Value], step uiStep) (string, error) {
+	switch step.kind {
+	case "type":
+		if s.Focused() == "" {
+			return "", fmt.Errorf("--type %q: nothing has focus; --click a text field first", step.value)
+		}
+		if _, err := s.TextInput(step.value); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("type %q", step.value), nil
+	case "key":
+		key := session.Key(step.value)
+		known := false
+		for _, k := range session.Keys {
+			known = known || k == key
+		}
+		if !known {
+			return "", fmt.Errorf("--key %q: unknown key", step.value)
+		}
+		if _, err := s.KeyPress(key); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("key %s (focus %s)", key, s.Focused()), nil
+	}
+	cmds, err := s.Commands()
+	if err != nil {
+		return "", err
+	}
+	target, ok := findLabel(cmds, step.value)
+	if !ok {
+		target, ok = s.ActionRect(step.value)
+	}
+	if !ok {
+		return "", fmt.Errorf("--click %q: no element with that exact label or message in the current frame", step.value)
+	}
+	at := session.PointerEvent{X: target.X + target.Width/2, Y: target.Y + target.Height/2}
+	res, err := s.PointerDown(at)
+	if err != nil {
+		return "", err
+	}
+	if !res.Hit {
+		return "", fmt.Errorf("--click %q: the label is visible but not interactive", step.value)
+	}
+	if _, err := s.PointerUp(at); err != nil {
+		return "", err
+	}
+	if res.Action == nil {
+		return fmt.Sprintf("click %q -> focus", step.value), nil
+	}
+	return fmt.Sprintf("click %q -> %s", step.value, res.Action.Name), nil
 }
 
 func findLabel(cmds []render.Command, label string) (layout.Rect, bool) {

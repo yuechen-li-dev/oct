@@ -10,10 +10,16 @@ import (
 
 // Action is what activating a node sends. Name is the tool-facing alias;
 // Message, when set, is the typed value (an Oct enum value) the app's
-// Update receives instead of Name.
+// Update receives.
+//
+// An input's action has a Callback instead: the Oct function that builds
+// the message for a proposed value. The session fills Value (a bool, string
+// or float64, by the input's role) when it proposes one.
 type Action struct {
-	Name    string
-	Message any
+	Name     string
+	Message  any
+	Callback any
+	Value    any
 }
 
 type Role string
@@ -22,6 +28,9 @@ const (
 	RoleText      Role = "text"
 	RoleButton    Role = "button"
 	RoleContainer Role = "container"
+	RoleCheckbox  Role = "checkbox"
+	RoleTextField Role = "textfield"
+	RoleSlider    Role = "slider"
 )
 
 type Semantics struct {
@@ -32,6 +41,8 @@ type Semantics struct {
 	// Text is a Text node's spec (size, weight, wrapping, overflow); render
 	// wraps and truncates with it using the same metrics as layout.
 	Text *uiir.TextSpec
+	// Input is an input's current value.
+	Input *uiir.InputSpec
 }
 
 // Style is the paint a node requested through UI.Styled (Libraries/UI
@@ -43,6 +54,9 @@ type Result struct {
 	Actions   map[layout.NodeID]Action
 	Semantics map[layout.NodeID]Semantics
 	Styles    map[layout.NodeID]Style
+	// States are the interaction-state styles of nodes that declare them
+	// (UI.StyledStates).
+	States map[layout.NodeID]uiir.StateStyles
 	// Kinds names each node's authoring construct (Text, Button, Stack(v),
 	// Canvas, At, ...) for layout dumps.
 	Kinds map[layout.NodeID]string
@@ -64,7 +78,7 @@ func LowerWith(root *uiir.Node, metrics textmetrics.Metrics) (*Result, error) {
 		metrics = textmetrics.Fixed{}
 	}
 	withIDs := uiir.WithNodeIDs(root)
-	res := &Result{Rows: make([]layout.LayoutRow, 0), Actions: map[layout.NodeID]Action{}, Semantics: map[layout.NodeID]Semantics{}, Styles: map[layout.NodeID]Style{}, Kinds: map[layout.NodeID]string{}, metrics: metrics}
+	res := &Result{Rows: make([]layout.LayoutRow, 0), Actions: map[layout.NodeID]Action{}, Semantics: map[layout.NodeID]Semantics{}, Styles: map[layout.NodeID]Style{}, States: map[layout.NodeID]uiir.StateStyles{}, Kinds: map[layout.NodeID]string{}, metrics: metrics}
 	if err := lowerNode(res, withIDs, nil, nil, 0); err != nil {
 		return nil, err
 	}
@@ -97,6 +111,9 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 	if node.Style != nil {
 		out.Styles[id] = Style(*node.Style)
 	}
+	if node.States != nil {
+		out.States[id] = *node.States
+	}
 	switch node.Kind {
 	case uiir.NodeText:
 		w, h := leafSize(node, out.metrics)
@@ -111,6 +128,13 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 		if enabled && node.Event != "" {
 			out.Actions[id] = Action{Name: node.Event, Message: node.Message}
 		}
+	case uiir.NodeCheckbox, uiir.NodeTextField, uiir.NodeSlider:
+		w, h := leafSize(node, out.metrics)
+		row.Frame = layout.FrameSpec{Kind: layout.FixedFrame, Width: w, Height: h}
+		role := map[uiir.NodeKind]Role{uiir.NodeCheckbox: RoleCheckbox, uiir.NodeTextField: RoleTextField, uiir.NodeSlider: RoleSlider}[node.Kind]
+		input := *node.Input
+		out.Semantics[id] = Semantics{Role: role, Label: node.Label, Focusable: true, Input: &input}
+		out.Actions[id] = Action{Name: node.Event, Callback: node.Callback}
 	case uiir.NodeSpacer:
 		row.Frame = layout.FrameSpec{Kind: layout.FillFrame, Weight: 1}
 	case uiir.NodeColumn:

@@ -94,6 +94,26 @@ func (i interpreter) evalUISugarBuiltin(env *environment, pkgName string, callee
 		return evalResult{value: Value{Kind: ValueUI, UI: node}}, nil
 	}
 	switch callee {
+	case "UICheckbox":
+		return ui(inputNode(machinauiir.NodeCheckbox, args[2], &machinauiir.InputSpec{Checked: args[1].Bool}, args[0].Text))
+	case "UITextField":
+		return ui(inputNode(machinauiir.NodeTextField, args[1], &machinauiir.InputSpec{Value: args[0].Text}, ""))
+	case "UISlider":
+		value, lo, hi := uiFloat(args[0]), uiFloat(args[1]), uiFloat(args[2])
+		if !(lo < hi) {
+			return evalResult{}, fmt.Errorf("UI.Slider: min %g must be below max %g", lo, hi)
+		}
+		if value < lo || value > hi {
+			return evalResult{}, fmt.Errorf("UI.Slider: value %g is outside %g..%g", value, lo, hi)
+		}
+		return ui(inputNode(machinauiir.NodeSlider, args[3], &machinauiir.InputSpec{Number: value, Min: lo, Max: hi}, ""))
+	case "UIStyleStates":
+		states := args[0].Record.Fields
+		node := cloneUIIR(args[1].UI)
+		normal := uiStyle(states["Normal"])
+		node.Style = &normal
+		node.States = &machinauiir.StateStyles{Hover: uiStyle(states["Hover"]), Pressed: uiStyle(states["Pressed"]), Focused: uiStyle(states["Focused"]), Disabled: uiStyle(states["Disabled"])}
+		return ui(node)
 	case "UISkip":
 		return ui(&uiirNode{Kind: machinauiir.NodeSkip})
 	case "UIStack":
@@ -274,4 +294,46 @@ func (i interpreter) evalUIGridMatrix(specValue, rowsValue Value) (evalResult, e
 	}
 	grid := &machinauiir.GridSpec{Columns: columns, Rows: rowTracks, ColumnGap: colGap, RowGap: rowGap, Padding: uiInsets(spec["Padding"])}
 	return evalResult{value: Value{Kind: ValueUI, UI: &uiirNode{Kind: uiirNodeGrid, Grid: grid, Children: children}}}, nil
+}
+
+// inputNode is a controlled input. Its callback builds the message for a
+// proposed value; Event is the callback's printed name (Msg.SetAudio), for
+// dumps and `oct ui check --click`.
+func inputNode(kind machinauiir.NodeKind, callback Value, input *machinauiir.InputSpec, label string) *uiirNode {
+	return &uiirNode{Kind: kind, Label: label, Enabled: true, Input: input, Callback: callback, Event: CallbackAlias(callback)}
+}
+
+// CallbackAlias is the printed name of an input's callback: the variant
+// (Msg.SetAudio) or the function (SetVolume), without its package.
+func CallbackAlias(v Value) string {
+	name := v.String()
+	if v.Kind == ValueFunc && v.Function.Variant != nil {
+		name = v.Function.Variant.TypeName + "." + v.Function.Variant.Variant
+		if dot := strings.LastIndex(v.Function.Variant.TypeName, "."); dot >= 0 {
+			name = v.Function.Variant.TypeName[dot+1:] + "." + v.Function.Variant.Variant
+		}
+		return name
+	}
+	if dot := strings.Index(name, "."); dot >= 0 && v.Kind == ValueFunc && v.Function.Anonymous == nil {
+		return name[dot+1:]
+	}
+	return name
+}
+
+func uiFloat(v Value) float64 {
+	if v.Kind == ValueInt {
+		return float64(v.Int)
+	}
+	return v.Float
+}
+
+func uiColor(v Value) machinauiir.RGBA {
+	f := v.Record.Fields
+	return machinauiir.RGBA{R: uint8(f["R"].Int), G: uint8(f["G"].Int), B: uint8(f["B"].Int), A: uint8(f["A"].Int)}
+}
+
+// uiStyle decodes a UI.Style record.
+func uiStyle(v Value) machinauiir.StyleSpec {
+	f := v.Record.Fields
+	return machinauiir.StyleSpec{Background: uiColor(f["Background"]), Foreground: uiColor(f["Foreground"]), BorderColor: uiColor(f["BorderColor"]), BorderWidth: float64(f["BorderWidth"].Int), Radius: float64(f["Radius"].Int)}
 }

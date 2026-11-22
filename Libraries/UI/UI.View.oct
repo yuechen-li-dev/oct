@@ -4,10 +4,20 @@ package UI
 // of the app's message enum M (README "Typed views"). Bare UI in a function's
 // signature takes the message type of its arguments.
 //
-// UI.Button(label, on, enabled), and the inputs in UI.Inputs.oct, are
-// compiler-owned: they are generic over the message enum, which an ordinary
-// Oct function cannot be. They are reached through the UI namespace and can
-// be written as markup tags (<UI.Button Label="Save" On={Msg.Save} Enabled={true} />).
+// The widgets that send messages are compiler-owned: they are generic over
+// the message enum, which an ordinary Oct function cannot be. They are
+// reached through the UI namespace and can be written as markup tags:
+//
+//     UI.Button(label: String, on: M, enabled: Bool) -> UI<M>
+//     UI.Checkbox(label: String, checked: Bool, on: fn(Bool) -> M) -> UI<M>
+//     UI.TextField(value: String, on: fn(String) -> M) -> UI<M>
+//     UI.Slider(value: Float, min: Float, max: Float, on: fn(Float) -> M) -> UI<M>
+//
+// Inputs are controlled: the model owns the value, and the input proposes a
+// change by calling `on`, which builds the message Update receives. A
+// payload variant is such a function: UI.Checkbox("Audio", model.Audio,
+// Msg.SetAudio). The session owns only transient state (hover, press,
+// focus, caret), keyed by node identity.
 
 // The canonical text form of a view: node kinds, ids, specs and messages.
 // Tests compare views by it.

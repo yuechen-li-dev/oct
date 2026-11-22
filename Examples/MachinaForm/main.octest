@@ -1,0 +1,52 @@
+package Main
+
+import String
+import UI
+
+[Fact]
+fn InputsProposeMessagesThroughTheirCallbacks() -> Void {
+    let model = Update(Update(Update(Init(), Msg.Rename("Booth")), Msg.SetAudio(false)), Msg.SetVolume(0.25))
+    Assert.Equal("Booth", model.Name, "Rename replaces the name")
+    Assert.False(model.Audio, "SetAudio sets the flag")
+    Assert.Near(0.25, model.Volume, 0.000001, "SetVolume sets the volume")
+}
+
+[Fact]
+fn TheViewShowsTheModelsValues() -> Void {
+    let sig = UI.Signature(View(Init()))
+    Assert.True(String.Contains(sig, "TextField#") and String.Contains(sig, "\"Studio\"->Msg.Rename"), "the field shows the name and sends Rename")
+    Assert.True(String.Contains(sig, "Include audio,checked=true->Msg.SetAudio"), "the checkbox shows Audio")
+    Assert.True(String.Contains(sig, "0.5 in 0..1->Msg.SetVolume"), "the slider shows Volume in its range")
+    Assert.True(String.Contains(sig, "{states=hover"), "the save button has state styles")
+}
+
+[Fact]
+fn SaveIsDisabledWithoutAName() -> Void {
+    Assert.True(String.Contains(UI.Signature(View(Init() with { Name: "" })), "Save->Msg.Save,enabled=false"), "an empty name disables Save")
+}
+
+// The same form in Oct-XML: inputs are compiler-owned tags whose
+// attributes are their parameters.
+fn MarkupView(model: Settings) -> UI<Msg> {
+    let audio = if model.Audio { "on" } else { "off" }
+    return <UI.Stack Spec={UI.Vertical() with { Gap: 12.0 px  Padding: UI.InsetsAll(16px) }}>
+        <UI.TextWith Spec={UI.Title()}>Settings</UI.TextWith>
+        Name
+        <UI.TextField Value={model.Name} On={Msg.Rename} />
+        <UI.Checkbox Label="Include audio" Checked={model.Audio} On={Msg.SetAudio} />
+        <UI.Stack Spec={UI.Horizontal() with { Gap: 12.0 px  Align: UI.Align.Center }}>
+            Volume
+            <UI.Slider Value={model.Volume} Min={0.0} Max={1.0} On={Msg.SetVolume} />
+            {UI.Text(Percent(model.Volume))}
+        </UI.Stack>
+        <UI.StyledStates States={PrimaryStates()}>
+            <UI.Button Label="Save" On={Msg.Save} Enabled={model.Name != ""} />
+        </UI.StyledStates>
+        {UI.Text(model.Name + ", audio " + audio + ", volume " + Percent(model.Volume) + ", saved " + FormatFloat(Float(model.Saved), 0) + " times")}
+    </UI.Stack>
+}
+
+[Fact]
+fn MarkupFormIsTheSameView() -> Void {
+    Assert.Equal(UI.Signature(View(Init())), UI.Signature(MarkupView(Init())), "markup builds the same tree as the calls")
+}
