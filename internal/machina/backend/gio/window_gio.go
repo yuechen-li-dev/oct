@@ -9,7 +9,9 @@ import (
 	"os"
 
 	"gioui.org/app"
+	"gioui.org/f32"
 	"gioui.org/io/event"
+	"gioui.org/io/key"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
@@ -74,6 +76,8 @@ var (
 	colorButton         = color.NRGBA{R: 218, G: 226, B: 245, A: 255}
 	colorButtonBorder   = color.NRGBA{R: 120, G: 140, B: 190, A: 255}
 	colorButtonDisabled = color.NRGBA{R: 238, G: 239, B: 242, A: 255}
+	colorButtonHover    = color.NRGBA{R: 200, G: 212, B: 240, A: 255}
+	colorButtonPressed  = color.NRGBA{R: 176, G: 192, B: 232, A: 255}
 	colorText           = color.NRGBA{R: 20, G: 22, B: 28, A: 255}
 	colorTextMuted      = color.NRGBA{R: 150, G: 154, B: 162, A: 255}
 )
@@ -92,7 +96,8 @@ func runLoop(w *app.Window, s SessionAdapter) error {
 		fmt.Fprintf(os.Stderr, "machina ui: the frame does not fit with this font's metrics, showing it with fixed metrics: %v\n", err)
 	}
 	var viewport machinalayout.Rect
-	tag := new(int) // pointer event target for the whole window
+	tag := new(int) // pointer and keyboard event target for the whole window
+	focused := false
 	for {
 		switch e := w.Event().(type) {
 		case app.DestroyEvent:
@@ -116,24 +121,18 @@ func runLoop(w *app.Window, s SessionAdapter) error {
 				viewport = next
 			}
 
-			// Deliver presses before drawing so a click is reflected in the
-			// frame that follows it.
-			changed := false
-			for {
-				ev, ok := gtx.Event(pointer.Filter{Target: tag, Kinds: pointer.Press})
-				if !ok {
-					break
-				}
-				if pe, ok := ev.(pointer.Event); ok {
-					res, err := s.PointerDown(session.PointerEvent{
-						X: float64(pe.Position.X) / scale,
-						Y: float64(pe.Position.Y) / scale,
-					})
-					if err != nil {
-						return err
-					}
-					changed = changed || (res != nil && res.Hit)
-				}
+			// The window takes keyboard focus once; the session decides
+			// which control inside it has focus.
+			if !focused {
+				gtx.Execute(key.FocusCmd{Tag: tag})
+				focused = true
+			}
+
+			// Deliver input before drawing so it is reflected in the frame
+			// that follows it.
+			changed, err := deliverInput(gtx, tag, s, scale)
+			if err != nil {
+				return err
 			}
 
 			paint.Fill(gtx.Ops, colorBackground)
@@ -156,6 +155,79 @@ func runLoop(w *app.Window, s SessionAdapter) error {
 	}
 }
 
+// keyNames maps Gio key names to the session's keys. Space arrives as text
+// (an EditEvent) and becomes a key press when no text field has focus.
+var keyNames = map[key.Name]session.Key{
+	key.NameTab:            session.KeyTab,
+	key.NameReturn:         session.KeyEnter,
+	key.NameEnter:          session.KeyEnter,
+	key.NameEscape:         session.KeyEscape,
+	key.NameDeleteBackward: session.KeyBackspace,
+	key.NameDeleteForward:  session.KeyDelete,
+	key.NameLeftArrow:      session.KeyLeft,
+	key.NameRightArrow:     session.KeyRight,
+	key.NameUpArrow:        session.KeyUp,
+	key.NameDownArrow:      session.KeyDown,
+	key.NameHome:           session.KeyHome,
+	key.NameEnd:            session.KeyEnd,
+}
+
+// deliverInput feeds this frame's pointer, key and text events to the
+// session in order, and reports whether any changed the frame.
+func deliverInput(gtx layout.Context, tag event.Tag, s SessionAdapter, scale float64) (bool, error) {
+	filters := []event.Filter{
+		key.FocusFilter{Target: tag},
+		pointer.Filter{Target: tag, Kinds: pointer.Press | pointer.Release | pointer.Move | pointer.Drag | pointer.Leave},
+	}
+	for name := range keyNames {
+		filters = append(filters, key.Filter{Focus: tag, Name: name, Optional: key.ModShift})
+	}
+	changed := false
+	for {
+		ev, ok := gtx.Event(filters...)
+		if !ok {
+			return changed, nil
+		}
+		var did bool
+		var err error
+		switch e := ev.(type) {
+		case pointer.Event:
+			at := session.PointerEvent{X: float64(e.Position.X) / scale, Y: float64(e.Position.Y) / scale}
+			switch e.Kind {
+			case pointer.Press:
+				gtx.Execute(key.FocusCmd{Tag: tag})
+				var res *session.DispatchResult
+				res, err = s.PointerDown(at)
+				did = res != nil
+			case pointer.Release:
+				did, err = s.PointerUp(at)
+			case pointer.Move, pointer.Drag:
+				did, err = s.PointerMove(at)
+			case pointer.Leave:
+				did, err = s.PointerLeave()
+			}
+		case key.Event:
+			if e.State != key.Press {
+				continue
+			}
+			k := keyNames[e.Name]
+			if k == session.KeyTab && e.Modifiers.Contain(key.ModShift) {
+				k = session.KeyShiftTab
+			}
+			did, err = s.KeyPress(k)
+		case key.EditEvent:
+			did, err = s.TextInput(e.Text)
+			if err == nil && !did && e.Text == " " {
+				did, err = s.KeyPress(session.KeySpace)
+			}
+		}
+		if err != nil {
+			return changed, err
+		}
+		changed = changed || did
+	}
+}
+
 func draw(gtx layout.Context, th *material.Theme, s SessionAdapter, scale float64) error {
 	cmds, err := s.Commands()
 	if err != nil {
@@ -173,11 +245,19 @@ func draw(gtx layout.Context, th *material.Theme, s SessionAdapter, scale float6
 		switch d.Kind {
 		case DrawOpFillRect:
 			switch d.Fill {
-			case render.FillButton, render.FillButtonDisabled:
+			case render.FillCheck:
+				drawCheck(gtx, px(d.Rect), nrgba(d.Paint.Background), scale)
+			case render.FillButton, render.FillButtonDisabled, render.FillButtonHover, render.FillButtonPressed:
 				r := px(machinalayout.Rect{X: d.Rect.X + buttonInset, Y: d.Rect.Y + buttonInset,
 					Width: d.Rect.Width - 2*buttonInset, Height: d.Rect.Height - 2*buttonInset})
 				radius := int(4 * scale)
 				fill := colorButton
+				switch d.Fill {
+				case render.FillButtonHover:
+					fill = colorButtonHover
+				case render.FillButtonPressed:
+					fill = colorButtonPressed
+				}
 				if d.Fill == render.FillButtonDisabled {
 					fill = colorButtonDisabled
 				} else {
@@ -254,6 +334,17 @@ func nrgba(c uiir.RGBA) color.NRGBA { return color.NRGBA{R: c.R, G: c.G, B: c.B,
 func drawPaint(gtx layout.Context, r image.Rectangle, p render.Paint, scale float64) {
 	radius := int(p.Radius * scale)
 	bw := int(p.BorderWidth * scale)
+	if bw > 0 && p.Border.A > 0 && p.Background.A < 255 {
+		// A see-through face (a focus ring): stroke the border so what is
+		// under it shows through.
+		if p.Background.A > 0 {
+			paint.FillShape(gtx.Ops, nrgba(p.Background), clip.UniformRRect(r, radius).Op(gtx.Ops))
+		}
+		half := bw / 2
+		ring := image.Rect(r.Min.X+half, r.Min.Y+half, r.Max.X-half, r.Max.Y-half)
+		paint.FillShape(gtx.Ops, nrgba(p.Border), clip.Stroke{Path: clip.UniformRRect(ring, max(radius-half, 0)).Path(gtx.Ops), Width: float32(bw)}.Op())
+		return
+	}
 	if bw > 0 && p.Border.A > 0 {
 		paint.FillShape(gtx.Ops, nrgba(p.Border), clip.UniformRRect(r, radius).Op(gtx.Ops))
 		r = image.Rect(r.Min.X+bw, r.Min.Y+bw, r.Max.X-bw, r.Max.Y-bw)
@@ -265,4 +356,15 @@ func drawPaint(gtx layout.Context, r image.Rectangle, p render.Paint, scale floa
 	if r.Dx() > 0 && r.Dy() > 0 && p.Background.A > 0 {
 		paint.FillShape(gtx.Ops, nrgba(p.Background), clip.UniformRRect(r, radius).Op(gtx.Ops))
 	}
+}
+
+// drawCheck strokes a check mark inside r.
+func drawCheck(gtx layout.Context, r image.Rectangle, c color.NRGBA, scale float64) {
+	x, y, w, h := float32(r.Min.X), float32(r.Min.Y), float32(r.Dx()), float32(r.Dy())
+	var p clip.Path
+	p.Begin(gtx.Ops)
+	p.MoveTo(f32.Pt(x+0.22*w, y+0.52*h))
+	p.LineTo(f32.Pt(x+0.42*w, y+0.72*h))
+	p.LineTo(f32.Pt(x+0.78*w, y+0.30*h))
+	paint.FillShape(gtx.Ops, c, clip.Stroke{Path: p.End(), Width: float32(2 * scale)}.Op())
 }

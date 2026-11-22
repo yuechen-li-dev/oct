@@ -12,6 +12,11 @@ import (
 type SessionAdapter interface {
 	Commands() ([]render.Command, error)
 	PointerDown(event session.PointerEvent) (*session.DispatchResult, error)
+	PointerMove(event session.PointerEvent) (bool, error)
+	PointerUp(event session.PointerEvent) (bool, error)
+	PointerLeave() (bool, error)
+	KeyPress(key session.Key) (bool, error)
+	TextInput(text string) (bool, error)
 	SetViewport(viewport layout.Rect) error
 	SetTextMetrics(m textmetrics.Metrics) error
 }
