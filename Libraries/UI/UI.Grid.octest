@@ -1,0 +1,20 @@
+package UI
+
+import String
+
+[Fact]
+fn ChunkPadsTheLastRowWithSkip() -> Void {
+    let rows = Chunk([Text("1"), Text("2"), Text("3"), Text("4"), Text("5")], 3)
+    Assert.Equal(2, Len(rows), "five items in rows of three make two rows")
+    Assert.Equal(3, Len(rows[1]), "the last row is padded to three cells")
+    Assert.True(String.Contains(Signature(rows[1][2]), "Skip#"), "padding cells are UI.Skip")
+    Assert.Equal(0, Len(Chunk([], 3)), "no items make no rows")
+}
+
+[Fact]
+fn GridPlacesSpansAndSkips() -> Void {
+    let spec = Tracks([Track.Fixed(280px), Track.Fill(1.0)]) with { Rows: [Track.Fixed(56px), Track.Fill(1.0)]  ColumnGap: 16.0 px }
+    let sig = Signature(Grid(spec, [[Span(2, 1, Text("top")), Skip()], [Text("side"), Text("main")]]))
+    Assert.True(String.Contains(sig, "Grid#0(gridSpec)"), "Grid builds a spec'd grid")
+    Assert.False(String.Contains(sig, "Skip#"), "covered cells lower to nothing")
+}

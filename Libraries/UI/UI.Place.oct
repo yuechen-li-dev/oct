@@ -92,6 +92,11 @@ fn FractionY(top: Float<ui>, bottom: Float<ui>) -> YSpan {
     return YSpan { Kind: SpanKind.Fraction  A: 0.0 px  B: 0.0 px  From: top  To: bottom }
 }
 
+// A canvas places each child by its own spans; nothing flows.
+fn Canvas(children: UI[]) -> UI {
+    return UICanvas(children)
+}
+
 // Places one box inside a UI.Canvas. Its child fills the box.
 fn At(x: XSpan, y: YSpan, child: UI) -> UI {
     return UIPlaceSpan(x, y, child)

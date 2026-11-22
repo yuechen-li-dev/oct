@@ -1,0 +1,10 @@
+expect error: "invalid compile-time-known construction of refined concept UI.ColorChannel from 300: a color channel must be at most 255"
+
+package Main
+
+import UI
+
+fn Main() -> Int {
+    let red = UI.Rgb(300, 0, 0)
+    return 0
+}

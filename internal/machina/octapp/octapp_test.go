@@ -176,8 +176,8 @@ func TestLayoutTableMustPlaceEveryRegion(t *testing.T) {
 }
 
 func TestLayoutTableMustMatchTheContentRegions(t *testing.T) {
-	err := loadVariant(t, "fn Content(model: Model, region: Shell) -> UI {\n    return switch region {\n        case Shell.Header => UI.Text(\"header\")\n        case Shell.Body => UI.Text(\"body\")",
-		"fn Content(model: Model, region: Other) -> UI {\n    return switch region {\n        case Other.Header => UI.Text(\"header\")\n        case Other.Body => UI.Text(\"body\")")
+	err := loadVariant(t, "fn Content(model: Model, region: Shell) -> UI<Msg> {\n    return switch region {\n        case Shell.Header => UI.Text(\"header\")\n        case Shell.Body => UI.Text(\"body\")",
+		"fn Content(model: Model, region: Other) -> UI<Msg> {\n    return switch region {\n        case Other.Header => UI.Text(\"header\")\n        case Other.Body => UI.Text(\"body\")")
 	if err == nil || !strings.Contains(err.Error(), "places Shell regions, but the content function takes Other") {
 		t.Fatalf("error %v", err)
 	}
@@ -218,37 +218,25 @@ func clickVariant(t *testing.T, replacements [][2]string, label string) error {
 
 const headerText = `case Shell.Header => UI.Text("header")`
 
-func TestTypedMessageToAStringUpdateIsAnError(t *testing.T) {
-	err := clickVariant(t, [][2]string{
-		{"fn View(model: Model) -> UI", "fn View(model: Model) -> UI<Other>"},
-		{"fn Content(model: Model, region: Shell) -> UI", "fn Content(model: Model, region: Shell) -> UI<Other>"},
-		{headerText, `case Shell.Header => UI.Button("Go", Other.Body, true)`},
-	}, "Go")
-	if err == nil || !strings.Contains(err.Error(), "View returns UI<Other>, but Update takes an event String") {
-		t.Fatalf("error %v", err)
-	}
-}
-
-func TestStringEventToAnEnumUpdateIsAnError(t *testing.T) {
-	err := clickVariant(t, [][2]string{
-		{"fn Update(model: Model, event: String) -> Model", "fn Update(model: Model, msg: Other) -> Model"},
-		{"fn View(model: Model) -> UI", "fn View(model: Model) -> UI<Other>"},
-		{headerText, `case Shell.Header => UI.ButtonRaw("Go", "go", true)`},
-	}, "Go")
-	if err == nil || !strings.Contains(err.Error(), `button sends the event string "go", but Update takes Other`) {
-		t.Fatalf("error %v", err)
-	}
-}
-
 func TestViewMustReturnUpdatesMessageType(t *testing.T) {
-	err := clickVariant(t, [][2]string{{"fn Update(model: Model, event: String) -> Model", "fn Update(model: Model, msg: Other) -> Model"}}, "header")
-	if err == nil || !strings.Contains(err.Error(), "View must return UI<Other>, the message type Update takes; got UI") {
+	err := clickVariant(t, [][2]string{
+		{"fn View(model: Model) -> UI<Msg>", "fn View(model: Model) -> UI<Other>"},
+		{"fn Content(model: Model, region: Shell) -> UI<Msg>", "fn Content(model: Model, region: Shell) -> UI<Other>"},
+	}, "header")
+	if err == nil || !strings.Contains(err.Error(), "View must return UI<Msg>, the message type Update takes; got UI<Other>") {
+		t.Fatalf("error %v", err)
+	}
+}
+
+func TestRawStringButtonIsAnError(t *testing.T) {
+	err := clickVariant(t, [][2]string{{headerText, `case Shell.Header => UIButton("Go", "go", true)`}}, "Go")
+	if err == nil || !strings.Contains(err.Error(), `button sends the event string "go", but Update takes Msg`) {
 		t.Fatalf("error %v", err)
 	}
 }
 
 func TestUpdateMustTakeAMessageEnumOrString(t *testing.T) {
-	err := clickVariant(t, [][2]string{{"fn Update(model: Model, event: String) -> Model", "fn Update(model: Model, event: Int) -> Model"}}, "header")
+	err := clickVariant(t, [][2]string{{"fn Update(model: Model, msg: Msg) -> Model", "fn Update(model: Model, msg: Int) -> Model"}}, "header")
 	if err == nil || !strings.Contains(err.Error(), "Update's second parameter must be the app's message enum") {
 		t.Fatalf("error %v", err)
 	}

@@ -195,13 +195,8 @@ func (i interpreter) evalUISugarBuiltin(env *environment, pkgName string, callee
 	default: // UIButtonMsg
 		label, msg, enabled := args[0], args[1], args[2]
 		node := &uiirNode{Kind: uiirNodeButton, Label: label.Text, Enabled: enabled.Bool}
-		if msg.Kind == ValueEnum {
-			node.Event = MessageAlias(msg)
-			m := cloneValue(msg)
-			node.Message = m
-		} else {
-			node.Event = msg.Record.Fields["Value"].Text // legacy UI.EventToken
-		}
+		node.Event = MessageAlias(msg)
+		node.Message = cloneValue(msg)
 		return ui(node)
 	}
 }

@@ -1,0 +1,16 @@
+package UI
+
+// A view is a UI<M>: an immutable tree whose buttons and inputs send values
+// of the app's message enum M (README "Typed views"). Bare UI in a function's
+// signature takes the message type of its arguments.
+//
+// UI.Button(label, on, enabled), and the inputs in UI.Inputs.oct, are
+// compiler-owned: they are generic over the message enum, which an ordinary
+// Oct function cannot be. They are reached through the UI namespace and can
+// be written as markup tags (<UI.Button Label="Save" On={Msg.Save} Enabled={true} />).
+
+// The canonical text form of a view: node kinds, ids, specs and messages.
+// Tests compare views by it.
+fn Signature(node: UI) -> String {
+    return UISignature(node)
+}

@@ -16,13 +16,13 @@ fn StorefrontM7ViewRendersDeterministically() -> Void {
 fn StorefrontM7SelectionAndCartFlowWorks() -> Void {
     var model = Init()
 
-    model = Update(model, UI.EventTokenValue(CategoryDeskEvent()))
+    model = Update(model, EventTokenValue(CategoryDeskEvent()))
     Assert.Equal("desk", model.SelectedCategory, "category state should update")
 
-    model = Update(model, UI.EventTokenValue(InspectEvent("harbor-board")))
+    model = Update(model, EventTokenValue(InspectEvent("harbor-board")))
     Assert.Equal("harbor-board", model.SelectedProduct, "selected product should update")
 
-    model = Update(model, UI.EventTokenValue(AddToCartEvent("harbor-board")))
+    model = Update(model, EventTokenValue(AddToCartEvent("harbor-board")))
     Assert.Near(1.0, model.CartCount, 0.000001, "cart count should increase")
 
     model = Update(model, "storefront.unknown.event")
@@ -31,25 +31,25 @@ fn StorefrontM7SelectionAndCartFlowWorks() -> Void {
 
 [Fact]
 fn StorefrontM7EventFamiliesArePredictable() -> Void {
-    Assert.Equal("storefront.inspect.harbor-board", UI.EventTokenValue(InspectEvent("harbor-board")), "inspect family should produce canonical event")
-    Assert.Equal("storefront.cart.add.harbor-board", UI.EventTokenValue(AddToCartEvent("harbor-board")), "add family should produce canonical event")
-    Assert.Equal("harbor-board", UI.MatchEventPrefix(UI.EventTokenValue(InspectEvent("harbor-board")), InspectPrefix(), CatalogProductIds())!, "inspect match should resolve known product")
-    Assert.Equal("harbor-board", UI.MatchEventPrefix(UI.EventTokenValue(AddToCartEvent("harbor-board")), AddToCartPrefix(), CatalogProductIds())!, "add match should resolve known product")
-    Assert.Equal("", UI.MatchEventPrefix(UI.EventTokenValue(InspectEvent("missing-product")), InspectPrefix(), CatalogProductIds())!, "unknown product should not match catalog")
+    Assert.Equal("storefront.inspect.harbor-board", EventTokenValue(InspectEvent("harbor-board")), "inspect family should produce canonical event")
+    Assert.Equal("storefront.cart.add.harbor-board", EventTokenValue(AddToCartEvent("harbor-board")), "add family should produce canonical event")
+    Assert.Equal("harbor-board", MatchEventPrefix(EventTokenValue(InspectEvent("harbor-board")), InspectPrefix(), CatalogProductIds())!, "inspect match should resolve known product")
+    Assert.Equal("harbor-board", MatchEventPrefix(EventTokenValue(AddToCartEvent("harbor-board")), AddToCartPrefix(), CatalogProductIds())!, "add match should resolve known product")
+    Assert.Equal("", MatchEventPrefix(EventTokenValue(InspectEvent("missing-product")), InspectPrefix(), CatalogProductIds())!, "unknown product should not match catalog")
 }
 
 [Fact]
 fn StorefrontM7CatalogDrivenInteractionsStayDeterministic() -> Void {
     var model = Init()
 
-    model = Update(model, UI.EventTokenValue(InspectEvent("steel-ruler")))
+    model = Update(model, EventTokenValue(InspectEvent("steel-ruler")))
     Assert.Equal("steel-ruler", model.SelectedProduct, "inspect should resolve selected product from catalog")
 
-    model = Update(model, UI.EventTokenValue(AddToCartEvent("steel-ruler")))
-    model = Update(model, UI.EventTokenValue(AddToCartEvent("steel-ruler")))
+    model = Update(model, EventTokenValue(AddToCartEvent("steel-ruler")))
+    model = Update(model, EventTokenValue(AddToCartEvent("steel-ruler")))
     Assert.Near(2.0, model.CartCount, 0.000001, "repeated add events should increment cart deterministically")
 
-    model = Update(model, UI.EventTokenValue(AddToCartEvent("not-in-catalog")))
+    model = Update(model, EventTokenValue(AddToCartEvent("not-in-catalog")))
     Assert.Near(2.0, model.CartCount, 0.000001, "unknown ids should not mutate cart count")
 }
 
@@ -57,11 +57,11 @@ fn StorefrontM7CatalogDrivenInteractionsStayDeterministic() -> Void {
 fn StorefrontM7FilterAndFeaturedTogglesArePredictable() -> Void {
     var model = Init()
 
-    model = Update(model, UI.EventTokenValue(ToggleNewEvent()))
-    model = Update(model, UI.EventTokenValue(ToggleInStockEvent()))
-    model = Update(model, UI.EventTokenValue(ToggleBestSellerEvent()))
-    model = Update(model, UI.EventTokenValue(SortPriceEvent()))
-    model = Update(model, UI.EventTokenValue(FeaturedCableLabEvent()))
+    model = Update(model, EventTokenValue(ToggleNewEvent()))
+    model = Update(model, EventTokenValue(ToggleInStockEvent()))
+    model = Update(model, EventTokenValue(ToggleBestSellerEvent()))
+    model = Update(model, EventTokenValue(SortPriceEvent()))
+    model = Update(model, EventTokenValue(FeaturedCableLabEvent()))
 
     Assert.True(model.NewOnly, "new filter should toggle on")
     Assert.True(model.InStockOnly, "in-stock filter should toggle on")
@@ -88,15 +88,15 @@ fn StorefrontM7CatalogAndGridRowsStayExplicit() -> Void {
 
 [Fact]
 fn StorefrontM7ViewUsesGridRowsComposition() -> Void {
-    let signature = UI.Signature(UI.GridRows(ProductGridRows(Init())))
+    let signature = UI.Signature(GridRows(ProductGridRows(Init())))
     Assert.True(Contains(signature, "Grid#"), "grid rows helper should produce canonical grid node")
 }
 
 
 [Fact]
 fn StorefrontM7DispatchTablesAreDeterministicAndNoMatchIsStable() -> Void {
-    Assert.Equal("Shop", UI.ResolveEventValue(UI.EventTokenValue(NavShopEvent()), NavDispatchTable())!, "nav dispatch should resolve canonical value")
-    Assert.Equal("", UI.ResolveEventValue("storefront.nav.unknown", NavDispatchTable())!, "unknown nav event should not resolve")
+    Assert.Equal("Shop", ResolveEventValue(EventTokenValue(NavShopEvent()), NavDispatchTable())!, "nav dispatch should resolve canonical value")
+    Assert.Equal("", ResolveEventValue("storefront.nav.unknown", NavDispatchTable())!, "unknown nav event should not resolve")
 
     let model = Init()
     let unchanged = Update(model, "storefront.unknown.event")

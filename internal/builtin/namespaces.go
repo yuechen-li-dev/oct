@@ -114,3 +114,18 @@ func ArtifactPhaseSpelling(name string) (string, bool) {
 	}
 	return "", false
 }
+
+// markupParameters names the parameters of compiler-owned builtins that can
+// be written as Oct-XML tags, in call order. They have no Oct declaration to
+// take the names from (they are generic over the app's message enum), and
+// they take no body: every parameter is an attribute.
+var markupParameters = map[string][]string{
+	"UIButtonMsg": {"label", "on", "enabled"},
+}
+
+// MarkupParameters reports the parameter names of a compiler-owned builtin
+// written as a markup tag.
+func MarkupParameters(builtinName string) ([]string, bool) {
+	names, ok := markupParameters[builtinName]
+	return names, ok
+}

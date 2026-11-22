@@ -18,7 +18,7 @@ fn SourceStructure() -> SourceParts {
         FileKind: "machina-ui-storefront"
         Data: ["CatalogTable", "CategoryLabelMapping", "SortLabelMapping"]
         Placement: ["ProductGridRows", "View"]
-        Dispatch: ["NavDispatchTable", "CategoryDispatchTable", "SortDispatchTable", "FeaturedDispatchTable", "UI.ResolveEventValue", "UI.MatchEventPrefix"]
+        Dispatch: ["NavDispatchTable", "CategoryDispatchTable", "SortDispatchTable", "FeaturedDispatchTable", "ResolveEventValue", "MatchEventPrefix"]
         Behavior: ["Init", "Update", "ProductById", "CategoryVisible"]
         Composition: ["HeaderBar", "HeroBlock", "FilterRail", "ProductAreaHeader", "ProductCard", "SupportBand", "Footer"]
         Surface: ["View"]
@@ -124,81 +124,81 @@ fn ProductById(productId: String) -> Product {
 
 fn InspectPrefix() -> String { return "storefront.inspect." }
 fn AddToCartPrefix() -> String { return "storefront.cart.add." }
-fn InspectEvent(productId: String) -> UI.EventToken { return UI.Token(InspectPrefix() + productId) }
-fn AddToCartEvent(productId: String) -> UI.EventToken { return UI.Token(AddToCartPrefix() + productId) }
+fn InspectEvent(productId: String) -> EventToken { return Token(InspectPrefix() + productId) }
+fn AddToCartEvent(productId: String) -> EventToken { return Token(AddToCartPrefix() + productId) }
 
-fn NavShopEvent() -> UI.EventToken { return UI.Token("storefront.nav.shop") }
-fn NavBundlesEvent() -> UI.EventToken { return UI.Token("storefront.nav.bundles") }
-fn NavJournalEvent() -> UI.EventToken { return UI.Token("storefront.nav.journal") }
-fn NavSupportEvent() -> UI.EventToken { return UI.Token("storefront.nav.support") }
+fn NavShopEvent() -> EventToken { return Token("storefront.nav.shop") }
+fn NavBundlesEvent() -> EventToken { return Token("storefront.nav.bundles") }
+fn NavJournalEvent() -> EventToken { return Token("storefront.nav.journal") }
+fn NavSupportEvent() -> EventToken { return Token("storefront.nav.support") }
 
-fn CategoryAllEvent() -> UI.EventToken { return UI.Token("storefront.category.all") }
-fn CategoryDeskEvent() -> UI.EventToken { return UI.Token("storefront.category.desk") }
-fn CategoryPaperEvent() -> UI.EventToken { return UI.Token("storefront.category.paper") }
-fn CategoryCableEvent() -> UI.EventToken { return UI.Token("storefront.category.cable") }
+fn CategoryAllEvent() -> EventToken { return Token("storefront.category.all") }
+fn CategoryDeskEvent() -> EventToken { return Token("storefront.category.desk") }
+fn CategoryPaperEvent() -> EventToken { return Token("storefront.category.paper") }
+fn CategoryCableEvent() -> EventToken { return Token("storefront.category.cable") }
 
-fn ToggleNewEvent() -> UI.EventToken { return UI.Token("storefront.filter.new") }
-fn ToggleInStockEvent() -> UI.EventToken { return UI.Token("storefront.filter.instock") }
-fn ToggleBestSellerEvent() -> UI.EventToken { return UI.Token("storefront.filter.bestseller") }
+fn ToggleNewEvent() -> EventToken { return Token("storefront.filter.new") }
+fn ToggleInStockEvent() -> EventToken { return Token("storefront.filter.instock") }
+fn ToggleBestSellerEvent() -> EventToken { return Token("storefront.filter.bestseller") }
 
-fn SortFeaturedEvent() -> UI.EventToken { return UI.Token("storefront.sort.featured") }
-fn SortPriceEvent() -> UI.EventToken { return UI.Token("storefront.sort.price") }
-fn SortNewestEvent() -> UI.EventToken { return UI.Token("storefront.sort.newest") }
+fn SortFeaturedEvent() -> EventToken { return Token("storefront.sort.featured") }
+fn SortPriceEvent() -> EventToken { return Token("storefront.sort.price") }
+fn SortNewestEvent() -> EventToken { return Token("storefront.sort.newest") }
 
-fn FeaturedDeskKitsEvent() -> UI.EventToken { return UI.Token("storefront.featured.deskkits") }
-fn FeaturedNotebookSetsEvent() -> UI.EventToken { return UI.Token("storefront.featured.notebooksets") }
-fn FeaturedCableLabEvent() -> UI.EventToken { return UI.Token("storefront.featured.cablelab") }
+fn FeaturedDeskKitsEvent() -> EventToken { return Token("storefront.featured.deskkits") }
+fn FeaturedNotebookSetsEvent() -> EventToken { return Token("storefront.featured.notebooksets") }
+fn FeaturedCableLabEvent() -> EventToken { return Token("storefront.featured.cablelab") }
 
-fn NavDispatchTable() -> UI.EventValueDispatch {
-    return UI.EventValueDispatch {
-        Events: [UI.EventTokenValue(NavShopEvent()), UI.EventTokenValue(NavBundlesEvent()), UI.EventTokenValue(NavJournalEvent()), UI.EventTokenValue(NavSupportEvent())]
+fn NavDispatchTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: [EventTokenValue(NavShopEvent()), EventTokenValue(NavBundlesEvent()), EventTokenValue(NavJournalEvent()), EventTokenValue(NavSupportEvent())]
         Values: ["Shop", "Bundles", "Journal", "Support"]
     }
 }
 
-fn CategoryDispatchTable() -> UI.EventValueDispatch {
-    return UI.EventValueDispatch {
-        Events: [UI.EventTokenValue(CategoryAllEvent()), UI.EventTokenValue(CategoryDeskEvent()), UI.EventTokenValue(CategoryPaperEvent()), UI.EventTokenValue(CategoryCableEvent())]
+fn CategoryDispatchTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: [EventTokenValue(CategoryAllEvent()), EventTokenValue(CategoryDeskEvent()), EventTokenValue(CategoryPaperEvent()), EventTokenValue(CategoryCableEvent())]
         Values: ["all", "desk", "paper", "cable"]
     }
 }
 
-fn SortDispatchTable() -> UI.EventValueDispatch {
-    return UI.EventValueDispatch {
-        Events: [UI.EventTokenValue(SortFeaturedEvent()), UI.EventTokenValue(SortPriceEvent()), UI.EventTokenValue(SortNewestEvent())]
+fn SortDispatchTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: [EventTokenValue(SortFeaturedEvent()), EventTokenValue(SortPriceEvent()), EventTokenValue(SortNewestEvent())]
         Values: ["featured", "price", "newest"]
     }
 }
 
-fn FeaturedDispatchTable() -> UI.EventValueDispatch {
-    return UI.EventValueDispatch {
-        Events: [UI.EventTokenValue(FeaturedDeskKitsEvent()), UI.EventTokenValue(FeaturedNotebookSetsEvent()), UI.EventTokenValue(FeaturedCableLabEvent())]
+fn FeaturedDispatchTable() -> EventValueDispatch {
+    return EventValueDispatch {
+        Events: [EventTokenValue(FeaturedDeskKitsEvent()), EventTokenValue(FeaturedNotebookSetsEvent()), EventTokenValue(FeaturedCableLabEvent())]
         Values: ["Desk Kits", "Notebook Sets", "Cable Lab"]
     }
 }
 
 
 fn Update(model: StoreState, event: String) -> StoreState {
-    let nav = UI.ResolveEventValue(event, NavDispatchTable())!
+    let nav = ResolveEventValue(event, NavDispatchTable())!
     if nav != "" { return model with { SelectedNav: nav } }
 
-    let category = UI.ResolveEventValue(event, CategoryDispatchTable())!
+    let category = ResolveEventValue(event, CategoryDispatchTable())!
     if category != "" { return model with { SelectedCategory: category } }
 
-    if event == UI.EventTokenValue(ToggleNewEvent()) { return model with { NewOnly: not model.NewOnly } }
-    if event == UI.EventTokenValue(ToggleInStockEvent()) { return model with { InStockOnly: not model.InStockOnly } }
-    if event == UI.EventTokenValue(ToggleBestSellerEvent()) { return model with { BestSellerOnly: not model.BestSellerOnly } }
+    if event == EventTokenValue(ToggleNewEvent()) { return model with { NewOnly: not model.NewOnly } }
+    if event == EventTokenValue(ToggleInStockEvent()) { return model with { InStockOnly: not model.InStockOnly } }
+    if event == EventTokenValue(ToggleBestSellerEvent()) { return model with { BestSellerOnly: not model.BestSellerOnly } }
 
-    let sortBy = UI.ResolveEventValue(event, SortDispatchTable())!
+    let sortBy = ResolveEventValue(event, SortDispatchTable())!
     if sortBy != "" { return model with { SortBy: sortBy } }
 
-    let featuredTab = UI.ResolveEventValue(event, FeaturedDispatchTable())!
+    let featuredTab = ResolveEventValue(event, FeaturedDispatchTable())!
     if featuredTab != "" { return model with { FeaturedTab: featuredTab } }
 
-    let inspectMatch = UI.MatchEventPrefix(event, InspectPrefix(), CatalogProductIds())!
+    let inspectMatch = MatchEventPrefix(event, InspectPrefix(), CatalogProductIds())!
     if inspectMatch != "" { return model with { SelectedProduct: inspectMatch } }
 
-    let addMatch = UI.MatchEventPrefix(event, AddToCartPrefix(), CatalogProductIds())!
+    let addMatch = MatchEventPrefix(event, AddToCartPrefix(), CatalogProductIds())!
     if addMatch != "" { return model with { CartCount: model.CartCount + 1.0 } }
 
     return model
@@ -263,16 +263,16 @@ fn SelectedProductLabel(value: String) -> String {
     return value
 }
 
-fn NavItem(label: String, event: UI.EventToken, selected: Bool) -> UI {
-    return UI.Button(label, event, not selected)
+fn NavItem(label: String, event: EventToken, selected: Bool) -> UI {
+    return TokenButton(label, event, not selected)
 }
 
-fn FilterChip(label: String, event: UI.EventToken, active: Bool) -> UI {
+fn FilterChip(label: String, event: EventToken, active: Bool) -> UI {
     if active {
-        return UI.Button("● " + label, event, true)
+        return TokenButton("● " + label, event, true)
     }
 
-    return UI.Button("○ " + label, event, true)
+    return TokenButton("○ " + label, event, true)
 }
 
 fn PriceBadge(amount: Float) -> UI {
@@ -355,9 +355,9 @@ fn FilterRail(model: StoreState) -> UI {
 fn ProductAreaHeader(model: StoreState) -> UI {
     return UI.Row([
         SectionHeader("Catalog", "Selected: " + CategoryLabel(model.SelectedCategory) + " · " + ActiveFilterSummary(model)),
-        UI.Button("Desk Kits", FeaturedDeskKitsEvent(), model.FeaturedTab != "Desk Kits"),
-        UI.Button("Notebook Sets", FeaturedNotebookSetsEvent(), model.FeaturedTab != "Notebook Sets"),
-        UI.Button("Cable Lab", FeaturedCableLabEvent(), model.FeaturedTab != "Cable Lab"),
+        TokenButton("Desk Kits", FeaturedDeskKitsEvent(), model.FeaturedTab != "Desk Kits"),
+        TokenButton("Notebook Sets", FeaturedNotebookSetsEvent(), model.FeaturedTab != "Notebook Sets"),
+        TokenButton("Cable Lab", FeaturedCableLabEvent(), model.FeaturedTab != "Cable Lab"),
         UI.Text("Featured strip: " + model.FeaturedTab)
     ])
 }
@@ -375,8 +375,8 @@ fn ProductCard(product: Product, model: StoreState) -> UI {
         UI.Text(product.Subtitle),
         UI.Text("Badge: " + product.Badge + " · " + selectedLine),
         UI.Row([
-            UI.Button("Inspect", InspectEvent(product.Id), true),
-            UI.Button("Add to cart", AddToCartEvent(product.Id), true)
+            TokenButton("Inspect", InspectEvent(product.Id), true),
+            TokenButton("Add to cart", AddToCartEvent(product.Id), true)
         ])
     ])
 }
@@ -441,13 +441,13 @@ fn View(model: StoreState) -> UI {
     let FooterTop = 0.92 ui
 
     var nodes = [
-        UI.AnchorBox(0.01 ui, HeaderTop, 0.99 ui, HeaderBottom, HeaderBar(model)),
-        UI.AnchorBox(0.01 ui, AnnouncementTop, 0.99 ui, AnnouncementBottom, AnnouncementStrip()),
-        UI.AnchorBox(0.01 ui, HeroTop, 0.99 ui, HeroBottom, HeroBlock(model)),
-        UI.AnchorBox(0.01 ui, FiltersTop, 0.26 ui, FiltersBottom, FilterRail(model)),
-        UI.AnchorBox(0.27 ui, GridTop, 0.99 ui, GridBottom, UI.Column([ProductAreaHeader(model), UI.GridRows(ProductGridRows(model))])),
-        UI.AnchorBox(0.27 ui, SupportTop, 0.99 ui, SupportBottom, SupportBand(model)),
-        UI.AnchorBox(0.01 ui, FooterTop, 0.99 ui, 0.99 ui, Footer(model))
+        AnchorBox(0.01 ui, HeaderTop, 0.99 ui, HeaderBottom, HeaderBar(model)),
+        AnchorBox(0.01 ui, AnnouncementTop, 0.99 ui, AnnouncementBottom, AnnouncementStrip()),
+        AnchorBox(0.01 ui, HeroTop, 0.99 ui, HeroBottom, HeroBlock(model)),
+        AnchorBox(0.01 ui, FiltersTop, 0.26 ui, FiltersBottom, FilterRail(model)),
+        AnchorBox(0.27 ui, GridTop, 0.99 ui, GridBottom, UI.Column([ProductAreaHeader(model), GridRows(ProductGridRows(model))])),
+        AnchorBox(0.27 ui, SupportTop, 0.99 ui, SupportBottom, SupportBand(model)),
+        AnchorBox(0.01 ui, FooterTop, 0.99 ui, 0.99 ui, Footer(model))
     ]
 
     return UI.Canvas(nodes)

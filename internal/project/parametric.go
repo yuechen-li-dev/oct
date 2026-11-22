@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/builtin"
 )
 
 // elaborateParametrics performs the deliberately bounded PARAMETRICS-M0 pass.
@@ -1178,6 +1179,9 @@ func (e *parametricElaborator) rewriteMarkupElement(pkgName string, element ast.
 	targetPkg, targetName := splitSurfaceName(pkgName, element.Tag)
 	decl, ok := e.findMarkupFunction(targetPkg, targetName)
 	if !ok {
+		if lowered, handled, err := e.rewriteBuiltinMarkupElement(pkgName, targetPkg, targetName, element, subst); handled {
+			return lowered, err
+		}
 		return nil, fmt.Errorf("unknown tag symbol %s", element.Tag)
 	}
 	attributes := make(map[string]ast.MarkupAttribute, len(element.Attributes))
@@ -1227,6 +1231,56 @@ func (e *parametricElaborator) rewriteMarkupElement(pkgName string, element ast.
 		callee = ast.FieldAccessExpr{Target: ast.IdentifierExpr{Name: targetPkg}, Field: targetName}
 	}
 	return ast.CallExpr{Callee: callee, Arguments: args, Line: element.Line, Column: element.Column}, nil
+}
+
+// rewriteBuiltinMarkupElement lowers a tag that names a compiler-owned
+// builtin reached through a namespace alias, such as <UI.Button ... />. Its
+// parameters come from builtin.MarkupParameters; all are attributes.
+func (e *parametricElaborator) rewriteBuiltinMarkupElement(pkgName, targetPkg, targetName string, element ast.MarkupElementExpr, subst map[string]ast.TypeRef) (ast.Expr, bool, error) {
+	if targetPkg == pkgName {
+		return nil, false, nil
+	}
+	builtinName, ok := builtin.ResolveNamespacedAlias(targetPkg, targetName)
+	if !ok {
+		return nil, false, nil
+	}
+	names, ok := builtin.MarkupParameters(builtinName)
+	if !ok {
+		return nil, false, nil
+	}
+	if markupHasContent(element) {
+		return nil, true, fmt.Errorf("%s does not accept children", element.Tag)
+	}
+	values := make(map[string]ast.Expr, len(element.Attributes))
+	for _, attribute := range element.Attributes {
+		matched := ""
+		for _, name := range names {
+			if strings.EqualFold(attribute.Name, name) {
+				matched = name
+			}
+		}
+		if matched == "" {
+			return nil, true, fmt.Errorf("%s has no parameter '%s'; its parameters are %s", element.Tag, attribute.Name, strings.Join(names, ", "))
+		}
+		if _, dup := values[matched]; dup {
+			return nil, true, fmt.Errorf("%s parameter %s is given twice", element.Tag, matched)
+		}
+		value, err := e.rewriteExpr(pkgName, attribute.Value, nil, subst)
+		if err != nil {
+			return nil, true, fmt.Errorf("%s parameter %s: %w", element.Tag, matched, err)
+		}
+		values[matched] = value
+	}
+	args := make([]ast.Expr, 0, len(names))
+	for _, name := range names {
+		value, ok := values[name]
+		if !ok {
+			return nil, true, fmt.Errorf("%s is missing required parameter %s", element.Tag, name)
+		}
+		args = append(args, value)
+	}
+	callee := ast.FieldAccessExpr{Target: ast.IdentifierExpr{Name: targetPkg}, Field: targetName}
+	return ast.CallExpr{Callee: callee, Arguments: args, Line: element.Line, Column: element.Column}, true, nil
 }
 
 func (e *parametricElaborator) lowerMarkupBody(pkgName, targetPkg string, element ast.MarkupElementExpr, parameter ast.Parameter, subst map[string]ast.TypeRef) (ast.Expr, bool, error) {

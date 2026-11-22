@@ -5,10 +5,7 @@
 //
 //	fn Init() -> S
 //	fn Update(model: S, msg: Msg) -> S     // Msg: the app's message enum
-//	fn View(model: S) -> UI<Msg>  // the same Msg
-//
-// Update may instead take `event: String`, the M0 form, for apps whose
-// buttons send UI.EventToken strings; View then returns UI.
+//	fn View(model: S) -> UI<Msg>         // the same Msg
 //
 // App adapts that trio to session.App, so the existing deterministic spine
 // (UIIR -> lowering -> layout -> hit test -> render) drives any backend. The
@@ -36,8 +33,7 @@ type App struct {
 	program project.Program
 	pkg     string
 	out     io.Writer
-	// msgEnum is the enum Update's second parameter takes, or "" when
-	// Update takes the M0 `event: String`.
+	// msgEnum is the enum Update's second parameter takes.
 	msgEnum string
 }
 
@@ -94,12 +90,10 @@ func (a *App) checkConvention(path string) error {
 				}
 				if want.name == "Update" {
 					t := fn.Parameters[1].Type
-					if t.Name != "String" || t.Package != "" || t.IsArray {
-						if !declaresEnum(pkg.Enums, t.Name) || t.Package != "" || t.IsArray {
-							return fmt.Errorf("%s: Update's second parameter must be the app's message enum (or String for UI.EventToken events), got %s", path, t.Name)
-						}
-						a.msgEnum = t.Name
+					if !declaresEnum(pkg.Enums, t.Name) || t.Package != "" || t.IsArray {
+						return fmt.Errorf("%s: Update's second parameter must be the app's message enum, got %s", path, typeRefLabel(t))
 					}
+					a.msgEnum = t.Name
 				}
 			}
 		}
@@ -116,17 +110,9 @@ func (a *App) checkConvention(path string) error {
 			continue
 		}
 		r := fn.ReturnType
-		if a.msgEnum == "" {
-			if len(r.TypeArguments) > 0 {
-				return fmt.Errorf("%s: View returns %s, but Update takes an event String; take the message enum in Update", path, typeRefLabel(r))
-			}
-			continue
-		}
-		{
-			typed := r.Name == "UI" && r.Package == "" && !r.IsArray && len(r.TypeArguments) == 1
-			if !typed || r.TypeArguments[0].Package != "" || r.TypeArguments[0].Name != a.msgEnum || len(r.TypeArguments[0].TypeArguments) > 0 || r.TypeArguments[0].IsArray {
-				return fmt.Errorf("%s: View must return UI<%s>, the message type Update takes; got %s", path, a.msgEnum, typeRefLabel(r))
-			}
+		typed := r.Name == "UI" && r.Package == "" && !r.IsArray && len(r.TypeArguments) == 1
+		if !typed || r.TypeArguments[0].Package != "" || r.TypeArguments[0].Name != a.msgEnum || len(r.TypeArguments[0].TypeArguments) > 0 || r.TypeArguments[0].IsArray {
+			return fmt.Errorf("%s: View must return UI<%s>, the message type Update takes; got %s", path, a.msgEnum, typeRefLabel(r))
 		}
 	}
 	return nil
@@ -173,24 +159,18 @@ func declaresEnum(enums []ast.EnumDecl, name string) bool {
 	return false
 }
 
-// Dispatch delivers an action to Update: the button's message value when
-// Update takes the app's message enum, or the event string when it takes
-// String. A button whose message does not match Update is an error.
+// Dispatch delivers an action's message value to Update. The typechecker
+// has already matched every button's message to View's UI<Msg>; a node
+// built from the raw string-event builtin has none and is an error.
 func (a *App) Dispatch(state interpret.Value, action lowering.Action) (interpret.Value, error) {
-	arg := interpret.Value{Kind: interpret.ValueString, Text: action.Name}
 	msg, typed := action.Message.(interpret.Value)
-	switch {
-	case a.msgEnum == "" && typed:
-		return state, fmt.Errorf("button sends %s, but Update takes an event String; declare Update(model, msg: %s)", action.Name, localName(msg.Enum.TypeName))
-	case a.msgEnum != "" && !typed:
+	if !typed {
 		return state, fmt.Errorf("button sends the event string %q, but Update takes %s; give the button a %s value", action.Name, a.msgEnum, a.msgEnum)
-	case typed:
-		if localName(msg.Enum.TypeName) != a.msgEnum {
-			return state, fmt.Errorf("button sends %s, but Update takes %s", action.Name, a.msgEnum)
-		}
-		arg = msg
 	}
-	next, err := a.call("Update", state, arg)
+	if localName(msg.Enum.TypeName) != a.msgEnum {
+		return state, fmt.Errorf("button sends %s, but Update takes %s", action.Name, a.msgEnum)
+	}
+	next, err := a.call("Update", state, msg)
 	if err != nil {
 		return state, fmt.Errorf("Update(%s): %w", action.Name, err)
 	}

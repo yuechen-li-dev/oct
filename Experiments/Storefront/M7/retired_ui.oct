@@ -1,0 +1,61 @@
+package StorefrontM7
+
+// Storefront M7 was written against the string-event UI surface that the UI
+// library retired once typed messages (UI<Msg>) and layout tables replaced
+// it. M8 is the same storefront on the current surface. These are M7's
+// copies of the retired helpers, over the backing builtins, so the
+// experiment keeps running as a record of where the design started.
+
+record EventToken {
+    Value: String
+}
+
+fn Token(value: String) -> EventToken {
+    return EventToken { Value: value }
+}
+
+fn EventTokenValue(token: EventToken) -> String {
+    return token.Value
+}
+
+fn TokenButton(label: String, event: EventToken, enabled: Bool) -> UI {
+    return UIButton(label, event.Value, enabled)
+}
+
+fn AnchorBox(left: Float<ui>, top: Float<ui>, right: Float<ui>, bottom: Float<ui>, child: UI) -> UI {
+    return UIPlaceAnchored(left, top, right, bottom, child, 0)
+}
+
+fn GridRows(cells: UI[][]) -> UI {
+    return UIGridRows(cells)
+}
+
+record EventValueDispatch {
+    Events: String[]
+    Values: String[]
+}
+
+fn ResolveEventValue(event: String, table: EventValueDispatch) -> String ! Error {
+    let count = Len(table.Events)
+    if count != Len(table.Values) {
+        return error("ResolveEventValue requires Events and Values length match")
+    }
+    for i in 0..count {
+        if event == table.Events[i] {
+            return table.Values[i]
+        }
+    }
+    return ""
+}
+
+fn MatchEventPrefix(event: String, prefix: String, allowedSuffixes: String[]) -> String ! Error {
+    if prefix == "" {
+        return error("MatchEventPrefix requires non-empty prefix")
+    }
+    for i in 0..Len(allowedSuffixes) {
+        if event == prefix + allowedSuffixes[i] {
+            return allowedSuffixes[i]
+        }
+    }
+    return ""
+}

@@ -15,6 +15,10 @@ enum Other {
     Body
 }
 
+enum Msg {
+    Go
+}
+
 record Model {
     Clicks: Int
 }
@@ -23,7 +27,7 @@ fn Init() -> Model {
     return Model { Clicks: 0 }
 }
 
-fn Update(model: Model, event: String) -> Model {
+fn Update(model: Model, msg: Msg) -> Model {
     return model
 }
 
@@ -34,11 +38,11 @@ fn Table() -> UI.LayoutTable {
     ])
 }
 
-fn View(model: Model) -> UI {
+fn View(model: Model) -> UI<Msg> {
     return UI.Arrange(Table(), model, Content)
 }
 
-fn Content(model: Model, region: Shell) -> UI {
+fn Content(model: Model, region: Shell) -> UI<Msg> {
     return switch region {
         case Shell.Header => UI.Text("header")
         case Shell.Body => UI.Text("body")

@@ -49,9 +49,6 @@ func (c checker) checkUISugarCall(scope *scope, callee string, typeArguments []a
 			return ExprType{}, err
 		}
 		if callee == "UIButtonMsg" && idx == 1 {
-			if t == c.uiPackageType("EventToken") {
-				continue
-			}
 			if !c.isMessageEnum(t) {
 				return ExprType{}, fmt.Errorf("function 'UI.Button' argument 2 expects a value of the app's message enum (for example Msg.Raise), got %s", t)
 			}
