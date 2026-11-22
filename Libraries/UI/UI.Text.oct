@@ -1,5 +1,61 @@
 package UI
 
+// One line of body text, measured by the backend's font metrics.
 fn Text(content: String) -> UI {
     return UIText(content)
+}
+
+// What happens when text does not fit its box. Text never resizes the box
+// it is placed in; this decides how it survives inside it.
+enum Overflow {
+    Ellipsis
+    Clip
+    Error
+}
+
+// How text is set (DESIGN.md §5.3). Start from UI.Body(), UI.Title(),
+// UI.Caption() or UI.Mono() and change fields with `with`. Color None uses
+// the node's styled foreground (UI.Styled), or the backend default.
+record TextSpec {
+    Size: Int<px>
+    Weight: Int
+    Mono: Bool
+    Wrap: Bool
+    Overflow: Overflow
+    Color: Option<Color>
+}
+
+fn Body() -> TextSpec {
+    return TextSpec {
+        Size: 16px
+        Weight: 400
+        Mono: false
+        Wrap: false
+        Overflow: Overflow.Ellipsis
+        Color: Option.None
+    }
+}
+
+fn Title() -> TextSpec {
+    return Body() with { Size: 22px  Weight: 700 }
+}
+
+fn Caption() -> TextSpec {
+    return Body() with { Size: 12px }
+}
+
+fn Mono() -> TextSpec {
+    return Body() with { Size: 14px  Mono: true }
+}
+
+// Text set with a spec.
+fn TextWith(spec: TextSpec, content: String) -> UI {
+    return UITextWith(spec, content)
+}
+
+// Body text that wraps to the width it is given. In a vertical stack it is
+// as tall as its lines; in a box it shows the lines that fit and ends the
+// last one with an ellipsis.
+fn Paragraph(content: String) -> UI {
+    return TextWith(Body() with { Wrap: true }, content)
 }

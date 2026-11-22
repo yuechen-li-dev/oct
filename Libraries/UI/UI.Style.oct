@@ -14,12 +14,6 @@ record Insets {
     Left: Int<px>
 }
 
-record TextStyle {
-    Size: Int<px>
-    Color: Color
-    Weight: Int
-}
-
 record Style {
     Background: Color
     Foreground: Color
@@ -60,14 +54,6 @@ fn InsetsXY(x: NonNegativePx, y: NonNegativePx) -> Insets {
         Right: x
         Bottom: y
         Left: x
-    }
-}
-
-fn DefaultTextStyle() -> TextStyle {
-    return TextStyle {
-        Size: 14px
-        Color: Rgb(0, 0, 0)
-        Weight: 400
     }
 }
 

@@ -186,7 +186,7 @@ func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, cal
 		return evalResult{value: Value{Kind: ValueUI, UI: node}}, nil
 	case "UIPlaceSpan", "UIRegion", "UIArrange":
 		return i.evalUIPlacementBuiltin(env, pkgName, callee, argumentExprs)
-	case "UIStack", "UISizing", "UINudge", "UIKeyed", "UIGridMatrix", "UISkip", "UISpan", "UIButtonMsg":
+	case "UIStack", "UISizing", "UINudge", "UIKeyed", "UIGridMatrix", "UISkip", "UISpan", "UIButtonMsg", "UITextWith":
 		return i.evalUISugarBuiltin(env, pkgName, callee, argumentExprs)
 	case "UIColumn", "UIRow", "UICanvas", "UIGrid":
 		if len(argumentExprs) != 1 {

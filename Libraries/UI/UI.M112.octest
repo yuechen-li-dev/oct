@@ -34,21 +34,6 @@ fn M112InsetsHelpers() -> Void {
 }
 
 [Fact]
-fn M112DefaultTextStyleDeterministic() -> Void {
-    let a = DefaultTextStyle()
-    let b = DefaultTextStyle()
-
-    Assert.Equal(14px, a.Size, "default text size should be deterministic")
-    Assert.True(a.Weight > 0, "default text weight should be positive")
-    Assert.Equal(a.Size, b.Size, "repeated calls should match")
-    Assert.Equal(a.Weight, b.Weight, "repeated calls should match")
-    Assert.Equal(a.Color.R, b.Color.R, "repeated calls should match")
-    Assert.Equal(a.Color.G, b.Color.G, "repeated calls should match")
-    Assert.Equal(a.Color.B, b.Color.B, "repeated calls should match")
-    Assert.Equal(a.Color.A, b.Color.A, "repeated calls should match")
-}
-
-[Fact]
 fn M112DefaultStyleDeterministicAndWithUpdate() -> Void {
     let base = DefaultStyle()
     let again = DefaultStyle()

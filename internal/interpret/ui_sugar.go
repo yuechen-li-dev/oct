@@ -174,6 +174,24 @@ func (i interpreter) evalUISugarBuiltin(env *environment, pkgName string, callee
 		return ui(child)
 	case "UIGridMatrix":
 		return i.evalUIGridMatrix(args[0], args[1])
+	case "UITextWith":
+		spec := args[0].Record.Fields
+		size := float64(spec["Size"].Int)
+		if size <= 0 {
+			return evalResult{}, fmt.Errorf("UI.TextWith: size must be positive, got %gpx", size)
+		}
+		ts := &machinauiir.TextSpec{
+			Size:     size,
+			Weight:   int(spec["Weight"].Int),
+			Mono:     spec["Mono"].Bool,
+			Wrap:     spec["Wrap"].Bool,
+			Overflow: machinauiir.Overflow(strings.ToLower(spec["Overflow"].Enum.Variant)),
+		}
+		if c := spec["Color"]; c.Kind == ValueEnum && c.Enum.Variant == "Some" && c.Enum.Payload != nil {
+			f := c.Enum.Payload.Record.Fields
+			ts.Color = &machinauiir.RGBA{R: uint8(f["R"].Int), G: uint8(f["G"].Int), B: uint8(f["B"].Int), A: uint8(f["A"].Int)}
+		}
+		return ui(&uiirNode{Kind: uiirNodeText, Text: args[1].Text, TextSpec: ts})
 	default: // UIButtonMsg
 		label, msg, enabled := args[0], args[1], args[2]
 		node := &uiirNode{Kind: uiirNodeButton, Label: label.Text, Enabled: enabled.Bool}

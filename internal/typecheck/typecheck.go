@@ -5389,7 +5389,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 	if callee == "UIPlaceSpan" || callee == "UIRegion" || callee == "UIArrange" {
 		return c.checkUIPlacementCall(scope, callee, typeArguments, arguments, ctx)
 	}
-	if callee == "UIStack" || callee == "UISizing" || callee == "UINudge" || callee == "UIKeyed" || callee == "UIGridMatrix" || callee == "UISkip" || callee == "UISpan" || callee == "UIButtonMsg" {
+	if callee == "UIStack" || callee == "UISizing" || callee == "UINudge" || callee == "UIKeyed" || callee == "UIGridMatrix" || callee == "UISkip" || callee == "UISpan" || callee == "UIButtonMsg" || callee == "UITextWith" {
 		return c.checkUISugarCall(scope, callee, typeArguments, arguments, ctx)
 	}
 	if callee == "UISpacer" {

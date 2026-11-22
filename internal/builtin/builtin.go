@@ -150,6 +150,7 @@ var names = withRandomBuiltinNames(map[string]struct{}{
 	"UISkip":                   {},
 	"UISpan":                   {},
 	"UIButtonMsg":              {},
+	"UITextWith":               {},
 	"UIColumn":                 {},
 	"UIRow":                    {},
 	"UICanvas":                 {},

@@ -1,0 +1,35 @@
+package UI
+
+import String
+
+[Fact]
+fn TextSpecPresetsStartFromBody() -> Void {
+    Assert.Equal(16px, Body().Size, "body text is 16 dp")
+    Assert.Equal(700, Title().Weight, "titles are bold")
+    Assert.Equal(12px, Caption().Size, "captions are small")
+    Assert.True(Mono().Mono, "Mono is monospace")
+    Assert.True(Body().Overflow == Overflow.Ellipsis, "text shortens with an ellipsis by default")
+    Assert.False(Body().Wrap, "body text is one line")
+}
+
+[Fact]
+fn TextWithCarriesItsSpec() -> Void {
+    let sig = Signature(TextWith(Title() with { Color: Option.Some(Rgb(1, 2, 3)) }, "Hi"))
+    Assert.True(String.Contains(sig, "{text=size:22,weight:700,mono:false,wrap:false,overflow:ellipsis,color:1,2,3,255}"), "the spec is part of the node")
+    Assert.False(String.Contains(Signature(Text("Hi")), "{text="), "plain text has no spec")
+}
+
+[Fact]
+fn ParagraphWraps() -> Void {
+    let sig = Signature(Paragraph("A paragraph wraps to the width it is given."))
+    Assert.True(String.Contains(sig, "wrap:true"), "a paragraph wraps")
+    Assert.True(String.Contains(sig, "overflow:ellipsis,color:inherit"), "and inherits its color")
+}
+
+[Fact]
+fn TextOverflowPoliciesAreNamed() -> Void {
+    let clip = Signature(TextWith(Body() with { Overflow: Overflow.Clip }, "x"))
+    let error = Signature(TextWith(Body() with { Overflow: Overflow.Error }, "x"))
+    Assert.True(String.Contains(clip, "overflow:clip"), "Clip")
+    Assert.True(String.Contains(error, "overflow:error"), "Error")
+}

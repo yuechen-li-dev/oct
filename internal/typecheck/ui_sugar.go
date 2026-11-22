@@ -33,6 +33,7 @@ func (c checker) checkUISugarCall(scope *scope, callee string, typeArguments []a
 		"UISkip":       {},
 		"UISpan":       {integer, integer, ui},
 		"UIButtonMsg":  {str, {}, boolean},
+		"UITextWith":   {c.uiPackageType("TextSpec"), str},
 	}[callee]
 	if len(arguments) != len(params) {
 		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", written, len(params), len(arguments))
