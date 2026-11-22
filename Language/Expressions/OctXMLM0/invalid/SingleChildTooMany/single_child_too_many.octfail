@@ -1,0 +1,7 @@
+expect error: "Framed takes one child for parameter child (a Node, not an array), got 2; wrap them in a container"
+package SingleChildTooMany
+
+record Node { Value: String }
+fn Leaf(value: String) -> Node { return Node { Value: value } }
+fn Framed(child: Node) -> Node { return child }
+fn Main() -> Node { return <Framed><Leaf Value="a" /><Leaf Value="b" /></Framed> }

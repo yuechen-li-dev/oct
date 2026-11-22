@@ -1,0 +1,30 @@
+package OctXMLM0Valid
+
+// A final parameter of one T (not T[]) takes exactly one child.
+
+fn Framed(width: Int, child: UiNode) -> UiNode {
+    return UiNode { Text: "frame" Enabled: true Count: width Children: [child] }
+}
+
+[Fact]
+fn SingleChildBodyIsTheFinalArgument() -> Void {
+    let actual = <Framed Width={3}><Label Text="inside" /></Framed>
+    Assert.Equal(Framed(3, Label("inside")), actual, "one element child is the final argument")
+}
+
+[Fact]
+fn SingleChildBodyTakesAnExpressionOrText() -> Void {
+    let inner = Label("computed")
+    Assert.Equal(Framed(1, inner), <Framed Width={1}>{inner}</Framed>, "an embedded expression is the child")
+    Assert.Equal(Framed(2, MarkupTextUiNode("plain words")), <Framed Width={2}>plain words</Framed>, "text goes through MarkupTextT")
+}
+
+[Fact]
+fn SingleChildBodiesNest() -> Void {
+    let actual = <Framed Width={1}>
+        <Framed Width={2}>
+            <Panel Enabled={true} Count={0}><Label Text="a" /><Label Text="b" /></Panel>
+        </Framed>
+    </Framed>
+    Assert.Equal(Framed(1, Framed(2, Panel(true, 0, [Label("a"), Label("b")]))), actual, "single-child and array bodies compose")
+}

@@ -46,6 +46,14 @@ declares `MarkupTextInline`. This is the complete M0 text adapter protocol: it
 is an ordinary statically resolved function, not implicit conversion or
 runtime dispatch.
 
+If the final unmatched parameter is a single `T` (not an array, not
+`String`, not a function), the body is exactly one child, and that child is
+the argument: an element, an `{ expression }`, or text through
+`MarkupTextT`. `<Framed Width={3}><Label Text="inside" /></Framed>` is
+`Framed(3, Label("inside"))`. Two or more children are an error that names the
+parameter; wrap them in a container element. An empty or self-closing element
+leaves the parameter missing.
+
 If the final unmatched parameter is `String`, the body must contain text only
 and becomes that string. If it is named `lines: String[]`, the target opts into
 raw-body capture. Raw bodies do not parse nested tags or `{}` interpolation;

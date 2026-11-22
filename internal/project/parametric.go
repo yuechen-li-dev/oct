@@ -1249,19 +1249,52 @@ func (e *parametricElaborator) lowerMarkupBody(pkgName, targetPkg string, elemen
 		}
 		return ast.StringLiteralExpr{Value: normalizeMarkupScalarText(element.RawBody)}, true, nil
 	}
+	if !parameter.Type.IsArray && parameter.Type.ArrayDepth == 0 && parameter.Type.Function == nil {
+		return e.lowerMarkupSingleChild(pkgName, targetPkg, element, parameter, subst)
+	}
 	if !parameter.Type.IsArray || parameter.Type.ArrayDepth != 1 {
 		return nil, false, nil
 	}
 	elementType := parameter.Type
 	elementType.IsArray = false
 	elementType.ArrayDepth = 0
+	values, err := e.lowerMarkupChildren(pkgName, targetPkg, element, elementType, subst, displayType(elementType)+"[]")
+	if err != nil {
+		return nil, false, err
+	}
+	return ast.ArrayLiteralExpr{Elements: values}, true, nil
+}
+
+// lowerMarkupSingleChild lowers the body of an element whose final
+// parameter is one T, not T[]: the body is exactly one child, which is
+// that argument (an element, an `{expression}`, or text through
+// MarkupTextT). `<UI.Fill Weight={1.0}><Card /></UI.Fill>` is
+// `UI.Fill(1.0, Card())`.
+func (e *parametricElaborator) lowerMarkupSingleChild(pkgName, targetPkg string, element ast.MarkupElementExpr, parameter ast.Parameter, subst map[string]ast.TypeRef) (ast.Expr, bool, error) {
+	values, err := e.lowerMarkupChildren(pkgName, targetPkg, element, parameter.Type, subst, "a "+displayType(parameter.Type))
+	if err != nil {
+		return nil, false, err
+	}
+	switch len(values) {
+	case 0:
+		return nil, false, nil
+	case 1:
+		return values[0], true, nil
+	default:
+		return nil, false, fmt.Errorf("%s takes one child for parameter %s (a %s, not an array), got %d; wrap them in a container", element.Tag, parameter.Name, displayType(parameter.Type), len(values))
+	}
+}
+
+// lowerMarkupChildren lowers structured children, each an argument of
+// elementType.
+func (e *parametricElaborator) lowerMarkupChildren(pkgName, targetPkg string, element ast.MarkupElementExpr, elementType ast.TypeRef, subst map[string]ast.TypeRef, childrenLabel string) ([]ast.Expr, error) {
 	children := normalizeMarkupChildren(element.Children)
 	values := make([]ast.Expr, 0, len(children))
 	for _, child := range children {
 		if child.Value != nil {
 			value, err := e.rewriteExpr(pkgName, child.Value, &elementType, subst)
 			if err != nil {
-				return nil, false, fmt.Errorf("%s child: %w", element.Tag, err)
+				return nil, fmt.Errorf("%s child: %w", element.Tag, err)
 			}
 			values = append(values, value)
 			continue
@@ -1271,7 +1304,7 @@ func (e *parametricElaborator) lowerMarkupBody(pkgName, targetPkg string, elemen
 		}
 		adapterName := "MarkupText" + elementType.Name
 		if _, ok := e.findMarkupFunction(targetPkg, adapterName); !ok {
-			return nil, false, fmt.Errorf("%s expects %s[] children, but package %s does not declare fn %s(value: String) -> %s", element.Tag, displayType(elementType), targetPkg, adapterName, displayType(elementType))
+			return nil, fmt.Errorf("%s expects %s children, but package %s does not declare fn %s(value: String) -> %s", element.Tag, childrenLabel, targetPkg, adapterName, displayType(elementType))
 		}
 		callee := ast.Expr(ast.IdentifierExpr{Name: adapterName})
 		if targetPkg != pkgName {
@@ -1279,7 +1312,7 @@ func (e *parametricElaborator) lowerMarkupBody(pkgName, targetPkg string, elemen
 		}
 		values = append(values, ast.CallExpr{Callee: callee, Arguments: []ast.Expr{ast.StringLiteralExpr{Value: child.Text}}, Line: child.Line, Column: child.Column})
 	}
-	return ast.ArrayLiteralExpr{Elements: values}, true, nil
+	return values, nil
 }
 
 func (e *parametricElaborator) findMarkupFunction(pkgName, name string) (ast.FunctionDecl, bool) {
