@@ -1,0 +1,47 @@
+Machina UI app OK: ../../Examples/MachinaText/main.oct (900x600)
+frame:
+  "Reading and wrapping"       at (24, 22.25) size 220x27.5
+  "Fewer"                      at (708, 20) size 80x32
+  "More"                       at (796, 20) size 80x32
+  "ARTICLE"                    at (24, 72) size 42x15
+  "Machina places every region where the layout table says, and text lives" at (24, 99) size 572x20
+  "inside the box it is given. A paragraph wraps at spaces to that width," at (24, 119) size 572x20
+  "and in a vertical stack it is exactly as tall as its lines, so what" at (24, 139) size 572x20
+  "follows it moves down as the window narrows." at (24, 159) size 572x20
+  "Nothing negotiates: no flexbox, no intrinsic sizing contest. When text" at (24, 191) size 572x20
+  "cannot fit, its overflow policy decides what you see: an ellipsis, a" at (24, 211) size 572x20
+  "clipped edge, or an error that names the node." at (24, 231) size 572x20
+  "This note follows the last paragraph." at (24, 263) size 222x15
+  "OVERFLOW POLICIES"          at (620, 72) size 102x15
+  "Ellipsis: a label much longer t…" at (620, 97) size 256x20
+  "Clip: a label much longer than its sidebar box" at (620, 127) size 256x20
+  "UI.Paragraph(text)"         at (620, 157) size 151.2x17.5
+  "A paragraph in a 60 dp box shows" at (620, 184.5) size 256x20
+  "the lines that fit and ends the" at (620, 204.5) size 256x20
+  "last one with an ellipsis,…" at (620, 224.5) size 256x20
+
+click "More" -> Msg.More
+frame:
+  "Reading and wrapping"       at (24, 22.25) size 220x27.5
+  "Fewer"                      at (708, 20) size 80x32
+  "More"                       at (796, 20) size 80x32
+  "ARTICLE"                    at (24, 72) size 42x15
+  "Machina places every region where the layout table says, and text lives" at (24, 99) size 572x20
+  "inside the box it is given. A paragraph wraps at spaces to that width," at (24, 119) size 572x20
+  "and in a vertical stack it is exactly as tall as its lines, so what" at (24, 139) size 572x20
+  "follows it moves down as the window narrows." at (24, 159) size 572x20
+  "Nothing negotiates: no flexbox, no intrinsic sizing contest. When text" at (24, 191) size 572x20
+  "cannot fit, its overflow policy decides what you see: an ellipsis, a" at (24, 211) size 572x20
+  "clipped edge, or an error that names the node." at (24, 231) size 572x20
+  "Machina places every region where the layout table says, and text lives" at (24, 263) size 572x20
+  "inside the box it is given. A paragraph wraps at spaces to that width," at (24, 283) size 572x20
+  "and in a vertical stack it is exactly as tall as its lines, so what" at (24, 303) size 572x20
+  "follows it moves down as the window narrows." at (24, 323) size 572x20
+  "This note follows the last paragraph." at (24, 355) size 222x15
+  "OVERFLOW POLICIES"          at (620, 72) size 102x15
+  "Ellipsis: a label much longer t…" at (620, 97) size 256x20
+  "Clip: a label much longer than its sidebar box" at (620, 127) size 256x20
+  "UI.Paragraph(text)"         at (620, 157) size 151.2x17.5
+  "A paragraph in a 60 dp box shows" at (620, 184.5) size 256x20
+  "the lines that fit and ends the" at (620, 204.5) size 256x20
+  "last one with an ellipsis,…" at (620, 224.5) size 256x20

@@ -1,0 +1,18 @@
+package Main
+
+import String
+import UI
+
+[Fact]
+fn MoreAndFewerChangeTheParagraphCount() -> Void {
+    Assert.Equal(3, Update(Init(), Msg.More).Paragraphs, "More adds a paragraph")
+    Assert.Equal(1, Update(Init(), Msg.Less).Paragraphs, "Fewer removes one")
+}
+
+[Fact]
+fn TheArticleIsParagraphs() -> Void {
+    let sig = UI.Signature(View(Init()))
+    Assert.True(String.Contains(sig, "wrap:true"), "the article wraps")
+    Assert.True(String.Contains(sig, "overflow:clip"), "the sidebar shows Clip")
+    Assert.True(String.Contains(sig, "size:22,weight:700"), "the header is a title")
+}

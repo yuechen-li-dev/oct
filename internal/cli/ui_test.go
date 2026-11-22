@@ -44,3 +44,27 @@ func TestUICheckDumpOfTheShellExample(t *testing.T) {
 		t.Fatalf("dump changed; rerun with -update-ui-golden if intended\n got:\n%s\nwant:\n%s", out.String(), want)
 	}
 }
+
+// The MachinaText example pins wrapping and overflow under the fixed metric:
+// paragraph line breaks, the note that follows them, and ellipses.
+func TestUICheckFrameOfTheTextExample(t *testing.T) {
+	app := filepath.Join("..", "..", "Examples", "MachinaText", "main.oct")
+	var out bytes.Buffer
+	opts := uiOptions{sub: "check", path: app, width: 900, height: 600, clicks: []string{"More"}}
+	if err := runUICommand(opts, &out); err != nil {
+		t.Fatal(err)
+	}
+	golden := filepath.Join("testdata", "ui", "machina_text.frame")
+	if *updateUIGolden {
+		if err := os.WriteFile(golden, out.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != string(want) {
+		t.Fatalf("frame changed; rerun with -update-ui-golden if intended\n got:\n%s\nwant:\n%s", out.String(), want)
+	}
+}

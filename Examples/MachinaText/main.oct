@@ -1,0 +1,80 @@
+package Main
+
+import UI
+
+// Text in Machina UI (Libraries/UI/DESIGN.md §5.3): text specs, paragraphs
+// that wrap to the width they are given, and overflow policies. Resize the
+// window: the paragraphs rewrap and the note below them follows.
+
+enum Page {
+    Header
+    Article
+    Sidebar
+}
+
+enum Msg {
+    More
+    Less
+}
+
+record Model {
+    Paragraphs: Int
+}
+
+fn Init() -> Model {
+    return Model { Paragraphs: 2 }
+}
+
+fn Update(model: Model, msg: Msg) -> Model {
+    return match msg {
+        case Msg.More => model with { Paragraphs: model.Paragraphs + 1 }
+        case Msg.Less => model with { Paragraphs: model.Paragraphs - 1 }
+    }
+}
+
+fn Layout() -> UI.LayoutTable {
+    return UI.Layout([
+        UI.Region(Page.Header,  UI.StretchX(24px, 24px),  UI.Top(16px, 40px)),
+        UI.Region(Page.Article, UI.StretchX(24px, 304px), UI.StretchY(72px, 16px)),
+        UI.Region(Page.Sidebar, UI.Right(24px, 256px),    UI.StretchY(72px, 16px))
+    ])
+}
+
+fn View(model: Model) -> UI {
+    return UI.Arrange(Layout(), model, Content)
+}
+
+fn Body(i: Int) -> String {
+    if i % 2 == 0 {
+        return "Machina places every region where the layout table says, and text lives inside the box it is given. A paragraph wraps at spaces to that width, and in a vertical stack it is exactly as tall as its lines, so what follows it moves down as the window narrows."
+    }
+    return "Nothing negotiates: no flexbox, no intrinsic sizing contest. When text cannot fit, its overflow policy decides what you see: an ellipsis, a clipped edge, or an error that names the node."
+}
+
+fn Content(model: Model, region: Page) -> UI {
+    return switch region {
+        case Page.Header => UI.Stack(UI.Horizontal() with { Gap: 8.0 px  Align: UI.Align.Center }, [
+            UI.TextWith(UI.Title(), "Reading and wrapping"),
+            UI.Spacer(),
+            UI.Button("Fewer", Msg.Less, model.Paragraphs > 1),
+            UI.Button("More", Msg.More, model.Paragraphs < 6)
+        ])
+        case Page.Article => Article(model)
+        case Page.Sidebar => UI.Stack(UI.Vertical() with { Gap: 10.0 px }, [
+            UI.TextWith(UI.Caption(), "OVERFLOW POLICIES"),
+            UI.Fixed(20px, UI.Text("Ellipsis: a label much longer than its sidebar box")),
+            UI.Fixed(20px, UI.TextWith(UI.Body() with { Overflow: UI.Overflow.Clip }, "Clip: a label much longer than its sidebar box")),
+            UI.TextWith(UI.Mono(), "UI.Paragraph(text)"),
+            UI.Fixed(60px, UI.Paragraph("A paragraph in a 60 dp box shows the lines that fit and ends the last one with an ellipsis, however long it is."))
+        ])
+    }
+}
+
+fn Article(model: Model) -> UI {
+    var items = [UI.TextWith(UI.Caption(), "ARTICLE")]
+    for i in 0..model.Paragraphs {
+        items = Append(items, UI.Paragraph(Body(i)))
+    }
+    items = Append(items, UI.TextWith(UI.Caption() with { Color: Option.Some(UI.Rgb(110, 116, 128)) }, "This note follows the last paragraph."))
+    return UI.Stack(UI.Vertical() with { Gap: 12.0 px }, items)
+}
