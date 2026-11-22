@@ -29,3 +29,26 @@ fn ButtonsCarryTheirMessages() -> Void {
     Assert.True(String.Contains(signature, "Raise->Msg.Raise"), "the Raise button sends Msg.Raise")
     Assert.True(String.Contains(signature, "Toggle heating->Msg.ToggleHeating"), "the toggle sends Msg.ToggleHeating")
 }
+
+// The same view in Oct-XML (DESIGN.md §5.11): wrappers such as UI.Styled
+// take one child, containers take arrays, and buttons are typed.
+fn MarkupView(model: Thermostat) -> UI<Msg> {
+    let celsius = BaseUnit(model.Setpoint) - 273.15
+    let status = if model.Heating { "heating" } else { "idle" }
+    return <UI.Stack Spec={UI.Vertical() with { Gap: 8.0 px  Padding: UI.InsetsAll(16px) }}>
+        <UI.Text Content={"Setpoint: " + FormatFloat(celsius, 1) + " °C"} />
+        <UI.Styled Style={StatusStyle(model.Heating)}><UI.Text Content={"Status: " + status} /></UI.Styled>
+        <UI.Stack Spec={UI.Horizontal() with { Gap: 8.0 px }}>
+            <UI.Button Label="Lower" On={Msg.Lower} Enabled={celsius > 5.0} />
+            <UI.Button Label="Raise" On={Msg.Raise} Enabled={celsius < 30.0} />
+            <UI.Button Label="Toggle heating" On={Msg.ToggleHeating} Enabled={true} />
+        </UI.Stack>
+    </UI.Stack>
+}
+
+[Fact]
+fn MarkupViewIsTheSameView() -> Void {
+    Assert.Equal(UI.Signature(View(Init())), UI.Signature(MarkupView(Init())), "markup builds the same tree as the calls")
+    let heating = Update(Init(), Msg.ToggleHeating)
+    Assert.Equal(UI.Signature(View(heating)), UI.Signature(MarkupView(heating)), "in every state")
+}

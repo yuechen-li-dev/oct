@@ -1,7 +1,10 @@
 package UI
 
-fn Button(label: String, event: EventToken, enabled: Bool) -> UI {
-    return UIButton(label, EventTokenValue(event), enabled)
+// UI.Button(label, on, enabled) is the compiler-owned typed button: `on` is
+// a message enum value (or a legacy EventToken). This declaration names its
+// parameters for Oct-XML: <UI.Button Label="Save" On={Msg.Save} Enabled={true} />.
+fn Button(label: String, on: EventToken, enabled: Bool) -> UI {
+    return UIButton(label, EventTokenValue(on), enabled)
 }
 
 fn ButtonRaw(label: String, event: String, enabled: Bool) -> UI {

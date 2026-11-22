@@ -5,6 +5,14 @@ fn Text(content: String) -> UI {
     return UIText(content)
 }
 
+// MarkupTextUI is the Oct-XML text adapter: bare text among markup children
+// of a UI container is one UI.Text (DESIGN.md §5.11). Markup keeps one space
+// where text meets an element, for prose; a UI.Text is a widget of its own,
+// so the text is trimmed.
+fn MarkupTextUI(value: String) -> UI {
+    return Text(Trim(value))
+}
+
 // What happens when text does not fit its box. Text never resizes the box
 // it is placed in; this decides how it survives inside it.
 enum Overflow {

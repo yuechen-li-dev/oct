@@ -1,0 +1,30 @@
+package UI
+
+// Oct-XML over UI (DESIGN.md §5.11, §7 L3 and L4): bare text among the
+// children of a container is UI.Text through MarkupTextUI, and wrappers
+// that take one UI take exactly one child.
+
+fn MarkupPanel(title: String) -> UI {
+    return <Styled Style={DefaultStyle()}>
+        <Stack Spec={Vertical()}>
+            <Text Content={title} />
+            Plain words become a Text
+            <Fill Weight={1.0}><Spacer /></Fill>
+            <Keyed Key="footer">Footer</Keyed>
+        </Stack>
+    </Styled>
+}
+
+fn CallPanel(title: String) -> UI {
+    return Styled(DefaultStyle(), Stack(Vertical(), [
+        Text(title),
+        Text("Plain words become a Text"),
+        Fill(1.0, Spacer()),
+        Keyed("footer", Text("Footer"))
+    ]))
+}
+
+[Fact]
+fn MarkupBuildsTheSameTreeAsCalls() -> Void {
+    Assert.Equal(Signature(CallPanel("Title")), Signature(MarkupPanel("Title")), "markup is ordinary UI construction")
+}
