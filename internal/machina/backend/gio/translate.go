@@ -28,6 +28,10 @@ type DrawOp struct {
 	Align render.TextAlign
 	Muted bool
 	Color *uiir.RGBA
+	// Font for DrawText; zero values are the body font.
+	Size   float64
+	Weight int
+	Mono   bool
 }
 
 func Translate(commands []render.Command) ([]DrawOp, error) {
@@ -45,7 +49,7 @@ func Translate(commands []render.Command) ([]DrawOp, error) {
 		case render.FillRectCommand:
 			out = append(out, DrawOp{Kind: DrawOpFillRect, Rect: c.Rect, Fill: c.Fill, Paint: c.Paint})
 		case render.DrawTextCommand:
-			out = append(out, DrawOp{Kind: DrawOpDrawText, Rect: c.Rect, Text: c.Text, Align: c.Align, Muted: c.Muted, Color: c.Color})
+			out = append(out, DrawOp{Kind: DrawOpDrawText, Rect: c.Rect, Text: c.Text, Align: c.Align, Muted: c.Muted, Color: c.Color, Size: c.Size, Weight: c.Weight, Mono: c.Mono})
 		case render.PushClipCommand:
 			clipDepth++
 			out = append(out, DrawOp{Kind: DrawOpPushClip, Rect: c.Rect})

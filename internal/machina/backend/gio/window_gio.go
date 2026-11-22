@@ -85,7 +85,12 @@ const buttonInset = 2.0
 func runLoop(w *app.Window, s SessionAdapter) error {
 	var ops op.Ops
 	th := material.NewTheme()
+	th.Shaper = NewShaper()
 	th.Palette.Fg = colorText
+	// Layout, wrapping and truncation measure with the faces drawn here.
+	if err := s.SetTextMetrics(NewMetrics()); err != nil {
+		fmt.Fprintf(os.Stderr, "machina ui: the frame does not fit with this font's metrics, showing it with fixed metrics: %v\n", err)
+	}
 	var viewport machinalayout.Rect
 	tag := new(int) // pointer event target for the whole window
 	for {
@@ -194,7 +199,12 @@ func draw(gtx layout.Context, th *material.Theme, s SessionAdapter, scale float6
 			off := op.Offset(r.Min).Push(gtx.Ops)
 			lgtx := gtx
 			lgtx.Constraints = layout.Exact(r.Size())
-			label := material.Body1(th, d.Text)
+			size := d.Size
+			if size <= 0 {
+				size = 16
+			}
+			label := material.Label(th, unit.Sp(size), d.Text)
+			label.Font = FontFor(uiir.TextSpec{Weight: d.Weight, Mono: d.Mono})
 			label.Color = colorText
 			if d.Color != nil {
 				label.Color = nrgba(*d.Color)
