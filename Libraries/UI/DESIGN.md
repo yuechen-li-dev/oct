@@ -378,6 +378,16 @@ and a missing label becomes a compile error instead of a silent fallback.
 
 ### 5.3 Content leaves
 
+> **Implemented in UI-M4** ([README](README.md#text-ui-m4),
+> `Examples/MachinaText`). `UI.TextStyle` was folded into `TextSpec`.
+> `TextSpec.Color` is an `Option<Color>` so text can inherit the styled
+> foreground. Wrapped text answers the paragraph question from the review
+> without a measuring function in Oct code: a vertical stack asks wrapped text
+> (or a stack containing it) for its height at the width the stack gives
+> it, so placement stays declared and the measuring stays in one place.
+> Headless output uses a fixed metric; the window uses its font's metrics.
+> `UI.Divider` is not built yet.
+
 ```oct
 UI.Text(content: String) -> UI<M>                       // one line, measured width
 UI.Paragraph(content: String) -> UI<M>                  // new: wraps to assigned width, measured height
@@ -994,7 +1004,7 @@ before the type-system work.
 |---|---|---|
 | UI-M2 (**done**) | Layout tables (`UI.Layout`, `UI.Region`, `UI.Arrange`), per-axis spans and `UI.At` (R2a), layers and z (R5), `--dump` in span vocabulary (R6) | Storefront shell as one table; moving a region is a one-row edit; resize keeps the rail at 240px; dump golden tests |
 | UI-M3 (**done**) | Step 0 typed messages (R1); stack and grid sugar, `Fixed`/`Fill`/`Auto`, `Nudge`, `Keyed`, padding moved to layout (R2b) | Storefront rewrite: no strings, no `ui` fractions, keyed cards survive filtering, fewer lines |
-| UI-M4 | Text measurement seam, `Paragraph`, `TextSpec`, overflow policy (R3) | No clipped or wrapped-out-of-view labels at 1×/2× scale |
+| UI-M4 (**done**) | Text measurement seam, `Paragraph`, `TextSpec`, overflow policy (R3) | No clipped or wrapped-out-of-view labels at 1×/2× scale |
 | UI-M5 | `UI<M>` (L1), variant constructors as values (L2), markup items (L3, L4) | A wrong-message button is a compile error |
 | UI-M6 | Inputs and focus (R4), state styles | Form sample: checkbox, text field, slider round-trip through `Update` |
 | UI-M7 | Overlays (dialog, popover, toast) on the modal/tooltip layers, `View(model, viewport)` | Dialog over page with focus trapped; narrow/wide shell switch on resize |

@@ -64,9 +64,9 @@ needs cgo there.
   an Oct → wasm compiler backend or a Go-session → WebView bridge (a second
   native backend duplicating Gio). Neither is a hookup; both were declined in
   M0 in favour of Gio. Its docs now say so.
-- **Styles** were wired end to end after M0 (M117: `UI.Styled`). `Padding`
-  and `UI.TextStyle` are still not applied.
-- **Text metrics are fixed in layout** (8 dp per character). Real
-  measurement needs a text-measurement seam from the backend into layout.
+- **Styles** were wired end to end after M0 (M117: `UI.Styled`). Padding
+  became layout in UI-M3; text size and weight are `UI.TextSpec` (UI-M4).
+- **Text metrics** come from the backend's font since UI-M4; headless tools
+  keep a fixed metric. See `Libraries/UI/README.md`.
 - **No keyboard input, focus traversal or text entry** in the Gio backend.
 - **UI builtins are interpreter-only.**

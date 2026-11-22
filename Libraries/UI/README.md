@@ -128,9 +128,8 @@ UI.Stack(UI.Vertical() with { Gap: 12.0 px  Padding: UI.InsetsAll(16px) }, [
   A fixed or measured container stretches across the stack, as `UI.Fixed`
   does.
 - Sizing applies only to a child of a stack; elsewhere it is an error.
-- Text is measured with fixed metrics (8 dp per character, 20 dp per line;
-  buttons add 24 dp and are at least 80 dp wide) until the backend's
-  measurement reaches layout (UI-M4).
+- Text and buttons are measured with the session's text metrics (see Text
+  below); buttons add 24 dp around their label and are at least 80 dp wide.
 - `UI.Nudge(dx, dy, child)` moves a node after placement without moving its
   siblings.
 - `UI.Inset(insets, child)` puts space around one child. Padding is layout,
@@ -232,7 +231,7 @@ fn Update(model: StoreState, event: String) -> StoreState {
 
 - `UI.Color`
 - `UI.Insets` (used by stack and grid padding)
-- `UI.TextStyle`
+- `UI.TextSpec` (see Text)
 - `UI.Style`
 
 Helper constructors:
@@ -241,7 +240,6 @@ Helper constructors:
 - `UI.Rgba(r, g, b, a)`
 - `UI.InsetsAll(value)`
 - `UI.InsetsXY(x, y)`
-- `UI.DefaultTextStyle()`
 - `UI.DefaultStyle()`
 
 These are plain Oct records, so customization is explicit and immutable via `with` updates.
@@ -269,8 +267,7 @@ render, and native backends paint it:
 - The style is part of the node's identity: `UI.Signature` changes with it.
 
 `Style` has no padding: inner space is layout (a stack's `Padding` or
-`UI.Inset`). `UI.TextStyle` is not applied yet (text size needs real text
-measurement in layout).
+`UI.Inset`). Text size, weight and color are a `UI.TextSpec`.
 
 ```oct
 let badge = UI.Styled(UI.DefaultStyle() with {
@@ -279,6 +276,54 @@ let badge = UI.Styled(UI.DefaultStyle() with {
     Radius: 4px
 }, UI.Text("Status: heating"))
 ```
+
+## Text (UI-M4)
+
+Text lives in the box it is given. Measurement decides how the box's text
+survives, never how big the box is (except where a stack measures a child).
+
+```oct
+UI.Text(content: String) -> UI                      // one line of body text
+UI.TextWith(spec: UI.TextSpec, content: String) -> UI
+UI.Paragraph(content: String) -> UI                 // body text that wraps
+
+UI.Body() / UI.Title() / UI.Caption() / UI.Mono() -> UI.TextSpec
+
+record TextSpec {
+    Size: Int<px>            // 16 body, 22 title, 12 caption, 14 mono
+    Weight: Int              // 400 regular, 700 bold
+    Mono: Bool
+    Wrap: Bool
+    Overflow: UI.Overflow    // Ellipsis | Clip | Error
+    Color: Option<UI.Color>  // None: the styled foreground or the default
+}
+```
+
+```oct
+UI.TextWith(UI.Caption() with { Color: Option.Some(UI.Rgb(110, 116, 128)) }, "Updated today")
+UI.TextWith(UI.Body() with { Overflow: UI.Overflow.Error }, order.Id)
+```
+
+- **Wrapping.** Text with `Wrap: true` (`UI.Paragraph`) breaks at spaces to
+  the width it is given, and inside a word only when the word alone is too
+  wide. In a vertical stack it takes the stack's width and is exactly as tall
+  as its lines, so what follows moves down as the window narrows; a stack
+  that contains it is measured the same way. In a horizontal stack it fills
+  (`UI.Fill(1.0)`). In a box it shows the lines that fit.
+- **Overflow.** When text does not fit its box: `Ellipsis` (the default)
+  shortens the line, and ends the last visible line of wrapped text with
+  `…`; `Clip` draws what fits and clips the rest; `Error` fails the frame,
+  naming the node and the shortfall. Button labels are shortened with an
+  ellipsis.
+- **Metrics.** Layout, wrapping and truncation all measure with one set of
+  text metrics, so what is drawn is what was measured. The native window
+  measures with the font it draws (the Go font collection). `oct ui check`,
+  `--dump` and tests use fixed metrics so their output is deterministic:
+  each character is half the font size wide (0.6 for `Mono`) and a line is
+  1.25 times the size, which is 8 dp and 20 dp at the body size. The fixed
+  metric is a little wider than the Go font, so text that fits in
+  `oct ui check` also fits in the window. If a frame does not fit with the
+  window's metrics, the window keeps the fixed-metric frame and says why.
 
 ## Explicit placement and layout tables (UI-M2)
 
