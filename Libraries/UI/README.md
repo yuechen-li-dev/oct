@@ -19,7 +19,7 @@ enum Msg {
 
 fn Init() -> Model
 fn Update(model: Model, msg: Msg) -> Model
-fn View(model: Model) -> UI
+fn View(model: Model) -> UI<Msg>
 ```
 
 Buttons carry message values, and `Update` matches them exhaustively:
@@ -37,26 +37,86 @@ fn Update(model: Model, msg: Msg) -> Model {
 
 - `UI.Button(label, message, enabled)` takes a value of any enum. It is a
   compiler-owned builtin (generic over the message enum). Message variants
-  may carry a payload.
+  may carry a payload. A button that sends `Msg` is a `UI<Msg>` (see
+  [Typed views](#typed-views-ui-m5)).
 - The button keeps the message value; `Update` receives the value itself.
   Its printed form (`Msg.Select("harbor-board")`) is a tool-facing alias for
   dumps and `oct ui check --click`; nothing parses it back.
 - `oct ui` checks when the app loads that `Update`'s second parameter is the
-  app's message enum, and when a button is pressed that its message is of
-  that enum. A mismatch is an error naming both.
+  app's message enum and that `View` returns `UI<Msg>` for that same enum.
+  The typechecker has already rejected a button of any other enum.
 - `UI.Button` still accepts a `UI.EventToken`, and `Update` may still take
-  `event: String`, for apps written before UI-M3. New apps use messages.
+  `event: String` (with `View` returning `UI`), for apps written before UI-M3. New apps use messages.
   `UI.Token`, `UI.ButtonRaw` and the `UI.Dispatch` helpers below exist for
   those apps.
 
 `Examples/MachinaThermostat` is the smallest app; `Experiments/Storefront/M8`
 is a full storefront on this surface.
 
+## Typed views (UI-M5)
+
+A view's type says which message its buttons send: `UI<Msg>`. The compiler
+checks it, so a button of the wrong enum is a compile error rather than an
+error at the first click.
+
+```oct
+fn Toolbar(model: Model) -> UI<Msg> {
+    var items: UI<Msg>[] = [UI.Text("Sections")]
+    for i in 0..Len(model.Sections) {
+        items = Append(items, UI.Button(model.Sections[i], Msg.Open(i), true))
+    }
+    return UI.Row(items)
+}
+
+// Bare UI: works with any message type, and returns its argument's.
+fn Card(title: String, body: UI) -> UI {
+    return UI.Stack(UI.Vertical(), [UI.Text(title), body])
+}
+```
+
+- A view with no button of its own (`UI.Text`, `UI.Spacer`, a stack of
+  them) goes into a `UI<M>` of any `M`, as `Option.None` goes into any
+  `Option<T>`. A `UI<A>` never becomes a `UI<B>`.
+- A container's message is its children's. Children that send two different
+  enums are an error: `UI<Msg> and UI<Other> cannot be in one view`.
+- Bare `UI` in a function's signature is message-polymorphic. All bare-`UI`
+  parameters and the bare-`UI` result of one call share the arguments'
+  message, so `Card("Actions", saveButton)` is a `UI<Msg>`. Every wrapper in
+  this library (`UI.Styled`, `UI.Stack`, `UI.Fill`, `UI.Keyed`, `UI.Chunk`...)
+  is written this way. Inside such a function the message is unknown, so it
+  cannot add a button of one enum: a helper that sends messages is declared
+  `-> UI<Msg>`, and the compiler says so.
+- Elsewhere bare `UI` is a view with no messages: a record field, an enum
+  payload, or a local in a function whose signature has no bare `UI`. A list
+  that will hold buttons is declared `var items: UI<Msg>[] = []`; `var items
+  = [UI.Text("a")]` is a messageless list.
+- A payload variant written without its payload is a function value:
+  `Msg.Open` is a `fn(Int) -> Msg`. UI inputs (UI-M6) will take it as their
+  callback, as in `UI.Checkbox("Audio", model.Audio, Msg.SetAudio)`.
+
+Views can also be written in Oct-XML ([typed markup](../../Language/reference/language/typed-markup.md)).
+Containers take their children as an array, wrappers that take one `UI`
+(`UI.Styled`, `UI.Fill`, `UI.Keyed`...) take exactly one child, and bare text
+among the children of a container is a `UI.Text` (through `MarkupTextUI`):
+
+```oct
+<UI.Styled Style={CardStyle()}>
+    <UI.Stack Spec={UI.Vertical() with { Gap: 6.0 px }}>
+        Desk Starter Grid
+        <UI.Button Label="Add to cart" On={Msg.AddToCart(id)} Enabled={true} />
+    </UI.Stack>
+</UI.Styled>
+```
+
+Function calls remain the default; markup suits deep, mostly static trees.
+`Examples/MachinaThermostat/main.octest` builds the thermostat's view both
+ways and checks they are the same tree.
+
 ## Canonical API
 
 ```oct
 UI.Text(content: String) -> UI
-UI.Button(label: String, message: Msg, enabled: Bool) -> UI      // Msg: any enum
+UI.Button(label: String, message: Msg, enabled: Bool) -> UI<Msg> // Msg: any enum
 UI.Spacer() -> UI
 UI.Styled(style: UI.Style, node: UI) -> UI
 
@@ -65,7 +125,7 @@ UI.Canvas(children: UI[]) -> UI
 UI.At(x: UI.XSpan, y: UI.YSpan, child: UI) -> UI
 UI.Region(region: R, x: UI.XSpan, y: UI.YSpan) -> UI.Placement
 UI.Layout(rows: UI.Placement[]) -> UI.LayoutTable
-UI.Arrange(layout: UI.LayoutTable, context: C, content: fn(C, R) -> UI) -> UI
+UI.Arrange(layout: UI.LayoutTable, context: C, content: fn(C, R) -> UI<M>) -> UI<M>
 
 // Stacks and grids (UI-M3)
 UI.Stack(spec: UI.StackSpec, children: UI[]) -> UI
@@ -88,6 +148,10 @@ UI.Keyed(key: String, child: UI) -> UI
 
 UI.Signature(node: UI) -> String
 ```
+
+Every `UI` above is bare, so each function returns the message type of its
+UI arguments: `UI.Stack(spec, children)` with `UI<Msg>[]` children is a
+`UI<Msg>` ([Typed views](#typed-views-ui-m5)).
 
 Older spellings remain callable for existing code and are not part of the
 documented surface: `UI.AbsoluteBox`/`UI.AnchorBox` (and their `Z` forms,
@@ -345,11 +409,11 @@ fn WideShell() -> UI.LayoutTable {
     ])
 }
 
-fn View(model: Store) -> UI {
+fn View(model: Store) -> UI<Msg> {
     return UI.Arrange(WideShell(), model, ShellContent)
 }
 
-fn ShellContent(model: Store, region: Shell) -> UI {
+fn ShellContent(model: Store, region: Shell) -> UI<Msg> {
     return switch region {
         case Shell.Header => HeaderBar(model)
         // ... one case per region
@@ -374,7 +438,7 @@ Layout tables:
 ```oct
 UI.Region(region: R, x: UI.XSpan, y: UI.YSpan) -> UI.Placement    // R: any enum without payloads
 UI.Layout(rows: UI.Placement[]) -> UI.LayoutTable
-UI.Arrange(layout: UI.LayoutTable, context: C, content: fn(C, R) -> UI) -> UI
+UI.Arrange(layout: UI.LayoutTable, context: C, content: fn(C, R) -> UI<M>) -> UI<M>
 UI.At(x: UI.XSpan, y: UI.YSpan, child: UI) -> UI                   // one box in a UI.Canvas
 ```
 
@@ -446,7 +510,7 @@ fn Update(model: Counter, msg: Msg) -> Counter {
     }
 }
 
-fn View(model: Counter) -> UI {
+fn View(model: Counter) -> UI<Msg> {
     return UI.Stack(UI.Vertical() with { Gap: 8.0 px  Padding: UI.InsetsAll(16px) }, [
         UI.Text("count=" + FormatFloat(Float(model.Count), 0)),
         UI.Button("Increment", Msg.Increment, true)

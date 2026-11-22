@@ -265,6 +265,17 @@ Types and names marked *new* do not exist yet. Everything else is current Oct.
 
 ### 5.1 The app
 
+> **Implemented in UI-M5** ([README](README.md#typed-views-ui-m5); contracts
+> `Libraries/UI/UI.Messages*`). `UI<Msg>` is checked by the compiler and
+> `oct ui` checks that `View` returns `UI<Update's Msg>`. One difference
+> from §7: the Libraries/UI wrappers did not move to builtins. Bare `UI` in
+> a signature is message-polymorphic instead (one message per call, shared
+> by the bare-UI parameters and result; rigid inside the body), so
+> `Styled`, `Stack`, `Fill` and the rest stay ordinary Oct functions, and an
+> app's own components can be written the same way. Elsewhere bare `UI` is
+> a view with no messages, so a list that will hold buttons is declared
+> `UI<Msg>[]`.
+
 ```oct
 package Thermostat
 
@@ -417,9 +428,11 @@ name, not two.
 > **Implemented in UI-M2** ([README](README.md#explicit-placement-and-layout-tables-ui-m2),
 > `Examples/MachinaShell`). Differences from the sketch below, all pending
 > typed views (L1): the table type is spelled `UI.LayoutTable` (a record and
-> a function cannot share the name `Layout`), views return `UI` rather than
-> `UI<Msg>`, and region coverage is checked when `UI.Arrange` runs rather
-> than at compile time. `UI.Nudge` is part of UI-M3 with the sugar.
+> a function cannot share the name `Layout`), and region coverage is checked
+> when `UI.Arrange` runs rather than at compile time. `UI.Nudge` is part of
+> UI-M3 with the sugar. Since UI-M5 views return `UI<Msg>` and `UI.Arrange`
+> returns its content function's message type; a table typed over its
+> region enum (`UI.Layout<R>`, compile-time coverage) is not done yet.
 
 A screen declares its regions as an enum and its geometry as a table, apart
 from the widgets:
@@ -820,6 +833,13 @@ built once with `let` and passed in.
 
 ### 5.11 The markup form
 
+> **Implemented in UI-M5**: single-child bodies (L3, in
+> [typed markup](../../Language/reference/language/typed-markup.md)) and
+> `MarkupTextUI` (L4, which trims its text: each `UI.Text` is a widget of its
+> own). `UI.Button`'s declaration names its message parameter `on`, so the
+> example below is accepted as written. `Examples/MachinaThermostat/main.octest`
+> builds that app's view both ways and compares the trees.
+
 Oct-XML is the same calls with named attributes, which is why law 4 matters:
 
 ```oct
@@ -929,6 +949,13 @@ type `C`) the same compiler-owned way `UI<M>` is over `M`. `UI.Layout` checks
 that every variant of `R` appears exactly once: at compile time for a literal
 table, at construction otherwise.
 
+> **Status after UI-M5:** L1 (`UI<M>`), L2, L3 and L4 are implemented. The
+> region-typed table (`UI.Layout<R>`, `UI.Placement<R>`) is not: the table is
+> still the untyped `UI.LayoutTable`, and coverage is checked when
+> `UI.Arrange` runs, with an error naming the missing or repeated region. It
+> needs the same place typing over a record type that `UI<M>` has over a
+> view, and no screen in the corpus has been hurt by its absence yet.
+
 **Step 0, before L1.** Messages can be enum values without `UI<M>`: keep `UI`
 untyped, let `UI.Button` take any enum value as a compiler-polymorphic
 argument, store the value in the action table, and have `octapp` check at load
@@ -1005,7 +1032,7 @@ before the type-system work.
 | UI-M2 (**done**) | Layout tables (`UI.Layout`, `UI.Region`, `UI.Arrange`), per-axis spans and `UI.At` (R2a), layers and z (R5), `--dump` in span vocabulary (R6) | Storefront shell as one table; moving a region is a one-row edit; resize keeps the rail at 240px; dump golden tests |
 | UI-M3 (**done**) | Step 0 typed messages (R1); stack and grid sugar, `Fixed`/`Fill`/`Auto`, `Nudge`, `Keyed`, padding moved to layout (R2b) | Storefront rewrite: no strings, no `ui` fractions, keyed cards survive filtering, fewer lines |
 | UI-M4 (**done**) | Text measurement seam, `Paragraph`, `TextSpec`, overflow policy (R3) | No clipped or wrapped-out-of-view labels at 1×/2× scale |
-| UI-M5 | `UI<M>` (L1), variant constructors as values (L2), markup items (L3, L4) | A wrong-message button is a compile error |
+| UI-M5 (**done**) | `UI<M>` (L1), variant constructors as values (L2), markup items (L3, L4) | A wrong-message button is a compile error |
 | UI-M6 | Inputs and focus (R4), state styles | Form sample: checkbox, text field, slider round-trip through `Update` |
 | UI-M7 | Overlays (dialog, popover, toast) on the modal/tooltip layers, `View(model, viewport)` | Dialog over page with focus trapped; narrow/wide shell switch on resize |
 
