@@ -137,6 +137,11 @@ Manifest wrapper functions are a different thing: native code outside the toolch
 - A view is a `UI<M>` value ([Types](types.md)): `View(model) -> UI<Msg>`,
   with `UI.Button(label, Msg.X, enabled)` and the inputs sending values of
   the app's message enum, which `Update(model, msg: Msg)` matches.
+- Inputs are controlled: `UI.Checkbox(label, checked, Msg.SetAudio)`,
+  `UI.TextField(value, Msg.Rename)` and `UI.Slider(value, min, max,
+  Msg.SetVolume)` show the model's value and propose a change through a
+  `fn(T) -> Msg`, often a payload variant ([Enums](enums-and-options.md)).
+  `UI.StyledStates` styles a control per interaction state.
 - Page geometry is a layout table: `UI.Layout([UI.Region(Shell.Header, xspan,
   yspan), ...])`, bound to content by `UI.Arrange(table, model, Content)`.
   Spans (`UI.Left`, `UI.StretchX`, `UI.FractionX`, `UI.Top`, ...) take

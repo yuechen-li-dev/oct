@@ -592,7 +592,7 @@ edit.
 > filling (it stretches across), because a row of labels or buttons inside a
 > card took a fill share of the card twice in one app. `Text` and `Button`
 > are measured as specified; `Spacer`, grids and canvases fill. State styles
-> (§5.7 change 3) wait for hover and focus input (UI-M6). (`UI.Button` also
+> (§5.7 change 3) arrived with hover and focus input in UI-M6. (`UI.Button` also
 > accepted a `UI.EventToken` until that surface was retired after UI-M5.)
 
 A stack is the cursor walk you would otherwise write by hand
@@ -695,7 +695,10 @@ Style stays records plus `with` (M112/M117). Three changes:
    `UI.Inset(insets, child)` (*new*). A styled container that wants inner space
    says so in its layout spec.
 3. **State styles** (*new*), keyed by real interaction states that the session
-   tracks (JS `S.stateful`):
+   tracks (JS `S.stateful`). *Implemented in UI-M6* as written below, with
+   `Disabled`, `Pressed`, `Focused`, `Hover` tried in that order (no
+   combining); a node with state styles draws no default chrome or focus
+   ring:
 
 ```oct
 fn PrimaryButton(t: Tokens) -> UI.StyleStates {
@@ -777,6 +780,15 @@ fn ProductGrid(model: Store, columns: Int) -> UI<Msg> {
 source-level name today. §7 lists naming it as a small language item.)
 
 ### 5.9 Controlled inputs
+
+> **Implemented in UI-M6** ([README](README.md#inputs-and-focus);
+> `Examples/MachinaForm`) for `Checkbox`, `TextField` and `Slider`; `Select`
+> is not built yet. Inputs are compiler-owned like `UI.Button`, and the
+> payload-variant form below (L2, UI-M5) works, as does an anonymous
+> function. The session owns hover, press, focus and the caret, keyed by
+> node id; Tab walks controls in paint order. A slider steps a twentieth
+> of its range per arrow key. `oct ui check` scripts `--click`, `--type`
+> and `--key`.
 
 Inputs are controlled: the model owns the value, the widget proposes a change
 as a message, and the session owns only transient state (focus, caret,
@@ -1033,7 +1045,7 @@ before the type-system work.
 | UI-M3 (**done**) | Step 0 typed messages (R1); stack and grid sugar, `Fixed`/`Fill`/`Auto`, `Nudge`, `Keyed`, padding moved to layout (R2b) | Storefront rewrite: no strings, no `ui` fractions, keyed cards survive filtering, fewer lines |
 | UI-M4 (**done**) | Text measurement seam, `Paragraph`, `TextSpec`, overflow policy (R3) | No clipped or wrapped-out-of-view labels at 1×/2× scale |
 | UI-M5 (**done**) | `UI<M>` (L1), variant constructors as values (L2), markup items (L3, L4) | A wrong-message button is a compile error |
-| UI-M6 | Inputs and focus (R4), state styles | Form sample: checkbox, text field, slider round-trip through `Update` |
+| UI-M6 (**done**) | Inputs and focus (R4), state styles | Form sample: checkbox, text field, slider round-trip through `Update` |
 | UI-M7 | Overlays (dialog, popover, toast) on the modal/tooltip layers, `View(model, viewport)` | Dialog over page with focus trapped; narrow/wide shell switch on resize |
 
 Each milestone also updates `Libraries/UI/README.md` and the reference pages it

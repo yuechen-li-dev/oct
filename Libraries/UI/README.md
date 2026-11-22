@@ -8,12 +8,12 @@ Use `UI.*` functions; raw `UI*` builtins are backing details.
 
 | File | Contents |
 |---|---|
-| `UI.View.oct` | `UI.Signature`; notes on the compiler-owned widgets |
+| `UI.View.oct` | `UI.Signature`; the compiler-owned button and inputs |
 | `UI.Place.oct` | Spans, `UI.At`, `UI.Canvas`, layers, layout tables |
 | `UI.Stack.oct` | Stacks, `Column`/`Row`/`Spacer`, sizing, `Nudge`, `Inset`, `Keyed` |
 | `UI.Grid.oct` | Tracks, `UI.Grid`, spans, `UI.Chunk` |
 | `UI.Text.oct` | `Text`, `Paragraph`, `TextSpec`, overflow, `MarkupTextUI` |
-| `UI.Style.oct` | Colors, insets, `Style`, `Styled` |
+| `UI.Style.oct` | Colors, insets, `Style`, `Styled`, `StyleStates`, `StyledStates` |
 
 Tests are named after the file they cover (`UI.Stack.octest`), and `.octfail`
 contracts after the area and the rule (`UI.Messages.WrongMessageButton.octfail`).
@@ -101,6 +101,58 @@ fn Card(title: String, body: UI) -> UI {
   `Msg.Open` is a `fn(Int) -> Msg`. UI inputs will take it as their
   callback, as in `UI.Checkbox("Audio", model.Audio, Msg.SetAudio)`.
 
+## Inputs and focus
+
+Inputs are controlled: the model owns the value, the input shows it and
+proposes a change by calling its `on` function, and `Update` decides what
+the model becomes. A payload variant is such a function, so most inputs name
+their message directly:
+
+```oct
+enum Msg {
+    Rename(String)
+    SetAudio(Bool)
+    SetVolume(Float)
+}
+
+UI.TextField(model.Name, Msg.Rename)
+UI.Checkbox("Include audio", model.Audio, Msg.SetAudio)
+UI.Slider(model.Volume, 0.0, 1.0, Msg.SetVolume)
+```
+
+```oct
+UI.Checkbox(label: String, checked: Bool, on: fn(Bool) -> M) -> UI<M>
+UI.TextField(value: String, on: fn(String) -> M) -> UI<M>
+UI.Slider(value: Float, min: Float, max: Float, on: fn(Float) -> M) -> UI<M>
+```
+
+- `on` may be any function of that type, including an anonymous one
+  (`fn(on: Bool) -> Msg { return Msg.SetAudio(on) }`). Its result type is the
+  input's message type, so a `Msg.SetAudio` checkbox is a `UI<Msg>` and joins
+  its view like a button.
+- A checkbox proposes the opposite of `checked` when pressed or when it has
+  focus and Space or Enter is pressed. A text field proposes its value with
+  each edit: typed text goes in at the caret, and Backspace and Delete remove
+  a character. A slider proposes the value under the pointer when pressed and
+  while dragged, and moves by a twentieth of its range with the arrow keys
+  (Home and End go to `min` and `max`). `min` must be below `max`, and `value`
+  inside them.
+- The session owns only transient state, keyed by node identity: which
+  control is hovered, which is pressed, which has keyboard focus, and the
+  caret in a focused text field. A node keeps it while it keeps its id, so
+  give a repeated input `UI.Keyed` if earlier siblings come and go. Tab and
+  Shift+Tab move focus through buttons and inputs in paint order; Escape or a
+  press on nothing clears it; Enter and Space press a focused button.
+- A text field is 200 dp wide and 32 dp tall, a slider 200 dp by 24 dp, and a
+  checkbox is its box and label; size them with `UI.Fixed`, `UI.Fill` or
+  `UI.Size` like any stack child.
+- There is no select or radio input yet.
+
+`oct ui check` can script a session: `--click` presses a control (by label,
+or by the message or callback it sends, such as `Msg.Rename`), `--type`
+types into the focused text field, and `--key` presses a key, each printing
+the next frame. `Examples/MachinaForm` is a settings form on these inputs.
+
 ## API at a glance
 
 ```oct
@@ -134,6 +186,13 @@ UI.Span(columns: Int, rows: Int, child: UI) -> UI
 UI.Skip() -> UI
 UI.Chunk(items: UI[], columns: Int) -> UI[][]
 UI.Keyed(key: String, child: UI) -> UI
+
+// Inputs and state styles
+UI.Checkbox(label: String, checked: Bool, on: fn(Bool) -> M) -> UI<M>
+UI.TextField(value: String, on: fn(String) -> M) -> UI<M>
+UI.Slider(value: Float, min: Float, max: Float, on: fn(Float) -> M) -> UI<M>
+UI.States(base: UI.Style) -> UI.StyleStates
+UI.StyledStates(states: UI.StyleStates, node: UI) -> UI
 
 UI.Signature(node: UI) -> String
 ```
@@ -386,9 +445,38 @@ let badge = UI.Styled(UI.DefaultStyle() with {
 }, UI.Text("Status: heating"))
 ```
 
+### State styles
+
+A control can declare how it looks in each interaction state the session
+tracks. Start every state from a base style with `UI.States` and change the
+ones that differ:
+
+```oct
+fn PrimaryStates() -> UI.StyleStates {
+    let base = UI.DefaultStyle() with { Background: UI.Rgb(59, 110, 214)  Foreground: UI.Rgb(255, 255, 255)  Radius: 6px }
+    return UI.States(base) with {
+        Hover: base with { Background: UI.Rgb(47, 92, 186) }
+        Pressed: base with { Background: UI.Rgb(33, 70, 150) }
+        Focused: base with { BorderColor: UI.Rgb(20, 40, 90)  BorderWidth: 2px }
+        Disabled: base with { Background: UI.Rgb(236, 239, 244)  Foreground: UI.Rgb(150, 154, 162) }
+    }
+}
+
+UI.StyledStates(PrimaryStates(), UI.Button("Save", Msg.Save, model.Name != ""))
+```
+
+- The first state that holds wins: `Disabled`, then `Pressed`, then
+  `Focused`, then `Hover`, else `Normal`. States do not combine.
+- A node with state styles draws no default chrome or focus ring; its states
+  say how it looks. Without them, buttons darken when hovered and pressed and
+  focused controls get an accent ring.
+- The states are part of the node's signature.
+
 ## Markup
 
 Views can also be written in Oct-XML ([typed markup](../../Language/reference/language/typed-markup.md)).
+Buttons and inputs are tags whose attributes are their parameters
+(`<UI.Checkbox Label="Audio" Checked={model.Audio} On={Msg.SetAudio} />`).
 Containers take their children as an array, wrappers that take one `UI`
 (`UI.Styled`, `UI.Fill`, `UI.Keyed`...) take exactly one child, and bare text
 among the children of a container is a `UI.Text` (through `MarkupTextUI`):
