@@ -4,12 +4,21 @@ import (
 	"fmt"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
+	"github.com/yuechen-li-dev/oct/internal/machina/textmetrics"
 	"github.com/yuechen-li-dev/oct/internal/machina/uiir"
 )
 
 // Stack and grid sugar (Libraries/UI/DESIGN.md §5.5, §5.6): arrangement
-// specs, child sizing, and the measured sizes behind UI.Auto and auto grid
-// tracks. Measurement uses the same fixed text metrics as leaf frames.
+// specs, child sizing, and the measured sizes behind UI.Auto, measured
+// nested stacks, wrapped text and auto grid tracks. Every measurement goes
+// through the session's text metrics.
+
+// Button chrome around its label.
+const (
+	buttonPadX     = 24.0
+	buttonPadY     = 12.0
+	buttonMinWidth = 80.0
+)
 
 func stackArrange(node *uiir.Node, axis layout.Axis) *layout.ArrangeSpec {
 	a := &layout.ArrangeSpec{Kind: layout.StackArrange, Axis: axis}
@@ -49,12 +58,74 @@ func sizingName(kind uiir.SizingKind) string {
 	}
 }
 
-// sizingFrame is a stack child's frame from its UI.Fixed/Fill/Auto/Size.
-// A fixed or measured main size leaves the cross axis to the stack (it
-// stretches), except that a measured Text or Button keeps its measured
-// cross size and is placed by the stack's Align.
-func sizingFrame(node *uiir.Node, axis layout.Axis) (layout.FrameSpec, error) {
-	z := node.Sizing
+func textSpecOf(node *uiir.Node) uiir.TextSpec {
+	if node.TextSpec == nil {
+		return textmetrics.Body
+	}
+	spec := *node.TextSpec
+	if spec.Size <= 0 {
+		spec.Size = textmetrics.Body.Size
+	}
+	if spec.Overflow == "" {
+		spec.Overflow = uiir.OverflowEllipsis
+	}
+	return spec
+}
+
+func isWrapped(node *uiir.Node) bool {
+	return node.Kind == uiir.NodeText && node.TextSpec != nil && node.TextSpec.Wrap
+}
+
+// leafSize is a Text or Button's measured size on one line.
+func leafSize(node *uiir.Node, m textmetrics.Metrics) (float64, float64) {
+	if node.Kind == uiir.NodeButton {
+		w := m.Width(node.Label, textmetrics.Body) + buttonPadX
+		if w < buttonMinWidth {
+			w = buttonMinWidth
+		}
+		return w, m.LineHeight(textmetrics.Body) + buttonPadY
+	}
+	spec := textSpecOf(node)
+	w := m.Width(node.Text, spec)
+	if w <= 0 {
+		w = 1
+	}
+	return w, m.LineHeight(spec)
+}
+
+// defaultSizing is how an unwrapped stack child sizes when its default
+// depends on content: nested stacks are measured; wrapped text is measured
+// in a vertical stack and fills a horizontal one. Other children keep their
+// own frames (measured leaves; filling spacers, grids and canvases).
+func defaultSizing(node *uiir.Node, axis layout.Axis) (uiir.SizingSpec, bool) {
+	switch {
+	case node.Kind == uiir.NodeColumn || node.Kind == uiir.NodeRow:
+		return uiir.SizingSpec{Kind: uiir.SizingAuto}, true
+	case isWrapped(node) && axis == layout.AxisHorizontal:
+		return uiir.SizingSpec{Kind: uiir.SizingFill, Weight: 1}, true
+	case isWrapped(node):
+		return uiir.SizingSpec{Kind: uiir.SizingAuto}, true
+	}
+	return uiir.SizingSpec{}, false
+}
+
+// heightMeasure is a MeasuredFrame's measurer: the node's height at the
+// width the vertical stack gives it.
+type heightMeasure struct {
+	node    *uiir.Node
+	metrics textmetrics.Metrics
+}
+
+func (h *heightMeasure) HeightForWidth(width float64) (float64, error) {
+	return heightFor(h.node, width, h.metrics)
+}
+
+// sizingFrame is a stack child's frame from its sizing. A fixed or measured
+// main size leaves the cross axis to the stack (it stretches), except that a
+// one-line Text or Button keeps its measured cross size and is placed by the
+// stack's Align. In a vertical stack, a measured container or wrapped text
+// takes the stack's width and is as tall as its content at that width.
+func sizingFrame(node *uiir.Node, z uiir.SizingSpec, axis layout.Axis, m textmetrics.Metrics) (layout.FrameSpec, error) {
 	switch z.Kind {
 	case uiir.SizingFixed:
 		if axis == layout.AxisHorizontal {
@@ -65,40 +136,46 @@ func sizingFrame(node *uiir.Node, axis layout.Axis) (layout.FrameSpec, error) {
 		return layout.FrameSpec{Kind: layout.FillFrame, Weight: z.Weight}, nil
 	case uiir.SizingSize:
 		return layout.FrameSpec{Kind: layout.FixedFrame, Width: z.Width, Height: z.Height}, nil
-	default:
-		w, h, err := intrinsic(node)
-		if err != nil {
+	}
+	if (node.Kind == uiir.NodeText && !isWrapped(node)) || node.Kind == uiir.NodeButton {
+		w, h := leafSize(node, m)
+		return layout.FrameSpec{Kind: layout.FixedFrame, Width: w, Height: h}, nil
+	}
+	if axis == layout.AxisVertical {
+		// Fail now, with this node's path, if it cannot be measured at all.
+		if _, err := heightFor(node, 1e9, m); err != nil {
 			return layout.FrameSpec{}, err
 		}
-		if node.Kind == uiir.NodeText || node.Kind == uiir.NodeButton {
-			return layout.FrameSpec{Kind: layout.FixedFrame, Width: w, Height: h}, nil
-		}
-		// A measured container takes its content's main size and the
-		// stack's cross size, like UI.Fixed.
-		if axis == layout.AxisHorizontal {
-			return layout.FrameSpec{Kind: layout.FixedFrame, Width: w}, nil
-		}
-		return layout.FrameSpec{Kind: layout.FixedFrame, Height: h}, nil
+		return layout.FrameSpec{Kind: layout.MeasuredFrame, Measure: &heightMeasure{node: node, metrics: m}}, nil
 	}
+	w, _, err := intrinsic(node, m)
+	if err != nil {
+		return layout.FrameSpec{}, err
+	}
+	return layout.FrameSpec{Kind: layout.FixedFrame, Width: w}, nil
 }
 
-// intrinsic measures the size a node asks for when nothing constrains it.
-func intrinsic(node *uiir.Node) (float64, float64, error) {
+func unmeasurable(node *uiir.Node) error {
+	return fmt.Errorf("lowering.err.measure_unsupported: node %q (%s) has no measured size; give it UI.Fixed or UI.Size", node.NodeID, kindLabel(node))
+}
+
+// intrinsic measures the size a node asks for when nothing constrains it:
+// its content on one line (wrapped text measures as one line here).
+func intrinsic(node *uiir.Node, m textmetrics.Metrics) (float64, float64, error) {
 	if z := node.Sizing; z != nil && z.Kind == uiir.SizingSize {
 		return z.Width, z.Height, nil
 	}
 	switch node.Kind {
-	case uiir.NodeText:
-		return textWidth(node.Text), 20, nil
-	case uiir.NodeButton:
-		return buttonWidth(node.Label), 32, nil
+	case uiir.NodeText, uiir.NodeButton:
+		w, h := leafSize(node, m)
+		return w, h, nil
 	case uiir.NodeSpacer, uiir.NodeSkip:
 		return 0, 0, nil
 	case uiir.NodeColumn, uiir.NodeRow:
 		horizontal := node.Kind == uiir.NodeRow
 		main, cross := 0.0, 0.0
 		for i, child := range node.Children {
-			w, h, err := intrinsic(child)
+			w, h, err := intrinsic(child, m)
 			if err != nil {
 				return 0, 0, err
 			}
@@ -135,7 +212,7 @@ func intrinsic(node *uiir.Node) (float64, float64, error) {
 		if node.Grid == nil {
 			return 0, 0, fmt.Errorf("lowering.err.measure_grid: node %q is a uniform UI.GridRows grid, which has no measured size; give it UI.Fixed or UI.Size", node.NodeID)
 		}
-		cols, rows, err := gridTracks(node)
+		cols, rows, err := gridTracks(node, m)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -148,7 +225,100 @@ func intrinsic(node *uiir.Node) (float64, float64, error) {
 		h := trackSum(rows, node.Grid.RowGap) + node.Grid.Padding.Top + node.Grid.Padding.Bottom
 		return w, h, nil
 	default:
-		return 0, 0, fmt.Errorf("lowering.err.measure_unsupported: node %q (%s) has no measured size; give it UI.Fixed or UI.Size", node.NodeID, kindLabel(node))
+		return 0, 0, unmeasurable(node)
+	}
+}
+
+// heightFor is a node's height at a given width: wrapped text wraps to it,
+// and stacks pass it on to their children as layout would.
+func heightFor(node *uiir.Node, width float64, m textmetrics.Metrics) (float64, error) {
+	if z := node.Sizing; z != nil && z.Kind == uiir.SizingSize {
+		return z.Height, nil
+	}
+	switch node.Kind {
+	case uiir.NodeText:
+		spec := textSpecOf(node)
+		if spec.Wrap {
+			return float64(len(textmetrics.Wrap(m, node.Text, spec, width))) * m.LineHeight(spec), nil
+		}
+		return m.LineHeight(spec), nil
+	case uiir.NodeColumn:
+		pad, gap := uiir.EdgeInsets{}, 0.0
+		if node.Stack != nil {
+			pad, gap = node.Stack.Padding, node.Stack.Gap
+		}
+		inner := width - pad.Left - pad.Right
+		total := pad.Top + pad.Bottom
+		for i, child := range node.Children {
+			if i > 0 {
+				total += gap
+			}
+			if z := child.Sizing; z != nil && z.Kind == uiir.SizingFixed {
+				total += z.Main
+				continue
+			}
+			h, err := heightFor(child, inner, m)
+			if err != nil {
+				return 0, err
+			}
+			total += h
+		}
+		return total, nil
+	case uiir.NodeRow:
+		pad, gap := uiir.EdgeInsets{}, 0.0
+		if node.Stack != nil {
+			pad, gap = node.Stack.Padding, node.Stack.Gap
+		}
+		inner := width - pad.Left - pad.Right
+		widths := make([]float64, len(node.Children))
+		weights := make([]float64, len(node.Children))
+		fixed, weight := 0.0, 0.0
+		for i, child := range node.Children {
+			if i > 0 {
+				fixed += gap
+			}
+			z := child.Sizing
+			if z == nil {
+				if d, ok := defaultSizing(child, layout.AxisHorizontal); ok {
+					z = &d
+				}
+			}
+			switch {
+			case z != nil && z.Kind == uiir.SizingFixed:
+				widths[i] = z.Main
+			case z != nil && z.Kind == uiir.SizingSize:
+				widths[i] = z.Width
+			case z != nil && z.Kind == uiir.SizingFill:
+				weights[i] = z.Weight
+			case child.Kind == uiir.NodeSpacer || child.Kind == uiir.NodeGrid || child.Kind == uiir.NodeAbsoluteBox || child.Kind == uiir.NodeAnchorBox:
+				weights[i] = 1
+			default:
+				w, _, err := intrinsic(child, m)
+				if err != nil {
+					return 0, err
+				}
+				widths[i] = w
+			}
+			fixed += widths[i]
+			weight += weights[i]
+		}
+		remaining := inner - fixed
+		tallest := 0.0
+		for i, child := range node.Children {
+			w := widths[i]
+			if weights[i] > 0 && weight > 0 && remaining > 0 {
+				w = remaining * weights[i] / weight
+			}
+			h, err := heightFor(child, w, m)
+			if err != nil {
+				return 0, err
+			}
+			tallest = max(tallest, h)
+		}
+		return tallest + pad.Top + pad.Bottom, nil
+	default:
+		_, h, err := intrinsic(node, m)
+		return h, err
 	}
 }
 
@@ -168,7 +338,7 @@ func trackSum(tracks []layout.GridTrack, gap float64) float64 {
 
 // gridTracks lowers a grid's declared tracks, turning each auto track into
 // a fixed one as wide (or tall) as its largest single-span cell.
-func gridTracks(node *uiir.Node) ([]layout.GridTrack, []layout.GridTrack, error) {
+func gridTracks(node *uiir.Node, m textmetrics.Metrics) ([]layout.GridTrack, []layout.GridTrack, error) {
 	convert := func(tracks []uiir.GridTrack, column bool) ([]layout.GridTrack, error) {
 		out := make([]layout.GridTrack, len(tracks))
 		for i, t := range tracks {
@@ -189,7 +359,7 @@ func gridTracks(node *uiir.Node) ([]layout.GridTrack, []layout.GridTrack, error)
 				if index != int64(i) || span != 1 {
 					continue
 				}
-				w, h, err := intrinsic(child)
+				w, h, err := intrinsic(child, m)
 				if err != nil {
 					return nil, err
 				}

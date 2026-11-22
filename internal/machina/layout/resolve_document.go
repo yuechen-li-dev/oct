@@ -186,9 +186,20 @@ func resolveStackChildren(doc *LayoutDocument, out *ResolvedLayoutDocument, pare
 	}
 	fixedTotal := 0.0
 	fillWeight := 0.0
+	measured := map[NodeID]float64{}
 	for _, childID := range children {
 		frame := doc.Nodes[childID].Frame
 		switch frame.Kind {
+		case MeasuredFrame:
+			if arrange.Axis == AxisHorizontal || frame.Measure == nil {
+				return fmt.Errorf("layout.err.measured_frame: child %q has a width-dependent height, which only a vertical stack can measure", childID)
+			}
+			h, err := frame.Measure.HeightForWidth(crossAvailable)
+			if err != nil {
+				return err
+			}
+			measured[childID] = h
+			fixedTotal += h
 		case FixedFrame:
 			if arrange.Axis == AxisHorizontal {
 				fixedTotal += frame.Width
@@ -228,7 +239,9 @@ func resolveStackChildren(doc *LayoutDocument, out *ResolvedLayoutDocument, pare
 	for _, childID := range children {
 		child := doc.Nodes[childID]
 		childMain := 0.0
-		if child.Frame.Kind == FixedFrame {
+		if h, ok := measured[childID]; ok {
+			childMain = h
+		} else if child.Frame.Kind == FixedFrame {
 			if arrange.Axis == AxisHorizontal {
 				childMain = child.Frame.Width
 			} else {
@@ -334,6 +347,8 @@ func validateFrame(frame FrameSpec) error {
 		if err := ValidateSpan(frame.YSpan, "y"); err != nil {
 			return err
 		}
+	case MeasuredFrame:
+		// Sized by its stack at resolve time.
 	case CellFrame:
 		if frame.Column < 0 || frame.Row < 0 || frame.ColumnSpan <= 0 || frame.RowSpan <= 0 {
 			return fmt.Errorf("layout.err.invalid_cell_frame: cell frame requires column,row >= 0 and spans > 0")

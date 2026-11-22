@@ -116,6 +116,27 @@ type Node struct {
 	// is then its tool-facing alias. Message is opaque here and never
 	// serialized.
 	Message any
+	// TextSpec is a Text node's size, weight, wrapping and overflow
+	// (UI.TextWith); nil is the body spec.
+	TextSpec *TextSpec
+}
+
+type Overflow string
+
+const (
+	OverflowEllipsis Overflow = "ellipsis"
+	OverflowClip     Overflow = "clip"
+	OverflowError    Overflow = "error"
+)
+
+// TextSpec is how a Text node is set (Libraries/UI TextSpec).
+type TextSpec struct {
+	Size     float64 // dp
+	Weight   int
+	Mono     bool
+	Wrap     bool
+	Overflow Overflow
+	Color    *RGBA
 }
 
 // StackSpec is a Column or Row's arrangement (Libraries/UI StackSpec).
@@ -326,7 +347,7 @@ func Clone(node *Node) *Node {
 	for _, c := range node.Children {
 		ch = append(ch, Clone(c))
 	}
-	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout), Grid: cloneGrid(node.Grid), Cell: cloneCell(node.Cell), GridRows: node.GridRows, GridCols: node.GridCols, Style: cloneStyle(node.Style), Stack: cloneStack(node.Stack), Sizing: cloneSizing(node.Sizing), Offset: cloneOffset(node.Offset), Message: node.Message}
+	return &Node{NodeID: node.NodeID, Key: node.Key, Kind: node.Kind, Text: node.Text, Label: node.Label, Event: node.Event, Enabled: node.Enabled, Children: ch, Box: cloneBox(node.Box), Layout: cloneRect(node.Layout), Grid: cloneGrid(node.Grid), Cell: cloneCell(node.Cell), GridRows: node.GridRows, GridCols: node.GridCols, Style: cloneStyle(node.Style), Stack: cloneStack(node.Stack), Sizing: cloneSizing(node.Sizing), Offset: cloneOffset(node.Offset), Message: node.Message, TextSpec: cloneTextSpec(node.TextSpec)}
 }
 func cloneStack(s *StackSpec) *StackSpec {
 	if s == nil {
@@ -340,6 +361,17 @@ func cloneSizing(s *SizingSpec) *SizingSpec {
 		return nil
 	}
 	c := *s
+	return &c
+}
+func cloneTextSpec(t *TextSpec) *TextSpec {
+	if t == nil {
+		return nil
+	}
+	c := *t
+	if t.Color != nil {
+		color := *t.Color
+		c.Color = &color
+	}
 	return &c
 }
 func cloneOffset(o *Offset) *Offset {
@@ -678,6 +710,13 @@ func sugarSuffix(node *Node) string {
 	}
 	if node.Offset != nil {
 		out += fmt.Sprintf("{nudge=%g,%g}", node.Offset.X, node.Offset.Y)
+	}
+	if t := node.TextSpec; t != nil {
+		color := "inherit"
+		if t.Color != nil {
+			color = fmt.Sprintf("%d,%d,%d,%d", t.Color.R, t.Color.G, t.Color.B, t.Color.A)
+		}
+		out += fmt.Sprintf("{text=size:%g,weight:%d,mono:%t,wrap:%t,overflow:%s,color:%s}", t.Size, t.Weight, t.Mono, t.Wrap, t.Overflow, color)
 	}
 	return out
 }

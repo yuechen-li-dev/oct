@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"github.com/yuechen-li-dev/oct/internal/machina/dump"
+	"github.com/yuechen-li-dev/oct/internal/machina/textmetrics"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/hittest"
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
@@ -29,6 +30,9 @@ type Session[TState any] struct {
 	app      App[TState]
 	state    TState
 	viewport layout.Rect
+	// metrics measures text for layout and render; nil is the fixed
+	// headless metric.
+	metrics textmetrics.Metrics
 
 	root     *uiir.Node
 	lowered  *lowering.Result
@@ -67,7 +71,7 @@ func (s *Session[TState]) Rebuild() error {
 	if err != nil {
 		return fmt.Errorf("session.err.project: %w", err)
 	}
-	low, err := lowering.Lower(root)
+	low, err := lowering.LowerWith(root, s.metrics)
 	if err != nil {
 		return fmt.Errorf("session.err.lower: %w", err)
 	}
@@ -79,7 +83,7 @@ func (s *Session[TState]) Rebuild() error {
 	if err != nil {
 		return fmt.Errorf("session.err.build_hittest: %w", err)
 	}
-	commands, err := render.BuildCommands(resolved, low.Semantics, low.Styles, render.Options{})
+	commands, err := render.BuildCommands(resolved, low.Semantics, low.Styles, render.Options{Metrics: s.metrics})
 	if err != nil {
 		return fmt.Errorf("session.err.build_commands: %w", err)
 	}
@@ -93,6 +97,22 @@ func (s *Session[TState]) Rebuild() error {
 	s.index = index
 	s.commands = commands
 	s.snapshot = snapshot
+	return nil
+}
+
+// SetTextMetrics switches the session to a backend's text metrics and
+// rebuilds the frame. If the frame does not fit with them, the session
+// keeps its previous metrics and frame and returns why.
+func (s *Session[TState]) SetTextMetrics(m textmetrics.Metrics) error {
+	if s == nil {
+		return fmt.Errorf("session.err.nil_session: session is required")
+	}
+	previous := s.metrics
+	s.metrics = m
+	if err := s.Rebuild(); err != nil {
+		s.metrics = previous
+		return err
+	}
 	return nil
 }
 

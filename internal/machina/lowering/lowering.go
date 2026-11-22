@@ -2,9 +2,9 @@ package lowering
 
 import (
 	"fmt"
-	"unicode/utf8"
 
 	"github.com/yuechen-li-dev/oct/internal/machina/layout"
+	"github.com/yuechen-li-dev/oct/internal/machina/textmetrics"
 	"github.com/yuechen-li-dev/oct/internal/machina/uiir"
 )
 
@@ -29,6 +29,9 @@ type Semantics struct {
 	Label     string
 	Disabled  bool
 	Focusable bool
+	// Text is a Text node's spec (size, weight, wrapping, overflow); render
+	// wraps and truncates with it using the same metrics as layout.
+	Text *uiir.TextSpec
 }
 
 // Style is the paint a node requested through UI.Styled (Libraries/UI
@@ -43,14 +46,25 @@ type Result struct {
 	// Kinds names each node's authoring construct (Text, Button, Stack(v),
 	// Canvas, At, ...) for layout dumps.
 	Kinds map[layout.NodeID]string
+
+	metrics textmetrics.Metrics
 }
 
+// Lower lowers with the deterministic fixed text metrics.
 func Lower(root *uiir.Node) (*Result, error) {
+	return LowerWith(root, textmetrics.Fixed{})
+}
+
+// LowerWith lowers measuring text with metrics.
+func LowerWith(root *uiir.Node, metrics textmetrics.Metrics) (*Result, error) {
 	if root == nil {
 		return nil, fmt.Errorf("lowering.err.nil_root: root is required")
 	}
+	if metrics == nil {
+		metrics = textmetrics.Fixed{}
+	}
 	withIDs := uiir.WithNodeIDs(root)
-	res := &Result{Rows: make([]layout.LayoutRow, 0), Actions: map[layout.NodeID]Action{}, Semantics: map[layout.NodeID]Semantics{}, Styles: map[layout.NodeID]Style{}, Kinds: map[layout.NodeID]string{}}
+	res := &Result{Rows: make([]layout.LayoutRow, 0), Actions: map[layout.NodeID]Action{}, Semantics: map[layout.NodeID]Semantics{}, Styles: map[layout.NodeID]Style{}, Kinds: map[layout.NodeID]string{}, metrics: metrics}
 	if err := lowerNode(res, withIDs, nil, nil, 0); err != nil {
 		return nil, err
 	}
@@ -85,10 +99,13 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 	}
 	switch node.Kind {
 	case uiir.NodeText:
-		row.Frame = layout.FrameSpec{Kind: layout.FixedFrame, Width: textWidth(node.Text), Height: 20}
-		out.Semantics[id] = Semantics{Role: RoleText, Label: node.Text}
+		w, h := leafSize(node, out.metrics)
+		row.Frame = layout.FrameSpec{Kind: layout.FixedFrame, Width: w, Height: h}
+		spec := textSpecOf(node)
+		out.Semantics[id] = Semantics{Role: RoleText, Label: node.Text, Text: &spec}
 	case uiir.NodeButton:
-		row.Frame = layout.FrameSpec{Kind: layout.FixedFrame, Width: buttonWidth(node.Label), Height: 32}
+		w, h := leafSize(node, out.metrics)
+		row.Frame = layout.FrameSpec{Kind: layout.FixedFrame, Width: w, Height: h}
 		enabled := node.Enabled
 		out.Semantics[id] = Semantics{Role: RoleButton, Label: node.Label, Disabled: !enabled, Focusable: enabled}
 		if enabled && node.Event != "" {
@@ -118,7 +135,7 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 			}
 		} else if node.Grid != nil {
 			row.Arrange = &layout.ArrangeSpec{Kind: layout.GridArrange, ColumnGap: node.Grid.ColumnGap, RowGap: node.Grid.RowGap, Padding: layout.EdgeInsets{Top: node.Grid.Padding.Top, Right: node.Grid.Padding.Right, Bottom: node.Grid.Padding.Bottom, Left: node.Grid.Padding.Left}}
-			cols, rows, err := gridTracks(node)
+			cols, rows, err := gridTracks(node, out.metrics)
 			if err != nil {
 				return err
 			}
@@ -177,15 +194,19 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 	if node.Cell != nil && (parentNode == nil || parentNode.Kind != uiir.NodeGrid) {
 		return fmt.Errorf("lowering.err.span_outside_grid: node %q is a UI.Span cell, which belongs in UI.Grid rows", node.NodeID)
 	}
-	if node.Sizing == nil && (node.Kind == uiir.NodeColumn || node.Kind == uiir.NodeRow) {
-		// An unwrapped stack inside a stack sizes to its content along the
-		// parent's axis and stretches across it.
+	if node.Sizing == nil {
+		// Unwrapped children with a content-dependent default: a nested
+		// stack is measured along the parent's axis and stretches across
+		// it; wrapped text takes a vertical stack's width and is as tall as
+		// its lines, and fills a horizontal stack.
 		if axis, ok := stackAxis(parentNode); ok {
-			frame, err := sizingFrame(&uiir.Node{NodeID: node.NodeID, Kind: node.Kind, Stack: node.Stack, Children: node.Children, Sizing: &uiir.SizingSpec{Kind: uiir.SizingAuto}}, axis)
-			if err != nil {
-				return fmt.Errorf("%w (stack %q sizes to its content by default; wrap it in UI.Fill or UI.Fixed)", err, node.NodeID)
+			if z, ok := defaultSizing(node, axis); ok {
+				frame, err := sizingFrame(node, z, axis, out.metrics)
+				if err != nil {
+					return fmt.Errorf("%w (stack %q sizes to its content by default; wrap it in UI.Fill or UI.Fixed)", err, node.NodeID)
+				}
+				row.Frame = frame
 			}
-			row.Frame = frame
 		}
 	}
 	if node.Sizing != nil {
@@ -193,7 +214,7 @@ func lowerNode(out *Result, node *uiir.Node, parent *layout.NodeID, parentNode *
 		if !ok {
 			return fmt.Errorf("lowering.err.sizing_outside_stack: node %q has UI.%s sizing, which applies only to a child of a stack (UI.Stack, UI.Column, UI.Row)", node.NodeID, sizingName(node.Sizing.Kind))
 		}
-		frame, err := sizingFrame(node, axis)
+		frame, err := sizingFrame(node, *node.Sizing, axis, out.metrics)
 		if err != nil {
 			return err
 		}
@@ -243,19 +264,6 @@ func boxFrame(box *uiir.BoxSpec) (layout.FrameSpec, error) {
 	default:
 		return layout.FrameSpec{}, fmt.Errorf("lowering.err.invalid_box: unsupported box kind %q", box.Kind)
 	}
-}
-
-func textWidth(s string) float64 {
-	if w := float64(utf8.RuneCountInString(s) * 8); w > 0 {
-		return w
-	}
-	return 1
-}
-func buttonWidth(label string) float64 {
-	if w := float64(utf8.RuneCountInString(label)*8 + 24); w > 80 {
-		return w
-	}
-	return 80
 }
 
 func kindLabel(node *uiir.Node) string {

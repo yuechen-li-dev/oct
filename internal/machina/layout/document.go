@@ -27,7 +27,16 @@ const (
 	// SpanFrame resolves each axis from one span: offset+size from either
 	// edge, both insets, centered size, or parent fractions.
 	SpanFrame FrameKind = "span"
+	// MeasuredFrame is a vertical-stack child whose height depends on the
+	// width it is given (wrapped text, or a stack containing it). It takes
+	// the stack's width and Measure gives its height at that width.
+	MeasuredFrame FrameKind = "measured"
 )
+
+// HeightMeasurer measures a MeasuredFrame's height for a width.
+type HeightMeasurer interface {
+	HeightForWidth(width float64) (float64, error)
+}
 
 type FrameSpec struct {
 	Kind       FrameKind
@@ -46,6 +55,7 @@ type FrameSpec struct {
 	RowSpan    int
 	XSpan      uiir.SpanSpec
 	YSpan      uiir.SpanSpec
+	Measure    HeightMeasurer
 }
 
 type Axis string

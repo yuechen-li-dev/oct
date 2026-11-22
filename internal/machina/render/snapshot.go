@@ -60,6 +60,15 @@ func (SnapshotRecorder) Record(commands []Command) (string, error) {
 			if c.Color != nil {
 				line += " color=" + hexRGBA(*c.Color)
 			}
+			if c.Size != 0 {
+				line += fmt.Sprintf(" size=%g", c.Size)
+			}
+			if c.Weight != 0 {
+				line += fmt.Sprintf(" weight=%d", c.Weight)
+			}
+			if c.Mono {
+				line += " mono"
+			}
 			lines = append(lines, line)
 		case FillRectCommand:
 			if !frameOpen || frameClosed {

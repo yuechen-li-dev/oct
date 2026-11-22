@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"github.com/yuechen-li-dev/oct/internal/machina/textmetrics"
 	"github.com/yuechen-li-dev/oct/internal/machina/uiir"
 	"math"
 
@@ -77,6 +78,12 @@ type DrawTextCommand struct {
 	Muted bool
 	// Color is the node's styled foreground; nil means the backend default.
 	Color *uiir.RGBA
+	// Size, Weight and Mono set the font; zero values are the body font
+	// (16 dp, regular, proportional). Text is already wrapped and truncated
+	// to fit Rect with the same metrics layout used.
+	Size   float64
+	Weight int
+	Mono   bool
 }
 
 func (DrawTextCommand) Kind() CommandKind { return KindDrawText }
@@ -92,10 +99,16 @@ type PopClipCommand struct{ NodeID layout.NodeID }
 
 func (PopClipCommand) Kind() CommandKind { return KindPopClip }
 
-type Options struct{}
+// Options configures command building. Metrics measures text for wrapping
+// and truncation; nil is the deterministic fixed metric.
+type Options struct {
+	Metrics textmetrics.Metrics
+}
 
 func BuildCommands(resolved *layout.ResolvedLayoutDocument, semantics map[layout.NodeID]lowering.Semantics, styles map[layout.NodeID]lowering.Style, options Options) ([]Command, error) {
-	_ = options
+	if options.Metrics == nil {
+		options.Metrics = textmetrics.Fixed{}
+	}
 	if resolved == nil {
 		return nil, fmt.Errorf("render.err.nil_resolved: resolved layout document is required")
 	}
@@ -110,14 +123,14 @@ func BuildCommands(resolved *layout.ResolvedLayoutDocument, semantics map[layout
 		semantics = map[layout.NodeID]lowering.Semantics{}
 	}
 	out := []Command{BeginFrameCommand{Root: root.Rect}}
-	if err := emitNode(resolved, semantics, styles, resolved.RootID, &out); err != nil {
+	if err := emitNode(resolved, semantics, styles, options.Metrics, resolved.RootID, &out); err != nil {
 		return nil, err
 	}
 	out = append(out, EndFrameCommand{})
 	return out, nil
 }
 
-func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.NodeID]lowering.Semantics, styles map[layout.NodeID]lowering.Style, id layout.NodeID, out *[]Command) error {
+func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.NodeID]lowering.Semantics, styles map[layout.NodeID]lowering.Style, m textmetrics.Metrics, id layout.NodeID, out *[]Command) error {
 	node, ok := resolved.Nodes[id]
 	if !ok {
 		return fmt.Errorf("render.err.missing_node: resolved tree references unknown node %q", id)
@@ -140,7 +153,9 @@ func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.Node
 		switch sem.Role {
 		case lowering.RoleText:
 			if sem.Label != "" {
-				*out = append(*out, DrawTextCommand{NodeID: id, Rect: node.Rect, Text: sem.Label, Color: textColor})
+				if err := emitText(m, id, node.Rect, sem, textColor, out); err != nil {
+					return err
+				}
 			}
 		case lowering.RoleButton:
 			// A button is chrome plus a centered label; without the fill a
@@ -154,12 +169,14 @@ func emitNode(resolved *layout.ResolvedLayoutDocument, semantics map[layout.Node
 				*out = append(*out, FillRectCommand{NodeID: id, Rect: node.Rect, Fill: fill})
 			}
 			if sem.Label != "" {
-				*out = append(*out, DrawTextCommand{NodeID: id, Rect: node.Rect, Text: sem.Label, Align: AlignCenter, Muted: sem.Disabled, Color: textColor})
+				// A label wider than its button is shortened, never spilled.
+				label := textmetrics.Fit(m, sem.Label, textmetrics.Body, node.Rect.Width-buttonLabelInset)
+				*out = append(*out, DrawTextCommand{NodeID: id, Rect: node.Rect, Text: label, Align: AlignCenter, Muted: sem.Disabled, Color: textColor})
 			}
 		}
 	}
 	for _, child := range resolved.PaintOrder(id) {
-		if err := emitNode(resolved, semantics, styles, child, out); err != nil {
+		if err := emitNode(resolved, semantics, styles, m, child, out); err != nil {
 			return err
 		}
 	}

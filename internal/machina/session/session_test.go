@@ -158,3 +158,28 @@ func itoa(v int) string {
 	}
 	return string(buf)
 }
+
+// wideMetrics measures every rune as 100 dp, so nothing fits a small window.
+type wideMetrics struct{}
+
+func (wideMetrics) Width(text string, spec uiir.TextSpec) float64 { return float64(len(text)) * 100 }
+func (wideMetrics) LineHeight(spec uiir.TextSpec) float64         { return 400 }
+
+func TestSetTextMetricsKeepsTheLastFrameWhenItCannotFit(t *testing.T) {
+	s, err := NewSession[counterState](counterApp{}, counterState{Enabled: true}, layout.Rect{Width: 300, Height: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := s.Snapshot()
+	err = s.SetTextMetrics(wideMetrics{})
+	if err == nil || !strings.Contains(err.Error(), "stack_overflow") {
+		t.Fatalf("error = %v", err)
+	}
+	if after, _ := s.Snapshot(); after != before {
+		t.Fatalf("frame changed after metrics that do not fit:\n%s", after)
+	}
+	// Later rebuilds still use the metrics that fit.
+	if _, err := s.PointerDown(PointerEvent{X: 10, Y: 30}); err != nil {
+		t.Fatalf("click after a failed metrics switch: %v", err)
+	}
+}
