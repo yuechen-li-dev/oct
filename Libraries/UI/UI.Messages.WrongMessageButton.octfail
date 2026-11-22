@@ -1,0 +1,16 @@
+expect error: "function View: function returns UI<Msg>, but this view is UI<Other>"
+
+package Main
+
+import UI
+
+enum Msg { Raise }
+enum Other { Lower }
+
+fn View() -> UI<Msg> {
+    return UI.Column([UI.Text("Thermostat"), UI.Button("Lower", Other.Lower, true)])
+}
+
+fn Main() -> Int {
+    return 0
+}

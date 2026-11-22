@@ -16,7 +16,11 @@ func (c checker) uiPackageType(name string) Type {
 }
 
 func (c checker) checkUIArgument(scope *scope, callee string, index int, argument ast.Expr, ctx functionContext) (Type, error) {
-	argType, err := c.checkExpr(scope, argument, ctx)
+	return c.checkUIArgumentWithExpected(scope, argument, ctx, nil)
+}
+
+func (c checker) checkUIArgumentWithExpected(scope *scope, argument ast.Expr, ctx functionContext, expected *Type) (Type, error) {
+	argType, err := c.checkExprWithExpected(scope, argument, ctx, expected)
 	if err != nil {
 		return Type{}, err
 	}
@@ -86,10 +90,10 @@ func (c checker) checkUIPlacementCall(scope *scope, callee string, typeArguments
 		if err := expect(1, ySpan, "UI.YSpan"); err != nil {
 			return ExprType{}, err
 		}
-		if err := expect(2, Type{Base: BaseTypeUI}, "UI"); err != nil {
-			return ExprType{}, err
+		if !isUIShape(args[2], 0) {
+			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects UI, got %s", written, args[2])
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+		return ExprType{ValueType: uiOf(args[2].UIMessage, 0)}, nil
 	case "UIRegion":
 		if _, err := c.regionEnum(args[0]); err != nil {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 %v", written, err)
@@ -113,7 +117,7 @@ func (c checker) checkUIPlacementCall(scope *scope, callee string, typeArguments
 		if !ok {
 			return ExprType{}, fmt.Errorf("internal error: missing function type metadata for %s", content.FunctionSignature)
 		}
-		if len(signature.parameters) != 2 || signature.isFallible || signature.returnType != (Type{Base: BaseTypeUI}) {
+		if len(signature.parameters) != 2 || signature.isFallible || !isUIShape(signature.returnType, 0) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 3 expects a content function (%s, R) -> UI, got %s", written, args[1], content)
 		}
 		if signature.parameters[0] != args[1] {
@@ -122,6 +126,6 @@ func (c checker) checkUIPlacementCall(scope *scope, callee string, typeArguments
 		if _, err := c.regionEnum(signature.parameters[1]); err != nil {
 			return ExprType{}, fmt.Errorf("function '%s' content function's second parameter %v", written, err)
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+		return ExprType{ValueType: uiOf(c.uiMessageOfFunctionResult(signature), 0)}, nil
 	}
 }

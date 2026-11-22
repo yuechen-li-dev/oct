@@ -16,6 +16,21 @@ Bounded template applications are monomorphized to ordinary exact types before t
 - `UI` is an opaque builtin type for declarative UI composition.
 - `UI` values are produced/consumed by UI library functions.
 - `UI` is not a browser object and not a normal record you can reshape with fields.
+- `UI<M>` is a view whose buttons send values of the enum `M` (Machina UI
+  messages). A view with no button of its own, such as `UI.Text("hi")`, goes
+  into a `UI<M>` of any `M`, as `Option.None` goes into any `Option<T>`; a
+  `UI<A>` never becomes a `UI<B>`, so a button that sends the wrong message is a
+  compile error. A container's message is its children's: children that send
+  two different enums are an error.
+- Bare `UI` in a function's signature is message-polymorphic: all bare-`UI`
+  parameters and the bare-`UI` result of one call share the message of the
+  arguments, so `fn Card(title: String, body: UI) -> UI` returns a `UI<Msg>`
+  for a `UI<Msg>` body. Inside such a function the message is unknown, so it
+  cannot add a button of a particular enum; a helper that sends messages is
+  declared `-> UI<Msg>`. In a record field, an enum payload, or a local of a
+  function without bare `UI` in its signature, bare `UI` is a view with no
+  messages; write `var items: UI<Msg>[] = []` for a list that will hold
+  buttons. Contracts: `Libraries/UI/UI.Messages*`.
 - `Bytes` is a narrow binary transport/storage boundary type intended for wrapper-backed compatibility APIs (for example file byte I/O).
 - `Bytes` is not a dynamic object container and does not imply `Dynamic` semantics.
 - `Range` is a compiler-owned immutable value produced by [range expressions](expressions.md#range-expressions).

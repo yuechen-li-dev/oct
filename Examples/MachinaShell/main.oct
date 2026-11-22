@@ -65,11 +65,11 @@ fn WideShell() -> UI.LayoutTable {
     ])
 }
 
-fn View(model: Store) -> UI {
+fn View(model: Store) -> UI<Msg> {
     return UI.Arrange(WideShell(), model, ShellContent)
 }
 
-fn ShellContent(model: Store, region: Shell) -> UI {
+fn ShellContent(model: Store, region: Shell) -> UI<Msg> {
     return switch region {
         case Shell.Header => UI.Row([UI.Text("Northline Supply Co."), UI.Spacer(), UI.Text("Cart " + FormatFloat(Float(model.Cart), 0))])
         case Shell.Rail => UI.Column([

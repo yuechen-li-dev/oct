@@ -1,0 +1,16 @@
+expect error: "function Wrap: function returns UI<Msg>, but this view is UI (this function's message type)"
+
+package Main
+
+import UI
+
+enum Msg { Save }
+
+// `child` may be any message type, so it is not a UI<Msg>.
+fn Wrap(child: UI) -> UI<Msg> {
+    return child
+}
+
+fn Main() -> Int {
+    return 0
+}

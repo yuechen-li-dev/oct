@@ -50,7 +50,7 @@ fn StatusStyle(heating: Bool) -> UI.Style {
     }
 }
 
-fn View(model: Thermostat) -> UI {
+fn View(model: Thermostat) -> UI<Msg> {
     // Display in Celsius: strip the unit, then offset from kelvin.
     let celsius = BaseUnit(model.Setpoint) - 273.15
     let status = if model.Heating { "heating" } else { "idle" }

@@ -1,0 +1,15 @@
+expect error: "function Save: function returns UI (this function's message type), but this view is UI<Msg>; a view that sends Msg is written UI<Msg>"
+
+package Main
+
+import UI
+
+enum Msg { Save }
+
+fn Save() -> UI {
+    return UI.Button("Save", Msg.Save, true)
+}
+
+fn Main() -> Int {
+    return 0
+}

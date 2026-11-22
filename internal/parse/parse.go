@@ -1651,7 +1651,7 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 
 func isBuiltinDimensionSpelling(name string) bool {
 	switch name {
-	case "Int", "Float", "Complex", "Bool", "String", "Bytes", "Range", "UI", "Void", "Error", "Index":
+	case "Int", "Float", "Complex", "Bool", "String", "Bytes", "Range", "Void", "Error", "Index":
 		return true
 	default:
 		return false

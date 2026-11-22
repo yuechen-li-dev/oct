@@ -1,0 +1,48 @@
+package UI
+
+import String
+
+// UI<M> (DESIGN.md §5.1, §7 L1): a view's type carries the message enum its
+// buttons send.
+
+enum DemoMsg {
+    Save
+    Pick(Int)
+}
+
+// A bare-UI helper is message-polymorphic: it returns its children's
+// message type.
+fn DemoCard(title: String, body: UI) -> UI {
+    return Stack(Vertical(), [Text(title), body])
+}
+
+// A helper that sends messages says which.
+fn DemoSave() -> UI<DemoMsg> {
+    return UIButtonMsg("Save", DemoMsg.Save, true)
+}
+
+fn DemoView() -> UI<DemoMsg> {
+    var picks: UI<DemoMsg>[] = [Text("Pick one")]
+    for i in 0..3 {
+        picks = Append(picks, UIButtonMsg("Pick " + FormatFloat(Float(i), 0), DemoMsg.Pick(i), true))
+    }
+    return Column([
+        DemoCard("Actions", DemoSave()),
+        DemoCard("Picks", Column(picks)),
+        Text("Messageless views go anywhere"),
+        Spacer()
+    ])
+}
+
+[Fact]
+fn MessagesTypedViewsCompose() -> Void {
+    let sig = Signature(DemoView())
+    Assert.True(String.Contains(sig, "Button#"), "the typed view holds its buttons")
+}
+
+[Fact]
+fn MessagesMessagelessHelpersFitAnyView() -> Void {
+    let plain: UI = DemoCard("Plain", Text("no buttons"))
+    let typed: UI<DemoMsg> = Column([plain, DemoSave()])
+    Assert.True(String.Contains(Signature(typed), "Text#"), "a messageless view joins a typed one")
+}

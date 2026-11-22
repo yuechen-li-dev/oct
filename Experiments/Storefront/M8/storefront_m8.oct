@@ -177,11 +177,11 @@ fn PageLayout() -> UI.LayoutTable {
 
 // Composition
 
-fn View(model: Store) -> UI {
+fn View(model: Store) -> UI<Msg> {
     return UI.Arrange(PageLayout(), model, PageContent)
 }
 
-fn PageContent(model: Store, region: Page) -> UI {
+fn PageContent(model: Store, region: Page) -> UI<Msg> {
     return switch region {
         case Page.Header => HeaderBar(model)
         case Page.Announcement => UI.Styled(BandStyle(), UI.Inset(UI.InsetsXY(12px, 4px), UI.Text("Studio Dispatch: new modular desk kits landed this week. Ships from Portland within 48 hours.")))
@@ -207,17 +207,17 @@ fn BandStyle() -> UI.Style {
     return UI.DefaultStyle() with { Background: UI.Rgb(236, 239, 244)  BorderWidth: 0px  Radius: 4px }
 }
 
-fn Chip(label: String, msg: Msg, active: Bool) -> UI {
+fn Chip(label: String, msg: Msg, active: Bool) -> UI<Msg> {
     let mark = if active { "● " } else { "○ " }
     return UI.Fixed(32px, UI.Button(mark + label, msg, true))
 }
 
-fn Block(tag: String, title: String, body: String) -> UI {
+fn Block(tag: String, title: String, body: String) -> UI<Msg> {
     return UI.Styled(BandStyle(), UI.Stack(UI.Vertical() with { Gap: 4.0 px  Padding: UI.InsetsAll(10px) }, [UI.Text(tag), UI.Text(title), UI.Text(body)]))
 }
 
-fn HeaderBar(model: Store) -> UI {
-    var items = [UI.Text("Northline Supply Co."), UI.Spacer()]
+fn HeaderBar(model: Store) -> UI<Msg> {
+    var items: UI<Msg>[] = [UI.Text("Northline Supply Co."), UI.Spacer()]
     let sections = [Section.Shop, Section.Bundles, Section.Journal, Section.Support]
     for i in 0..Len(sections) {
         items = Append(items, UI.Button(SectionLabel(sections[i]), Msg.Nav(sections[i]), model.Nav != sections[i]))
@@ -227,7 +227,7 @@ fn HeaderBar(model: Store) -> UI {
     return UI.Stack(UI.Horizontal() with { Gap: 8.0 px  Align: UI.Align.Center }, items)
 }
 
-fn Hero(model: Store) -> UI {
+fn Hero(model: Store) -> UI<Msg> {
     return UI.Stack(UI.Vertical() with { Gap: 8.0 px }, [
         UI.Text("Purpose-built tools for calm workspaces"),
         UI.Text("Desk hardware, notebooks and cable order systems for focused daily use."),
@@ -239,8 +239,8 @@ fn Hero(model: Store) -> UI {
     ])
 }
 
-fn FilterRail(model: Store) -> UI {
-    var items = [UI.Text("Category")]
+fn FilterRail(model: Store) -> UI<Msg> {
+    var items: UI<Msg>[] = [UI.Text("Category")]
     let categories = [Category.All, Category.Desk, Category.Paper, Category.Cable]
     for i in 0..Len(categories) {
         items = Append(items, Chip(CategoryLabel(categories[i]), Msg.Filter(categories[i]), model.Category == categories[i]))
@@ -256,8 +256,8 @@ fn FilterRail(model: Store) -> UI {
     return UI.Stack(UI.Vertical() with { Gap: 4.0 px }, items)
 }
 
-fn CatalogArea(model: Store) -> UI {
-    var tabs = [UI.Text("Catalog: " + CategoryLabel(model.Category)), UI.Spacer()]
+fn CatalogArea(model: Store) -> UI<Msg> {
+    var tabs: UI<Msg>[] = [UI.Text("Catalog: " + CategoryLabel(model.Category)), UI.Spacer()]
     let features = [Feature.DeskKits, Feature.NotebookSets, Feature.CableLab]
     for i in 0..Len(features) {
         tabs = Append(tabs, UI.Button(FeatureLabel(features[i]), Msg.Feature(features[i]), model.Feature != features[i]))
@@ -268,10 +268,10 @@ fn CatalogArea(model: Store) -> UI {
     ])
 }
 
-fn ProductGrid(model: Store, columns: Int) -> UI {
+fn ProductGrid(model: Store, columns: Int) -> UI<Msg> {
     let catalog = Products()
     let order = ShownOrder(model, catalog)
-    var cards: UI[] = []
+    var cards: UI<Msg>[] = []
     for k in 0..Len(order) {
         cards = Append(cards, UI.Keyed(catalog[order[k]].Id, ProductCard(model, catalog, order[k])))
     }
@@ -286,7 +286,7 @@ fn ProductGrid(model: Store, columns: Int) -> UI {
     return UI.Grid(spec, UI.Chunk(cards, columns))
 }
 
-fn ProductCard(model: Store, catalog: Catalog, i: Int) -> UI {
+fn ProductCard(model: Store, catalog: Catalog, i: Int) -> UI<Msg> {
     let p = catalog[i]
     return UI.Styled(CardStyle(model.Selected == Option.Some(p.Id)), UI.Stack(UI.Vertical() with { Gap: 6.0 px  Padding: UI.InsetsAll(12px) }, [
         UI.Stack(UI.Horizontal(), [UI.Text(p.Title), UI.Spacer(), UI.Text("$" + FormatFloat(p.Price, 2))]),
@@ -300,7 +300,7 @@ fn ProductCard(model: Store, catalog: Catalog, i: Int) -> UI {
     ]))
 }
 
-fn Footer(model: Store) -> UI {
+fn Footer(model: Store) -> UI<Msg> {
     let selected = match model.Selected {
         case Option.Some(id) => id
         case Option.None => "none"

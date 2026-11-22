@@ -1,0 +1,13 @@
+expect error: "UI<Msg> and UI<Other> cannot be in one view: a view sends one message type"
+
+package Main
+
+import UI
+
+enum Msg { Raise }
+enum Other { Lower }
+
+fn Main() -> Int {
+    let view = UI.Row([UI.Button("Raise", Msg.Raise, true), UI.Button("Lower", Other.Lower, true)])
+    return 0
+}

@@ -341,6 +341,11 @@ func (e *parametricElaborator) rewriteType(pkgName string, t ast.TypeRef, subst 
 		}
 		return ast.TypeRef{Function: &ast.FunctionTypeRef{Parameters: []ast.TypeRef{owner}, ReturnType: result}, SelectorOwner: &owner, SelectorResult: &result}, nil
 	}
+	if t.Package == "" && t.Name == "UI" && len(t.TypeArguments) > 0 {
+		// `UI<M>` is the builtin view type over a message enum, checked by
+		// the typechecker; like Option it is not a template.
+		return t, nil
+	}
 	if t.Package == "" && t.Name == ast.OptionTypeName && len(t.TypeArguments) > 0 {
 		// `Option<T>` is a builtin enum, not a template: it is one type for
 		// the whole program, so it is not copied into the package that

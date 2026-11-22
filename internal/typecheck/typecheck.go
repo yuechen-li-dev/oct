@@ -55,6 +55,8 @@ type Type struct {
 	FlowResult        *Type
 	FlowInput         *Type
 	FlowYield         *Type
+	// UIMessage is the message type of a UI value; see ui_message.go.
+	UIMessage string
 }
 
 type tupleType struct {
@@ -96,6 +98,9 @@ func (t Type) String() string {
 	}
 	if t.Name == "" && isDimensionCapableBaseType(t.Base) && !t.Dimension.IsDimensionless() {
 		base += "<" + t.Dimension.String() + ">"
+	}
+	if t.Name == "" && t.Base == BaseTypeUI && isConcreteUIMessage(t.UIMessage) {
+		base += "<" + t.UIMessage + ">"
 	}
 	if t.IsFunction {
 		return t.FunctionSignature
@@ -174,6 +179,9 @@ type functionContext struct {
 	yieldType               *Type
 	isRefinementConstructor bool
 	outerLocalScope         *scope
+	// uiPolymorphic is set when the function's signature uses bare UI, so
+	// a bare UI in its body is the same message variable.
+	uiPolymorphic bool
 }
 
 func Check(file ast.File) error {
@@ -323,6 +331,7 @@ func (c checker) rebindRecordTypes(file ast.File) error {
 			if err != nil {
 				return fmt.Errorf("record '%s' field '%s': %w", record.Name, field.Name, err)
 			}
+			fieldType = bareUIAsNone(fieldType)
 			rowFields[field.Name] = fieldType
 			if record.IsTable {
 				fieldType = tableColumnType(fieldType)
@@ -718,6 +727,7 @@ func (c checker) registerRecord(record ast.RecordDecl) error {
 		if err != nil {
 			return fmt.Errorf("record '%s' field '%s': %w", record.Name, field.Name, err)
 		}
+		fieldType = bareUIAsNone(fieldType)
 		rowFields[field.Name] = fieldType
 		if record.IsTable {
 			fieldType = tableColumnType(fieldType)
@@ -750,6 +760,7 @@ func (c checker) registerEnum(enumDecl ast.EnumDecl) error {
 			if err != nil {
 				return fmt.Errorf("enum '%s' variant '%s': %w", enumDecl.Name, variant.Name, err)
 			}
+			resolved = bareUIAsNone(resolved)
 			payloadType = &resolved
 		}
 		variants[variant.Name] = enumVariantInfo{payload: payloadType}
@@ -871,7 +882,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		}
 	}
 
-	ctx := functionContext{name: function.Name, sourcePath: function.SourcePath, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isArtifact: function.IsArtifact, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure, isRefinementConstructor: function.IsRefinementConstructor}
+	ctx := functionContext{name: function.Name, sourcePath: function.SourcePath, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isArtifact: function.IsArtifact, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure, isRefinementConstructor: function.IsRefinementConstructor, uiPolymorphic: c.isUIPolymorphic(signature)}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
@@ -1188,6 +1199,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			if resolveErr != nil {
 				return false, fmt.Errorf("function %s: let %s: %w", ctx.name, node.Name, resolveErr)
 			}
+			resolved = localUIType(resolved, ctx)
 			expected = &resolved
 		}
 		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, expected)
@@ -1225,6 +1237,7 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			if resolveErr != nil {
 				return false, fmt.Errorf("function %s: var %s: %w", ctx.name, node.Name, resolveErr)
 			}
+			resolved = localUIType(resolved, ctx)
 			expected = &resolved
 		}
 		valueType, err := c.checkExprWithExpected(scope, node.Value, ctx, expected)
@@ -1431,6 +1444,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		if !isAssignable(valueType.ValueType, ctx.returnType) {
 			if !c.isRefinedExpected(ctx.returnType) {
+				if ctx.returnType.Base == BaseTypeUI && valueType.ValueType.Base == BaseTypeUI {
+					return false, fmt.Errorf("function %s: function returns %s, but this view is %s%s", ctx.name, uiMessageLabel(ctx.returnType.UIMessage), uiMessageLabel(valueType.ValueType.UIMessage), uiAnnotationHint(valueType.ValueType))
+				}
 				return false, fmt.Errorf("function %s: function expects %s, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
 			}
 			if err := c.admitRefined(scope, node.Value, valueType.ValueType, ctx.returnType); err != nil {
@@ -2407,7 +2423,9 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 			hasResultType = true
 			continue
 		}
-		if valueType.ValueType != resultType {
+		if ok, joinErr := joinArmTypes(&resultType, valueType.ValueType); joinErr != nil {
+			return ExprType{}, joinErr
+		} else if !ok {
 			return ExprType{}, fmt.Errorf("utility when result arms must have matching types")
 		}
 	}
@@ -2422,7 +2440,9 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 	if !hasResultType {
 		return ExprType{ValueType: elseType.ValueType}, nil
 	}
-	if elseType.ValueType != resultType {
+	if ok, joinErr := joinArmTypes(&resultType, elseType.ValueType); joinErr != nil {
+		return ExprType{}, joinErr
+	} else if !ok {
 		return ExprType{}, fmt.Errorf("utility when result arms must have matching types")
 	}
 	return ExprType{ValueType: resultType}, nil
@@ -3074,7 +3094,9 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 		if !hasResultType {
 			resultType = caseValueType.ValueType
 			hasResultType = true
-		} else if caseValueType.ValueType != resultType {
+		} else if ok, joinErr := joinArmTypes(&resultType, caseValueType.ValueType); joinErr != nil {
+			return ExprType{}, joinErr
+		} else if !ok {
 			return ExprType{}, fmt.Errorf("switch case %d: result type %s does not match %s", index+1, caseValueType.ValueType, resultType)
 		}
 	}
@@ -3092,7 +3114,9 @@ func (c checker) checkSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx function
 			resultType = elseType.ValueType
 			return ExprType{ValueType: resultType}, nil
 		}
-		if elseType.ValueType != resultType {
+		if ok, joinErr := joinArmTypes(&resultType, elseType.ValueType); joinErr != nil {
+			return ExprType{}, joinErr
+		} else if !ok {
 			return ExprType{}, fmt.Errorf("switch else: result type %s does not match %s", elseType.ValueType, resultType)
 		}
 		return ExprType{ValueType: resultType}, nil
@@ -3173,7 +3197,9 @@ func (c checker) checkEnumMatchExpr(scope *scope, expr ast.MatchExpr, ctx functi
 			hasResultType = true
 			continue
 		}
-		if caseValueType.ValueType != resultType {
+		if ok, joinErr := joinArmTypes(&resultType, caseValueType.ValueType); joinErr != nil {
+			return ExprType{}, joinErr
+		} else if !ok {
 			return ExprType{}, fmt.Errorf("match case %d: result type %s does not match %s", index+1, caseValueType.ValueType, resultType)
 		}
 	}
@@ -3212,7 +3238,9 @@ func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx
 			hasResultType = true
 			continue
 		}
-		if caseValueType.ValueType != resultType {
+		if ok, joinErr := joinArmTypes(&resultType, caseValueType.ValueType); joinErr != nil {
+			return ExprType{}, joinErr
+		} else if !ok {
 			if hasMatchingShapeDifferentDimensions(caseValueType.ValueType, resultType) {
 				return ExprType{}, fmt.Errorf("condition switch result arms must have matching dimensions")
 			}
@@ -3234,7 +3262,9 @@ func (c checker) checkConditionSwitchExpr(scope *scope, expr ast.SwitchExpr, ctx
 	if !hasResultType {
 		return ExprType{ValueType: elseType.ValueType}, nil
 	}
-	if elseType.ValueType != resultType {
+	if ok, joinErr := joinArmTypes(&resultType, elseType.ValueType); joinErr != nil {
+		return ExprType{}, joinErr
+	} else if !ok {
 		if hasMatchingShapeDifferentDimensions(elseType.ValueType, resultType) {
 			return ExprType{}, fmt.Errorf("condition switch result arms must have matching dimensions")
 		}
@@ -3642,6 +3672,22 @@ func (c checker) checkFunctionCallArguments(displayName string, signature functi
 	if len(arguments) != len(signature.parameters) {
 		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", displayName, len(signature.parameters), len(arguments))
 	}
+	// A signature written with bare UI is instantiated per call: its UI
+	// parameters take a UI of any message, all of them must agree, and the
+	// result has that message (ui_message.go).
+	uiJoin := (*uiMessageJoin)(nil)
+	if c.isUIPolymorphic(signature) {
+		uiJoin = newUIMessageJoin(displayName)
+		instantiated := signature
+		instantiated.parameters = make([]Type, len(signature.parameters))
+		for i, parameter := range signature.parameters {
+			if parameter.Base == BaseTypeUI && parameter.UIMessage == uiMessagePoly {
+				parameter.UIMessage = uiMessageAny
+			}
+			instantiated.parameters[i] = parameter
+		}
+		signature = instantiated
+	}
 	for i, argumentExpr := range arguments {
 		argumentType, err := c.checkExprWithExpected(scope, argumentExpr, ctx, &signature.parameters[i])
 		if err != nil {
@@ -3661,6 +3707,15 @@ func (c checker) checkFunctionCallArguments(displayName string, signature functi
 				return ExprType{}, fmt.Errorf("function '%s' argument %d: %w", displayName, i+1, err)
 			}
 		}
+		if uiJoin != nil && signature.parameters[i].UIMessage == uiMessageAny {
+			uiJoin.add(i, argumentType.ValueType)
+			if uiJoin.err != nil {
+				return ExprType{}, uiJoin.err
+			}
+		}
+	}
+	if uiJoin != nil && signature.returnType.Base == BaseTypeUI && signature.returnType.UIMessage == uiMessagePoly {
+		return ExprType{ValueType: withUIMessage(signature.returnType, uiJoin.message), Fallible: signature.isFallible}, nil
 	}
 	if strings.HasPrefix(displayName, "__oct_refine_") && len(arguments) == 1 {
 		conceptName := strings.TrimPrefix(displayName, "__oct_refine_")
@@ -3946,6 +4001,9 @@ func (c checker) qualifyImportedSignature(pkgName string, signature functionSign
 }
 
 func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
+	if valueType.Base == BaseTypeUI && valueType.Name == "" {
+		return c.qualifyImportedUIType(pkgName, valueType)
+	}
 	if valueType.Name == "" {
 		return valueType
 	}
@@ -5338,17 +5396,18 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if len(arguments) != 1 {
 			return ExprType{}, fmt.Errorf("function '%s' expects 1 argument, got %d", callee, len(arguments))
 		}
-		childrenType, err := c.checkExpr(scope, arguments[0], ctx)
+		anyChildren := uiOf(uiMessageAny, 1)
+		childrenType, err := c.checkExprWithExpected(scope, arguments[0], ctx, &anyChildren)
 		if err != nil {
 			return ExprType{}, err
 		}
 		if childrenType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
-		if childrenType.ValueType != withArrayDepth(Type{Base: BaseTypeUI}, 1) {
+		if !isUIShape(childrenType.ValueType, 1) {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects UI[], got %s", callee, childrenType.ValueType)
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+		return ExprType{ValueType: uiOf(childrenType.ValueType.UIMessage, 0)}, nil
 	}
 
 	if callee == "UIStyleNode" {
@@ -5365,13 +5424,14 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			ok   func(Type) bool
 			name string
 		}{
-			{func(t Type) bool { return t == Type{Base: BaseTypeUI} }, "UI"},
+			{func(t Type) bool { return isUIShape(t, 0) }, "UI"},
 			{func(t Type) bool {
 				return t.Base == BaseTypeInt && t.IsArray && t.ArrayDepth == 1 && t.Dimension == (Type{}).Dimension
 			}, "Int[]"},
 			{func(t Type) bool { return t == Type{Base: BaseTypeInt, Dimension: uiPixelDimension} }, "Int<px>"},
 			{func(t Type) bool { return t == Type{Base: BaseTypeInt, Dimension: uiPixelDimension} }, "Int<px>"},
 		}
+		message := uiMessageNone
 		for idx, w := range want {
 			argType, err := c.checkExpr(scope, arguments[idx], ctx)
 			if err != nil {
@@ -5383,8 +5443,11 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			if !w.ok(argType.ValueType) {
 				return ExprType{}, fmt.Errorf("function 'UIStyleNode' argument %d expects %s, got %s", idx+1, w.name, argType.ValueType)
 			}
+			if idx == 0 {
+				message = argType.ValueType.UIMessage
+			}
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+		return ExprType{ValueType: uiOf(message, 0)}, nil
 	}
 	if callee == "UIPlaceSpan" || callee == "UIRegion" || callee == "UIArrange" {
 		return c.checkUIPlacementCall(scope, callee, typeArguments, arguments, ctx)
@@ -5408,14 +5471,15 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if len(arguments) != 1 {
 			return ExprType{}, fmt.Errorf("function 'UIGridRows' expects 1 argument, got %d", len(arguments))
 		}
-		rowsType, err := c.checkExpr(scope, arguments[0], ctx)
+		anyRows := uiOf(uiMessageAny, 2)
+		rowsType, err := c.checkExprWithExpected(scope, arguments[0], ctx, &anyRows)
 		if err != nil {
 			return ExprType{}, err
 		}
-		if rowsType.ValueType != withArrayDepth(Type{Base: BaseTypeUI}, 2) {
+		if !isUIShape(rowsType.ValueType, 2) {
 			return ExprType{}, fmt.Errorf("function 'UIGridRows' argument 1 expects UI[][], got %s", rowsType.ValueType)
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+		return ExprType{ValueType: uiOf(rowsType.ValueType.UIMessage, 0)}, nil
 	}
 	if callee == "UIPlaceAbsolute" {
 		if len(typeArguments) > 0 {
@@ -5443,9 +5507,10 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if childType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
-		if childType.ValueType != (Type{Base: BaseTypeUI}) {
+		if !isUIShape(childType.ValueType, 0) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument 5 expects UI, got %s", childType.ValueType)
 		}
+		childMessage := childType.ValueType.UIMessage
 		zType, err := c.checkExpr(scope, arguments[5], ctx)
 		if err != nil {
 			return ExprType{}, err
@@ -5456,7 +5521,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if zType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAbsolute' argument 6 expects Int, got %s", zType.ValueType)
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+		return ExprType{ValueType: uiOf(childMessage, 0)}, nil
 	}
 	if callee == "UIPlaceAnchored" {
 		if len(typeArguments) > 0 {
@@ -5484,9 +5549,10 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if childType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
-		if childType.ValueType != (Type{Base: BaseTypeUI}) {
+		if !isUIShape(childType.ValueType, 0) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument 5 expects UI, got %s", childType.ValueType)
 		}
+		childMessage := childType.ValueType.UIMessage
 		zType, err := c.checkExpr(scope, arguments[5], ctx)
 		if err != nil {
 			return ExprType{}, err
@@ -5497,7 +5563,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if zType.ValueType != (Type{Base: BaseTypeInt}) {
 			return ExprType{}, fmt.Errorf("function 'UIPlaceAnchored' argument 6 expects Int, got %s", zType.ValueType)
 		}
-		return ExprType{ValueType: Type{Base: BaseTypeUI}}, nil
+		return ExprType{ValueType: uiOf(childMessage, 0)}, nil
 	}
 	if callee == "UIMount" {
 		if len(typeArguments) > 0 {
@@ -5513,7 +5579,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if rootType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
-		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
+		if !isUIShape(rootType.ValueType, 0) {
 			return ExprType{}, fmt.Errorf("function 'UIMount' argument 1 expects UI, got %s", rootType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
@@ -5542,7 +5608,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if rootType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
-		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
+		if !isUIShape(rootType.ValueType, 0) {
 			return ExprType{}, fmt.Errorf("function 'UIPatch' argument 2 expects UI, got %s", rootType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
@@ -5628,7 +5694,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if rootType.Fallible {
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
-		if rootType.ValueType != (Type{Base: BaseTypeUI}) {
+		if !isUIShape(rootType.ValueType, 0) {
 			return ExprType{}, fmt.Errorf("function 'UISignature' argument 1 expects UI, got %s", rootType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeString}}, nil
@@ -6900,7 +6966,10 @@ func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, argumen
 		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 	}
 
-	if elementType.ValueType != expectedElementType {
+	if elementType.ValueType != expectedElementType && !(expectedElementType.Base == BaseTypeUI && isAssignable(elementType.ValueType, expectedElementType)) {
+		if expectedElementType.Base == BaseTypeUI && elementType.ValueType.Base == BaseTypeUI {
+			return ExprType{}, fmt.Errorf("Append element type must match array element type: expected %s, got %s%s", uiMessageLabel(expectedElementType.UIMessage), uiMessageLabel(elementType.ValueType.UIMessage), uiAnnotationHint(elementType.ValueType))
+		}
 		return ExprType{}, fmt.Errorf("Append element type must match array element type: expected %s, got %s", expectedElementType, elementType.ValueType)
 	}
 
@@ -7202,6 +7271,10 @@ func (c checker) checkArrayLiteral(scope *scope, expr ast.ArrayLiteralExpr, ctx 
 		if !expected.IsArray {
 			return Type{}, fmt.Errorf("empty array literal `[]` requires array type context, got %s; use an explicit annotation like `var values: Int[] = []`", *expected)
 		}
+		if expected.Base == BaseTypeUI && expected.UIMessage == uiMessageAny {
+			// No children, so no message.
+			return withUIMessage(*expected, uiMessageNone), nil
+		}
 		return *expected, nil
 	}
 	if !allowFill {
@@ -7211,6 +7284,10 @@ func (c checker) checkArrayLiteral(scope *scope, expr ast.ArrayLiteralExpr, ctx 
 	}
 	if expected != nil && expected.IsArray {
 		elementExpected := peelArrayType(*expected)
+		// An array in a place that takes UI of any message has the
+		// message its elements join to.
+		joinMessages := elementExpected.Base == BaseTypeUI && elementExpected.UIMessage == uiMessageAny
+		joined := uiMessageNone
 		for index, element := range expr.Elements {
 			elementType, value, err := c.checkLiteralElement(scope, element, ctx, &elementExpected)
 			if err != nil {
@@ -7227,6 +7304,16 @@ func (c checker) checkArrayLiteral(scope *scope, expr ast.ArrayLiteralExpr, ctx 
 					return Type{}, fmt.Errorf("invalid refined array element %d: %w", index, err)
 				}
 			}
+			if joinMessages {
+				next, err := joinUIMessage(joined, elementType.ValueType.UIMessage)
+				if err != nil {
+					return Type{}, fmt.Errorf("array element %d: %w", index, err)
+				}
+				joined = next
+			}
+		}
+		if joinMessages {
+			return withUIMessage(*expected, joined), nil
 		}
 		return *expected, nil
 	}
@@ -7247,11 +7334,19 @@ func (c checker) checkArrayLiteral(scope *scope, expr ast.ArrayLiteralExpr, ctx 
 			return Type{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if elementType.ValueType != firstType.ValueType {
+			if firstType.ValueType.Base == BaseTypeUI && isAssignable(withUIMessage(elementType.ValueType, uiMessageNone), withUIMessage(firstType.ValueType, uiMessageNone)) {
+				joined, err := joinUIMessage(firstType.ValueType.UIMessage, elementType.ValueType.UIMessage)
+				if err != nil {
+					return Type{}, fmt.Errorf("array literal: %w", err)
+				}
+				firstType.ValueType.UIMessage = joined
+				continue
+			}
 			return Type{}, fmt.Errorf("array literal elements must all have the same type; found %s and %s", firstType.ValueType, elementType.ValueType)
 		}
 	}
 
-	return withArrayDepth(Type{Name: firstType.ValueType.Name, Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsVector: firstType.ValueType.IsVector, IsMatrix: firstType.ValueType.IsMatrix}, firstType.ValueType.ArrayDepth+1), nil
+	return withArrayDepth(Type{Name: firstType.ValueType.Name, Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsVector: firstType.ValueType.IsVector, IsMatrix: firstType.ValueType.IsMatrix, UIMessage: firstType.ValueType.UIMessage}, firstType.ValueType.ArrayDepth+1), nil
 }
 
 func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr, ctx functionContext) (Type, error) {
@@ -7541,6 +7636,9 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 		}
 		return c.resolveOptionType(typeRef)
 	}
+	if typeRef.Package == "" && typeRef.Name == string(BaseTypeUI) && len(typeRef.TypeArguments) > 0 {
+		return c.resolveUIType(typeRef)
+	}
 	if len(typeRef.TypeArguments) > 0 {
 		return Type{}, fmt.Errorf("unelaborated parametric type %s reached ordinary type checking", typeRef.Name)
 	}
@@ -7695,10 +7793,16 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 		if baseType == BaseTypeError || baseType == BaseTypeRange || baseType == BaseTypeVoid {
 			return Type{}, fmt.Errorf("unknown type: %s%s", typeRef.Name, strings.Repeat("[]", arrayDepth))
 		}
+		if baseType == BaseTypeUI {
+			return uiOf(uiMessagePoly, arrayDepth), nil
+		}
 		return withArrayDepth(Type{Base: baseType, Dimension: typeRef.Dimension}, arrayDepth), nil
 	}
 	if baseType == BaseTypeVoid && !allowVoid {
 		return Type{}, fmt.Errorf("Void is only allowed as a function return type")
+	}
+	if baseType == BaseTypeUI {
+		return uiOf(uiMessagePoly, 0), nil
 	}
 	return Type{Base: baseType, Dimension: typeRef.Dimension}, nil
 }
@@ -8279,6 +8383,11 @@ func operatorName(operator string) string {
 func isAssignable(actual Type, expected Type) bool {
 	if actual == expected {
 		return true
+	}
+	if actual.Base == BaseTypeUI && expected.Base == BaseTypeUI && actual.Name == "" && expected.Name == "" {
+		shape, expectedShape := actual, expected
+		shape.UIMessage, expectedShape.UIMessage = "", ""
+		return shape == expectedShape && uiMessageAssignable(actual.UIMessage, expected.UIMessage)
 	}
 	if actual.Tuple != nil || expected.Tuple != nil {
 		if actual.Tuple == nil || expected.Tuple == nil {

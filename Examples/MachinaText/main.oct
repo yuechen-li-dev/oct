@@ -40,7 +40,7 @@ fn Layout() -> UI.LayoutTable {
     ])
 }
 
-fn View(model: Model) -> UI {
+fn View(model: Model) -> UI<Msg> {
     return UI.Arrange(Layout(), model, Content)
 }
 
@@ -51,7 +51,7 @@ fn Body(i: Int) -> String {
     return "Nothing negotiates: no flexbox, no intrinsic sizing contest. When text cannot fit, its overflow policy decides what you see: an ellipsis, a clipped edge, or an error that names the node."
 }
 
-fn Content(model: Model, region: Page) -> UI {
+fn Content(model: Model, region: Page) -> UI<Msg> {
     return switch region {
         case Page.Header => UI.Stack(UI.Horizontal() with { Gap: 8.0 px  Align: UI.Align.Center }, [
             UI.TextWith(UI.Title(), "Reading and wrapping"),
@@ -70,7 +70,7 @@ fn Content(model: Model, region: Page) -> UI {
     }
 }
 
-fn Article(model: Model) -> UI {
+fn Article(model: Model) -> UI<Msg> {
     var items = [UI.TextWith(UI.Caption(), "ARTICLE")]
     for i in 0..model.Paragraphs {
         items = Append(items, UI.Paragraph(Body(i)))

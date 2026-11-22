@@ -5,10 +5,10 @@
 //
 //	fn Init() -> S
 //	fn Update(model: S, msg: Msg) -> S     // Msg: the app's message enum
-//	fn View(model: S) -> UI
+//	fn View(model: S) -> UI<Msg>  // the same Msg
 //
 // Update may instead take `event: String`, the M0 form, for apps whose
-// buttons send UI.EventToken strings.
+// buttons send UI.EventToken strings; View then returns UI.
 //
 // App adapts that trio to session.App, so the existing deterministic spine
 // (UIIR -> lowering -> layout -> hit test -> render) drives any backend. The
@@ -49,7 +49,7 @@ var convention = []struct {
 }{
 	{"Init", 0, "fn Init() -> Model"},
 	{"Update", 2, "fn Update(model: Model, msg: Msg) -> Model"},
-	{"View", 1, "fn View(model: Model) -> UI"},
+	{"View", 1, "fn View(model: Model) -> UI<Msg>"},
 }
 
 // Load loads and type-checks the package containing path, checks the app
@@ -111,7 +111,41 @@ func (a *App) checkConvention(path string) error {
 		return fmt.Errorf("%s: not a Machina UI app; missing %s (an app declares Init, Update and View, and imports UI)",
 			path, strings.Join(missing, ", "))
 	}
+	for _, fn := range pkg.Functions {
+		if fn.Name != "View" {
+			continue
+		}
+		r := fn.ReturnType
+		if a.msgEnum == "" {
+			if len(r.TypeArguments) > 0 {
+				return fmt.Errorf("%s: View returns %s, but Update takes an event String; take the message enum in Update", path, typeRefLabel(r))
+			}
+			continue
+		}
+		{
+			typed := r.Name == "UI" && r.Package == "" && !r.IsArray && len(r.TypeArguments) == 1
+			if !typed || r.TypeArguments[0].Package != "" || r.TypeArguments[0].Name != a.msgEnum || len(r.TypeArguments[0].TypeArguments) > 0 || r.TypeArguments[0].IsArray {
+				return fmt.Errorf("%s: View must return UI<%s>, the message type Update takes; got %s", path, a.msgEnum, typeRefLabel(r))
+			}
+		}
+	}
 	return nil
+}
+
+// typeRefLabel spells a written type for diagnostics.
+func typeRefLabel(r ast.TypeRef) string {
+	name := r.Name
+	if r.Package != "" {
+		name = r.Package + "." + name
+	}
+	if len(r.TypeArguments) > 0 {
+		args := make([]string, len(r.TypeArguments))
+		for i, arg := range r.TypeArguments {
+			args[i] = typeRefLabel(arg)
+		}
+		name += "<" + strings.Join(args, ", ") + ">"
+	}
+	return name + strings.Repeat("[]", r.ArrayDepth)
 }
 
 func (a *App) call(name string, args ...interpret.Value) (interpret.Value, error) {

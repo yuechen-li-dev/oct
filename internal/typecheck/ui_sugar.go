@@ -19,7 +19,7 @@ func (c checker) checkUISugarCall(scope *scope, callee string, typeArguments []a
 	if len(typeArguments) > 0 {
 		return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", written)
 	}
-	ui := Type{Base: BaseTypeUI}
+	ui := uiOf(uiMessageAny, 0)
 	float := Type{Base: BaseTypeFloat}
 	integer := Type{Base: BaseTypeInt}
 	str := Type{Base: BaseTypeString}
@@ -38,8 +38,13 @@ func (c checker) checkUISugarCall(scope *scope, callee string, typeArguments []a
 	if len(arguments) != len(params) {
 		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", written, len(params), len(arguments))
 	}
+	join := newUIMessageJoin(written)
 	for idx, argument := range arguments {
-		t, err := c.checkUIArgument(scope, written, idx, argument, ctx)
+		var expected *Type
+		if params[idx].Base == BaseTypeUI {
+			expected = &params[idx]
+		}
+		t, err := c.checkUIArgumentWithExpected(scope, argument, ctx, expected)
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -50,13 +55,20 @@ func (c checker) checkUISugarCall(scope *scope, callee string, typeArguments []a
 			if !c.isMessageEnum(t) {
 				return ExprType{}, fmt.Errorf("function 'UI.Button' argument 2 expects a value of the app's message enum (for example Msg.Raise), got %s", t)
 			}
+			join.addMessage(idx, t.Name)
+			continue
+		}
+		if params[idx].Base == BaseTypeUI {
+			if err := c.checkUIValueArgument(scope, join, idx, params[idx].ArrayDepth, t); err != nil {
+				return ExprType{}, err
+			}
 			continue
 		}
 		if t != params[idx] {
 			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", written, idx+1, params[idx], t)
 		}
 	}
-	return ExprType{ValueType: ui}, nil
+	return join.result(0)
 }
 
 // isMessageEnum reports a user enum (not Option) usable as a UI message.
